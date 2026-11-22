@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFlatWriteRefusesWideBits pins SPEC §5.1 row 2 on the JavaScript flat
@@ -23,7 +24,7 @@ func TestJsFlatWriteRefusesWideBits(t *testing.T) {
 	flat := generateWideBitsProbeFlat(t)
 	write := emittedFunction(t, flat, "WriteProbeFlat")
 	for _, want := range []string{
-		"!Number.isInteger(value.a) || value.a < 0 || value.a > 127",
+		"!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 127",
 		"value.b < 0n || value.b > 1099511627775n",
 		"return -1;",
 	} {
@@ -131,7 +132,7 @@ console.log('OK');
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(harness), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "harness.mjs")
+	cmd := testproc.Command(t, node, "harness.mjs")
 	cmd.Dir = dir
 	var env []string
 	for _, kv := range os.Environ() {

@@ -612,7 +612,7 @@ tables-rust-alloc-negative-control: build/tables-generated-rust/.stamp build/coo
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
-test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
+test-rust: build/mustrun generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
@@ -648,13 +648,17 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# the debug run is the one that proves the contracts FIRE and the release
 	# run is the one that proves they are GONE and the corpus still writes the
 	# pinned wire. Java and Dart already run both.
-	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
-	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
-	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
-	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-debug -count 515 -- cargo run --quiet
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-release -count 509 -- cargo run --quiet --release
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-debug -count 49 -- cargo run --quiet
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-release -count 48 -- cargo run --quiet --release
 
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += $(call unless_skipped,rust,build/conformance-rust)
+REGISTRY_NA       += bench-tables:rust goldens:rust toolchain:rust
+REGISTRY_NA_WHY.bench-tables.rust := bench/tables/rust is the fixed form's paired leg, built and run by bench/paired (THE PAIRED BENCH UNIT, above), not by bench/tables/run.sh
+REGISTRY_NA_WHY.goldens.rust      := no committed table goldens; its packet goldens (testdata/golden/rust) are rewritten by internal/goldens at the top of update-goldens
+REGISTRY_NA_WHY.toolchain.rust    := no pin yet: cargo is the host's rustup default (the PATH note at the top of this file)
 
 # Packet defaults share the C++ oracle. Both build modes consume its byte and
 # bit pins, and the control removes only constructor byte copies.
@@ -843,7 +847,7 @@ tables-rust-cook-write-negative-control:
 # never passes on a SKIP.
 .PHONY: tables-rust-message-batch
 tables-rust-message-batch:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust|TestRustMessage(UnionFieldArmZero|QuantizedOnDefault|SeenSet|RangedHeld|OutOfRangeRefusedByName|CountedBornElidesByElementDefault)|TestRustVariableFloat32RangeAndNegZero|TestRustFixedAndMessageCountedMinAndNegZero' -v
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
@@ -1388,8 +1392,8 @@ tables-rust-wide-clamp-negative-control: build/conformance-harness build/conform
 	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variabletext.go)
 	@grep -q '^  rust / json-hostile: fixed-at-bound' $(RUST_WIDE_CONTROL)/clamp/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-at-bound"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep -q . || \
-	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep . >/dev/null || \
+	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
 	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
 
@@ -1397,7 +1401,7 @@ tables-rust-wide-text-negative-control: build/conformance-harness build/conforma
 	$(call rust-wide-control,text,$(RUST_WIDE_TEXT_SED),variabletext.go)
 	@grep -q '^  rust / json-hostile: fixed-fraction-too-fine' $(RUST_WIDE_CONTROL)/text/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-fraction-too-fine"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars' json-hostile rows went red"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; fi
 	@echo "rust wide-scalar text negative control: rounding a too-fine fixed fraction turns exactly the wide json-hostile rows red"
 
@@ -1951,9 +1955,9 @@ build/packet-end/rust/.stamp: bin/schema test/packet-end/End.schema make/rust.mk
 	@touch $@
 
 .PHONY: packet-end-rust packet-end-rust-negative-control
-packet-end-rust: build/packet-end/rust/.stamp
-	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../../testdata/wire/packet-end
-	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../../testdata/wire/packet-end
+packet-end-rust: build/mustrun build/packet-end/rust/.stamp
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../../$(MUSTRUN) -name packet-end-rust-debug -count 3 -- cargo run --quiet -- ../../../testdata/wire/packet-end
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../../$(MUSTRUN) -name packet-end-rust-release -count 3 -- cargo run --quiet --release -- ../../../testdata/wire/packet-end
 
 packet-end-rust-negative-control: packet-end-rust
 	@mkdir -p $(PACKET_END_RUST)-negative
@@ -1995,9 +1999,9 @@ $(PACKET_WRITE_TEXT_RUST)/.stamp: bin/schema test/packet-write-text/Text.schema 
 	@touch $@
 
 .PHONY: packet-write-text-rust packet-write-text-rust-negative-control
-packet-write-text-rust: $(PACKET_WRITE_TEXT_RUST)/.stamp
+packet-write-text-rust: build/mustrun $(PACKET_WRITE_TEXT_RUST)/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
-	./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-rust -count 11 -- ./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
 
 packet-write-text-rust-negative-control: packet-write-text-rust
 	@rm -rf $(PACKET_WRITE_TEXT_RUST)-negative/src

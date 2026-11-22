@@ -139,6 +139,14 @@ local narrowF32 = function(x) {
 
 local writeF64 = function(w, x) { wfixed(w, castf2i(x), 8); };
 
+// f32Value is x rounded to float32, as a Squirrel float (the C conversion
+// through the blob's 'f' view, round to nearest, ties to even)
+local f32Scratch = blob(4);
+local f32Value = function(x) {
+  f32Scratch.seek(0); f32Scratch.writen(x, 'f');
+  f32Scratch.seek(0); return f32Scratch.readn('f');
+};
+
 // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's rule): every writer refuses a NaN or an infinity, and a float32
 // field's value must stay finite at float32 too, so a double past float32's
 // range, which narrows to an infinity, is refused rather than written as one.
@@ -527,8 +535,13 @@ writePrim = function(w, d, val, ids) {
     if (typeof val != "float" && typeof val != "integer") return refuseValue(w);
     if (!floatFinite(d, val)) return refuseNonFinite(d);
     if (d.fmin != null && d.fmax != null) {
-      local f = val.tofloat();
+      // a float32's range is held at float32 (SPEC.md §4.6): the value
+      // narrowed, against ends the descriptor carries narrowed
+      local f = d.f32 ? f32Value(val.tofloat()) : val.tofloat();
       if (f < d.fmin || f > d.fmax) return refuseValue(w);
+      // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+      // ruling fixed-compressed-negzero)
+      if (f == 0) val = 0.0;
     }
     if (d.f32) { wfixed(w, narrowF32(val.tofloat()), 4); } else { writeF64(w, val.tofloat()); }
     return true;
@@ -670,6 +683,14 @@ local writeArrayBody = function(T, d, val, w, ids, at, root) {
   return n;
 };
 
+// A COUNT OFF ITS DECLARATION (docs/SPEC.md §5.1 row 3): a fixed or counted
+// array past its bound, or a counted [Min..Max]T below its minimum.
+local arrayOffCount = function(d, val) {
+  local n = val.len();
+  if (!d.list && n > d.bound) return true;
+  return d.counted && n < d.min;
+};
+
 // AN ARRAY FIELD RIDES (docs/SPEC-TABLES.md §3): a list or counted array when
 // it holds any element, a fixed array when any element is not its default.
 local arrayRides = function(fd, val) {
@@ -690,6 +711,43 @@ local arrayRides = function(fd, val) {
     if (!typedDefault(e, val[i])) return true;
   }
   return false;
+};
+
+// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+// §22.2 [M..N]T row, the Go engine's encodeArray): a plain counted field
+// (not optional, not required) holding exactly its minimum count of elements,
+// each at its default, stays off the wire. This judges the elements that can
+// be judged by value (a float by its bits); a table element is judged by its
+// written body, in bornTablesElide.
+local arrayBorn = function(d, val) {
+  if (d.optional || d.required || d.list || !d.counted || d.kind == 16) return false;
+  if (d.min <= 0 || val.len() != d.min) return false;
+  local e = d.elem;
+  if (e.shape == "tab") return e.kind != 12;
+  for (local i = 0; i < val.len(); i++) {
+    if (e.shape == "union") {
+      if (val[i] != null && val[i].Type != null && val[i].Type != 0) return false;
+    } else if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
+      if (val[i] != null) return false;
+    } else if (e.shape == "float") {
+      if (!floatIsDefault(e, val[i], e.def)) return false;
+    } else if (!typedDefault(e, val[i])) return false;
+  }
+  return true;
+};
+// a counted array of tables at its birth count elides when every element's
+// body is its terminator alone: the body is kind, count, then n times `01 00`
+local bornTablesElide = function(body, n) {
+  local hdr = 2;
+  if (n >= 128) hdr++;
+  if (n >= 16384) hdr++;
+  if (n >= 2097152) hdr++;
+  local len = body.b.len();
+  if (len != hdr + 2 * n) return false;
+  for (local i = 0; i < n; i++) {
+    if (body.b[hdr + 2 * i] != 1 || body.b[hdr + 2 * i + 1] != 0) return false;
+  }
+  return true;
 };
 
 // A UNION VALUE (docs/SPEC-TABLES.md §3): the arm reference (0 for none),
@@ -737,18 +795,25 @@ writeBare = function(T, d, val, w, ids, at, root, holder = null, key = null) {
     return true;
   }
   if (shape == "union") return writeUnionValue(T, unionDesc(T, d.table), val, w, ids, at, root);
+  // AN ARM PAYLOAD OR KEYED SLOT IS HELD TO ITS OWN BOUND, as the same
+  // value in a field is (docs/SPEC.md §5.1 rows 3 and 4)
   if (shape == "str") {
     if (!textOk(val)) return refuseValue(w);
+    if (val.len() > d.bound) return refuseValue(w);
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
   if (shape == "bytes") {
     if (!bytesValue(val)) return refuseValue(w);
+    if (val.len() > d.bound) return refuseValue(w);
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
-  if (shape == "arr") return writeArrayBody(T, d, val, w, ids, at, root) >= 0;
+  if (shape == "arr") {
+    if (d.kind != 16 && arrayOffCount(d, val)) return refuseValue(w);
+    return writeArrayBody(T, d, val, w, ids, at, root) >= 0;
+  }
   return writePrim(w, d, val, ids);
 };
 
@@ -865,13 +930,24 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
       appendWriter(w, field);
       return true;
     }
+    // the count is judged before the elision, so an empty array under a
+    // declared minimum is refused, never elided (docs/SPEC.md §5.1 row 3)
+    if (arrayOffCount(d, val)) return refuseValue(w);
     if (!always && !arrayRides(d, val)) return true;
-    if (!d.list && val.len() > d.bound) return false;
+    local born = arrayBorn(d, val);
+    if (born && d.elem.shape != "tab") return true;
     if (("total" in d) && textTotalPast(d, val)) return false;
+    local mark = idsMark(ids);
+    local wMark = w.b.len();
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     local n = writeArrayBody(T, d, val, body, ids, at, root);
     if (n < 0) return false;
+    if (born && bornTablesElide(body, n)) {
+      idsRollback(ids, mark);
+      w.b.resize(wMark);
+      return true;
+    }
     wleb(w, body.b.len());
     appendWriter(w, body);
     return true;
@@ -980,8 +1056,13 @@ fixedWriteElement = function(T, owner, fname, e, val, out, off) {
   }
   if (e.shape == "float") {
     if (!floatFinite(e, val)) return refuseNonFinite(e);
-    if (e.f32) putFixedU(out, off, 4, narrowF32(val.tofloat()));
-    else putFixedU(out, off, 8, castf2i(val.tofloat()));
+    local bits = e.f32 ? narrowF32(val.tofloat()) : castf2i(val.tofloat());
+    // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+    // ruling fixed-compressed-negzero), judged after the value is narrowed,
+    // so a tiny negative that rounds to -0 stores +0; a plain float's -0
+    // rides bit-exact
+    if (("fmin" in e) && e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;
+    putFixedU(out, off, e.f32 ? 4 : 8, bits);
     return true;
   }
   if (e.shape == "int" || e.shape == "flags") {
@@ -1073,6 +1154,11 @@ _M.save <- function(T, rootName, value, retain = null) {
     appendWriter(w, sub);
   }
   wu8(w, 0);
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more than 4096 entries, so the writer refuses the value
+  if (ids.list.len() > 4096) {
+    _M.SaveReason <- "invalid_value: the value needs " + ids.list.len() + " wire ids, past the maximum of 4096";
+    return null;
+  }
   foreach (id in ids.list) wfixed(w, id, 8);
   wfixed(w, ids.list.len(), 8);
   local out = blob(w.b.len());

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsDiscardReader has a fixed root and a variable root, each carrying a nested
@@ -139,7 +140,7 @@ console.log("ok");
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(jsNode(t), "probe.mjs")
+	cmd := testproc.Command(t, jsNode(t), "probe.mjs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -261,6 +262,9 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			names = append(names, n)
 		}
 		sort.Strings(names)
+		if len(names) == 0 {
+			t.Fatal("names is empty: the loop below would check nothing")
+		}
 		for _, name := range names {
 			list := rows[name]
 			t.Run(name, func(t *testing.T) {

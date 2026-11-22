@@ -8,14 +8,21 @@
 # (R5 fixed tables and R6 variable tables) satisfy the cross-leg table gates,
 # so R4 builds build/schema-ruby with -tags schema_leg_ruby.
 
-build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
+build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null) $(EMBED_SOURCES)
 	@mkdir -p build
 	go build -tags schema_leg_ruby -o $@ ./cmd/schema
+# SERIALIZE_PIN, the vendored serialize.rb's pin, and every other runtime file
+# the compiler embeds: a pin bump must rebuild the compiler and so
+# build/conformance-ruby, or a stale runtime can pass.
+# TestConformanceCompilersRebuildOnTheirRuntime holds it.
+build/schema-ruby: $(shell find internal/codegen/ruby/runtime internal/codegen/rubytable/runtime -type f 2>/dev/null)
 
-.PHONY: test-ruby update-goldens-ruby ruby-skeleton-negative-control
+.PHONY: test-ruby test-ruby-recipe update-goldens-ruby ruby-skeleton-negative-control
 test-ruby: ruby-toolchain-check ruby-serialize-test packet-utf8-ruby bench-ruby-gate
-	sh test/slowgate/proof test-ruby-packet 'TestRubySkeleton TestVendoredRubySerializeIsThePin TestRubyPacketClose TestRubyPacketCloseAnalyzer TestRubyPacketDefaults TestRubyPacketFinite TestRubyPacketVoid TestRubyPacketReadBitsAndOwnership TestRubyPacketShapeBench' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubySkeleton|TestVendoredRubySerializeIsThePin|TestRubyPacketClose$$|TestRubyPacketCloseAnalyzer$$|TestRubyPacketDefaults$$|TestRubyPacketFinite$$|TestRubyPacketVoid$$|TestRubyPacketReadBitsAndOwnership$$|TestRubyPacketShapeBench$$)' ./internal/codegen/ruby/
-	sh test/slowgate/proof test-ruby-tables 'TestRubyVariableTablesAllSurfacesAndStrictAnalyze TestRubyMessageFormAndRetainUnknown TestRubyBlockManifestAndRealUnitsAnalyze' -count=1 -timeout 600s -run '^(TestRubyVariableTablesAllSurfacesAndStrictAnalyze|TestRubyMessageFormAndRetainUnknown|TestRubyBlockManifestAndRealUnitsAnalyze)$$' ./internal/codegen/rubytable/
+	$(MAKE) test-ruby-recipe
+test-ruby-recipe: ruby-toolchain-check
+	sh test/slowgate/proof test-ruby-packet 'TestRubySkeleton TestRubyIdentifierCorpus TestVendoredRubySerializeIsThePin TestRubyPacketClose TestRubyPacketCloseAnalyzer TestRubyPacketDefaults TestRubyPacketFinite TestRubyPacketVoid TestRubyPacketReadBitsAndOwnership TestRubyPacketShapeBench' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubySkeleton|TestRubyIdentifierCorpus$$|TestVendoredRubySerializeIsThePin|TestRubyPacketClose$$|TestRubyPacketCloseAnalyzer$$|TestRubyPacketDefaults$$|TestRubyPacketFinite$$|TestRubyPacketVoid$$|TestRubyPacketReadBitsAndOwnership$$|TestRubyPacketShapeBench$$)' ./internal/codegen/ruby/
+	sh test/slowgate/proof test-ruby-tables 'TestRubyVariableTablesAllSurfacesAndStrictAnalyze TestRubyMessageFormAndRetainUnknown TestRubyBlockManifestAndRealUnitsAnalyze TestRubyCompressedFloatFloat32Ends TestRubyMessageBytesElementKind TestRubyRetainRefusalEmptiesTheStore' -count=1 -timeout 600s -run '^(TestRubyVariableTablesAllSurfacesAndStrictAnalyze|TestRubyMessageFormAndRetainUnknown|TestRubyBlockManifestAndRealUnitsAnalyze|TestRubyCompressedFloatFloat32Ends|TestRubyMessageBytesElementKind|TestRubyRetainRefusalEmptiesTheStore)$$' ./internal/codegen/rubytable/
 	sh test/slowgate/proof test-ruby-compiler 'TestRubyTargetIsRegistered TestRubyGeneratesAnEmptyUnitThroughTheDriver TestRubyCarriesThePacketWireThroughTheDriver TestNewLegRubyRecipe TestCountedArrayIsBornAtItsDeclaredMinimum TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestGuardCommentsSpellTheConditionTheWayDescriptorsDo TestVoidArmInTypeBodyIsCheckedAndCarried TestUnionTagEnumExportsMaxNoCountAndItsDebugName TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestPacketValueDefaultsCarriers TestNoVariableTableMessagePath TestEveryTargetHasATableBackend TestFixedTableValueDefaultsEveryLeg TestFX1GeneratesOnEveryLeg' -count=1 -tags schema_leg_ruby -run 'Ruby|CountedArray|CountOnWrite|GuardComments|VoidArmInTypeBody|UnionTag|TagEnumDebugName|PacketValueDefaultsCarriers|TestNoVariableTableMessagePath|TestEveryTargetHasATableBackend|FixedTableValueDefaultsEveryLeg|FX1GeneratesOnEveryLeg' ./compiler
 update-goldens-ruby: ;
 

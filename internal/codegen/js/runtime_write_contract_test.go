@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsRuntimeWriteRefusesNonFiniteAndWideRangeInProduction pins SPEC §5.1 on
@@ -46,8 +47,8 @@ type RuntimeProbe
 	mod := string(out["RuntimeProbe.js"])
 	writeFn := emittedFunction(t, mod, "WriteRuntimeProbe")
 	for _, want := range []string{
-		"Number.isFinite(Math.fround(value.f32))",
-		"Number.isFinite(value.f64)",
+		"!globalThis.Number.isFinite(globalThis.Math.fround(value.f32))",
+		"!globalThis.Number.isFinite(value.f64)",
 		"value.i128 < -100n || value.i128 > 100n",
 	} {
 		if !strings.Contains(writeFn, want) {
@@ -58,11 +59,7 @@ type RuntimeProbe
 	t.Run("wire", func(t *testing.T) {
 		slowtest.Gate(t, "node (runs runtime-tier WriteRuntimeProbe under checked and production)")
 		node := jsFlatNode(t)
-		root := repoRootForRuntimeProbe(t)
-		serializeDir := filepath.Join(filepath.Dir(root), "serialize.js")
-		if _, statErr := os.Stat(filepath.Join(serializeDir, "src", "index.js")); statErr != nil {
-			t.Skipf("serialize.js sibling not staged at %s: %v", serializeDir, statErr)
-		}
+		serializeDir := serializeJSDir(t)
 
 		for _, prod := range []bool{false, true} {
 			mode := "checked"
@@ -123,7 +120,7 @@ console.log("ok");
 				if err := os.WriteFile(filepath.Join(dir, "run.mjs"), []byte(script), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				cmd := exec.Command(node, filepath.Join(dir, "run.mjs"))
+				cmd := testproc.Command(t, node, filepath.Join(dir, "run.mjs"))
 				env := os.Environ()
 				if prod {
 					env = append(env, "NODE_ENV=production")
@@ -136,13 +133,4 @@ console.log("ok");
 			})
 		}
 	})
-}
-
-func repoRootForRuntimeProbe(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return filepath.Clean(filepath.Join(wd, "..", "..", ".."))
 }

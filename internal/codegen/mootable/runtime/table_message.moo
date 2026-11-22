@@ -566,7 +566,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0, strict = false }
 end
 
 local function resetReport(report: any)
@@ -578,6 +578,8 @@ local function resetReport(report: any)
 	report.widened = 0
 	report.nonFinite = 0
 	report.nonFiniteField = nil
+	report.remote = nil
+	report.own = nil
 end
 
 MS.resetReport = resetReport
@@ -592,6 +594,21 @@ end
 -- whatever the buffer would hold (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
 -- CHECK; docs/LAYERS/1-framing.md F6)
 local ID_TABLE_BOUND = 4096
+
+-- homeBuild is this unit's own build version, the eight little-endian bytes
+-- MS.unit reads off the unit's announcement: what a strict announcement read
+-- compares the peer's against (§3.3).
+local homeBuild: string? = nil
+
+-- buildVersionValue is a build version's eight bytes as the unsigned 64-bit
+-- value a strict refusal names.
+local function buildVersionValue(bytes: string?): any
+	if bytes == nil then
+		return nil
+	end
+	local b = buffer.fromstring(bytes)
+	return Uint64.new(buffer.readu32(b, 0), buffer.readu32(b, 4))
+end
 
 local function announceRead(v: any, data: buffer, report: any): boolean
 	local len = buffer.len(data)
@@ -722,6 +739,15 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		report.damaged = true
 		return false
 	end
+	-- STRICT MODE IS OPT-IN (§3.3): with v.strict set, an announcement whose
+	-- build version is not this unit's own is refused build_version_mismatch,
+	-- sets no vocabulary, keeps the peer's build version and names both
+	-- versions as Uint64 values in report.remote and report.own.
+	if v.strict and version ~= homeBuild then
+		report.remote = buildVersionValue(version)
+		report.own = buildVersionValue(homeBuild)
+		return refuse(report, "build_version_mismatch")
+	end
 	local wb = words :: buffer
 	local we = buffer.len(wb)
 	local entries = {}
@@ -809,7 +835,9 @@ function MS.unit(bytes: string): buffer
 	local rep: any = {}
 	resetReport(rep)
 	homeBytes = bytes
-	if not announceRead(v, buffer.fromstring(bytes), rep) then
+	local read = announceRead(v, buffer.fromstring(bytes), rep)
+	homeBuild = v.buildVersion
+	if not read then
 		-- a unit whose closure announces a kind the message form does not
 		-- spell: the Go engine refuses that announcement too, and this build's
 		-- writer has no vocabulary to write with, which writeBatch names
@@ -886,10 +914,8 @@ local function atDefault(fd: any, val: any): boolean
 	if s == "enum" then
 		return val == (fd.def or 0)
 	end
-	if s == "float" and fd.f32 and fd.flo ~= nil and type(val) == "number" and type(fd.def) == "number" then
-		local a = if val == 0x80000000 then 0 else val
-		local b = if fd.def == 0x80000000 then 0 else fd.def
-		return a == b
+	if s == "float" and fd.flo ~= nil then
+		return V.sameStorage(fd, V.storedFloat(fd, val), V.storedFloat(fd, fd.def))
 	end
 	return V.sameStorage(fd, val, fd.def)
 end
@@ -934,6 +960,10 @@ end
 -- an integer raw or as value - base (encodeBitValue)
 local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, named: any): boolean
 	local w = c.w
+	if kind == 10 or kind == 11 then
+		-- a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+		val = V.storedFloat(e, val)
+	end
 	if kind == 1 then
 		put(w, if val == true then 1 else 0, 1)
 		return true
@@ -1092,6 +1122,42 @@ local function elemDefault(e: any, x: any): boolean
 	return false
 end
 
+-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+-- §22.2 [M..N]T row, the Go engine's messageElides): a plain counted field
+-- holding exactly its minimum count of elements, each off the wire (a float
+-- by its bits, a table by a body that is its terminator alone), is not
+-- written. A present optional rides before this is asked.
+local function bornElides(c: any, fd: any, val: any, n: number): boolean
+	local min = fd.min or 0
+	if min <= 0 or n ~= min or fd.required == true then
+		return false
+	end
+	local e = fd.e
+	if e.s ~= "tab" then
+		for i = 1, n do
+			if not elemDefault(e, elemAt(val, i)) then
+				return false
+			end
+		end
+		return true
+	end
+	local w = c.w
+	for i = 1, n do
+		local x = elemAt(val, i)
+		if type(x) ~= "table" then
+			return false
+		end
+		local st = w.n
+		local ok = encodeBody(c, S.lookup(e.t), x)
+		local empty = ok and w.n - st == c.refBits
+		truncate(w, st)
+		if not empty then
+			return false
+		end
+	end
+	return true
+end
+
 local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
 	local shape = entry.shape
 	local e = fd.e
@@ -1158,7 +1224,8 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 	if s == "arr" and fd.array == "fixed" and type(val) == "buffer" and buffer.len(val) < fd.bound and (fd.present == nil or v[fd.present]) then return fail(c, "invalid_value", fd) end
 	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
 		local n = v[fd.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return fail(c, "invalid_value", fd) end
+		-- below its Min is refused as past its Max is (SPEC.md §5.1 row 3)
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (fd.min or 0) or n > fd.bound then return fail(c, "invalid_value", fd) end
 	end
 	local w = c.w
 	if fd.present ~= nil then
@@ -1209,7 +1276,7 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		end
 		if fd.array == "counted" then
 			local n = liveCount(fd, v, val)
-			if n == 0 then
+			if n == 0 or bornElides(c, fd, val, n) then
 				return true
 			end
 			wref(c, entry.slot)
@@ -1286,7 +1353,7 @@ encodeArm = function(c: any, un: any, u: any, named: any): boolean
 	local val = u[arm.slot]
 	if s == "arr" and arm.array == "counted" then
 		local n = u[arm.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound then return fail(c, "invalid_value", arm) end
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (arm.min or 0) or n > arm.bound then return fail(c, "invalid_value", arm) end
 	end
 	local shape = entry.shape
 	if s == "tab" then
@@ -1463,10 +1530,66 @@ local function index(t: any): (number, boolean)
 	return get(t.r, t.indexBits)
 end
 
+-- inAnnouncedKind(kind, shape, x): whether a ranged integer's base plus its
+-- offset x (four limbs), added WHOLE in five limbs and never wrapped, lies in
+-- the announced kind's domain (docs/SPEC-TABLES.md §3.3): every bit from the
+-- domain's top up is zero for an unsigned kind, and equal to the sign bit for
+-- a signed one. The named read and the skip path both ask it, so a field
+-- gets one verdict whether this build keeps it or not.
+local function inAnnouncedKind(kind: number, shape: any, x: { number }): boolean
+	local base = shape.base or { 0, 0, 0, 0 }
+	local signed = V.signedKind(kind)
+	local fill = if signed and base[4] >= 2147483648 then 4294967295 else 0
+	local sum = table.create(5, 0)
+	local carry = 0
+	for i = 1, 5 do
+		local a = if i <= 4 then x[i] else 0
+		local b = if i <= 4 then base[i] else fill
+		local v = a + b + carry
+		sum[i] = v % TWO32
+		carry = v // TWO32
+	end
+	local w = kindWidth(kind) * 8
+	local top = 0
+	if signed then
+		local li, k = (w - 1) // 32 + 1, (w - 1) % 32
+		top = (sum[li] // POW2[k]) % 2
+		w -= 1
+	end
+	for i = 1, 5 do
+		local lo = (i - 1) * 32
+		if lo + 32 > w then
+			local k = if w > lo then w - lo else 0
+			local high = sum[i] // POW2[k]
+			if high ~= (if top == 1 then POW2[32 - k] - 1 else 0) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- a ranged integer's offset read and held to the announced kind (above);
+-- false and out_of_range when the sum leaves it
+local function rangedOffset(t: any, kind: number, shape: any, width: number): ({ number }?, boolean)
+	local x, ok = getLimbs(t.r, width)
+	if not ok then
+		return nil, false
+	end
+	if not inAnnouncedKind(kind, shape, x) then
+		return nil, refuseRead(t, "out_of_range")
+	end
+	return x, true
+end
+
 -- the bits one element of an array occupies where that is one number, -1
--- where each must be walked (elementRunBits)
+-- where each must be walked (elementRunBits): a ranged integer element is
+-- walked, so each one is held to the announced kind as a named read holds it
 local function runBits(kind: number, elem: number, inner: any): number
 	if kind ~= 14 then
+		return -1
+	end
+	if integerKind(elem) and inner ~= nil and inner.packing == 1 then
 		return -1
 	end
 	if elem == 13 or elem == 15 or elem == 30 or elem == 17 then
@@ -1653,6 +1776,11 @@ skipEntry = function(t: any, kind: number, shape: any, depth: number?, field: bo
 	if width < 0 then
 		return false
 	end
+	if integerKind(kind) and shape.packing == 1 then
+		-- base + offset held to the announced kind, as a named read holds it
+		local _, ok = rangedOffset(t, kind, shape, width)
+		return ok
+	end
 	return skipBits(r, width)
 end
 
@@ -1677,9 +1805,21 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	if width < 0 then
 		return nil, true
 	end
-	local x, ok = getLimbs(t.r, width)
-	if not ok then
-		return nil, false
+	local x: { number }
+	if integerKind(kind) and shape.packing == 1 then
+		-- base + offset outside the ANNOUNCED kind refuses before any check
+		-- of this build's own (§3.3): never wrapped into range
+		local held, ok = rangedOffset(t, kind, shape, width)
+		if held == nil then
+			return nil, ok
+		end
+		x = held
+	else
+		local got, ok = getLimbs(t.r, width)
+		if not ok then
+			return nil, false
+		end
+		x = got
 	end
 	local mykw = fd.kw or kindWidth(kind)
 	local signed = fd.signed == true
@@ -1955,7 +2095,9 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	if aligns(entry.kind, shape) and not ralign(r) then
 		return dmal(t)
 	end
-	if n > fd.bound then
+	if n > fd.bound or (fd.array == "counted" and n < (fd.min or 0)) then
+		-- below this build's Min refuses as past its bound does (SPEC.md
+		-- §5.1 row 3)
 		return refuseRead(t, "count_over_bound")
 	end
 	local dst = holder[fd.slot]
@@ -2253,10 +2395,11 @@ end
 
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
--- -1 with report.reason is a refusal (newer_form, no_vocabulary,
--- integrity_mismatch, kind_mismatch, out_of_range, count_over_bound,
--- length_over_bound; non_finite_float answers 0); a count above capacity is
--- batch_too_large and returns the wire's M. Damage anywhere discards the
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (docs/SPEC-TABLES.md §3.3): every refusal answers 0 with report.reason
+-- (newer_form, no_vocabulary, integrity_mismatch, kind_mismatch,
+-- out_of_range, count_over_bound, length_over_bound, non_finite_float, and
+-- batch_too_large for a count above capacity). Damage anywhere discards the
 -- whole batch: zero bodies, no values, with report.damaged set (§4). Every
 -- refusal returns no values: the whole batch or nothing.
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
@@ -2270,14 +2413,14 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if buffer.readu8(data, 0) ~= 2 then
 		refuse(rep, "newer_form")
-		return -1, {}
+		return 0, {}
 	end
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local n = len
 		if n < 6 or buffer.readu32(data, n - 4) ~= V.crc32c(data, n - 4) then
 			rep.damaged = true
 			rep.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		local body = buffer.create(n - 4)
 		buffer.copy(body, 0, data, 0, n - 4)
@@ -2286,7 +2429,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if v == nil or not v.announced then
 		refuse(rep, "no_vocabulary")
-		return -1, {}
+		return 0, {}
 	end
 	if home == nil then
 		error("schema: this build has no message vocabulary: its announcement carries a kind the message form does not spell (docs/SPEC-TABLES.md §3.3)")
@@ -2300,7 +2443,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	local count = raw + 1
 	if count > capacity then
 		refuse(rep, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	-- the batch's announced build version against this build's own (the unit's
 	-- announcement, registered by MS.unit)
@@ -2319,7 +2462,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	if t.refusal ~= nil then
 		rep.damaged = false
 		refuse(rep, t.refusal)
-		return -1, {}
+		return 0, {}
 	end
 	if not whole then
 		rep.damaged = true

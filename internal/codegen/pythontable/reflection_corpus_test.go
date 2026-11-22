@@ -130,8 +130,12 @@ func TestPythonReflectionCorpus(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
 	units := reflectionUnits(t)
+	if len(units) == 0 {
+		t.Fatal("units is empty: the loop below would check nothing")
+	}
 	for _, row := range units {
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)
 			if err != nil {
@@ -370,6 +374,7 @@ func TestPythonReflectionStrictTypes(t *testing.T) {
 			continue
 		}
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)
 			if err != nil {

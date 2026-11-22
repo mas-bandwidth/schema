@@ -199,7 +199,8 @@ func runCountCap(t *testing.T, schema string, rows []countCapRow, edit func(map[
 // must answer nil on every builder read with the reason count_over_extent_cap,
 // refused set, malformed unset, no counter moved and nothing retained; the
 // good row reads clean; a damage row is malformed and never the refusal, and a
-// counted one also moves a counter.
+// counted one also moves a counter on the tolerant walk (a strict read the wire-alone
+// check refuses never walks, so its report carries the verdict alone).
 func countCapFaults(rows []countCapRow, got map[string]string) []string {
 	var bad []string
 	for _, row := range rows {
@@ -221,7 +222,7 @@ func countCapFaults(rows []countCapRow, got map[string]string) []string {
 				}
 			default:
 				f := strings.Fields(line)
-				if len(f) != 6 || f[0] != "nil" || f[1] == "count_over_extent_cap" || f[3] != "true" || (row.class == countedRow && f[4] == "0") {
+				if len(f) != 6 || f[0] != "nil" || f[1] == "count_over_extent_cap" || f[3] != "true" || (row.class == countedRow && path == "tolerant" && f[4] == "0") {
 					bad = append(bad, fmt.Sprintf("%s %s: %q, want damage and not the count-cap refusal", row.name, path, line))
 				}
 			}
@@ -335,6 +336,9 @@ func TestLuaCountCapRefusalNegativeControls(t *testing.T) {
 					t.Errorf("%s: the probe did not see the %s control", read, c.name)
 				}
 			}
+			if len(got) == 0 {
+				t.Fatal("got is empty: the loop below would check nothing")
+			}
 			for read := range got {
 				if !c.want[read] {
 					t.Errorf("%s: red under the %s control, which should not reach it", read, c.name)
@@ -408,7 +412,11 @@ func countCapFloatGroups(rows []countCapRow) []struct {
 func TestLuaCountCapReadOrder(t *testing.T) {
 	t.Parallel()
 	rows := countCapFloatRows(t)
-	for _, group := range countCapFloatGroups(rows) {
+	allCountCapFloatGroups := countCapFloatGroups(rows)
+	if len(allCountCapFloatGroups) == 0 {
+		t.Fatal("countCapFloatGroups(rows) is empty: the loop below would check nothing")
+	}
+	for _, group := range allCountCapFloatGroups {
 		for _, fault := range countCapFaults(group.rows, runCountCap(t, group.schema, group.rows, nil)) {
 			t.Error(fault)
 		}

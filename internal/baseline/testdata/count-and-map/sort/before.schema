@@ -1,0 +1,6 @@
+package sample
+fixed table Pair {
+ key uint16
+ value int32
+}
+table Root { items [..4]Pair }

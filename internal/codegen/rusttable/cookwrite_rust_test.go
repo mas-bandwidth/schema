@@ -19,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookWriteUnits is where each unit the manifest's cook-write rows name is
@@ -283,6 +285,9 @@ func TestCookWriteRust(t *testing.T) {
 		mods.WriteString("}\n")
 	}
 	main.WriteString("fn main() {\n")
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		path := filepath.Join(work, c.name+".wire")
 		input, construct := c.wire, "load"
@@ -331,12 +336,12 @@ func TestCookWriteRust(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(work, "probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-o", bin, "main.rs")
 	cmd.Dir = work
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the cook writer did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = work
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("the cook probe did not run: %v\n%s", err, out)
@@ -498,6 +503,9 @@ func TestCookWriteRust(t *testing.T) {
 		return false
 	})
 	// the byte order is the write's parameter, never the host's (§7.6)
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		if bytes.Equal(got[c.name], got[c.name+"-be"]) {
 			t.Errorf("%s: the two byte orders cooked to one file", c.name)

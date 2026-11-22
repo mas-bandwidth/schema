@@ -34,6 +34,7 @@ let FixedRefuseInvalidValue: i64 = 14;
 let FixedRefuseWireDamaged: i64 = 16;
 let FixedRefuseOutOfRange: i64 = 18;
 let FixedRefuseIntegrityMismatch: i64 = 22;
+let FixedRefuseNonFiniteFloat: i64 = 23;
 let FixedRefusePreviousForm: i64 = 25;
 let FixedRefuseNewerForm: i64 = 26;
 let FixedRefuseMessageFormAsFile: i64 = 27;
@@ -63,6 +64,7 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         16 => "wire_damaged",
         18 => "out_of_range",
         22 => "integrity_mismatch",
+        23 => "non_finite_float",
         25 => "previous_form",
         26 => "newer_form",
         27 => "message_form_as_file",
@@ -166,6 +168,14 @@ fn fixed_f32_bits(x: f32) -> u32 {
     let a: f32[1] = [x];
     let b = bytes_of(a);
     return b[0] | (b[1] as u32) << 8 | (b[2] as u32) << 16 | (b[3] as u32) << 24;
+}
+
+// fixed_cf32_bits is a COMPRESSED float's stored bits: its -0 is stored as +0
+// (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero), in
+// every build; every other value is its own pattern.
+fn fixed_cf32_bits(x: f32) -> u32 {
+    if x == 0.0 { return 0; }
+    return fixed_f32_bits(x);
 }
 
 fn fixed_bits_f32(u: u32) -> f32 {
@@ -291,9 +301,12 @@ fn fixed_text_ok(s: const u8[:], n: i32, cap: i64) -> bool {
 // past its bound, or text whose used units break the content rule, REFUSES BY
 // NAME before any destination byte is written. flavour is §4.1's: 1 utf8,
 // 3 bytes.
-fn fixed_scan_count(b: const u8[:], at: i64, bound: i64) -> i64 {
+// fixed_scan_count holds a counted array's stored count to its declared
+// [least..bound]: a count below Min is off the count's own range and refused
+// as the count past Max is (SPEC.md §5.1 row 3; tablewire fixed.go).
+fn fixed_scan_count(b: const u8[:], at: i64, least: i64, bound: i64) -> i64 {
     let v = fixed_i32(b, at);
-    if v < 0 || v > bound { return FixedRefuseCountOverBound; }
+    if v < least || v > bound { return FixedRefuseCountOverBound; }
     return 0;
 }
 

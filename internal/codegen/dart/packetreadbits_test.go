@@ -2,13 +2,14 @@ package dart
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // packetReadBitsSchema has two packet types whose wire sizes are not whole
@@ -189,7 +190,7 @@ func TestDartPacketReadReportsBitsConsumed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "main.dart"), []byte(packetReadBitsDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("dart", "--enable-asserts", "main.dart")
+	cmd := testproc.Command(t, "dart", "--enable-asserts", "main.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

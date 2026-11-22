@@ -282,14 +282,21 @@ function D.refuse_deprecated(T, name, v)
   return "invalid_value: " .. hit .. " holds a deprecated enum variant"
 end
 
--- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): utf8.len is strict in Lua 5.4,
--- refusing an overlong form, a surrogate and anything past U+10FFFF, as the
--- fixed reader's check_utf8 relies on. zero_ok admits a zero byte, which the
--- text writer spells \u0000 (docs/SPEC-TABLES.md §16.3) and every binary
--- writer refuses.
+-- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): an overlong form, a surrogate
+-- and anything past U+10FFFF are refused. utf8.len refuses all three in Lua
+-- 5.4, but Lua 5.3's utf8.len takes a surrogate (U+D800..U+DFFF, the bytes
+-- ED A0..BF xx), so that range is refused by its bytes too: the same answer
+-- on every supported Lua (docs/PORT-LUA.md; schema-lua-version-differential).
+function D.utf8_ok(s)
+  return utf8.len(s) ~= nil and not string.find(s, "\237[\160-\191]")
+end
+
+-- D.text_ok is D.utf8_ok with the zero-byte rule. zero_ok admits a zero byte,
+-- which the text writer spells \u0000 (docs/SPEC-TABLES.md §16.3) and every
+-- binary writer refuses.
 function D.text_ok(s, zero_ok)
   if not zero_ok and string.find(s, "\0", 1, true) then return false end
-  return utf8.len(s) ~= nil
+  return D.utf8_ok(s)
 end
 
 -- THE WRITE CONTRACT (docs/SPEC.md §5.1). Lua has no assert idiom, so every
@@ -347,7 +354,7 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
   elseif s == "float" then
     if type(val) ~= "number" then return where end
     -- a NaN compares false both ways and is row 7's, named by its own walk
-    if d.fmin ~= nil and (val < d.fmin or val > d.fmax) then return where end
+    if D.float_off_range(d, val) then return where end
   elseif s == "string" or s == "bytes" then
     if val == false then return nil end
     if type(val) ~= "string" then return where end
@@ -448,6 +455,26 @@ end
 -- a union arm, and every table, pointer target and node v reaches — or nil.
 D.F32_EXP = 0x7f800000
 D.F64_EXP = 0x7ff0000000000000
+
+-- A COMPRESSED FLOAT IS A FLOAT32, AND ITS RANGE IS HELD AT FLOAT32
+-- (docs/SPEC.md §4.6: every runtime evaluates the triple at float32). The
+-- descriptor's fmin and fmax are the float32 ends the declaration names, and
+-- D.float_off_range compares v as the float32 it narrows to, so 0.1f lies
+-- under max = 0.1 and a double that rounds to 0.1f is the value 0.1f. A NaN
+-- compares false both ways and is row 7's.
+function D.float_off_range(d, v)
+  if d.fmin == nil or d.fmax == nil then return false end
+  local x = string.unpack("<f", string.pack("<f", v))
+  return x < d.fmin or x > d.fmax
+end
+
+-- A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
+-- fixed-compressed-negzero): every writer stores the bits +0 stores and every
+-- reader lands +0. A plain float's -0 is a value and rides (§3.3).
+function D.cf(d, v)
+  if d.fmin ~= nil and v == 0 then return 0.0 end
+  return v
+end
 
 -- D.finite answers whether a writer carries v in a float field: a float32
 -- field tests the PACKED bits, so a double past the float32 range (which

@@ -1,0 +1,19 @@
+{
+  "layout": [
+    {"path": "p1/generate.go", "lines": ["package p1", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "func Thing() {}"]},
+    {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "// an ordinary comment that is not a pin", "func Other() {}"]}
+  ],
+  "cases": [
+    {"id": "two-pin-v2.6.0", "finding": "pin-partial", "note": "control: without a failure both pins change", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "after": [
+       {"path": "p1/generate.go", "lines": ["package p1", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "func Thing() {}"]},
+       {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "// an ordinary comment that is not a pin", "func Other() {}"]}]},
+    {"id": "two-stage-fails-in-second", "finding": "pin-partial", "note": "the read-only second directory: the first file used to be left at v2.6.0 and the retry refused the mixed tree", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"stage_in": "p2"}], "error": "nothing was changed"},
+    {"id": "two-publish-fails-on-second", "finding": "F-157", "note": "the first entry is put back, the entry itself: same file, same time last written", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"onto": "p2/generate.go", "from": 1, "until": 1}], "error": "nothing was changed"},
+    {"id": "two-publish-fails-and-nothing-goes-back", "finding": "F-157", "note": "if restoring an original also fails, the error names the retained original; p2, whose publish failed, never left its name and holds its original", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"onto": "p2/generate.go", "from": 1}, {"onto": "p1/generate.go", "from": 2}], "error": "HALF MOVED", "half_moved": ["p1/generate.go"]},
+    {"id": "two-refuse-v3.0.4", "finding": "pin-304", "version": "v3.0.4", "dirs": ["p1", "p2"], "error": "Go cannot resolve v3.0.4"}
+  ]
+}

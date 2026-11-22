@@ -15,7 +15,6 @@ package darttable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,6 +23,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The mutant the harness printed for streamdemo.Feed seed stream_chain,
@@ -72,7 +73,9 @@ func TestWireFeedChainMalformedDart(t *testing.T) {
 	var report tabletext.Report
 	// STRICT VERDICT: the oracle refuses this mutant whole (wire_damaged);
 	// the Dart read must answer the same refusal.
-	_, _ = tablewire.DecodeRegion(model, inst, mutant, &report)
+	if accepted, derr := tablewire.DecodeRegion(model, inst, mutant, &report); derr == nil || accepted {
+		t.Fatalf("the oracle's region read accepted the replay mutant (ok=%v err=%v)", accepted, derr)
+	}
 	encoded, err := tablewire.Encode(model, inst)
 	if err != nil {
 		t.Fatalf("the oracle could not save its read: %v", err)
@@ -115,7 +118,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", "mutant.bin")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", "mutant.bin")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

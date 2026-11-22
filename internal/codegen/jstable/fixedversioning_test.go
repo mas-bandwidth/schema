@@ -54,6 +54,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -87,6 +89,13 @@ var jsVersionRows = []jsVersionRow{
   for (let i = 4; i < 8; i++) {
     if (back[0].vals[i].x !== 7 || back[0].vals[i].y !== 9) {
       fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].vals[i]));
+    }
+  }
+  // F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  if (back[0].ints.length !== 8 || back[0].octet.length !== 8) fail("a grown scalar array is not its new bound: " + show(back[0]));
+  for (let i = 0; i < 8; i++) {
+    if (back[0].ints[i] !== (i < 4 ? -800 - i : 0) || back[0].octet[i] !== (i < 4 ? 200 + i : 0)) {
+      fail("scalar slot " + i + ": " + show(back[0].ints[i]) + " " + show(back[0].octet[i]));
     }
   }`},
 	{row: "bits_grow", widens: true},
@@ -872,10 +881,9 @@ func jsNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no node is on this bench: make dist, or NODE=node")
-	}
-	t.Skip("no node toolchain: see make/js.mk's NODE")
+	// a failure under SCHEMA_REQUIRE_NODE=1 or SCHEMA_REQUIRE_CORPUS: make
+	// dist, or NODE=node
+	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
 	return ""
 }
 
@@ -1012,7 +1020,7 @@ console.log("ok");
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

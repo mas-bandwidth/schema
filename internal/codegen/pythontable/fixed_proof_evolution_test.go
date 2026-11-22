@@ -585,6 +585,10 @@ func TestPythonFixedProofEvolutionWideningCorpus(t *testing.T) {
 		{"fixed_I_grow", `assert rows[0].lead == 0xAAAAAAAA and rows[0].v == -1 and rows[0].trail == 0xBBBBBBBB and report.widened == 1`, `value[0].lead = 0xAAAAAAAAu; value[0].v = -1; value[0].trail = 0xBBBBBBBBu;`, 1},
 		{"fixed_I_grow_element", `assert rows[0].lead == 0xAAAAAAAA and rows[0].vals == [-1, -128, 0, 112] and rows[0].trail == 0xBBBBBBBB and report.widened == 4`, `value[0].lead = 0xAAAAAAAAu; value[0].vals[0] = -1; value[0].vals[1] = -128; value[0].vals[2] = 0; value[0].vals[3] = 112; value[0].trail = 0xBBBBBBBBu;`, 1},
 		{"cfloat_res_refine", `assert rows[0].lead == 1 and rows[0].aim == 0.30000001192092896 and rows[0].trail == 2 and report.widened == 0`, `value[0].lead = 1; value[0].aim = 0.3f; value[0].trail = 2;`, 1},
+		// F-092: a grown fixed bound pads one born element per new slot, over
+		// the record array and the scalar arrays beside it; the saved bytes are
+		// the C++ reference's own read of the same old record.
+		{"array_fixed_grow", `assert [(v.x, v.y) for v in rows[0].vals[4:]] == [(7, 9)] * 4 and rows[0].vals[3].y == -603 and list(rows[0].ints) == [-800, -801, -802, -803, 0, 0, 0, 0] and list(rows[0].octet) == [200, 201, 202, 203, 0, 0, 0, 0]`, `value[0].lead = 0xAAAAAAAAu; for (int i = 0; i < 4; ++i) { value[0].vals[i].x = -500 - i; value[0].vals[i].y = -600 - i; value[0].ints[i] = -800 - i; value[0].octet[i] = (uint8_t) (200 + i); } value[0].trail = 0xBBBBBBBBu;`, 1},
 		{"union_arm_payload_widen", `assert rows[0].pick.type == 1 and rows[0].pick.alpha.x == 21 and rows[0].pick.alpha.y == 55 and rows[0].seq == 18`, `value[0].pick.type = PickType::Alpha; value[0].pick.alpha.x = 21; value[0].seq = 18;`, 1},
 	} {
 		t.Run(tc.row, func(t *testing.T) {
@@ -881,7 +885,11 @@ func TestPythonFixedProofEvolutionStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python strict analyzer")
 	selected := map[string]bool{"retirement": true, "retired-runtime": true, "field-evolution": true, "plan-execution": true, "interoperability": true, "file-envelope": true}
-	for _, tc := range fixedproof.Cases() {
+	allCases := fixedproof.Cases()
+	if len(allCases) == 0 {
+		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCases {
 		if !selected[tc.ID] {
 			continue
 		}

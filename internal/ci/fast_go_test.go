@@ -140,7 +140,11 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if branches := workflowTriggerBranches(wfs[name])["pull_request"]; len(branches) != 0 {
 			t.Fatalf("%s pull_request filters bases %v; it must run whatever the base is", name, branches)
 		}
-		for nameJob, body := range yamlJobs(wfs[name]) {
+		allYamlJobs := yamlJobs(wfs[name])
+		if len(allYamlJobs) == 0 {
+			t.Fatal("yamlJobs(wfs[name]) is empty: the loop below would check nothing")
+		}
+		for nameJob, body := range allYamlJobs {
 			if !strings.Contains(jobRunsOn(body), "self-hosted") {
 				continue
 			}
@@ -156,6 +160,20 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if _, ok := workflowTriggerBranches(wfs["ci-full.yml"])["push"]; ok {
 		t.Fatal("ci-full.yml gained a push trigger; it runs nightly and on dispatch only")
 	}
+	// the fork job runs for a fork's pull request and for nothing else
+	for _, c := range []struct {
+		ev   ciEvent
+		want bool
+	}{
+		{fork, true},
+		{ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}, false},
+		{ciEvent{Name: "pull_request", Branch: "main", HeadRef: "feature", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, false},
+		{ciEvent{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"}, false},
+	} {
+		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "fork-pull-request", c.ev); err != nil || runs != c.want {
+			t.Fatalf("ci-fast.yml fork-pull-request on %s from %q: runs=%v err=%v, want %v", c.ev.Name, c.ev.HeadRepo, runs, err, c.want)
+		}
+	}
 	// ci-fast.yml runs on a push to main and nowhere else: the sprint reads
 	// this lane's verdict on every base tip to tell a card's red from main's.
 	if push := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; len(push) != 1 || push[0] != "main" {
@@ -165,9 +183,17 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
 	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
-	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
+	fastJobs := yamlJobs(wfs["ci-fast.yml"])
+	if len(fastJobs) == 0 {
+		t.Fatal("ci-fast.yml has no jobs: the push-to-main check below would check nothing")
+	}
+	checkedOnPush := 0
+	for nameJob, body := range fastJobs {
 		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
 			continue // the leg rows run on dispatch only
+		}
+		if nameJob == "fork-pull-request" {
+			continue // a fork's pull request only: the red verdict that no CI ran
 		}
 		runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], nameJob, mainPush)
 		if err != nil {
@@ -176,6 +202,10 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if !runs {
 			t.Fatalf("ci-fast.yml %s does not run on a push to main", nameJob)
 		}
+		checkedOnPush++
+	}
+	if checkedOnPush == 0 {
+		t.Fatal("every ci-fast.yml job was skipped: no job was checked to run on a push to main")
 	}
 }
 
@@ -430,4 +460,33 @@ func splitShell(s string) []string {
 		out = append(out, b.String())
 	}
 	return out
+}
+
+// TestCIFastPolicyRunsSlowtestGateScan ensures ci-fast.yml's ci-policy job
+// runs ./internal/slowtest/... on every PR/push so any test file under
+// compiler/ or internal/codegen/ reaching os/exec without slowtest.Gate(t) is
+// caught in < 2m on the PR rather than waiting for certify.yml's core-go.
+func TestCIFastPolicyRunsSlowtestGateScan(t *testing.T) {
+	t.Parallel()
+	wf, ok := workflows(t, repoRoot(t))["ci-fast.yml"]
+	if !ok {
+		t.Fatal("ci-fast.yml is missing")
+	}
+	check := func(wfText string) bool {
+		policy, ok := yamlJobs(wfText)["ci-policy"]
+		if !ok {
+			return false
+		}
+		return strings.Contains(policy, "go test ./internal/slowtest/...")
+	}
+	if !check(wf) {
+		t.Fatal("ci-fast.yml ci-policy does not run `go test ./internal/slowtest/...`")
+	}
+	mutated := strings.Replace(wf, "go test ./internal/slowtest/...", "true", 1)
+	if mutated == wf {
+		t.Fatal("negative control did not mutate ci-fast.yml")
+	}
+	if check(mutated) {
+		t.Fatal("NEGATIVE CONTROL FAILED: dropping `go test ./internal/slowtest/...` from ci-policy stayed green")
+	}
 }

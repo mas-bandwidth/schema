@@ -91,6 +91,7 @@ func TestGeneratedJSONCommentIsWellFormedUTF8(t *testing.T) {
 	}
 
 	s := bufio.NewScanner(manifest)
+	readRows, refusedRows := 0, 0
 	for s.Scan() {
 		line := s.Text()
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -104,10 +105,18 @@ func TestGeneratedJSONCommentIsWellFormedUTF8(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if cols[1] == "read" {
+			readRows++
+		} else {
+			refusedRows++
+		}
 		check(cols[0], text, cols[1] == "read")
 	}
 	if err := s.Err(); err != nil {
 		t.Fatal(err)
+	}
+	if readRows == 0 || refusedRows == 0 {
+		t.Fatalf("the corpus manifest gave %d read rows and %d refused rows: both verdicts must be exercised", readRows, refusedRows)
 	}
 
 	refused := map[string]string{
@@ -129,7 +138,11 @@ func TestGeneratedJSONCommentIsWellFormedUTF8(t *testing.T) {
 		"multi-byte": " café 日本語 😀 U+10FFFF \xf4\x8f\xbf\xbf ",
 	}
 	for what, body := range read {
-		for where, text := range commentPlacements(body) {
+		allCommentPlacementss := commentPlacements(body)
+		if len(allCommentPlacementss) == 0 {
+			t.Fatal("commentPlacements(body) is empty: the loop below would check nothing")
+		}
+		for where, text := range allCommentPlacementss {
 			check(where+" holding "+what, text, true)
 		}
 	}

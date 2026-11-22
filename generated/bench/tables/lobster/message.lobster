@@ -373,12 +373,12 @@ def message_open(data:string, rep:LoadReport) -> Reader?, int:
         return nil, 2
     let start = size - 8 - n * 8
     let ids:[int] = []
+    let distinct = IdSet {}
     var i = 0
     while i < n:
         let id = read_int64_le(data, start + i * 8)
-        for(ids) prev:
-            if prev == id:
-                return nil, 2
+        if not idset_add(distinct, id):
+            return nil, 2
         push(ids, id)
         i++
     let st = LoadState { data: data, ids: ids, report: rep }
@@ -416,7 +416,7 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
     var words_count = 0
     var words_lo = 0
     var words_n = 0
-    let seen_refs:[int] = []
+    let seen_refs = IdSet {}
     var next_ref = 1
     while true:
         let ref, ok = leb(r)
@@ -430,11 +430,9 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
             return false
         if ref == next_ref:
             next_ref++
-        for(seen_refs) sr:
-            if sr == ref:
-                rep.malformed = true
-                return false
-        push(seen_refs, ref)
+        if not idset_add(seen_refs, ref):
+            rep.malformed = true
+            return false
         let id, named = rid(r, ref)
         if not named or id == node_table_id or not has(r, 1):
             rep.malformed = true
@@ -695,7 +693,7 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
             return false
         if k == 14 and el.bits == 0:
             return true
-        let seen:[int] = []
+        let seen = IdSet {}
         var i = 0
         while i < n:
             if k == 16:
@@ -703,9 +701,8 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
                 let id, named = message_name(v, ref)
                 if not good or not named:
                     return false
-                for(seen) old:
-                    if old == id: return false
-                push(seen, id)
+                if not idset_add(seen, id):
+                    return false
             let before = r.off
             if not message_skip(m, el, MessageShape {}, depth + 1):
                 return false
@@ -719,12 +716,70 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
     if k == 11:
         let raw, ok = mb_get(r, 64)
         return ok and finite_f64_bits(raw)
+    if s.packing == 1:
+        let lo, lok = mb_get(r, min(s.bits, 64))
+        var hi = 0
+        if lok and s.bits > 64:
+            let h, hok = mb_get(r, s.bits - 64)
+            if not hok:
+                return false
+            hi = h
+        if not lok:
+            return false
+        if not message_ranged_holds(s, lo, hi):
+            return message_refuse(m.rep, "out_of_range")
+        return true
     return s.bits >= 0 and mb_skip(r, s.bits)
+
+// message_skip_field skips one FIELD's payload: a union field written with
+// arm reference 0 is damage (§3.3 (c); Go's skipField), where an array
+// element's or an arm value's None stays positional (message_skip).
+def message_skip_field(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> bool:
+    if s.kind == 15:
+        let at = m.bits.off
+        let ref, ok = mb_get(m.bits, m.v.ref_bits)
+        m.bits.off = at
+        if ok and ref == 0:
+            return false
+    return message_skip(m, s, el, depth)
+
+// message_ranged_holds is whether a ranged integer's announced base plus its
+// offset (off_lo, and off_hi above 64 bits, unsigned) lies in the ANNOUNCED
+// kind's own domain, computed exactly and never wrapped (§3.3; Go's
+// kindHolds). The offset's bits can spell a value past the sender's maximum
+// whenever its range is not one less than a power of two.
+def message_ranged_holds(s:MessageShape, off_lo:int, off_hi:int) -> bool:
+    let k = s.kind
+    let dom = message_kind_bits(k)
+    let signed = (k >= 2 and k <= 5) or k == 18 or (k >= 20 and k <= 24)
+    var base_hi = s.base_hi
+    if dom <= 64:
+        base_hi = if signed and s.base_lo < 0: -1 else: 0
+    let lo = off_lo + s.base_lo
+    let carry = if ult(lo, off_lo): 1 else: 0
+    let t = off_hi + base_hi
+    let hi = t + carry
+    if dom > 64:
+        if signed:
+            if off_hi >= 0:
+                return not (base_hi >= 0 and hi < 0)
+            return base_hi < 0 and hi >= 0
+        return not (ult(t, off_hi) or ult(hi, t))
+    if signed:
+        if hi != (if lo < 0: -1 else: 0):
+            return false
+        if dom == 64:
+            return true
+        let lim = shl(1, dom - 1)
+        return lo >= 0 - lim and lo <= lim - 1
+    if hi != 0:
+        return false
+    return dom == 64 or not ult(shl(1, dom) - 1, lo)
 
 def message_skip_body(m:MessageRead, depth:int) -> bool:
     if depth > message_skip_depth:
         return false
-    let seen:[int] = []
+    let seen = IdSet {}
     while true:
         let ref, ok = mb_get(m.bits, m.v.ref_bits)
         if not ok or ref == 0:
@@ -732,10 +787,9 @@ def message_skip_body(m:MessageRead, depth:int) -> bool:
         let e = message_entry(m.v, ref)
         if not e or not ult(e.id, message_vocabulary_id):
             return false
-        for(seen) id:
-            if id == e.id: return false
-        push(seen, e.id)
-        if not message_skip(m, e.shape, e.element, depth):
+        if not idset_add(seen, e.id):
+            return false
+        if not message_skip_field(m, e.shape, e.element, depth):
             return false
     return false
 
@@ -761,6 +815,8 @@ def message_scalar(m:MessageRead, cell:Value, fd:FieldDescriptor, declared:int, 
             return false
         hi = h
     if s.packing == 1:
+        if not message_ranged_holds(s, lo, hi):
+            return message_refuse(rep, "out_of_range")
         let sum = lo + s.base_lo
         let carry = if ult(sum, lo): 1 else: 0
         lo = sum
@@ -946,7 +1002,9 @@ def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         rep.malformed = true
         return false
     let ed = elem_of(f)
-    if ult(f.bound, n):
+    // the count is held to THIS reader's declaration, its minimum included,
+    // whatever the sender announced (Go's bitDecoder.array)
+    if ult(f.bound, n) or (f.array == "counted" and n < f.min):
         return message_refuse(rep, "count_over_bound")
     var i = 0
     while i < n:
@@ -970,7 +1028,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
         return false
     let keys = keyed_variants(f)
     let ed = elem_of(f)
-    let seen:[int] = []
+    let seen = IdSet {}
     var last_slot = 0
     var i = 0
     while i < n:
@@ -982,10 +1040,8 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
         if not named:
             rep.malformed = true
             return false
-        for(seen) old:
-            if old == id:
-                return message_refuse(rep, "duplicate")
-        push(seen, id)
+        if not idset_add(seen, id):
+            return message_refuse(rep, "duplicate")
         let value = enum_value(keys, id)
         var cell = Value {}
         if value >= 1 and value <= length(sl.elems):
@@ -1052,7 +1108,7 @@ def message_body(m:MessageRead, rec:Record) -> bool:
     let rep = m.rep
     let v = m.v
     let slots = message_slots_of(message_facts.fields, rec.d.name)
-    let seen:[int] = []
+    let seen = IdSet {}
     // THE SENDER'S BUILD VERSION IS THIS READER'S OWN (§3.3 (a), (b)): every
     // field's default and every record's field order are digested into the
     // build version, so there, and only there, this reader's declaration is
@@ -1070,12 +1126,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             return false
         if ref == 0:
             for(rec.fields) sl:
-                if sl.fd.required:
-                    var present = false
-                    for(seen) id:
-                        if id == sl.fd.id: present = true
-                    if not present:
-                        return message_refuse(rep, "missing_required")
+                if sl.fd.required and not idset_has(seen, sl.fd.id):
+                    return message_refuse(rep, "missing_required")
             m.body_fields = body_fields
             return true
         body_fields++
@@ -1083,10 +1135,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         if not e or not ult(e.id, message_vocabulary_id):
             rep.malformed = true
             return false
-        for(seen) id:
-            if id == e.id:
-                return message_refuse(rep, "duplicate")
-        push(seen, e.id)
+        if not idset_add(seen, e.id):
+            return message_refuse(rep, "duplicate")
         var at = -1
         for(rec.fields) sl, i:
             if at < 0 and sl.fd.id == e.id:
@@ -1095,7 +1145,7 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             if same_build:
                 return message_refuse(rep, "wire_damaged")
             rep.unknown++
-            if not message_skip(m, e.shape, e.element, 0):
+            if not message_skip_field(m, e.shape, e.element, 0):
                 rep.malformed = true
                 return false
             continue
@@ -1140,7 +1190,10 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         // same announced shape and the same build version; a quantized field
         // or a field whose read substituted a value is not judged.
         let quantized = e.shape.packing == 2 or (e.element.packing == 2 and (f.array == "fixed" or sl.count > 0))
-        if exact and not quantized and not f.required and f.present == "" and m.substituted == sub_before and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+        // a counted array at its BIRTH, its minimum count of element zeros,
+        // is elided like any default, so stored it is non-canonical too
+        let born = f.s == "arr" and f.array == "counted" and f.min > 0 and sl.count == f.min and save_at_birth(elem_of(f), f.ek, sl)
+        if exact and not quantized and not f.required and f.present == "" and m.substituted == sub_before and f.s != "union" and f.s != "tab" and (born or load_field_elides(f, sl)):
             return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++
@@ -1193,8 +1246,10 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         return 0, false
     let count = wire[1] + 1
     if count > capacity:
+        // "A refused batch returns a count of `0`, as every refused batch
+        // does; a caller that needs room reads the wire's `M` itself" (§3.3)
         message_refuse(rep, "batch_too_large")
-        return count, false
+        return 0, false
     let bits = MessageBits { b: wire, lo: 2, n: (length(wire) - 2) * 8 }
     let m = MessageRead { bits: bits, v: v, rep: rep }
     var i = 0
@@ -1250,8 +1305,12 @@ def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element
 
 // mw_rides is a field's elision, the variable form's rule (§3.3, "ELISION,
 // DEFAULTS AND THE READ REPORT ARE UNCHANGED"): a keyed array rides when a
-// slot does, a counted array when it holds one, a fixed array of bodies
-// always, any other fixed array when one element is not its zero.
+// slot does, a list when it holds one, a fixed array of bodies always, any
+// other fixed array when one element is not its zero. A counted array's count
+// is held to its declaration FIRST, so a count outside [min, max] is refused
+// and never read as an omitted field; then it rides unless it is empty or
+// still at its birth, its minimum count of element zeros (Go's encodeBitField
+// and messageElides).
 def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
     let f = sl.fd
     if f.present != "":
@@ -1261,7 +1320,17 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
         if f.array == "keyed":
             let pairs, ok = mw_keyed_pairs(w, sl)
             return pairs > 0, ok
-        if f.array == "counted" or f.array == "list":
+        if f.array == "counted":
+            if sl.count < f.min or sl.count > f.bound or sl.count > length(sl.elems):
+                return false, false
+            if sl.count == 0:
+                return false, true
+            if f.min > 0 and sl.count == f.min and not f.required and save_at_birth(elem_of(f), f.ek, sl):
+                return false, true
+            return true, true
+        if f.array == "list":
+            if sl.count < 0 or sl.count > length(sl.elems):
+                return false, false
             return sl.count > 0, true
         if f.ek == 13:
             return true, true
@@ -1470,7 +1539,7 @@ def mw_value(w:MessageWriter, sl:Slot, e:MessageEntry) -> bool:
         var count = f.bound
         if f.array == "counted":
             count = sl.count
-            if count < 0 or count > f.bound:
+            if count < f.min or count > f.bound:
                 return false
         mw_put(w, count - s.min, count_bits)
         if e.element.kind == 6:

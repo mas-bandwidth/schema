@@ -1,0 +1,27 @@
+package rekey
+
+enum Team
+{
+    Red
+    Blue
+}
+
+enum Axis
+{
+    East
+    West
+}
+
+enum Crew
+{
+    Red
+    Blue
+}
+
+type Packet
+{
+    values [Team]uint8
+    team   Team
+    axis   Axis
+    crew   Crew
+}

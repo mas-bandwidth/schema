@@ -3,7 +3,6 @@ package pythontable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonRetainRoundTrip uses the shared cross-version C++-pinned files.
@@ -1046,7 +1047,7 @@ func TestPythonRetainManifestSave(t *testing.T) {
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
+		cmd := testproc.Command(t, pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		if output, err := cmd.CombinedOutput(); err != nil {
@@ -1141,7 +1142,10 @@ assert report.retain_lost==0 and int.from_bytes(exact[-8:],'little')==4096
 assert Root.load(exact).z==0
 past=exact[:-8]+(0xeffffffffffffffe).to_bytes(8,'little')+(4097).to_bytes(8,'little')
 unchanged=LoadReport(); unchanged.unknown=42
-try: Root.load_retain(past,keep,unchanged)
+# a refused load empties the store it is given (SPEC-TABLES 4), so the
+# refusal is probed with a store of its own and keep stays value's
+spare=TableRetain(bytearray(500000),bytearray(24*4096))
+try: Root.load_retain(past,spare,unchanged)
 except ValueError: pass
 else: raise AssertionError('4097-id input was accepted')
 assert unchanged.unknown==42
@@ -1795,7 +1799,7 @@ func TestPythonRetainDriverNegativeControl(t *testing.T) {
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
+		cmd := testproc.Command(t, pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		output, err := cmd.CombinedOutput()

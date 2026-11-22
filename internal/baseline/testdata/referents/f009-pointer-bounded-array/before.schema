@@ -1,0 +1,17 @@
+package referents
+
+table First
+{
+    n int32
+}
+
+table Second
+{
+    n int32
+}
+
+table Root
+{
+    selected [..2]*First
+    anchor   Second
+}

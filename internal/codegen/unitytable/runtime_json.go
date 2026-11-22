@@ -850,7 +850,15 @@ internal static class TableJson
                 o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                 return true;
             case 10:
-                return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+                // (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+                // fixed-compressed-negzero): it writes 0, never -0. A plain
+                // float's -0 is a value and is written as one.
+                {
+                    uint bits = unchecked((uint)f.GetRaw(owner, index));
+                    if (f.HasFloatRange && bits == 0x80000000u) { bits = 0; }
+                    return WriteFloat(ref o, TableBitsToFloat(bits), true);
+                }
             case 11:
                 return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
             case 2:
@@ -1173,7 +1181,8 @@ internal static class TableJson
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
         string mapField = input.TextField;
-        byte[] spellingBuf = new byte[MaxKey]; Span<byte> spelling = spellingBuf;
+        // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
+        byte[] spellingBuf = new byte[key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? key.ArrayBound : MaxKey]; Span<byte> spelling = spellingBuf;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1295,8 +1304,17 @@ internal static class TableJson
         else { return false; }
         if (at != s.Length) { return false; }
         long seconds = (new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc).Ticks - 621355968000000000L) / TimeSpan.TicksPerSecond - offset;
+        // THE WHOLE INT64 NANOSECOND RANGE READS (§16.2), its writer's own
+        // output included: below the epoch the whole seconds carry one second
+        // the fraction gives back, so seconds * 1e9 never leaves int64 where
+        // the sum does not
         long total;
-        try { total = checked(seconds * 1000000000L + fraction); }
+        try
+        {
+            total = seconds < 0 && fraction > 0
+                ? checked((seconds + 1) * 1000000000L + (fraction - 1000000000L))
+                : checked(seconds * 1000000000L + fraction);
+        }
         catch (OverflowException) { return false; }
         nanos = total;
         return true;
@@ -1472,7 +1490,7 @@ internal static class TableJson
         // changed kind, an out-of-range value, a count or length past its
         // bound, or text that cannot be stored refuses the load. The rest of
         // the walk's failures are damage.
-        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
         {
             input.Report.Refused = true;
         }
@@ -1872,10 +1890,12 @@ internal static class TableJson
         // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
         // §16.12), the objects this walk skips included
         System.Collections.Generic.HashSet<string> keys = null;
+        bool defining = false; // this object defines a label, open until it closes
+        ulong definition = 0;
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
@@ -1884,21 +1904,43 @@ internal static class TableJson
                 input.Pos++;
                 keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                 if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
-                if (used > 0 && key[0] == '&' && input.Labels != null)
+                if (used > 0 && key[0] == '&')
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
-                    if (!input.Labels.ContainsKey(label)) { input.Labels.Add(label, new Label()); }
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+                    // must name a definition already closed; fields after one must
+                    // follow a label not yet defined, and the definition is open
+                    // until this object closes. What the reader does not place is
+                    // the value, never the label.
                     first = false; c = Peek(text, ref input);
-                    if (c == ',') { input.Pos++; continue; }
-                    if (c == close) { input.Pos++; return true; }
-                    input.Bad = true; return false;
+                    if (c != ',' && c != close) { input.Bad = true; return false; }
+                    if (input.Labels == null)
+                    {
+                        // a unit with no pointer has no label table: the prefix is still
+                        // held to its grammar, and the value is skipped whole
+                        input.Pos++;
+                        if (c == close) { return true; }
+                        continue;
+                    }
+                    bool known = input.Labels.TryGetValue(label, out Label held);
+                    if (c == ',') { input.Pos++; c = Peek(text, ref input); }
+                    bool bare = c == close;
+                    if (bare != known) { input.Bad = true; return false; }
+                    if (bare)
+                    {
+                        if (held.Open) { input.Bad = true; return false; }
+                        input.Pos++; return true;
+                    }
+                    input.Labels.Add(label, new Label { Open = true });
+                    defining = true; definition = label;
+                    continue;
                 }
             }
             first = false;
             if (!SkipValue(text, ref input, depth + 1)) { return false; }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; }   // a trailing comma is accepted
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             input.Bad = true;
             return false;
         }
@@ -2044,6 +2086,11 @@ internal static class TableJson
             {
                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                 {
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                    // ELEMENT default inside an array) and is never counted unknown
+                    // (docs/SPEC-TABLES.md §2.15)
+                    if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                    { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                     f.SetRaw(owner, index, (ulong)v);
                     return true;
                 }
@@ -2159,7 +2206,13 @@ internal static class TableJson
             }
             if (f.HasRange)
             {
-                if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
+                // A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6): the
+                // value and both bounds at the field's own width, so the top grid
+                // step its writer emits reads back
+                if (single ? (float)value < (float)f.RangeMin || (float)value > (float)f.RangeMax : value < f.RangeMin || value > f.RangeMax)
+                { return RefuseText(ref input, "out_of_range"); }
+                // A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3)
+                value += 0.0;
             }
             if (single)
             {
@@ -2176,47 +2229,12 @@ internal static class TableJson
             }
             return true;
         }
-        // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-        // library that round-trips numbers through a double emits them that
-        // way — this walker's own float writer emits 1e+21. So an integer field
-        // takes any number whose VALUE is integral, however it was spelled;
-        // only a genuinely fractional value is the wrong shape for it.
+        // Every kind left here is a narrow integer (the wide and fixed-point
+        // kinds took ReadWide above), and the integer token rule above has
+        // already refused a fraction, an exponent and -0, so the token's
+        // digits are the value.
         bool isSigned = f.Kind >= 2 && f.Kind <= 5;
-        bool saturated = false;
-        long value2 = 0;
-        if (tokenIntegral)
-        {
-            value2 = TokenInteger(token, isSigned, out saturated);
-        }
-        else
-        {
-            double d = TokenDouble(token, false);
-            if (!Finite(d))
-            {
-                return RefuseText(ref input, "kind_mismatch");
-            }
-            if (isSigned)
-            {
-                if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
-                else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                else { value2 = (long)d; }
-            }
-            else
-            {
-                if (d < 0.0)
-                {
-                    // a negative for an unsigned field clamps to zero, as the
-                    // exact digit path already does
-                    if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                    value2 = 0;
-                    saturated = true;
-                }
-                else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
-                else { value2 = unchecked((long)(ulong)d); }
-            }
-        }
+        long value2 = TokenInteger(token, isSigned, out bool saturated);
         if (saturated) { return RefuseText(ref input, "out_of_range"); }
         // Exact typed bounds preserve integers above 2^53 and unsigned values
         // above Int64.MaxValue. The field's storage-width clamp follows this.

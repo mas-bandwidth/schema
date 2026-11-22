@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestSpecFixedFormEdges(t *testing.T) {
@@ -53,7 +54,7 @@ func TestSpecFixedFormEdges(t *testing.T) {
 	// The write side: a save refuses an empty batch (§22.6), and the read side
 	// refuses a file with no record (§3.4's "THE RECORDS FILL THE REST").
 	save := flat(specSection(t, tables, "### 22.6 Forms", "### 22.7 "))
-	mustState(t, "§22.6 a save refuses an empty batch", save, "a save refuses an empty batch")
+	mustState(t, "§22.6 a save of zero records is a caller error", save, "a save of zero records is a caller error")
 	records := flat(specSection(t, tables, "**THE RECORDS FILL THE REST OF THE FILE", "**THE INTEGRITY TRAILER"))
 	mustState(t, "§3.4 a file whose header and layout are followed by no record is refused", records, "a fixed-form file holds at least one record")
 
@@ -117,7 +118,7 @@ func TestSpecFixedFormEdges(t *testing.T) {
 	// (4) the generator reproduces both files byte for byte.
 	slowtest.Gate(t, "the Go toolchain (it runs the vector generator)")
 	out := t.TempDir()
-	cmd := exec.Command("go", "run", "./test/fixed-empty-batch/gen",
+	cmd := testproc.Command(t, "go", "run", "./test/fixed-empty-batch/gen",
 		"-schema", filepath.Join(root, "test", "fixed-empty-batch", "Batch.schema"),
 		"-out", out)
 	cmd.Dir = root

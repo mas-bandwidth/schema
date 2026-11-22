@@ -3,13 +3,14 @@ package jstable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFloat32CellsAreBitTransparent holds the JavaScript leg to the FINITE
@@ -116,7 +117,7 @@ func jsFloatProbe(t *testing.T, sabotage func(files map[string][]byte)) ([]strin
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	var fails []string
@@ -454,7 +455,7 @@ for (const [field, wire] of [
     storage[1].y = 9;
     const report = {};
     const got = CellLoadMessages(storage, v, wire, report);
-    if (got !== -1 || report.Reason !== "non_finite_float: Cell.x" || storage[0].x !== 0) {
+    if (got !== 0 || report.Reason !== "non_finite_float: Cell.x" || storage[0].x !== 0) {
       fail("CellLoadMessages did not refuse the NaN: " + got + " " + JSON.stringify(report));
     }
   }

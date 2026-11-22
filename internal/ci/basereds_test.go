@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestBaseRedsLedgerNamesRealTests holds docs/BASE-REDS.md to the tree it
@@ -158,7 +160,7 @@ func makeTargetNames(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	targets := map[string]bool{}
 	paths := []string{filepath.Join(root, "Makefile")}
-	matches, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	matches, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,6 +38,9 @@ var lobsterRuntimeNames = map[string][]string{
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
 	},
 	"cook.lobster": {
+		"CookCheck", "ck_companion", "ck_cyclic", "ck_element", "ck_entry", "ck_extent", "ck_fail", "ck_field", "ck_i32", "ck_key_bytes",
+		"ck_key_order", "ck_map", "ck_node", "ck_place", "ck_placed", "ck_record", "ck_ref", "ck_sint", "ck_slots", "ck_text_slot",
+		"ck_u32", "ck_u64", "ck_u8", "ck_uint", "ck_union", "ck_zero", "cook_check",
 		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRange", "CookRead", "CookTable",
 		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
@@ -105,6 +108,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"tableFixedTextUtf8", "tableFixedWiden", "tableFixedWidenF", "u128_lt",
 	},
 	"json.lobster": {
+		"JsonKeys",
 		"j_comment_text", "j_integer_token", "j_shape_matches", "j_wide_integer_kind",
 		"JsonBlobCount", "JsonFlags", "JsonGuard", "JsonInt", "JsonLabel", "JsonNodeCount", "JsonReader", "JsonTextTotal",
 		"JsonWriter", "j_array_count", "j_b64", "j_b64_alphabet", "j_b64_table", "j_bn_add", "j_bn_add_small",
@@ -120,7 +124,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"j_node_entry", "j_pad", "j_parse_f32", "j_parse_wide", "j_peek", "j_place_float", "j_place_integer",
 		"j_place_map_key", "j_place_wide", "j_raw", "j_read_array", "j_read_base64", "j_read_blob", "j_read_field",
 		"j_read_flags", "j_read_keyed", "j_read_map", "j_read_map_value", "j_read_pointer_cell", "j_read_scalar",
-		"j_key_once", "j_length_admitted", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
+		"j_key_new", "j_length_admitted", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
 		"j_rfc3339_parse", "j_round", "j_scale", "j_scan_label", "j_scan_number", "j_scan_stored", "j_scan_string",
 		"j_scan_text", "j_scan_unit", "j_shape", "j_skip_container", "j_skip_string",
 		"j_skip_value", "j_skipped_ampersand", "j_sorted_entries", "j_space", "j_storage_bytes", "j_strip_zeros", "j_text_total_of",
@@ -133,6 +137,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
+		"IdSet", "float_in_range", "idset_add", "idset_has",
 		"declares",
 		"FixedRecordCodec", "fixed_record_codecs", "fixed_record_codec", "register_fixed_record_codec",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",
@@ -158,6 +163,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"load_elem_is_default", "load_field_elides", "load_is_default", "wire_ref",
 	},
 	"message.lobster": {
+		"message_ranged_holds", "message_skip_field",
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
 		"MessageVocabulary", "MessageWriter", "announce", "announce_inner", "announce_measure", "announce_read",
 		"is_message_root", "load_messages", "load_messages_into", "mb_align", "mb_get",
@@ -188,13 +194,14 @@ var lobsterRuntimeNames = map[string][]string{
 		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "retained_no_id", "save_retain",
 	},
 	"schema_save.lobster": {
+		"save_at_birth",
 		"RetainTail", "SaveEdge", "SaveEncoder", "SaveGraph", "SaveIds", "SaveNode", "SaveOut", "active_retain_tail",
 		"encode_body", "encode_body_fields", "encode_field", "encode_node_table", "guard_holds",
 		"register_retain_tail", "retain_tails", "save", "save_arm_header", "save_arm_payload", "save_array",
 		"save_elem_is_default", "save_element", "save_enum_ref", "save_is_default", "save_keyed",
 		"save_live_count", "save_raw_width", "save_reasoned", "save_walked", "save_wide_raw", "sg_add_blob",
 		"sg_add_rec", "sg_blob_index", "sg_clear", "sg_map_order", "sg_rec_index", "sg_visit_edges", "sg_visit_union",
-		"sg_visit_value", "sg_walk", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
+		"sg_visit_value", "sg_walk", "sid_full", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
 		"so_u32", "so_u64", "so_u8", "wc_body", "wc_slot", "wc_value",
 	},
 	"schema_tables.lobster": {
@@ -206,7 +213,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"load_strict",
 	},
 	"text_form.lobster": {
-		"TNode", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_cmp",
+		"TNode", "t_delimited", "t_token", "t_why", "text_max_alloc", "text_max_bytes", "text_max_nodes", "text_max_tokens", "text_read", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_cmp",
 		"t_b64_val", "t_base64",
 		"t_field_of", "t_fill", "t_fill_record", "t_pointer", "t_gap", "t_int_store",
 		"t_key_text", "t_name_char", "t_parse_value", "t_set_fail", "t_set_flags", "t_set_keyed", "t_set_scalar",

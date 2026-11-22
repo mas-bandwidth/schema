@@ -14,10 +14,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartRequiredNative(t *testing.T) {
@@ -81,7 +82,7 @@ table Shapes {
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
 	var b strings.Builder
-	b.WriteString("import 'dart:typed_data';\nimport 'ProbeWire.dart' as w;\nimport 'ProbeCook.dart' as c;\nvoid check(bool b,String s){if(!b)throw StateError(s);}\nString hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();\nUint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);\nvoid main(){\n")
+	b.WriteString("import 'dart:typed_data';\nimport 'ProbeWire.dart' as w;\nimport 'ProbeCook.dart' as c;\nvoid check(bool b,String s){if(!b)throw StateError(s);}\nString hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();\nUint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);\nvoid main(){\nvar asserts=false;assert(asserts=true);\n")
 	for _, tc := range []struct {
 		root, input, missing string
 		km                   int
@@ -99,7 +100,7 @@ table Shapes {
 		{"KeyedSlots", `{}`, "values", 0}, {"KeyedSlots", `{"values":{}}`, "", 0},
 		{"Exact", `{}`, "ver", 0}, {"Exact", `{"ver":7}`, "", 0},
 	} {
-		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);}on FormatException catch(e){reason=e.message.toString();}
+		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);reason=r.missingFields.isNotEmpty?r.reason:'';}on FormatException catch(e){reason='threw: '+e.message.toString();}
 check(reason==%q,%q);}
 `, dartName(tc.root), tc.input, func() string {
 			if tc.missing != "" {
@@ -181,14 +182,18 @@ final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport(
 		t.Fatal(err)
 	}
 	fmt.Fprintf(&b, "{final r=w.TableWireReport();w.requiredArrayWireLoad(bytes(%q),r);check(r.refused&&r.reason=='missing_required: values','incompatible array element kind');}\n", hex.EncodeToString(ow))
+	// A Dart write check is a debug assert (the probe runs --enable-asserts):
+	// the wire save and the JSON writer refuse by AssertionError with asserts
+	// on and write the value with them off; the cook still reports false in
+	// every build.
 	for _, root := range []string{"Exact", "ExactFloat", "ExactWide"} {
 		class := root + "CookWire"
 		if ir.VariableTables(u)[root] {
 			class = root + "Cook"
 		}
 		fmt.Fprintf(&b, `{
-var failed=false;try{w.%sWireSave(w.%s());}on StateError{failed=true;}check(failed,'fresh range wire %s');
-failed=false;try{w.%sToJson(w.%s());}on StateError{failed=true;}check(failed,'fresh range JSON %s');
+var failed=false;try{w.%sWireSave(w.%s());}on AssertionError{failed=true;}check(failed==asserts,'fresh range wire %s');
+failed=false;try{w.%sToJson(w.%s());}on AssertionError{failed=true;}check(failed==asserts,'fresh range JSON %s');
 check(c.%s.cookMeasure(w.%s())==-1,'fresh range cook measure %s');
 for(final order in [Endian.little,Endian.big]){final out=Uint8List(4096)..fillRange(0,4096,0xa5);
 check(!c.%s.cook(w.%s(),out,order)&&out.every((x)=>x==0xa5),'fresh range cook writes nothing %s');}
@@ -196,7 +201,7 @@ check(!c.%s.cook(w.%s(),out,order)&&out.every((x)=>x==0xa5),'fresh range cook wr
 `, dartName(root), root, root, dartName(root), root, root, class, root, root, class, root, root)
 	}
 	b.WriteString(`{final off=w.ExactGuarded();w.exactGuardedWireSave(off);check(!w.exactGuardedToJson(off).contains('amount'),'off guard omits required field');
-off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on StateError{failed=true;}check(failed,'active required zero refuses');
+off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on AssertionError{failed=true;}check(failed==asserts,'active required zero refuses');
 }
 `)
 	b.WriteString(`{
@@ -205,8 +210,8 @@ final r=w.TableTextReport();var repRef=false;try{w.manyFromJson('{"last":0,"last
 }
 `)
 	b.WriteString(`{
-var failed=false;try{w.exactWireSave(w.Exact());}on StateError{failed=true;}check(failed,'fresh required range zero must refuse wire');
-failed=false;try{w.exactToJson(w.Exact());}on StateError{failed=true;}check(failed,'fresh required range zero must refuse JSON');
+var failed=false;try{w.exactWireSave(w.Exact());}on AssertionError{failed=true;}check(failed==asserts,'fresh required range zero must refuse wire');
+failed=false;try{w.exactToJson(w.Exact());}on AssertionError{failed=true;}check(failed==asserts,'fresh required range zero must refuse JSON');
 }
 }
 `)
@@ -214,7 +219,7 @@ failed=false;try{w.exactToJson(w.Exact());}on StateError{failed=true;}check(fail
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("required Dart %v: %v\n%s", args, err, out)
@@ -249,7 +254,7 @@ func requiredDartGoPins(t *testing.T, u *ir.Unit, roots []string) map[string]str
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredPins$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredPins$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("independent required Go: %v\n%s", err, out)
@@ -301,7 +306,7 @@ final retained=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireRepor
 check(rr.reason==r.reason,'retained Required');
 if(r.refused){check(v.a==0&&v.b==0&&v.c==0&&back.a==0&&back.b==0&&back.c==0&&retained.used==0,'refused read discards values and retained data');}
 else{check(hex(w.rootWireSave(v))==hex(wire)&&hex(w.rootWireSaveRetain(back,retained,w.TableWireReport()))==hex(wire),'independent pin save');}
-final jr=w.TableTextReport();var textReason='ok';try{final parsed=w.rootFromJson(%q,jr);check(hex(w.rootWireSave(parsed))==hex(wire),'JSON pin');}on FormatException catch(e){textReason=e.message.toString();}
+final jr=w.TableTextReport();var textReason='ok';try{final parsed=w.rootFromJson(%q,jr);if(jr.refused){textReason=jr.reason;}else{check(hex(w.rootWireSave(parsed))==hex(wire),'JSON pin');}}on FormatException catch(e){textReason='threw: '+e.message.toString();}
 check(textReason==%q,'JSON required pin');
 }
 `, hex.EncodeToString(wire), reason, tc.name, string(input), reason)
@@ -311,7 +316,7 @@ check(textReason==%q,'JSON required pin');
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("required shared pins %v: %v\n%s", args, err, out)

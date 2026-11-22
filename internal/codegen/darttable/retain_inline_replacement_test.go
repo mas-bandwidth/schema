@@ -13,10 +13,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartRetainedInlineReplacement(t *testing.T) {
@@ -196,7 +197,7 @@ int main(int argc,char**argv){
 		t.Fatal(err)
 	}
 	binary := filepath.Join(dir, "probe")
-	if out, err := exec.Command("c++", "-std=c++17", "-O1", "-I"+runtime, "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", binary).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", "-std=c++17", "-O1", "-I"+runtime, "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", binary).CombinedOutput(); err != nil {
 		t.Fatalf("C++ inline retain compile: %v\n%s", err, out)
 	}
 	for i, wire := range wires {
@@ -204,7 +205,7 @@ int main(int argc,char**argv){
 		if err := os.WriteFile(path, wire, 0600); err != nil {
 			t.Fatal(err)
 		}
-		out, err := exec.Command(binary, path).CombinedOutput()
+		out, err := testproc.Command(t, binary, path).CombinedOutput()
 		if err != nil {
 			t.Fatalf("C++ inline retain %d: %v\n%s", i, err, out)
 		}

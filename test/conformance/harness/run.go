@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -262,6 +263,11 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, pc.BuildVersion, pc.Wire)
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
 	}
+	for _, mb := range m.Batches {
+		// THE VERDICT IS WITHHELD, and so is the recipe: a driver is handed the
+		// batch and loads it with room for every body (docs/SPEC-TABLES.md §3.3).
+		fmt.Fprintf(&b, "message-batch %s %s %s %s\n", mb.Name, mb.Connection, mb.Root, mb.Wire())
+	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
 		// the wire and the two capacities and nothing about the counters or the
@@ -343,6 +349,9 @@ type expectation struct {
 	// COMPARED, not only the counters, because two legs can count the same
 	// events and land different values.
 	value string
+	// batch is the message-batch row this case answers (docs/SPEC-TABLES.md
+	// §3.3): the answer is the reported count, not bytes.
+	batch *MessageBatch
 	// save is the canonical write-back wire a readable report, framing or
 	// json-hostile row owes in `<name>.wire`. The read must return the WHOLE
 	// value: the JSON text above and the wire bytes here, both the oracle's.
@@ -460,6 +469,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: md.Name, want: want})
+		}
+		// THE BATCH'S REFUSAL CONTRACT (§3.3, §6.5): the count the loader
+		// reported, scored by scoreMessageBatch against the row's verdict.
+		for i := range m.Batches {
+			out = append(out, expectation{name: m.Batches[i].Name, batch: &m.Batches[i]})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how
@@ -672,6 +686,61 @@ type runOptions struct {
 	// results, when set, is where every case's verdict is written
 	// (writeResults), the input tools/matrix proof reads.
 	results string
+	// only, when set, is the surfaces this run asks the legs for; every other
+	// surface is not run at all, so it is neither an answer nor an absence.
+	// A gate that drives one leg through a wrapper listing a few surfaces (the
+	// JS and Dart text-boundary gates) names them here, or the ticked-cell rule
+	// (ticked.go) reads the surfaces it leaves out as owed and absent.
+	only map[string]bool
+}
+
+// parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
+// nil for every surface. A name that is not a surface is refused.
+func parseSurfaces(list string) (map[string]bool, error) {
+	if list == "" {
+		return nil, nil
+	}
+	set := map[string]bool{}
+	for s := range strings.SplitSeq(list, ",") {
+		if !slices.Contains(surfaces, s) {
+			return nil, fmt.Errorf("--surfaces: %q is not a surface (%s)", s, strings.Join(surfaces, ","))
+		}
+		set[s] = true
+	}
+	return set, nil
+}
+
+// emptySelection refuses a run whose filters (--only, --skip, --surfaces)
+// left no row to compare (every selected surface holds zero expectations) or
+// no leg that ran any selected surface (every selected cell was absent). Both
+// read as a pass in the matrix and are not one (test/conformance/README.md,
+// "A filter that selects nothing is red").
+func emptySelection(results map[string]map[string]*result, only, skip string, surfaceSet map[string]bool) error {
+	rows, ran := 0, 0
+	for _, bySurface := range results {
+		for _, r := range bySurface {
+			rows += r.total
+			if !r.absent {
+				ran++
+			}
+		}
+	}
+	if rows > 0 && ran > 0 {
+		return nil
+	}
+	var names []string
+	for s := range surfaceSet {
+		names = append(names, s)
+	}
+	sort.Strings(names)
+	which := "every surface"
+	if len(names) > 0 {
+		which = strings.Join(names, ",")
+	}
+	if rows == 0 {
+		return fmt.Errorf("conformance selected ZERO rows: --only %q --skip %q --surfaces %s hold no case to compare, so a green matrix would prove nothing", only, skip, which)
+	}
+	return fmt.Errorf("conformance ran ZERO legs on any selected surface: --only %q --skip %q --surfaces %s are all absent (none answered a case), so a green matrix would prove nothing", only, skip, which)
 }
 
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
@@ -710,10 +779,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			wireRefusals[instance.Name] = instance
 		}
 	}
-	relaxed, err := readRelaxedCases(relaxedCasesPath)
-	if err != nil {
-		return false, err
-	}
 	results := map[string]map[string]*result{}
 	var langs []string
 	for i, d := range drivers {
@@ -745,6 +810,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		for _, s := range surfaces {
+			if opts.only != nil && !opts.only[s] {
+				continue
+			}
 			legWant := want[s]
 			var exemptions []string
 			if s == "json-hostile" {
@@ -762,6 +830,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
+				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
 				}
 				continue
 			}
@@ -784,6 +855,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
 				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
+				}
 				continue
 			}
 			if code != 0 {
@@ -800,31 +874,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				pass, named, missing, failed := r.pass, r.named, r.missing, len(r.failures)
+				pass, named, missing := r.pass, r.named, r.missing
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
-				slug, isRelaxed := relaxed[relaxedKey(d.lang, s, e.name)]
 				switch {
 				case r.pass > pass:
 					r.verdict(e.name, "pass")
-					if isRelaxed {
-						// a relaxed case that passes must leave the list
-						r.failures = append(r.failures, fmt.Sprintf("%s: relaxed (%s, %s) but it passes: remove it from %s so it is gated", e.name, slug, relaxedCasesPath, relaxedCasesPath))
-					}
 				case r.named > named:
 					r.verdict(e.name, "named")
 				case r.missing > missing:
 					r.verdict(e.name, "absent")
 				default:
 					r.verdict(e.name, "fail")
-					if isRelaxed {
-						// RELAXED 2026-11-14 (maintainer: get main green): the
-						// case stays "fail" in the results, so the proof still
-						// names it, and does not fail the leg
-						for _, f := range r.failures[failed:] {
-							_, _ = io.WriteString(w, "conformance RELAXED ("+slug+") "+d.lang+" / "+s+": "+f+"\n")
-						}
-						r.failures = r.failures[:failed]
-					}
 				}
 			}
 			if reference && r.missing > r.named {
@@ -837,6 +897,20 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				opts.claims.enforce(d.lang, s, legWant, r)
 			}
 		}
+	}
+
+	// A run that compared no leg proved nothing: --only naming no registered
+	// driver (a typo, or a leg whose driver file is gone), an empty registry, or
+	// every leg skipped. It must not print "every registered surface passes".
+	if len(langs) == 0 {
+		return false, fmt.Errorf("conformance ran no leg: the registry, --only %q and --skip left nothing to compare", only)
+	}
+
+	// A run that selected no row, or ran no leg on any surface, proved nothing
+	// either: --surfaces naming surfaces that hold no expectation, or --only
+	// naming a leg that answers none of them. It must not print a green matrix.
+	if err := emptySelection(results, only, skip, opts.only); err != nil {
+		return false, err
 	}
 
 	if opts.coverage != nil {
@@ -856,6 +930,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
+	if e.batch != nil {
+		scoreMessageBatch(answer, e, r)
+		return
+	}
 	if surface == "message" && e.want == nil {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
@@ -1150,11 +1228,21 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	}
 	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", label+width*len(langs)))
 	for _, s := range surfaces {
+		ran := false
+		for _, l := range langs {
+			ran = ran || results[l][s] != nil
+		}
+		if !ran {
+			// a surface --surfaces left out: not run, so no row
+			continue
+		}
 		fmt.Fprintf(&b, "%-*s", max(label, len(s)+1), s)
 		for _, l := range langs {
 			r := results[l][s]
 			var cell string
 			switch {
+			case r == nil:
+				cell = "not run"
 			case len(r.failures) > 0 && r.absent:
 				// the REFERENCE leg's absence: what it did, and what that is.
 				// "FAIL 0/13" would claim it ran the surface and answered
@@ -1181,6 +1269,9 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	var lines []string
 	for _, l := range langs {
 		for _, s := range surfaces {
+			if results[l][s] == nil {
+				continue
+			}
 			for _, f := range results[l][s].failures {
 				lines = append(lines, fmt.Sprintf("  %s / %s: %s", l, s, f))
 			}

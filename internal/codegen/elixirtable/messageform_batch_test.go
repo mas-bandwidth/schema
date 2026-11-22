@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,6 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // messageBatchRow is one `message` manifest line: the file-form wire and the
@@ -91,6 +92,9 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// whose root is a variable table is refused rather than decoded, so the
 	// round trip below covers the fixed roots only.
 	t.Run("round_trip", func(t *testing.T) {
+		if len(rows) == 0 {
+			t.Fatal("rows is empty: the loop below would check nothing")
+		}
 		for _, row := range rows {
 			conn := connections[row.connection]
 			u := messageLoadUnit(t, root, units[conn.unit])
@@ -115,7 +119,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
 	// 2.2 "no_vocabulary; batch_too_large on the write side (M above 256, -1
 	// with the reason) and the read side (M above capacity, refused before
-	// decoding, count set to M)."
+	// decoding, a count of 0)."
 	t.Run("refusals", func(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
@@ -131,9 +135,10 @@ func TestMessageFormBatchElixir(t *testing.T) {
     check({:error, :batch_too_large} == M.save_messages(vocab, []), "save accepted an empty batch")
     check({:error, :batch_too_large} == M.measure_messages(vocab, []), "measure accepted an empty batch")
 
-    # "The reader sets the returned count to the wire's M before it returns the
-    # refusal" (docs/SPEC-TABLES.md §3.3): the batch <<2, 1>> names two bodies.
-    check({:error, :batch_too_large, 2} == M.load_messages(vocab, <<2, 1>>, 1), "load past capacity did not set the count to M")
+    # "A refused batch returns a count of 0, as every refused batch does; a
+    # caller that needs room reads the wire's M itself" (docs/SPEC-TABLES.md
+    # §3.3): the batch <<2, 1>> names two bodies, and the refusal carries 0.
+    check({:error, :batch_too_large, 0} == M.load_messages(vocab, <<2, 1>>, 1), "load past capacity did not return a count of 0")
 `
 		out, err := runMessageProbe(t, u, ann, body)
 		if err != nil {
@@ -603,7 +608,7 @@ Probe.run()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -670,7 +675,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

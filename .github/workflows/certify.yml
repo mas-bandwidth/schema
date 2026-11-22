@@ -61,11 +61,11 @@ env:
   # the nightly rule in the header: no go test -timeout under tools/pgroup
   PGROUP_GO_TEST_TIMEOUT: '0'
   MAKEFLAGS: ''
-  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_TAG: v2.1.6
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
   SERIALIZE_RS_TAG: v5.0.0
-  SERIALIZE_CS_TAG: v2.1.1
+  SERIALIZE_CS_TAG: v2.2.1
   SERIALIZE_JS_TAG: v2.1.2
 
 jobs:
@@ -112,7 +112,9 @@ jobs:
           - { os: fleet, shard: elixir-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: elixir-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: go, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: goose, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: java, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: js, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: lobster, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -124,7 +126,10 @@ jobs:
           - { os: fleet, shard: python-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: python-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: python-5, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: ruby, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: rust, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: squirrel, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: unity, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -163,7 +168,10 @@ jobs:
           - { os: macos-fleet, shard: python-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: python-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: python-5, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: ruby, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: rust, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: squirrel, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: unity, runner: [self-hosted, macOS, ARM64, fleet, schema] }
@@ -171,7 +179,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Go first on hosted runners: every later step runs under tools/pgroup.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -244,7 +252,7 @@ jobs:
         if: matrix.shard == 'java'
 
       - uses: ./.github/actions/ruby
-        if: matrix.shard == 'ruby'
+        if: startsWith(matrix.shard, 'ruby-')
 
       - uses: ./.github/actions/moo
         if: matrix.shard == 'moo'
@@ -265,9 +273,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
 
       - uses: ./.github/actions/dist-pins
-        if: matrix.shard == 'lobster' || matrix.shard == 'lua' || matrix.shard == 'goose' || matrix.shard == 'luau'
+        if: matrix.shard == 'lobster' || matrix.shard == 'lua' || startsWith(matrix.shard, 'goose-') || matrix.shard == 'luau'
         with:
-          pins: ${{ matrix.shard }}
+          pins: ${{ startsWith(matrix.shard, 'goose-') && 'goose' || matrix.shard }}
 
       - name: install the Squirrel pin
         if: matrix.shard == 'squirrel'
@@ -459,6 +467,10 @@ jobs:
             EXTRA_BUILDS+=(build/conformance-python build/fixedform-corpus/.stamp)
           elif [ "$BASE_LEG" = "elixir" ]; then
             EXTRA_BUILDS+=(generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp build/tables-generated-elixir/.stamp build/fixedform-corpus/.stamp)
+          elif [ "$BASE_LEG" = "goose" ]; then
+            EXTRA_BUILDS+=(build/fixedform-corpus/.stamp build/conformance-harness-goose)
+          elif [ "$BASE_LEG" = "ruby" ]; then
+            EXTRA_BUILDS+=(build/schema-ruby build/conformance-ruby build/fixedform-corpus/.stamp)
           fi
           make -j"$JOBS" "${EXTRA_BUILDS[@]}" "${MAKE_VARS[@]}"
           unset MAKEFLAGS
@@ -482,6 +494,7 @@ jobs:
                   x = $i
                   if (x == "" || seen[x]++) continue
                   if (mode == "no-py-wf" && x ~ /^python-wirefuzz-.*-shard-[0-9]+$/) continue
+                  if (mode == "no-rb-wf" && x ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) continue
                   items[++m] = x
                 }
               }
@@ -547,6 +560,29 @@ jobs:
             else
               run_prereq_slice "test-python" "$((SHARD_IDX - 2))" 3 "no-py-wf"
             fi
+          elif [ "$BASE_LEG" = "goose" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-goose-recipe "${MAKE_VARS[@]}"
+            else
+              run_prereq_slice "test-goose" "$((SHARD_IDX - 1))" 2 "all"
+            fi
+          elif [ "$BASE_LEG" = "ruby" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-ruby-recipe "${MAKE_VARS[@]}"
+            elif [ "$SHARD_IDX" = "2" ]; then
+              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
+              if [ -z "$WF_SHARDS" ]; then
+                echo "::error::no ruby-wirefuzz-*-shard-* targets found on test-ruby:"
+                exit 1
+              fi
+              # shellcheck disable=SC2086
+              make -j"$JOBS" $WF_SHARDS "${MAKE_VARS[@]}"
+              unset MAKEFLAGS
+            else
+              run_prereq_slice "test-ruby" "$((SHARD_IDX - 2))" 2 "no-rb-wf"
+            fi
           else
             echo "::error::unexpected sharded leg $SHARD"
             exit 1
@@ -568,8 +604,9 @@ jobs:
   # rather than typed here, so a port lands its release gate by adding the
   # target to its make/<lang>.mk and nothing else — no
   # edit to this file, and no chance of a target that exists but runs nowhere,
-  # which is what `tables-java-release` was before this job. On a tree that
-  # carries none the matrix is empty and the leg job is skipped.
+  # which is what `tables-java-release` was before this job. A plan is never
+  # empty: tools/releasetargets refuses one, so release-gates never skips on
+  # an empty matrix and the verdict takes no skip of it as green (F-066).
   #
   # ONE LEG PER TARGET. The targets together outran one job's old hour (run
   # 33831179695 was cancelled at 60 minutes, and a cancelled gate proves
@@ -596,13 +633,24 @@ jobs:
           # C# fuzz (wire), Dart fuzz (wire) 142 s in run 42556155793, with
           # the C# build step at 117 s capped and 148 s nightly; ci-full.yml
           # keeps the seeded N=2000 per-commit smoke).
-          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; printf '%s\n' tables-cs-wire-fuzz tables-cs-region-fuzz tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain tables-dart-wire-fuzz; } | sort -u | jq -R . | jq -sc .)
+          #
+          # READ FROM MAKE'S OWN DATABASE, NEVER THE SOURCE TEXT (F-066): a
+          # grep of the make files for '^tables-[a-z0-9]+-release:' dropped
+          # the job of a rule spelled `tables-go-release :`, and a sed of the
+          # first `WIRE_FUZZ_RELEASE_LEGS :=` line lost every leg a `+=` added,
+          # both exiting 0. tools/releasetargets runs `make -pq`, plans every
+          # rule make defined and every leg of the list as make expanded it,
+          # and refuses by name a leg or campaign with no rule and an empty
+          # plan. First it replays the committed corpus of the spellings that
+          # fooled the old planner through this same make.
+          set -euo pipefail
+          go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066
+          targets=$(go run ./tools/releasetargets -also tables-cs-wire-fuzz,tables-cs-region-fuzz,tables-js-wire-fuzz-plain,tables-js-wire-fuzz-retain,tables-dart-wire-fuzz)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   release-gates:
     needs: release-targets
-    if: needs.release-targets.outputs.targets != '[]'
     name: release-gates (${{ matrix.target }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
@@ -637,7 +685,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -751,7 +799,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
@@ -784,7 +832,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -855,7 +903,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: stable
@@ -912,7 +960,7 @@ jobs:
           echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
           echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -924,7 +972,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
@@ -953,7 +1001,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -1005,7 +1053,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -1138,7 +1186,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
@@ -1189,7 +1237,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: '1.26'
           cache: false
@@ -1255,10 +1303,7 @@ jobs:
           jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
           bad=$(jq -r 'to_entries[]
             | select(.value.result != "success")
-            | select((.key == "release-gates" and .value.result == "skipped"
-                and $all["release-targets"].result == "success"
-                and $all["release-targets"].outputs.targets == "[]") | not)
-            | "\(.key): \(.value.result)"' --argjson all "$NEEDS" <<<"$NEEDS")
+            | "\(.key): \(.value.result)"' <<<"$NEEDS")
           if [ -n "$bad" ]; then
             echo "::error::not every job of this run succeeded:"
             echo "$bad"

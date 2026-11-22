@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaOptionalVariableClosureG1 holds docs/SPEC-TABLES.md §2.3 and §3.1
@@ -56,7 +57,7 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 		"                    }\n"
 	const cookGate = "        return f.presentOffset >= 0\n" +
 		"                && f.storage == TableCookStorage.RECORD\n" +
-		"                && !Boolean.TRUE.equals(field(value, f.sourceName + \"Present\"));\n"
+		"                && !java.lang.Boolean.TRUE.equals(field(value, f.sourceName + \"Present\"));\n"
 	if !bytes.Contains(files["GuardedVariable.java"], []byte(variableGate)) {
 		t.Fatalf("GuardedVariable's graph walk carries no presence gate:\n%s", files["GuardedVariable.java"])
 	}
@@ -93,10 +94,10 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 			t.Fatal(err)
 		}
 		sources = append(sources, driver)
-		if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 			t.Fatalf("%s: javac: %v\n%s", name, err, out)
 		}
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes, "OptionalG1Driver", absent, present).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "OptionalG1Driver", absent, present).CombinedOutput()
 		if err != nil {
 			t.Fatalf("%s: java: %v\n%s", name, err, out)
 		}

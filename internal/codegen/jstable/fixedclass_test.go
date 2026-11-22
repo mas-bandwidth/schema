@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFixedClassOnTableWireJavaScript is the card's carry: a FIXED TABLE rides
@@ -200,7 +201,7 @@ func TestFixedClassOnTableWireJavaScript(t *testing.T) {
 	if err := os.WriteFile(script, []byte(mapsArmsDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, specPath)
+	cmd := testproc.Command(t, node, script, specPath)
 	cmd.Dir = work
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -209,6 +210,9 @@ func TestFixedClassOnTableWireJavaScript(t *testing.T) {
 	got := map[string]bool{}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
+	}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
 	}
 	for _, w := range want {
 		if !got[w] {
@@ -294,7 +298,7 @@ process.stdout.write(NewRootToJson(v));
 		if err := os.WriteFile(rscript, []byte(rsrc), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		rcmd := exec.Command(node, rscript, wirePath)
+		rcmd := testproc.Command(t, node, rscript, wirePath)
 		rcmd.Dir = work
 		rout, err := rcmd.CombinedOutput()
 		if err != nil {

@@ -101,7 +101,9 @@ func emitRequiredRangeCheck(b *strings.Builder, f *ir.Field, x, ind, refuse stri
 			return fmt.Sprintf("%s > %d%s", value, uint64(1)<<uint(f.Type.Width)-1, scalarRust(f))
 		}
 		if f.HasFloatRange {
-			return fmt.Sprintf("(%s as f64) < %s || (%s as f64) > %s", value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMax))
+			// a float32 range is compared at float32 (docs/SPEC.md §4.6)
+			lo, hi := rustFloatBounds(f)
+			return fmt.Sprintf("%s < %s || %s > %s", value, lo, value, hi)
 		}
 		return ""
 	}

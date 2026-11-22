@@ -14,11 +14,9 @@ local L = require("load")
 local F = {}
 
 local strfind = string.find
-local utf8len = utf8.len
 
 local formByte = 3
 local maxRecordBytes = 65536
-local maxRecords = 4096
 local maxPlanEntries = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
@@ -49,7 +47,7 @@ local function unpack_float(f32, buf, pos)
 end
 
 local function check_utf8(s)
-  if strfind(s, "\0", 1, true) or utf8len(s) == nil then error("text_ill_formed", 0) end
+  if strfind(s, "\0", 1, true) or not D.utf8_ok(s) then error("text_ill_formed", 0) end
 end
 
 local function zeros(n)
@@ -192,7 +190,9 @@ encode_value = function(T, d, v, size, elemSize)
   elseif s == "bool" then
     return string.char((v and 1 or 0))
   elseif s == "float" then
-    return pack_float(d.f32, v or 0.0)
+    -- a compressed float's -0 is stored as +0 (§3.3, ruling
+    -- fixed-compressed-negzero)
+    return pack_float(d.f32, D.cf(d, v or 0.0))
   elseif s == "string" or s == "bytes" then
     v = v or ""
     local n = #v
@@ -387,7 +387,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         return t, pos + size
       end
       local n = string.unpack("<i4", buf, pos)
-      if n < 0 or n > d.bound then error("count_over_bound") end
+      if n < 0 or n < (d.min or 0) or n > d.bound then error("count_over_bound") end
       check_dead(buf, pos + 4 + n * elemSize, pos + size)
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
@@ -407,7 +407,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       return t, pos + size
     end
     local n = string.unpack("<i4", buf, pos)
-    if n < 0 or n > d.bound then error("count_over_bound") end
+    if n < 0 or n < (d.min or 0) or n > d.bound then error("count_over_bound") end
     check_dead(buf, pos + 4 + n * elemSize, pos + size)
     for i = 1, n do
       t[i] = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
@@ -680,7 +680,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     -- conversion, exact for every finite float32 (§3.3)
     local w = d.f32 and 4 or 8
     if rep and node.size < w then rep.widened = rep.widened + 1 end
-    return (unpack_float(node.size == 4 or node.kind == 10, buf, pos))
+    return D.cf(d, (unpack_float(node.size == 4 or node.kind == 10, buf, pos)))
   elseif s == "string" or s == "bytes" then
     local n = string.unpack("<i4", buf, pos)
     local cap = node.size - 4
@@ -744,11 +744,20 @@ decode_old_value = function(T, d, node, buf, pos, rep)
         if ev == nil and d.elem.shape == "enum" then ev = false end
         t[i] = ev
       end
+      -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): the writer's record
+      -- holds fewer slots than this reader's bound; each new slot holds one
+      -- fresh default element, as the message and variable forms pad.
+      if node.kind ~= 16 and d.fixed then
+        for i = n + 1, d.bound do
+          t[i] = L.zero_elem(T, d.elem)
+        end
+      end
       return t
     end
     local n = string.unpack("<i4", buf, pos)
     local cap = es > 0 and math.floor((node.size - 4) / es) or 0
     if n < 0 or n > cap then error("count_over_bound") end
+    if n < (d.min or 0) then error("count_over_bound") end
     check_dead(buf, pos + 4 + n * es, pos + node.size)
     for i = 1, n do
       local ev = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es, rep)
@@ -807,10 +816,8 @@ local function strict_value(T, d, v, ranges, wr)
       if lt128(v, d.lo) or lt128(d.hi, v) then error("out_of_range", 0) end
     end
   elseif s == "float" then
-    -- a compressed float is a ranged scalar here (§4.6)
-    if d.fmin ~= nil and d.fmax ~= nil then
-      if v < d.fmin or v > d.fmax then error("out_of_range", 0) end
-    end
+    -- a compressed float is a ranged scalar here, held at float32 (§4.6)
+    if D.float_off_range(d, v) then error("out_of_range", 0) end
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return end
@@ -938,10 +945,11 @@ local function load_impl(T, name, buf, strict, cap)
   -- never read as a batch of none.
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
-  -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
-  -- omitted (or nil) capacity is the default, never an unbounded read, while
-  -- a caller that sets 4,097 or more may read that many records.
-  cap = cap or maxRecords
+  -- THE CAPACITY IS THE CALLER'S ARGUMENT: an omitted (or nil) capacity is
+  -- the file's own record count, as Go's destination slice is, so a file is
+  -- never refused for a limit the spec does not state (§5.3 step 9); only a
+  -- caller-set capacity below the count refuses batch_too_large.
+  cap = cap or nRec
   -- a read into ONE value holds no value to read from a file of none (§5.3
   -- step 9), as the Go engine refuses it at a capacity of one
   if nRec == 0 and cap == 1 then error("truncated", 0) end

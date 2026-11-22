@@ -1,0 +1,53 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "description": "The data language for games: one .schema definition compiles to bit-packed serialization code for network packets, backend messages, save games and cooked assets, for 18 targets in 17 languages.",
+  "excludeFiles": [
+    "BASE-REDS.md",
+    "CARDS.md",
+    "CLI.md",
+    "COMPARISON-TABLES.md",
+    "COMPARISON.md",
+    "COMPETITION.md",
+    "CONTRIBUTING.md",
+    "CPP-REFERENCE-REVIEW.md",
+    "CS-TABLES.md",
+    "FIXED-FORM-ALGORITHM.md",
+    "FIXED-FORM-BILL-READS-BACKWARD.md",
+    "FIXED-FORM-VERSIONING-TESTS.md",
+    "FIXED-TABLES-SURVEY.md",
+    "GO-GENERATED-SIZE-SURVEY.md",
+    "HOSTILE-CORPUS.md",
+    "JAVA-DIALECT.md",
+    "MAINTAINERS.md",
+    "PACKET-WIRE-ALGORITHM.md",
+    "PERFORMANCE.md",
+    "PORT-GOOSE.md",
+    "PORT-LOBSTER.md",
+    "PORT-LUA.md",
+    "PORT-LUAU.md",
+    "PORT-MOO.md",
+    "PORT-PYTHON.md",
+    "PORT-RUBY.md",
+    "PORT-SQUIRREL.md",
+    "PORTING.md",
+    "SECURITY.md",
+    "SPEC-CONFORMANCE.md",
+    "SPEC-TABLES.md",
+    "UNITY.md",
+    "VERSIONING.md"
+  ],
+  "excludeFolders": [
+    "docs/LAYERS",
+    "docs/measurements",
+    "docs/notes",
+    "docs/plans",
+    "docs/port-python",
+    "docs/roadmap-briefs",
+    "docs/roadmap-evidence",
+    "docs/validation"
+  ],
+  "folders": [
+    "docs"
+  ],
+  "projectTitle": "schema"
+}

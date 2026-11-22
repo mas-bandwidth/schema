@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +31,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cRunSelfBuilt generates the READER's C (with the OLDER units' locked entries
@@ -138,13 +139,13 @@ int main( void )
 	if cc == "" {
 		cc = "cc"
 	}
-	args := append([]string{"-std=c99", "-O1", "-I" + dir}, gccFortifySilence(cc)...)
+	args := append([]string{"-std=c99", "-O1", "-I" + dir}, gccFortifySilence(t, cc)...)
 	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
-	build := exec.Command(cc, args...)
+	build := testproc.Command(t, cc, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 // cT06Header generates one schema's Table.h and returns its text, for the
@@ -228,8 +229,9 @@ func cT06RangedScalarClamp(t *testing.T) {
 }
 
 // c/R30 — "compressed float rides as the float". Two clauses on the C leg. (1)
-// the fixed-form write body stores the float32's bits with putf32 — never a
-// quantized index, which is the variable form's encoding and nowhere in this
+// the fixed-form write body stores the float32's bits — through
+// table_stored_float_bits, which writes +0 for its -0 (§3.3,
+// fixed-compressed-negzero) — never a quantized index, which is the variable form's encoding and nowhere in this
 // unit's fixed form (SPEC-TABLES §3.4: "it rides as the float"). (2) min, max
 // and resolution are DEFINITIONS, and the step lives in the digest under 'Q',
 // not on the wire: the definitions digest carries one 'Q' for the compressed
@@ -246,8 +248,8 @@ func cT06CompressedFloat(t *testing.T) {
 	// THE FIXED FORM STORES THE FLOAT'S BITS, the variable form beside it
 	// quantizes the same field into an index — one unit, two encodings, and the
 	// fixed form's is the raw float (SPEC-TABLES §3.4: "it rides as the float").
-	if !strings.Contains(h, "table_fixed_putf32( b + 4, value->aim )") {
-		t.Fatal("R30: the fixed form's write body no longer stores aim's float32 bits with putf32")
+	if !strings.Contains(h, "table_fixed_put32( b + 4, table_stored_float_bits( value->aim ) )") {
+		t.Fatal("R30: the fixed form's write body no longer stores aim's float32 bits")
 	}
 	if !strings.Contains(h, "table_message_quantize(value->aim") {
 		t.Fatal("R30: the contrast is gone — the variable form no longer quantizes aim, so 'rides as the float' is untestable")

@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -822,7 +823,7 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 			bad = true
 			continue
 		}
-		if !ir.TableForms[name] {
+		if !ir.IsTableForm(name) {
 			c.errf(a.Pos, "table %s: forms = %q names no form — the forms are wire, json, block and cook (docs/SPEC-TABLES.md §2.12)", d.Name, name)
 			bad = true
 			continue
@@ -842,8 +843,8 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 
 // tableIntegrity reads an `integrity = "crc32c"` declaration
 // (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
-// vocabulary [ir.TableIntegrityChecks]. A `fixed table` takes it too: its
-// form-3 file carries the trailer once per file (§2.14, §3.4), and its
+// vocabulary [ir.IsTableIntegrityCheck] reads. A `fixed table` takes it too:
+// its form-3 file carries the trailer once per file (§2.14, §3.4), and its
 // message-form batch carries it once per batch (§2.14, §3.3).
 func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	lit, ok := a.Value.(*ast.StringLit)
@@ -851,7 +852,7 @@ func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
 		return
 	}
-	if !ir.TableIntegrityChecks[lit.Value] {
+	if !ir.IsTableIntegrityCheck(lit.Value) {
 		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
 		return
 	}
@@ -2028,7 +2029,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g does not fit finite float32 storage", f.Name, v)
 			return
 		}
-		if out.HasFloatRange && (v < out.FMin || v > out.FMax) {
+		if out.HasFloatRange && !ir.CompressedFloatInRange(out.FMin, out.FMax, v) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g is outside its range [%s, %s]", f.Name, v, formatFloat(out.FMin), formatFloat(out.FMax))
 			return
 		}
@@ -3699,6 +3700,19 @@ func ReservedLanguages() []string {
 	return out
 }
 
+// ReservedTargetsOf returns the --lang spellings that generate lang (a display
+// name), as a copy, or nil when the table has no row for it. The language
+// list the docs print (internal/languages) reads the table's rows here, so a
+// language whose generator a build leaves out is still a language.
+func ReservedTargetsOf(lang string) []string {
+	for _, row := range reservedLanguages {
+		if row.lang == lang {
+			return append([]string(nil), row.targets...)
+		}
+	}
+	return nil
+}
+
 // ReservedIn returns lang's reserved words (lang is a display name: "Java",
 // "Dart", ...) as a fresh set, read from the one table. An emitter that tests
 // the spelling it maps a name to reads its words here; an unknown language
@@ -4067,6 +4081,35 @@ func rustConstantClaim(gen string) string {
 		ir.RustConstName(gen), gen)
 }
 
+// JavaScriptUnbindableNames is every name no schema declaration, and no name
+// derived from one, can take because the generated JavaScript module cannot
+// bind it (SPEC §4.6, §6.1), and that no other rule already refuses.
+func JavaScriptUnbindableNames() []string {
+	return []string{"eval", "arguments", "undefined"}
+}
+
+// TypeScriptPredefinedTypeNames is every TypeScript predefined type name no
+// other rule already refuses. A declaration the generated JavaScript makes a
+// class or a type cannot take one (jsDeclBindsAType); a const is a value
+// only, flags bind no name of their own, and TypeScript keeps values and
+// types apart, so both can (SPEC §4.6, §6.1).
+func TypeScriptPredefinedTypeNames() []string {
+	return []string{"unknown", "never", "symbol", "number", "bigint"}
+}
+
+// jsDeclBindsAType reports whether the generated JavaScript binds a
+// declaration's own name as a class or a type: a type, table or union is a
+// class, and an enum is a type alias beside its frozen object. A const is a
+// value, and flags bind no name of their own (their masks are
+// <Name><Variant>), so TypeScript's type names stay open to both.
+func jsDeclBindsAType(d ast.Decl) bool {
+	switch d.(type) {
+	case *ast.ConstDecl, *ast.FlagsDecl:
+		return false
+	}
+	return true
+}
+
 // checkClaimedNames builds the FULL top-level symbol table generation will
 // produce — every declaration plus every derived name any target emits (the
 // split functions, constructors, size constants, tag/variant constants, the
@@ -4108,8 +4151,24 @@ func (c *checker) checkClaimedNames() {
 	// beside the unit's own declarations (the runtime tier's scratch holders
 	// and text validator, the flat tier's conversion scratch, build switch and
 	// read slack), and an ES module refuses a second binding of one name.
-	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText"} {
+	// globalThis is the one name the modules reach every builtin through,
+	// so a unit name taking a builtin's name shadows nothing they call
+	// (internal/codegen/js, internal/codegen/jstable).
+	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText", "globalThis"} {
 		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
+	}
+	// THE NAMES NO JAVASCRIPT MODULE CAN BIND. A declaration becomes a
+	// module-scope binding of its own name (a class, a const) and a
+	// declaration of it in the .d.ts. An ES module is strict code: it refuses
+	// eval and arguments as a binding. undefined is the value the modules
+	// compare against. Claimed for the whole unit, so a derived module-scope
+	// name (a flags mask) is refused as well. A FIELD of any of these is a
+	// property and binds nothing, so the refusal is here, at the declaration,
+	// and not among the reserved words, which refuse every kind of name.
+	// TypeScript's predefined type names are refused below, per declaration,
+	// because only a declaration that becomes a class or type collides.
+	for _, gen := range JavaScriptUnbindableNames() {
+		add(gen, "a name no generated JavaScript module can bind (an ES module refuses eval and arguments as bindings, and undefined is the value its code compares against)", unitPos)
 	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
 	// refused as declaration names in EVERY unit, always. They belong to the
@@ -4228,6 +4287,14 @@ func (c *checker) checkClaimedNames() {
 		d := c.astDecls[name]
 		c.reserveCPrefix(name, d.DeclPos())
 		add(name, fmt.Sprintf("declaration %s", name), d.DeclPos())
+		// a declaration the generated JavaScript makes a class or a type (a
+		// type, table or union is a class; an enum is a type alias beside its
+		// object) cannot take a TypeScript predefined type's name. A const is
+		// a value, and flags emit only their masks, count and name functions,
+		// so neither binds the name as a type and both keep it.
+		if jsDeclBindsAType(d) && slices.Contains(TypeScriptPredefinedTypeNames(), name) {
+			c.errf(d.DeclPos(), "declaration %s becomes a class or type in the generated JavaScript and its TypeScript declarations, and TypeScript refuses a class or type named after its predefined type %s; rename at the source (SPEC §4.6)", name, name)
+		}
 		switch d := d.(type) {
 		case *ast.ConstDecl:
 			// the Rust target spells constants SCREAMING_SNAKE in the flat
@@ -4304,6 +4371,12 @@ func (c *checker) checkClaimedNames() {
 				whyIdentity := fmt.Sprintf("enum %s's generated TABLE-wire identity pair (JavaScript form)", name)
 				add("TableEnumId"+name, whyIdentity, d.Pos)
 				add("TableEnumValue"+name, whyIdentity, d.Pos)
+				// and the JavaScript fixed form's text bridge (op 7): the name
+				// lookup a fixed root's text read takes for an enum, a module-scope
+				// map and its function, claimed on the same rule
+				whyFixedName := fmt.Sprintf("enum %s's generated fixed-form name lookup (JavaScript form)", name)
+				add(name+"FixedByName", whyFixedName, d.Pos)
+				add(name+"FixedFromName", whyFixedName, d.Pos)
 			}
 		case *ast.UnionDecl:
 			// the union's generated surface (SPEC §4.8): the <Name>Type tag
@@ -4451,7 +4524,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.MapFieldVerbs {
+					for verb := range ir.AllMapFieldVerbs() {
 						add(base+verb, whyMap, d.DeclPos())
 					}
 					add(base+"FindMut", whyMap, d.DeclPos())
@@ -4468,7 +4541,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.ListFieldVerbs {
+					for verb := range ir.AllListFieldVerbs() {
 						add(base+verb, whyList, d.DeclPos())
 					}
 					add(base+"At", whyList, d.DeclPos())
@@ -4481,7 +4554,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.TextListVerbs {
+					for verb := range ir.AllTextListVerbs() {
 						if verb == "Text" {
 							continue // the element record, claimed as a closure member
 						}
@@ -4659,6 +4732,10 @@ var tableGeneratedVerbs = []string{
 	// the JavaScript backend emits as a module-scope function for every fixed
 	// table, claimed on the same rule.
 	"FixedCheckDead", "FixedCheckRead",
+	// and the fixed root's TEXT BRIDGE (op 7): the JavaScript backend emits
+	// <T>FixedFromText at module scope for every fixed type, claimed on the
+	// same rule (an enum's name lookup is claimed with its identity pair).
+	"FixedFromText",
 	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.
@@ -5001,9 +5078,8 @@ func (c *checker) cReservedMacros() map[string]bool {
 		out["SCHEMA_"+pkg+per] = true
 	}
 	for _, f := range c.files {
-		base := strings.ToUpper(f.Base)
-		for _, suffix := range []string{"_H", "WIRE_H", "TABLE_H", "BLOCK_H"} {
-			out["SCHEMA_"+pkg+"_"+base+suffix] = true
+		for _, part := range []string{"", "wire", "table", "block"} {
+			out[ccommon.HeaderGuard(c.unit.Package, f.Base, part)] = true
 		}
 	}
 	return out

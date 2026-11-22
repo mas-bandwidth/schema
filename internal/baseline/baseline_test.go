@@ -781,6 +781,9 @@ fixed table Holder
 	if !find(got, baseline.Warn, "table A", "A2 and B each carry enough of its 4 identities") {
 		t.Fatalf("an undecidable rename must name its contenders, got:%s", summary(got))
 	}
+	if len(got) == 0 {
+		t.Fatal("got is empty: the loop below would check nothing")
+	}
 	for _, f := range got {
 		if f.Verdict == baseline.Refuse && strings.HasPrefix(f.Where, "B.") {
 			t.Errorf("B is brand new; no edit inside it ever happened, got: %s", f)
@@ -1290,7 +1293,7 @@ func TestRangeFacts(t *testing.T) {
 			name:    "a maximum lowered",
 			edited:  editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 0, max = 100"),
 			where:   "Ship.hull",
-			what:    "declared maximum 1000 -> 100 (a stored value above the new maximum reads back AS the maximum and counts clamped)",
+			what:    "declared maximum 1000 -> 100 (a file holding a value above the new maximum no longer reads: the load refuses out_of_range)",
 			token:   "max",
 			control: editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 0, max = 10000"),
 		},
@@ -1298,7 +1301,7 @@ func TestRangeFacts(t *testing.T) {
 			name:    "a minimum raised",
 			edited:  editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = 10, max = 1000"),
 			where:   "Ship.hull",
-			what:    "declared minimum 0 -> 10 (a stored value below the new minimum reads back AS the minimum and counts clamped)",
+			what:    "declared minimum 0 -> 10 (a file holding a value below the new minimum no longer reads: the load refuses out_of_range)",
 			token:   "min",
 			control: editOf(t, rangeSrc, "hull  int32 = 50          | min = 0, max = 1000", "hull  int32 = 50          | min = -10, max = 1000"),
 		},
@@ -1330,7 +1333,7 @@ func TestRangeFacts(t *testing.T) {
 			name:    "a range added where the field had none",
 			edited:  editOf(t, rangeSrc, "tally int32 = 0", "tally int32 = 0           | min = 0, max = 10"),
 			where:   "Ship.tally",
-			what:    "declared maximum 10 added (a stored value above the new maximum reads back AS the maximum and counts clamped)",
+			what:    "declared maximum 10 added (a file holding a value above the new maximum no longer reads: the load refuses out_of_range)",
 			token:   "max",
 			control: editOf(t, rangeSrc, "tally int32 = 0", "tally int32 = 0\n    extra int32 = 0     | min = 0, max = 10"),
 		},

@@ -8,9 +8,9 @@ build/packet-write-cfloat/elixir/.stamp: bin/schema test/packet-write-cfloat/CFl
 	@touch $@
 
 .PHONY: packet-write-cfloat-elixir packet-write-cfloat-elixir-negative-control
-packet-write-cfloat-elixir: build/packet-write-cfloat/elixir/.stamp
+packet-write-cfloat-elixir: build/mustrun build/packet-write-cfloat/elixir/.stamp
 	$(MIX) format --check-formatted build/packet-write-cfloat/elixir/*.ex test/packet-write-cfloat/elixir/*.exs
-	$(ELIXIR) test/packet-write-cfloat/elixir/main.exs
+	$(MUSTRUN) -name packet-write-cfloat-elixir -count 10 -- $(ELIXIR) test/packet-write-cfloat/elixir/main.exs
 
 packet-write-cfloat-elixir-negative-control: packet-write-cfloat-elixir
 	@mkdir -p build/packet-write-cfloat/elixir-negative/beam

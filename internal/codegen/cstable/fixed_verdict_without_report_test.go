@@ -3,12 +3,13 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE VERDICT DOES NOT DEPEND ON THE REPORT (docs/SPEC-TABLES.md, the FIXED
@@ -130,7 +131,7 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 		args = append(args, "-r:"+ref)
 	}
 	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc compile failed: %v\n%s", err, out)
@@ -140,7 +141,7 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 	if err := os.WriteFile(filepath.Join(dir, "verdictprobe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	out, err := run.CombinedOutput()
 	return string(out), err

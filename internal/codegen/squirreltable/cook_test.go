@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookShape carries the chain each CASE's fixture is generated with, matching
@@ -175,7 +176,7 @@ func TestSquirrelCookReadMatchesTheCorpus(t *testing.T) {
 	// does (test/conformance/harness/run.go).
 	work := t.TempDir()
 	cookgen := filepath.Join(work, "cookgen")
-	build := exec.Command("go", "build", "-o", cookgen, filepath.Join(root, "test", "cookgen"))
+	build := testproc.Command(t, "go", "build", "-o", cookgen, filepath.Join(root, "test", "cookgen"))
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building cookgen: %v: %s", err, out)
 	}
@@ -187,7 +188,7 @@ func TestSquirrelCookReadMatchesTheCorpus(t *testing.T) {
 		}
 		out := filepath.Join(work, r.key+".cook")
 		args := append([]string{"--bytes", "4096", "--root", r.root, "--out", out}, extra...)
-		cmd := exec.Command(cookgen, args...)
+		cmd := testproc.Command(t, cookgen, args...)
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("cooking %s: %v: %s", r.key, err, out)

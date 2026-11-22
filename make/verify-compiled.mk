@@ -138,15 +138,26 @@ _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-un
 # ---- go ----
 
 .PHONY: _verify-go-conformance _verify-go-bench
-_verify-go-conformance: build/conformance-harness build/conformance-go generated/go/.stamp generated/go-ludicrous/.stamp cards-go-conformance tables-go-view tables-go-textform packet-defaults-go packet-utf8-go packet-finite-go table-base64-go
-	cd test/go && go run .
-	cd test/go-ludicrous && go run .
+_verify-go-conformance: build/mustrun build/conformance-harness build/conformance-go generated/go/.stamp generated/go-ludicrous/.stamp cards-go-conformance tables-go-view tables-go-textform packet-defaults-go packet-utf8-go packet-finite-go table-base64-go
+	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
+	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 	@rm -rf build/verify/conformance-go && mkdir -p build/verify/conformance-go $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only go --claims --work build/verify/conformance-go --results $(VERIFY_RESULTS_DIR)/go.json
 
-_verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go/.stamp tables-go-bench-gate
+# The timed quick run is a prerequisite of its own, so under the umbrella's -j
+# it runs beside the gates instead of after them, and it takes one warmup and
+# one measured run (--round 0) instead of one and three: in CI the figure is an
+# iteration instrument read by nobody, the golden and variant gates inside the
+# runner are what can go red, and they run in full either way. The whole of
+# verify-leg (go, bench) was cancelled at the two-minute cap on a loaded runner
+# with the quick run alone at 84 s (run 44911874471); on a loaded amd-3 slot
+# the quick run is 38.7 s as before and 19.3 s with --round 0.
+.PHONY: _verify-go-bench-quick
+_verify-go-bench-quick: generated/bench/go/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-go.csv
-	bench/run.sh --quick --bare --only go --out build/verify/bench-go.csv
+	bench/run.sh --quick --round 0 --bare --only go --out build/verify/bench-go.csv
+
+_verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go/.stamp tables-go-bench-gate _verify-go-bench-quick
 	@test -s build/verify/bench-go.csv
 
 # ---- rust ----
@@ -185,9 +196,9 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-bench
-_verify-dart-conformance: toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
-	cd test/dart && $(DART) --enable-asserts main.dart
-	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
+_verify-dart-conformance: build/mustrun toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 
@@ -199,9 +210,9 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 # ---- elixir ----
 
 .PHONY: _verify-elixir-conformance _verify-elixir-bench
-_verify-elixir-conformance: toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
-	cd test/elixir && $(ELIXIR) main.exs
-	cd test/elixir-ludicrous && $(ELIXIR) main.exs
+_verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
+	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 

@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +26,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const luauTimestampSchema = `package probe
@@ -236,7 +237,7 @@ func goTimestampOracle(t *testing.T) map[string][]byte {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-v", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-v", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()
@@ -294,6 +295,9 @@ func TestLuauTimestampBinaryForms(t *testing.T) {
 				sawFixedStrictOk = true
 			}
 		}
+	}
+	if len(wants) == 0 {
+		t.Fatal("wants is empty: the loop below would check nothing")
 	}
 	for k, want := range wants {
 		got, ok := gots[k]

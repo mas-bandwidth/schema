@@ -161,6 +161,23 @@ else — but it is what lets `conformance-negative-control-js` point the SAME
 driver at a sabotaged copy of the generated modules and require the matrix to go
 red. A leg whose generated tree is baked in has nothing for a control to aim at.
 
+## A filter that selects nothing is red
+
+`run` takes filters: `--only <lang>`, `--skip <langs>` and `--surfaces <list>`.
+A filter that leaves nothing to compare must never print a green matrix, so the
+harness exits non-zero, naming the filters, when:
+
+- no leg ran (`--only` names no registered driver, or `--skip` removed every leg);
+- the surfaces selected hold zero rows (`--surfaces` names surfaces with no
+  expectation in the corpus): `conformance selected ZERO rows`;
+- every selected cell was absent, so no leg answered one case (`--only <lang>`
+  with a `--surfaces` list the leg leaves out of `list`): `conformance ran ZERO legs`;
+- `--surfaces` names a word that is not a surface (a typo).
+
+The same footgun in Go's own runner (`go test -run` matching no test and
+printing ok) is closed by `make test-run`, see docs/CONTRIBUTING.md.
+`emptyselection_test.go` holds the proofs.
+
 ## The surfaces
 
 One process per surface, so a runtime starts once rather than once per case.
@@ -214,6 +231,15 @@ boundary. It starts with the Go leg: `TestWriteRefusalPacket` in
 and runs the battery behind `slowtest.Gate`, then runs a negative control that
 changes the emitter's upper-bound comparison and requires the boundary row to
 go red.
+
+The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
+Squirrel, MOO, Goose, Lobster) share one schema and one row list,
+`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
+`writerefusalpacket_test.go` and its own probe: the test generates the unit,
+runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal
+counted only by the mechanism SPEC section 5.1 names for that leg), and a
+negative control removes one emitter check and requires `FAILED: <row>`.
 
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.
@@ -501,6 +527,19 @@ visible in the per-port table of answered, failed, claimed-absent and
 not-carried cases per surface and class. The harness is built with every `schema_leg_<lang>` tag there, because
 a target behind a tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
+
+**A TICKED CELL MAY NOT BE ABSENT EITHER.** A ✅ in ROADMAP.md says the leg
+carries that row's feature, so under `--claims` a case whose roadmap row is
+ticked for the leg is owed whatever the carries registry says. Answering it
+ABSENT — a `<case>.absent` file, a surface left out of `list`, or exit code 2
+on the surface, which is how a leg whose generator refused the unit says so —
+fails the leg by name and row, and the coverage cell counts it with `!N`
+(`absent !N` for a whole surface). Which rows a case reads is one table,
+`caseRows` in `harness/ticked.go`, by surface and the root's class; the ticks
+are read from the committed ROADMAP.md, the row ids from docs/roadmap.sexp,
+and `harness/ticked_test.go` holds every row the table names to the committed
+roadmap and carries the reversed witnesses. A row not ticked for the leg keeps
+the rule above: its absence is the work left, counted and not red.
 
 ## The wire-fuzz driver
 

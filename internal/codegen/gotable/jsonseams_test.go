@@ -41,16 +41,19 @@ table Root {
 	for _, sm := range seams {
 		t.Run(sm.name, func(t *testing.T) {
 			t.Parallel()
+			// the seam's patch answers the patched text and no error: it fails
+			// closed by panicking, which assertPanicContains holds
+			patch := sm.apply
 			perturbed := strings.Replace(base, sm.old, perturbOneByte(sm.old), 1)
 			if perturbed == base {
 				t.Fatal("perturb did not change the anchor")
 			}
-			assertPanicContains(t, func() { sm.apply(u, perturbed) }, "occurs 0 times, want 1")
+			assertPanicContains(t, func() { patch(u, perturbed) }, "occurs 0 times, want 1")
 			doubled := strings.Replace(base, sm.old, sm.old+sm.old, 1)
 			if doubled == base {
 				t.Fatal("doubling did not change the anchor")
 			}
-			assertPanicContains(t, func() { sm.apply(u, doubled) }, "occurs 2 times, want 1")
+			assertPanicContains(t, func() { patch(u, doubled) }, "occurs 2 times, want 1")
 		})
 	}
 

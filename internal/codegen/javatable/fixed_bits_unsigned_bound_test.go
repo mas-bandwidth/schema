@@ -5,13 +5,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A bits(N) PAST 2^N - 1 IS REFUSED in the fixed form, and the comparison is
@@ -143,10 +144,10 @@ func TestFixedBitsUnsignedBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, append(args, probe)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append(args, probe)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, append([]string{"-ea", "-cp", classes, "BitsBoundProbe"}, paths...)...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, append([]string{"-ea", "-cp", classes, "BitsBoundProbe"}, paths...)...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

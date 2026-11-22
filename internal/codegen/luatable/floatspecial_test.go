@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -43,6 +42,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const fsLuaSchema = `package probe
@@ -567,7 +568,7 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFSGo$", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFSGo$", ".")
 	cmd.Dir = goDir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated Go oracle: %v\n%s", err, output)

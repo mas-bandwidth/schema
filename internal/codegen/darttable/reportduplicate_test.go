@@ -3,7 +3,6 @@ package darttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestWireReportCountsDuplicateKeysDart pins docs/SPEC-TABLES.md §2.8 (EQUAL)
@@ -59,9 +60,9 @@ table Root {
 	// refuses the whole load; no entry lands.
 	var ref tabletext.Report
 	got := m.New(m.Lookup("Root"))
-	_, _ = tablewire.Decode(m, got, wire, &ref)
-	if !ref.Refused {
-		t.Fatalf("Go reference must refuse the duplicate-key wire: %+v", ref)
+	accepted, derr := tablewire.Decode(m, got, wire, &ref)
+	if derr == nil || accepted || !ref.Refused {
+		t.Fatalf("Go reference must refuse the duplicate-key wire: ok=%v err=%v report=%+v", accepted, derr, ref)
 	}
 
 	// Generate the Dart wire codec for the same unit and load the same wire.
@@ -101,7 +102,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", "dup.bin")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", "dup.bin")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -214,7 +215,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), append([]string{"--enable-asserts", "probe.dart"}, names...)...)
+	cmd := testproc.Command(t, dartBinary(t), append([]string{"--enable-asserts", "probe.dart"}, names...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

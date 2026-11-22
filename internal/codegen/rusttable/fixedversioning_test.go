@@ -51,7 +51,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -64,6 +63,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -119,6 +120,14 @@ var versionRows = []versionRow{
             values[0].vals[k].x == 7 && values[0].vals[k].y == 9,
             "slot {k} past the writer's bound is not the ELEMENT'S declared default: x={} y={}",
             values[0].vals[k].x, values[0].vals[k].y
+        );
+    }
+    // F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+    for k in 0..8usize {
+        let (wi, wo) = if k < 4 { (-800 - k as i32, 200 + k as u8) } else { (0, 0) };
+        assert!(
+            values[0].ints[k] == wi && values[0].octet[k] == wo,
+            "scalar slot {k}: ints={} octet={}", values[0].ints[k], values[0].octet[k]
         );
     }`},
 	{row: "bits_grow", widens: true},
@@ -1224,7 +1233,7 @@ debug = 0
 	// tests`, measured at 13 s of a 17 s run on a 32-core host (2026-11-14),
 	// and the most of what pushed the Rust leg gate past the fleet's
 	// two-minute cap. The test binaries are the same; nothing they run is cut.
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast", "--lib")
+	cmd := testproc.Command(t, "cargo", "test", "--workspace", "--no-fail-fast", "--lib")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("package fixtures\ntype Good { value uint8 }\n")

@@ -67,7 +67,27 @@ type unchangedProbe struct {
 // WordSaveMessageBody from w.Put(8, TableMessageRefBitsHere) to
 // w.Put(7, TableMessageRefBitsHere). Those two positions are the ones masked.
 func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe) error {
+	return checkRefusalUnchangedFrom(freshUnit, gen, targets, p)
+}
+
+// unitSource is the unit a probe's source becomes for one target.
+// checkRefusalUnchanged parses afresh on every call (freshUnit); the meta
+// tests below hand it a probeMemo's, so a unit is parsed and generated once
+// per target however many planted generators read it.
+type unitSource func(src, lang string) (*ir.Unit, error)
+
+func freshUnit(src, _ string) (*ir.Unit, error) { return unitFromText(src) }
+
+// checkRefusalUnchangedFrom is checkRefusalUnchanged with the units from units.
+func checkRefusalUnchangedFrom(units unitSource, gen generateFunc, targets []string, p unchangedProbe) error {
 	var errs []string
+	genSource := func(gen generateFunc, src, lang string) (map[string][]byte, error) {
+		u, err := units(src, lang)
+		if err != nil {
+			return nil, err
+		}
+		return gen(u, lang)
+	}
 	for _, lang := range targets {
 		src, ok := p.base[lang]
 		if !ok {
@@ -136,8 +156,16 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 			}
 		}
 		if p.uses != nil {
-			uw, _ := unitFromText(src + "\n" + p.using)
-			uc, _ := unitFromText(src + "\n" + p.control)
+			uw, werr := unitFromText(src + "\n" + p.using)
+			if werr != nil {
+				errs = append(errs, fmt.Sprintf("%s: the probe's using unit does not load: %v", p.construct, werr))
+				continue
+			}
+			uc, cerr := unitFromText(src + "\n" + p.control)
+			if cerr != nil {
+				errs = append(errs, fmt.Sprintf("%s: the probe's control unit does not load: %v", p.construct, cerr))
+				continue
+			}
 			if uw, uc := p.uses(uw), p.uses(uc); !uw || uc {
 				errs = append(errs, fmt.Sprintf("%s: the probe is wrong: using uses the construct %v, control uses it %v", p.construct, uw, uc))
 			}
@@ -164,12 +192,51 @@ func unitFromText(src string) (*ir.Unit, error) {
 	return u, nil
 }
 
-func genSource(gen generateFunc, src, lang string) (map[string][]byte, error) {
-	u, err := unitFromText(src)
-	if err != nil {
-		return nil, err
+// probeMemo holds one probe's units and generated files so that each source is
+// parsed once per target and each unit generated once. The planted
+// generators of the meta tests wrap its generate: they only read the files it
+// returns (a plant builds new maps and new slices), so sharing them is safe.
+// A memo belongs to one probe's subtest and is never shared between
+// goroutines; each unit is generated for the one target it was parsed for,
+// as a freshly parsed unit was.
+type probeMemo struct {
+	c     *Compiler
+	units map[[2]string]memoUnit
+	files map[*ir.Unit]memoFiles
+}
+
+type memoUnit struct {
+	u   *ir.Unit
+	err error
+}
+
+type memoFiles struct {
+	files map[string][]byte
+	err   error
+}
+
+func newProbeMemo() *probeMemo {
+	return &probeMemo{c: New(), units: map[[2]string]memoUnit{}, files: map[*ir.Unit]memoFiles{}}
+}
+
+func (m *probeMemo) unit(src, lang string) (*ir.Unit, error) {
+	k := [2]string{src, lang}
+	if got, ok := m.units[k]; ok {
+		return got.u, got.err
 	}
-	return gen(u, lang)
+	u, err := unitFromText(src)
+	m.units[k] = memoUnit{u, err}
+	return u, err
+}
+
+// generate is c.Generate as compilerGenerate calls it, once per unit.
+func (m *probeMemo) generate(u *ir.Unit, lang string) (map[string][]byte, error) {
+	if got, ok := m.files[u]; ok {
+		return got.files, got.err
+	}
+	files, err := m.c.Generate(u, lang, Options{"runtime": "standalone"})
+	m.files[u] = memoFiles{files, err}
+	return files, err
 }
 
 // unitOrdinal is a number in generated Go that is the unit's as a whole and
@@ -302,95 +369,115 @@ func allUnchangedProbes() []unchangedProbe {
 	return append(append(append([]unchangedProbe(nil), stringArraysProbes...), unboundedTextProbes...), plainMapProbes...)
 }
 
+// The two meta tests run one parallel subtest per probe, each with its own
+// probeMemo: the probes are independent, and a probe's planted generators all
+// read the same few generated units (ci-fast's two-minute cap: run serially
+// and regenerating every unit for every plant, the leak test alone was the
+// whole of a go-test-touched row past the cap on a loaded fleet runner).
+
 func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
 	t.Parallel()
-	c := New()
-	// every generated file of every unit gains a line after its header, and
-	// every function of every unit a line before it
-	planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-		files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-		if err != nil {
-			return nil, err
-		}
-		out := make(map[string][]byte, len(files))
-		for name, b := range files {
-			s := string(b)
-			if i := strings.IndexByte(s, '\n'); i >= 0 {
-				s = s[:i+1] + "// planted trivial header line\n" + s[i+1:]
-			}
-			out[name] = []byte(strings.ReplaceAll(s, "\nfunc ", "\n// planted trivial line\nfunc "))
-		}
-		return out, nil
+	allAllUnchangedProbes := allUnchangedProbes()
+	if len(allAllUnchangedProbes) == 0 {
+		t.Fatal("allUnchangedProbes() is empty: the loop below would check nothing")
 	}
-	for _, p := range allUnchangedProbes() {
-		if err := checkRefusalUnchanged(planted, unchangedTargets, p); err != nil {
-			t.Errorf("a trivial emitter change on every unit tripped the check:\n%v", err)
-		}
+	for _, p := range allAllUnchangedProbes {
+		t.Run(p.construct, func(t *testing.T) {
+			t.Parallel()
+			m := newProbeMemo()
+			// every generated file of every unit gains a line after its header, and
+			// every function of every unit a line before it
+			planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
+				files, err := m.generate(u, lang)
+				if err != nil {
+					return nil, err
+				}
+				out := make(map[string][]byte, len(files))
+				for name, b := range files {
+					s := string(b)
+					if i := strings.IndexByte(s, '\n'); i >= 0 {
+						s = s[:i+1] + "// planted trivial header line\n" + s[i+1:]
+					}
+					out[name] = []byte(strings.ReplaceAll(s, "\nfunc ", "\n// planted trivial line\nfunc "))
+				}
+				return out, nil
+			}
+			if err := checkRefusalUnchangedFrom(m.unit, planted, unchangedTargets, p); err != nil {
+				t.Errorf("a trivial emitter change on every unit tripped the check:\n%v", err)
+			}
+		})
 	}
 }
 
 func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 	t.Parallel()
-	c := New()
-	for _, p := range allUnchangedProbes() {
-		// only when the unit uses the construct, a declaration that does not
-		// use it gains a line: the first keep name, and the last when there
-		// are more, so both ends of the keep list are shown caught
-		leakInto := []string{p.keep[0]}
-		if last := p.keep[len(p.keep)-1]; last != p.keep[0] {
-			leakInto = append(leakInto, last)
-		}
-		for _, k := range leakInto {
-			decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
+	allAllUnchangedProbes := allUnchangedProbes()
+	if len(allAllUnchangedProbes) == 0 {
+		t.Fatal("allUnchangedProbes() is empty: the loop below would check nothing")
+	}
+	for _, p := range allAllUnchangedProbes {
+		t.Run(p.construct, func(t *testing.T) {
+			t.Parallel()
+			m := newProbeMemo()
+			// only when the unit uses the construct, a declaration that does not
+			// use it gains a line: the first keep name, and the last when there
+			// are more, so both ends of the keep list are shown caught
+			leakInto := []string{p.keep[0]}
+			if last := p.keep[len(p.keep)-1]; last != p.keep[0] {
+				leakInto = append(leakInto, last)
+			}
+			for _, k := range leakInto {
+				decl := regexp.MustCompile(`(?m)^((?:func|type|var|const) ` + regexp.QuoteMeta(k) + `\b)`)
+				planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
+					files, err := m.generate(u, lang)
+					if err != nil || !p.uses(u) {
+						return files, err
+					}
+					out := make(map[string][]byte, len(files))
+					for name, b := range files {
+						out[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
+					}
+					return out, nil
+				}
+				err := checkRefusalUnchangedFrom(m.unit, planted, unchangedTargets, p)
+				if err == nil {
+					t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, k)
+					continue
+				}
+				msg := err.Error()
+				for _, want := range []string{p.construct + ":", "target go", "declaration ", " " + k} {
+					if !strings.Contains(msg, want) {
+						t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
+					}
+				}
+			}
+			// only when the unit uses the construct, a number in the code of a
+			// declaration that does not use it changes (a width, bound or return
+			// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
+			fn := "func " + p.keep[0] + "MeasureBody"
 			planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-				files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
+				files, err := m.generate(u, lang)
 				if err != nil || !p.uses(u) {
 					return files, err
 				}
 				out := make(map[string][]byte, len(files))
 				for name, b := range files {
-					out[name] = decl.ReplaceAll(b, []byte("// planted construct-keyed leak\n$1"))
+					out[name] = plantNumberLeak(b, fn)
 				}
 				return out, nil
 			}
-			err := checkRefusalUnchanged(planted, unchangedTargets, p)
+			err := checkRefusalUnchangedFrom(m.unit, planted, unchangedTargets, p)
 			if err == nil {
-				t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, k)
-				continue
+				t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
+				return
 			}
 			msg := err.Error()
-			for _, want := range []string{p.construct + ":", "target go", "declaration ", " " + k} {
+			for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
 				if !strings.Contains(msg, want) {
-					t.Errorf("%s: the failure does not name %q: %s", p.construct, want, msg)
+					t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
 				}
 			}
-		}
-		// only when the unit uses the construct, a number in the code of a
-		// declaration that does not use it changes (a width, bound or return
-		// value of keep[0]'s MeasureBody gains a digit): the mask must not hide it
-		fn := "func " + p.keep[0] + "MeasureBody"
-		planted := func(u *ir.Unit, lang string) (map[string][]byte, error) {
-			files, err := c.Generate(u, lang, Options{"runtime": "standalone"})
-			if err != nil || !p.uses(u) {
-				return files, err
-			}
-			out := make(map[string][]byte, len(files))
-			for name, b := range files {
-				out[name] = plantNumberLeak(b, fn)
-			}
-			return out, nil
-		}
-		err := checkRefusalUnchanged(planted, unchangedTargets, p)
-		if err == nil {
-			t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
-			continue
-		}
-		msg := err.Error()
-		for _, want := range []string{p.construct + ":", "target go", "declaration ", fn + ","} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("%s: the number leak failure does not name %q: %s", p.construct, want, msg)
-			}
-		}
+		})
 	}
 }
 

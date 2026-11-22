@@ -1,0 +1,11 @@
+package referents
+
+table Renamed | was = "First"
+{
+    n int32
+}
+
+table Root
+{
+    selected *Renamed
+}

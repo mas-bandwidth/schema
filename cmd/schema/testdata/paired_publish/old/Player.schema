@@ -1,0 +1,6 @@
+package paircorpus
+
+fixed table Player | was = "Avatar"
+{
+    level uint32
+}

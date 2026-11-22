@@ -15,23 +15,32 @@
 // suggestion is silenced for the whole binary.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use example::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 static FAILED: AtomicBool = AtomicBool::new(false);
 
+// every check is one counted unit: main prints "ran N, failed M" and
+// build/mustrun holds N to the count the recipe registers
+static RAN: AtomicU32 = AtomicU32::new(0);
+static FAILURES: AtomicU32 = AtomicU32::new(0);
+
 fn check(ok: bool, what: &str) {
+    RAN.fetch_add(1, Ordering::Relaxed);
     if !ok {
         println!("FAILED: {what}");
+        FAILURES.fetch_add(1, Ordering::Relaxed);
         FAILED.store(true, Ordering::Relaxed);
     }
 }
 
 fn check_err(result: example::Result, what: &str) {
+    RAN.fetch_add(1, Ordering::Relaxed);
     if let Err(e) = result {
         println!("FAILED: {what}: {e:?}");
+        FAILURES.fetch_add(1, Ordering::Relaxed);
         FAILED.store(true, Ordering::Relaxed);
     }
 }
@@ -1562,10 +1571,20 @@ fn main() {
         check(off == stream.len(), "the joins reads consume the whole golden");
     }
 
-    if FAILED.load(Ordering::Relaxed) {
+    let failed = FAILED.load(Ordering::Relaxed);
+    let ran = RAN.load(Ordering::Relaxed);
+    let failures = if failed {
+        FAILURES.load(Ordering::Relaxed).max(1)
+    } else {
+        0
+    };
+    if !failed {
+        println!("OK");
+    }
+    println!("schema-rust-test: ran {ran}, failed {failures}");
+    if failed || ran == 0 {
         std::process::exit(1);
     }
-    println!("OK");
 }
 
 

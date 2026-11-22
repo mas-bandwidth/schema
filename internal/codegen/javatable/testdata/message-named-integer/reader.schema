@@ -1,0 +1,9 @@
+package probe
+
+fixed table Msg
+{
+    a uint8
+    b uint16
+    c uint64
+    d int64
+}

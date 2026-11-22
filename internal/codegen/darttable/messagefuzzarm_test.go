@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md
 // §3.3, §4.2). The wire fuzzer's form-2 arm reads one batch body from each
-// mutant. LoadMessages answers the bodies it read, -1 on failure (§3.3), and
+// mutant. LoadMessages answers the bodies it read, 0 on a refusal (§3.3), and
 // the reference arm, messageRow in test/conformance/go/messages.go run with
 // fuzz=true, takes `count, ok := load(...)` and sets
 //
@@ -49,7 +50,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		t.Helper()
 		dartMakeMu.Lock()
 		defer dartMakeMu.Unlock()
-		cmd := exec.Command("make", append(append([]string{"-C", root}, vars...), target)...)
+		cmd := testproc.Command(t, "make", append(append([]string{"-C", root}, vars...), target)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make %s: %v\n%s", target, err, out)
 		}
@@ -91,7 +92,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 
 	drive := func(argv ...string) []byte {
 		t.Helper()
-		cmd := exec.Command(argv[0], append(argv[1:], "wire-fuzz")...)
+		cmd := testproc.Command(t, argv[0], append(argv[1:], "wire-fuzz")...)
 		cmd.Dir = root
 		cmd.Stdin = bytes.NewReader(in.Bytes())
 		var stderr bytes.Buffer

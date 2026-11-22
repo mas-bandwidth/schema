@@ -27,6 +27,9 @@ func TestFixedRootsGenerateOneFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(first) == 0 {
+			t.Fatal("first is empty: the loop below would check nothing")
+		}
 		for name, body := range first {
 			if !bytes.Equal(body, again[name]) {
 				t.Fatalf("%s differs between two generations of one unit", name)
@@ -34,6 +37,9 @@ func TestFixedRootsGenerateOneFile(t *testing.T) {
 		}
 	}
 	roots := fixedRoots(u)
+	if len(roots) == 0 {
+		t.Fatal("roots is empty: the loop below would check nothing")
+	}
 	for i := 1; i < len(roots); i++ {
 		if roots[i-1].Name >= roots[i].Name {
 			t.Errorf("fixed roots out of name order: %s before %s", roots[i-1].Name, roots[i].Name)

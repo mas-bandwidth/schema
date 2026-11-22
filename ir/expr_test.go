@@ -7,8 +7,10 @@
 package ir_test
 
 import (
+	"math/big"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -182,5 +184,45 @@ func TestRenderExprHostile(t *testing.T) {
 	}
 	if ir.ExprHasEnumMax(nil) {
 		t.Error("ExprHasEnumMax(nil) = true, want false")
+	}
+}
+
+// TestRenderExprIdentIntegerSpellingEveryTargetReads pins the target form of
+// an integer literal: the one spelling C99, C++, C#, Go, JavaScript and Rust
+// all read as the compiler's own value. A lowercase hex literal and a
+// decimal one keep the author's spelling; `0X` is lowered to `0x` (Rust has
+// no `0X`); a binary literal renders as its decimal value (C99 has no binary
+// literal); a decimal with a leading zero, which the scanner refuses but an
+// external producer of an IR could still hand over, renders as its value
+// (C, C++ and Go would read the spelling as octal). The neutral RenderExpr
+// form keeps the source spelling: it rides in comments.
+func TestRenderExprIdentIntegerSpellingEveryTargetReads(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		text    string
+		value   int64
+		neutral string
+		target  string
+	}{
+		{"0", 0, "0", "0"},
+		{"10", 10, "10", "10"},
+		{"0x1F", 31, "0x1F", "0x1F"},
+		{"0X1F", 31, "0X1F", "0x1F"},
+		{"0b1010", 10, "0b1010", "10"},
+		{"0B11", 3, "0B11", "3"},
+		{"010", 10, "010", "10"},
+	}
+	for _, tt := range tests {
+		lit := &ast.IntLit{Value: big.NewInt(tt.value), Text: tt.text}
+		if got := ir.RenderExpr(lit); got != tt.neutral {
+			t.Errorf("RenderExpr(%s) = %q, want %q", tt.text, got, tt.neutral)
+		}
+		if got := ir.RenderExprIdent(lit, nil); got != tt.target {
+			t.Errorf("RenderExprIdent(%s) = %q, want %q", tt.text, got, tt.target)
+		}
+		neg := &ast.UnaryExpr{Op: "-", X: lit}
+		if got := ir.RenderExprIdent(neg, nil); got != "-"+tt.target {
+			t.Errorf("RenderExprIdent(-%s) = %q, want %q", tt.text, got, "-"+tt.target)
+		}
 	}
 }

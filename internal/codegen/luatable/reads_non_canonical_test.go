@@ -120,6 +120,9 @@ func TestLuaReadsRefuseNonCanonical(t *testing.T) {
 	rows := luaNonCanonicalRows(t, vector)
 	ncUnit := luarun.LoadUnit(t, filepath.Join(repo, "test", "non-canonical", "NonCanonical.schema"))
 	oneUnit := luarun.LoadUnit(t, filepath.Join(repo, "test", "message-one-encoding", "One.schema"))
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row.file, func(t *testing.T) {
 			t.Parallel()

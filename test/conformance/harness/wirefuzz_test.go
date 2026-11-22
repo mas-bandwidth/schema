@@ -255,6 +255,14 @@ func TestWireVerdictRefusalDiagnosticsDoNotMatter(t *testing.T) {
 			t.Fatalf("refusal diagnostics changed the verdict: %s", verdict)
 		}
 	}
+	// the controls: a leg that accepts the refused wire, and a leg that drops
+	// the report so it names no refusal, each diverge from the same oracle
+	if verdict := wireVerdict(nil, legReply{loaded: true}, answer, 16); verdict == "" {
+		t.Fatal("a leg that accepted the refused wire did not diverge")
+	}
+	if verdict := wireVerdict(nil, legReply{}, answer, 16); verdict == "" {
+		t.Fatal("a leg whose report names no refusal did not diverge")
+	}
 }
 
 // The pinned repeated-key mutant must refuse the whole map.

@@ -37,6 +37,9 @@ func TestCanonicalMovesLayoutNotTokens(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", d, err)
 		}
+		if len(raw) == 0 {
+			t.Fatal("raw is empty: the loop below would check nothing")
+		}
 		for name, before := range raw {
 			after := canon[name]
 			kept := []string{}

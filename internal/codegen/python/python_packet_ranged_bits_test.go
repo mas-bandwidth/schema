@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // rangedBitsField is one ranged integer or bits field in a root's closure, as
@@ -248,6 +249,9 @@ func TestPythonPacketRangedBits(t *testing.T) {
 	}
 	sort.Strings(names)
 	want := []string{"bench_bits", "bench_ints", "probebits"}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for _, name := range want {
 		if !slices.Contains(names, name) {
 			t.Fatalf("the ranged/bits golden set is %v, want %s carried (docs/PORT-PYTHON.md, THE PACKET CORE CUT)", names, name)
@@ -271,6 +275,9 @@ func TestPythonPacketRangedBits(t *testing.T) {
 		return loadPythonUnit(t, abs...)
 	}
 
+	if len(pins) == 0 {
+		t.Fatal("pins is empty: the loop below would check nothing")
+	}
 	for _, pin := range pins {
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
@@ -656,7 +663,7 @@ func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]b
 		"go.mod":            []byte(mod),
 		"reference_test.go": []byte(oracle.String()),
 	})
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "300s", "-run", "^TestRangedBitsGoReference$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "300s", "-run", "^TestRangedBitsGoReference$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	out, err := cmd.CombinedOutput()

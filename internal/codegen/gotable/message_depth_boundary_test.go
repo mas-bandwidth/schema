@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -282,7 +283,7 @@ func runGoDepthBoundaryProbe(t *testing.T, u *ir.Unit, testSrc string, edit func
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-v", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-v", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }
@@ -297,6 +298,9 @@ func TestGeneratedMessageDepthBoundary(t *testing.T) {
 		t.Fatalf("go message depth boundary failed:\n%s\n%v", out, err)
 	}
 	outStr := string(out)
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, tc := range cases {
 		if !strings.Contains(outStr, "PASS "+tc.name) {
 			t.Fatalf("missing PASS for %s in:\n%s", tc.name, outStr)

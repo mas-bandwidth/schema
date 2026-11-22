@@ -22,7 +22,7 @@ MOO_CONFORMANCE_SCHEMAS := $(foreach p,$(MOO_CONFORMANCE_UNIT_PATHS),$(if $(filt
 
 # the moo runtimes are //go:embed'ded into the binary, which GO_SOURCES (*.go
 # only) does not see: a changed runtime file rebuilds it
-build/schema-moo: $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
+build/schema-moo: $(GO_SOURCES) $(EMBED_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -tags schema_leg_moo -o $@ ./cmd/schema
 
@@ -68,6 +68,23 @@ conformance-negative-control-moo-walk: toolchain-moo build/conformance-harness
 conformance-negative-control-moo-framing: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control framing
 
+# THE WRITE CONTRACT's controls (docs/SPEC.md §5.1). Moo refuses in every
+# build, so each sabotages the emitter's runtime: the variable writer's float
+# finiteness check (write-refusal red alone), the fixed writer's (write-refusal-fixed
+# red, with write-refusal beside it: a fixed root is written through that one
+# writer for both batteries) and the message writer's UTF-8 check
+# (write-refusal-message red alone).
+.PHONY: conformance-negative-control-moo-write-refusal conformance-negative-control-moo-write-refusal-fixed conformance-negative-control-moo-write-refusal-message
+conformance-negative-control-moo-write-refusal: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal
+
+conformance-negative-control-moo-write-refusal-fixed: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal-fixed
+
+conformance-negative-control-moo-write-refusal-message: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal-message
+
 # all three ride test-moo (make/moo.mk), as every leg's conformance controls ride its
 # own test target
-test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing \
+	conformance-negative-control-moo-write-refusal conformance-negative-control-moo-write-refusal-fixed conformance-negative-control-moo-write-refusal-message

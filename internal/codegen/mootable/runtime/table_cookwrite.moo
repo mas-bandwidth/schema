@@ -251,6 +251,9 @@ local function writeScalar(ctx: any, owner: string, fd: any, e: any, at: number,
 		buffer.writeu8(ctx.b, at, if x == true then 1 else 0)
 		return true
 	elseif s == "float" then
+		-- a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3,
+		-- ruling fixed-compressed-negzero); a plain float's -0 rides
+		x = V.storedFloat(e, x)
 		if e.f32 then
 			if type(x) ~= "number" or x ~= math.floor(x) or x < 0 or x > 0xFFFFFFFF then
 				return fail(ctx, "invalid_value", owner, fd)

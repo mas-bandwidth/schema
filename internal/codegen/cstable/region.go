@@ -36,7 +36,7 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static long %sLoadMeasure(System.ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out TableRefuseReason reason) { long n = TableWire.LoadMeasureParts(%sTableType(), bytes, out dataBytes, out attributionBytes, out string text); reason = text == null ? TableRefuseReason.ok : System.Enum.Parse<TableRefuseReason>(text); return n; }\n", st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, attribution, attributionCapacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
-		cap := ir.TableWireIdCapacity(u)
+		cap := min(ir.TableWireIdCapacity(u), ir.TableWireIdTableBound)
 		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true); }\n", st.Name, cap, cap, st.Name)
 		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true, allocator); }\n", st.Name, cap, cap, st.Name)
 		g.pf("public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), bytes, ids, slots, ref retain, report, false); }\n", st.Name, cap, cap, st.Name)
@@ -143,7 +143,8 @@ const tableRegionSource = `
                 else if (f.GetWide != null) { value.SetWide(f, i, defaults ? f.DefaultWide : 0); }
                 else { value.SetRaw(f, i, defaults ? f.DefaultRaw : 0); }
             }
-            if (f.Counted) { value.SetCount(f, 0); }
+            // a [A..B] array is born at A (docs/SPEC.md §4.2)
+            if (f.Counted) { value.SetCount(f, defaults ? f.ArrayMin : 0); }
         }
         if (f.Optional) { value.SetPresent(f, false); }
     }
@@ -269,12 +270,13 @@ const tableRegionSource = `
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : keyField.Kind == 12 ? last.Text.SequenceCompareTo(key.Text) : keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((long)last.Raw).CompareTo(unchecked((long)key.Raw)) : last.Raw.CompareTo(key.Raw);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
             if (state.Refused || report.Refused) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); } else { last = key; landed++; }
+            last = key; landed++;
         }
         value.SetCount(f, landed);
         // bytes left inside the map's L after its entries are damage
@@ -286,7 +288,7 @@ const tableRegionSource = `
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -300,6 +302,8 @@ const tableRegionSource = `
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -435,8 +439,8 @@ const tableRegionSource = `
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
+            if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -507,8 +511,8 @@ const tableRegionSource = `
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
+                if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)
                 if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }

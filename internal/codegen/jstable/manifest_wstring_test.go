@@ -1,10 +1,11 @@
 package jstable
 
 import (
-	"os/exec"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJSManifestWideLiteralChecksEveryCodeUnit(t *testing.T) {
@@ -24,7 +25,7 @@ func TestJSManifestWideLiteralChecksEveryCodeUnit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			script := "const value=new Uint16Array([" + tc.units + "]);const fail=()=>{throw new Error('manifest mismatch')};" + assertion
-			out, err := exec.Command(jsNode(t), "--input-type=module", "-e", script).CombinedOutput()
+			out, err := testproc.Command(t, jsNode(t), "--input-type=module", "-e", script).CombinedOutput()
 			if (err != nil) != tc.reject {
 				t.Fatalf("reject=%t err=%v: %s", tc.reject, err, out)
 			}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -13,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Derive names from the same value, reader and writer vectors as the complete
@@ -132,7 +133,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if strings.Count(string(planner), "/^TestPythonVtEvolution$/d") != 1 {
 		t.Fatal("complete Evolution parent must be delegated exactly once")
 	}
-	cmd := exec.Command("sh", filepath.Join(root, "tools/python-ci-rows.sh"))
+	cmd := testproc.Command(t, "sh", filepath.Join(root, "tools/python-ci-rows.sh"))
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -154,7 +155,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 		counts[string(row)]++
 	}
 	for _, part := range []string{"0", "1"} {
-		cmd := exec.Command("sh", filepath.Join(root, "tools/python-ci-partition.sh"), part)
+		cmd := testproc.Command(t, "sh", filepath.Join(root, "tools/python-ci-partition.sh"), part)
 		cmd.Dir = root
 		cmd.Stdin = bytes.NewReader(out)
 		data, err := cmd.CombinedOutput()
@@ -194,6 +195,9 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 		if re.MatchString("TestPythonVtEvolutionCICoverage") {
 			coverage++
 		}
+	}
+	if len(registered) == 0 {
+		t.Fatal("registered is empty: the loop below would check nothing")
 	}
 	for _, target := range registered {
 		if targets[target] != 1 {

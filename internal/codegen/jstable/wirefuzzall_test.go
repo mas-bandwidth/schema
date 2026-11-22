@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestWireFuzzAllTargetJavaScript pins the JavaScript wire-fuzz target to the
@@ -124,7 +125,7 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 		return b.Bytes()
 	}
 	run := func(gen, unit, root string) (string, string, error) {
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+gen)
 		cmd.Stdin = bytes.NewReader(roster(unit, root))
@@ -216,7 +217,7 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 			binary.Write(&input, binary.LittleEndian, uint32(0))
 			binary.Write(&input, binary.LittleEndian, uint32(len(tc.wire)))
 			input.Write(tc.wire)
-			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 			cmd.Dir = repo
 			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 			cmd.Stdin = &input
@@ -285,7 +286,7 @@ func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
 		input.Write(wire)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -361,7 +362,7 @@ func TestWireFuzzKindMismatchNamesTheRefusalJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
 		input.Write(wire)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -457,7 +458,7 @@ func TestWireFuzzArrayTailNamesTheRefusalJavaScript(t *testing.T) {
 			binary.Write(&input, binary.LittleEndian, uint32(0))
 			binary.Write(&input, binary.LittleEndian, uint32(len(wire.bytes)))
 			input.Write(wire.bytes)
-			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 			cmd.Dir = repo
 			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 			cmd.Stdin = &input
@@ -538,7 +539,7 @@ func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
 		input.Write(wire)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -675,7 +676,7 @@ func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
 			binary.Write(&input, binary.LittleEndian, uint32(0))
 			binary.Write(&input, binary.LittleEndian, uint32(len(wire.bytes)))
 			input.Write(wire.bytes)
-			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 			cmd.Dir = repo
 			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 			cmd.Stdin = &input
@@ -772,7 +773,7 @@ func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
 			binary.Write(&input, binary.LittleEndian, uint32(0))
 			binary.Write(&input, binary.LittleEndian, uint32(len(wire.bytes)))
 			input.Write(wire.bytes)
-			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 			cmd.Dir = repo
 			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 			cmd.Stdin = &input
@@ -861,7 +862,7 @@ func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(mutant)))
 		input.Write(mutant)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -951,7 +952,7 @@ func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(mutant)))
 		input.Write(mutant)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -1038,7 +1039,7 @@ func TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(mutant)))
 		input.Write(mutant)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -1124,7 +1125,7 @@ func TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(mutant)))
 		input.Write(mutant)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -1210,7 +1211,7 @@ func TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript(t *testing.T) {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(mutant)))
 		input.Write(mutant)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 		cmd.Stdin = &input
@@ -1305,7 +1306,7 @@ func TestWireFuzzFixedRootNamesPreviousFormJavaScript(t *testing.T) {
 			binary.Write(&input, binary.LittleEndian, uint32(0))
 			binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
 			input.Write(wire)
-			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 			cmd.Dir = repo
 			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 			cmd.Stdin = &input
@@ -1442,7 +1443,7 @@ func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire
 	binary.Write(&input, binary.LittleEndian, uint32(0))
 	binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
 	input.Write(wire)
-	cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+	cmd := testproc.Command(t, node, "test/conformance/js/main.mjs", "wire-fuzz")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
 	cmd.Stdin = &input
@@ -1582,10 +1583,10 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	for name, data := range generatedTree(u) {
 		// The driver receives the genuine writer announcement while its
 		// reader retains its own generated build and schema.
-		old := "export const TableMessageAnnouncement = new Uint8Array([" + jsByteLiterals(tablewire.Announce(u)) + "]);"
+		old := "export const TableMessageAnnouncement = new globalThis.Uint8Array([" + jsByteLiterals(tablewire.Announce(u)) + "]);"
 		if strings.Contains(string(data), old) {
 			annReplaced++
-			data = []byte(strings.Replace(string(data), old, "export const TableMessageAnnouncement = new Uint8Array(["+jsByteLiterals(tablewire.Announce(writer))+"]);", 1))
+			data = []byte(strings.Replace(string(data), old, "export const TableMessageAnnouncement = new globalThis.Uint8Array(["+jsByteLiterals(tablewire.Announce(writer))+"]);", 1))
 		}
 		if strings.Contains(name, "/") || !strings.HasSuffix(name, ".js") {
 			continue

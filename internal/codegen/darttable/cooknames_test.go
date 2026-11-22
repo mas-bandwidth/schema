@@ -67,6 +67,9 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 				declared[name] = declaredClasses(string(data))
 			}
 
+			if len(files) == 0 {
+				t.Fatal("files is empty: the loop below would check nothing")
+			}
 			for name, data := range files {
 				if !strings.HasSuffix(name, "Cook.dart") {
 					continue
@@ -109,7 +112,11 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 						}
 					}
 				}
-				for _, id := range capitalizedIdentifiers(string(data)) {
+				allCapitalizedIdentifiers := capitalizedIdentifiers(string(data))
+				if len(allCapitalizedIdentifiers) == 0 {
+					t.Fatal("capitalizedIdentifiers(string(data)) is empty: the loop below would check nothing")
+				}
+				for _, id := range allCapitalizedIdentifiers {
 					if !visible[id] {
 						t.Errorf("%s uses the type %s, which is neither declared in it nor imported from the generated tree", name, id)
 					}

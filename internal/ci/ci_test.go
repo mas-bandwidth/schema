@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var (
@@ -74,7 +76,7 @@ func repoRoot(t *testing.T) string {
 // a failure rather than a pass: a gate over nothing proves nothing.
 func workflows(t *testing.T, root string) map[string]string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,11 +243,19 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 	}
 
 	// And no workflow keeps a version of its own.
-	for name, data := range workflows(t, root) {
+	allWorkflows := workflows(t, root)
+	if len(allWorkflows) == 0 {
+		t.Fatal("workflows(t, root) is empty: the loop below would check nothing")
+	}
+	for name, data := range allWorkflows {
 		if strings.Contains(data, "setup-dotnet@") && !strings.Contains(data, "cat "+dotnetPinFile) {
 			t.Errorf("%s installs the .NET SDK without reading %s", name, dotnetPinFile)
 		}
-		for _, l := range lines(name, data) {
+		allLines := lines(name, data)
+		if len(allLines) == 0 {
+			t.Fatal("lines(name, data) is empty: the loop below would check nothing")
+		}
+		for _, l := range allLines {
 			if !strings.HasPrefix(l.text, "dotnet-version:") {
 				continue
 			}
@@ -292,7 +302,7 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -330,6 +340,9 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	sort.Strings(names)
 	t.Logf("packages the make sources run: %s", strings.Join(names, " "))
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, pkg := range names {
 		dir := strings.TrimPrefix(pkg, "./")
 		tracked := gitLsFiles(t, root, dir)
@@ -942,17 +955,17 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	case "github.repository":
 		return ev.Repo, nil
 	case "github.event.pull_request.head.repo.full_name":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.HeadRepo, nil
 	case "github.base_ref", "github.event.pull_request.base.ref":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.Branch, nil
 	case "github.head_ref", "github.event.pull_request.head.ref":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.HeadRef, nil
@@ -1437,7 +1450,9 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-rust",
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
+		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
@@ -1474,6 +1489,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"python-leg.yml:plan",
 		"python-leg.yml:test",
 		"python-leg.yml:test-second",
+		"release.yml:assets",
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
@@ -1518,6 +1534,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
+		"schema-moo-runs-hostile-corpus.yml:corpus",
+		"schema-moo-runs-hostile-corpus.yml:negative-control",
 		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-python-resource-bounds.yml:fast",
 		"schema-python-resource-bounds.yml:nightly",

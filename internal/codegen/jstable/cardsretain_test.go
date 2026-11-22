@@ -6,7 +6,6 @@ import (
 	"flag"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The retained save's golden is the Go leg's own retained save of the SAME
@@ -90,7 +91,7 @@ func goRetainedSave(t *testing.T) []byte {
 	if err := os.WriteFile(filepath.Join(dir, "golden_test.go"), []byte(retainGoDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "TestRetainGolden", "-v", "./...")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "TestRetainGolden", "-v", "./...")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -247,7 +248,7 @@ console.log(JSON.stringify(out));
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script)
+	cmd := testproc.Command(t, node, script)
 	cmd.Dir = dir
 	raw, err := cmd.CombinedOutput()
 	if err != nil {
@@ -478,7 +479,7 @@ func retainNodeProbe(t *testing.T, dir, script string) string {
 	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, path)
+	cmd := testproc.Command(t, node, path)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

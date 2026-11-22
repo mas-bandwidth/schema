@@ -40,13 +40,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppRunCapability generates the leg's fixed-form headers for `schema`, writes
@@ -98,10 +99,15 @@ func cppRunUnitFlags(t *testing.T, schema, pkg, body string, includes, flags []s
 	// copied beside its endpoint exactly as the driver merges the two.
 	if after, ok := strings.CutPrefix(base, "VNEW_"); ok {
 		endpoint := filepath.Join(filepath.Dir(schema), "VOLD_"+after)
-		if pd, err := os.ReadFile(endpoint); err == nil {
-			if err := os.WriteFile(filepath.Join(dir, filepath.Base(endpoint)), pd, 0o644); err != nil {
-				t.Fatal(err)
-			}
+		pd, err := os.ReadFile(endpoint)
+		if err != nil {
+			// every VNEW_ fixture has its VOLD_ beside it: without it the unit
+			// would generate with no lineage and the probe would run against a
+			// reader the row never meant
+			t.Fatalf("%s has no readable VOLD_ endpoint beside it: %v", base, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(endpoint)), pd, 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -156,11 +162,11 @@ int main( void )
 	args = append(args, flags...)
 	args = append(args, includeArgs(includes)...)
 	args = append(args, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // includeArgs is one `-I<dir>` per extra include directory, in the order given.

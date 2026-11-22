@@ -8,7 +8,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Open is deliberately a header match, not a hostile-input validator (§7).
@@ -263,7 +264,7 @@ table Root { head *Node
 	for _, flags := range [][]string{nil, {"-gcflags=all=-N -l -d=checkptr=2"}} {
 		args := append([]string{"test", "-count=1", "-v", "-timeout=60s"}, flags...)
 		args = append(args, ".")
-		cmd := exec.Command("go", args...)
+		cmd := testproc.Command(t, "go", args...)
 		cmd.Dir = dirNative
 		result, err := cmd.CombinedOutput()
 		if err != nil {
@@ -392,7 +393,7 @@ func TestCheckedCookGoConsumersNegativeControls(t *testing.T) {
 			if err := os.WriteFile(overlayPath, overlay, 0600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command("go", "test", "-count=1", "-overlay="+overlayPath, "./compiler", "-run", "^TestCheckedCookGoConsumers$", "-timeout=90s")
+			cmd := testproc.Command(t, "go", "test", "-count=1", "-overlay="+overlayPath, "./compiler", "-run", "^TestCheckedCookGoConsumers$", "-timeout=90s")
 			cmd.Dir = root
 			output, err := cmd.CombinedOutput()
 			if err == nil {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapElixirT14CompressedFloats(t *testing.T) {
@@ -26,7 +27,9 @@ func TestFixedRoadmapElixirT14CompressedFloats(t *testing.T) {
 		bin := elixirBinary(t)
 		t14Cite(t)
 		src := t14ElixirEmit(t, t14ElixirOld, nil)
-		if !strings.Contains(src, "R.f32_bits(") {
+		// a compressed float32 stores its bits through cf32_bits, which holds the
+		// range at float32 and writes +0 for -0 (docs/SPEC-TABLES.md §3.3)
+		if !strings.Contains(src, "R.cf32_bits(") {
 			t.Fatal("the fixed write does not store the float32 bits")
 		}
 		if !strings.Contains(src, "def dequantize_bits") {
@@ -163,7 +166,7 @@ T14Probe.run()
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(bin, args...)
+	cmd := testproc.Command(t, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

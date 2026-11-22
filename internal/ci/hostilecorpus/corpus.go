@@ -48,6 +48,16 @@ const (
 	// docs/rulings.json tables-finite-only).
 	ReasonNonFiniteFloat = "non_finite_float"
 
+	// CarrierPacket is a row read by a port's PACKET reader. No Go engine
+	// reads the packet wire (the C++ reference is its oracle), so a packet
+	// row's verdict cannot be rebuilt here: it is pinned by hand, and the only
+	// verdict a packet row may carry is a refusal named ReasonPacketRefused.
+	// Generate keeps it after checking what it can (the input is there and
+	// not empty, the schema loads, the named type is in it), and every port's
+	// runner holds its reader to it.
+	CarrierPacket       = "packet"
+	ReasonPacketRefused = "packet_refused"
+
 	// ProbeSchemaPath is the manifest's name for the one schema that is not in
 	// the checkout: a variable root whose collection count can pass the int32
 	// storage cap and name internal/tablewire's CountRefusal.
@@ -219,6 +229,13 @@ func Generate(root, tmp, corpusDir string, meta []Case) ([]Case, error) {
 			}
 			models[c.Schema] = m
 		}
+		if c.Carrier == CarrierPacket {
+			if err := checkPacketRow(m, c, payload); err != nil {
+				return nil, fmt.Errorf("%s: %w", c.Name, err)
+			}
+			out = append(out, c)
+			continue
+		}
 		verdict, reason, digest, err := EngineVerdict(m, c, payload)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Name, err)
@@ -230,6 +247,21 @@ func Generate(root, tmp, corpusDir string, meta []Case) ([]Case, error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// checkPacketRow holds a hand-pinned packet row (CarrierPacket) to everything
+// that can be checked without a packet engine.
+func checkPacketRow(m *tabletext.Model, c Case, payload []byte) error {
+	if len(payload) == 0 {
+		return errors.New("a packet row's input is empty")
+	}
+	if m.Unit.Structs[c.Table] == nil {
+		return fmt.Errorf("packet type %q is not declared in %s", c.Table, c.Schema)
+	}
+	if c.Verdict != Refuse || c.Reason != ReasonPacketRefused || c.Digest != NoReason {
+		return fmt.Errorf("a packet row is pinned by hand and must be %s %s %s, not %s %s %s: no Go engine reads the packet wire, so an accept could not be checked", Refuse, ReasonPacketRefused, NoReason, c.Verdict, c.Reason, c.Digest)
+	}
+	return nil
 }
 
 // dropValueGolden removes a refused row's citation of its old value golden:
@@ -669,6 +701,7 @@ func ExcludedFiles(root string) ([]string, error) {
 	var out []string
 	for _, prefix := range ExcludedSourceDirs {
 		dir := filepath.Join(root, filepath.FromSlash(prefix))
+		before := len(out)
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -685,6 +718,9 @@ func ExcludedFiles(root string) ([]string, error) {
 		})
 		if err != nil {
 			return nil, err
+		}
+		if len(out) == before {
+			return nil, fmt.Errorf("excluded source tree %s holds no file: the exclusion names a tree that is gone, and nothing under it was checked", prefix)
 		}
 	}
 	sort.Strings(out)

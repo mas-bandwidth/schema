@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestElixirPacketEmptyElementCompilesClean holds the rule that every legal
@@ -72,7 +74,7 @@ type Tags
 		t.Fatal(err)
 	}
 	args := append([]string{gate, elixircBin, "-o", ebin}, names...)
-	cmd := exec.Command("sh", args...)
+	cmd := testproc.Command(t, "sh", args...)
 	cmd.Dir = dir
 	cmd.Env = toolchainEnv(elixirBin)
 	compiled, err := cmd.CombinedOutput()
@@ -122,7 +124,7 @@ end
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(elixirBin, "-pa", ebin, "probe.exs")
+	cmd = testproc.Command(t, elixirBin, "-pa", ebin, "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = toolchainEnv(elixirBin)
 	if run, err := cmd.CombinedOutput(); err != nil {

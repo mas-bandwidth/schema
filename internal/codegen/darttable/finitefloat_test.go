@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE FINITE RULE ON THE DART LEG (docs/SPEC-TABLES.md §3.3; Glenn,
@@ -344,9 +345,15 @@ func runFiniteFloatProbe(t *testing.T, files map[string][]byte) (map[string]bool
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "finite_probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "finite_probe.dart")
 	cmd.Dir = dir
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	// The probe prints each vector's verdict and exits 0; a red vector is a
+	// VEC line, never an exit status, so any non-zero exit is a probe that
+	// did not run to its verdict.
+	if err != nil {
+		t.Fatalf("the finite probe exited %v:\n%s", err, out)
+	}
 	verdicts := map[string]bool{}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)

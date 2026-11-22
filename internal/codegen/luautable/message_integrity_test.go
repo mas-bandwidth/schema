@@ -118,10 +118,10 @@ end
 
 local count, lbody = M.LoadMessages(v, "Ledger", inputs.ledger, 256, report)
 print("load_ledger " .. tostring(count) .. " " .. tostring(report.malformed) .. " " .. tostring(report.reason))
-if count < 0 then return end
+if count <= 0 then return end
 local pcount, pbody = M.LoadMessages(v, "Plain", inputs.plain, 256, report)
 print("load_plain " .. tostring(pcount) .. " " .. tostring(report.malformed) .. " " .. tostring(report.reason))
-if pcount < 0 then return end
+if pcount <= 0 then return end
 local lm = M.MeasureMessages(v, "Ledger", lbody, report)
 local pm = M.MeasureMessages(v, "Plain", pbody, report)
 local lb, ln = M.SaveMessages(v, "Ledger", lbody, report)
@@ -188,7 +188,7 @@ end
 	if lines[1] != "load_plain 1 false " {
 		t.Errorf("LoadMessages of the saved Plain batch = %q, want count 1 and no damage", lines[1])
 	}
-	if lines[5] != "load_missing -1 true integrity_mismatch" {
+	if lines[5] != "load_missing 0 true integrity_mismatch" {
 		t.Errorf("LoadMessages of the keyless batch under the declaring root = %q, want the trailer refusal", lines[5])
 	}
 
@@ -210,7 +210,8 @@ end
 			wantReason = "newer_form"
 			wantMalformed = "false"
 		}
-		want := "-1 " + wantMalformed + " " + wantReason
+		// "A refused batch returns a count of `0`" (§3.3)
+		want := "0 " + wantMalformed + " " + wantReason
 		if got := strings.Join(fields[3:], " "); got != want {
 			t.Errorf("byte %d bit %d: LoadMessages %q, want %q", at, bit, got, want)
 		}

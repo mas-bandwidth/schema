@@ -62,7 +62,7 @@ func TestSpecFixedDeadBytesAreZero(t *testing.T) {
 			wants: []string{
 				"DEAD",
 				"wire_damaged",
-				"§5.3 step 11",
+				"step 11 of THE LOAD, IN ORDER",
 				"an absent optional's payload (present byte `0`)",
 				"a counted array's element slots past its live count",
 				"a `string(N)`'s or `bytes(N)`'s bytes past its used length",

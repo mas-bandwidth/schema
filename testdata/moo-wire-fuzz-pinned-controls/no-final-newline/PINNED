@@ -1,0 +1,3 @@
+# a control fixture: <mutant file> <unit> <root>
+testdata/moo-wire-fuzz-pinned-controls/no-final-newline/pins/one.bin unit Root
+testdata/moo-wire-fuzz-pinned-controls/no-final-newline/pins/two.bin unit Root

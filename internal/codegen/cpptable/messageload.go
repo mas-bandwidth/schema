@@ -124,6 +124,18 @@ func (g *tableGen) emitMessageReadField(f *ir.Field, gate string) {
 		g.emitMessageReadTextFromChecked(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry", gate)
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFromChecked(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false, gate)
+		if gate != "" && f.CountedOnWire() && f.ElidesAtBirth() {
+			// A STORED BIRTH VALUE IS DAMAGE at this build's own shape
+			// (docs/SPEC-TABLES.md §22.2, §3.3): a [Min..N]T holding Min
+			// default elements elides, so a writer of this build never spells
+			// it, the same test the writer's elision makes (emitCountedRides)
+			g.pf("%sif ( %s )\n%s{\n", ind, gate, ind)
+			g.emitCountedRides(f, ind+"    ", func(expr, ind string) {
+				g.pf("%sconst int64_t birth_bits = %s;\n", ind, g.msgMeasureCall(f.Type.Name, "0", expr))
+				g.pf("%sconst bool birth_default = birth_bits >= 0 && birth_bits <= %s;\n", ind, msgRefBits)
+			})
+			g.pf("%s    if ( !rides_%s )\n%s    {\n%s        report->damaged = true;\n%s        return false;\n%s    }\n%s}\n", ind, name, ind, ind, ind, ind, ind)
+		}
 	case tableScalarKind(f) == tkUnion:
 		// (c) the explicit empty arm is refused from the announcement alone,
 		// so it needs no build-version gate (§3.3)
@@ -848,9 +860,9 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("//\n")
 	g.pf("// `count` is IN and OUT: in, the storage the caller has room for, and out,\n")
 	g.pf("// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,\n")
-	g.pf("// batch_too_large, found from the count before a body is decoded, and count\n")
-	g.pf("// comes back holding the WIRE's M, so the caller calls again with storage at\n")
-	g.pf("// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH\n")
+	g.pf("// batch_too_large, found from the count before a body is decoded: count\n")
+	g.pf("// comes back 0, as for every refused batch, and the storage is untouched; a\n")
+	g.pf("// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH\n")
 	g.pf("// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,\n")
 	g.pf("// and every body the walk touched is reset to its declared defaults.\n")
 	g.pf("inline bool %sLoadMessages( %s * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
@@ -866,7 +878,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 		g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
 	}
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
-	g.pf("    if ( bodies > capacity )\n    {\n        *count = bodies;\n        TableMessageRefuseBatch( to );\n        return false;\n    }\n")
+	g.pf("    if ( bodies > capacity )\n    {\n        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)\n        return false;\n    }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
 	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { %sReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)\n", n, n)
 	g.pf("        br.remaining--;\n    }\n")

@@ -22,13 +22,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t15GuardChainSchema is THE fixture of the five legs' T15GuardChain tests.
@@ -190,7 +191,7 @@ if (failures === 0) { console.log("PROBE OK"); } else { process.exit(1); }
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(node, filepath.Join(dir, "probe.mjs")).CombinedOutput()
+	out, err := testproc.Command(t, node, filepath.Join(dir, "probe.mjs")).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "PROBE OK") {
 		t.Fatalf("the driven reader failed (%v):\n%s", err, out)
 	}

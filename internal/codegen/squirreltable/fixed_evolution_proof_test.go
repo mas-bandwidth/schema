@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,6 +29,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // sqEvoFile frames a form-3 file: the header, the layout, and each body behind
@@ -132,7 +133,7 @@ func (g *sqEvoGen) exec(t *testing.T, main string, inputs map[string][]byte) (st
 	if err := os.WriteFile(filepath.Join(g.dir, "main.nut"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(sq, "main.nut")
+	cmd := testproc.Command(t, sq, "main.nut")
 	cmd.Dir = g.dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -479,12 +480,12 @@ func TestSquirrelFixedEvolutionReports(t *testing.T) {
 
 	gc := sqEvoGenerate(t, newer, lineage)
 	gc.plant(t, "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n  _M.FixedWidened <- 0;\n", "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n  if (!(\"FixedWidened\" in _M)) _M.FixedWidened <- 0;\n")
-	if got, _ := gc.exec(t, sqEvoDumper(gc)+seq, inputs); strings.TrimSpace(got) == want {
+	if got, err := gc.exec(t, sqEvoDumper(gc)+seq, inputs); err == nil && strings.TrimSpace(got) == want {
 		t.Errorf("the negative control: a widened count that accumulates across loads still reads w4 each time")
 	}
 	gc = sqEvoGenerate(t, newer, lineage)
 	gc.plant(t, "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n", "_M.NFixedLoad <- function(b, out, cap) {\n  if (!(\"FixedReason\" in _M)) _M.FixedReason <- null;\n  if (!(\"FixedField\" in _M)) _M.FixedField <- null;\n")
-	if got, _ := gc.exec(t, sqEvoDumper(gc)+seq, inputs); strings.TrimSpace(got) == want {
+	if got, err := gc.exec(t, sqEvoDumper(gc)+seq, inputs); err == nil && strings.TrimSpace(got) == want {
 		t.Errorf("the negative control: a reason that outlives its load still reads null after a refusal")
 	}
 }

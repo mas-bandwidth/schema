@@ -65,9 +65,16 @@ build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_
 # build/fixedform-corpus and must save it back byte for byte, so the corpus is
 # a prerequisite, and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure
 # rather than the skip a bare `go test` takes.
-.PHONY: test-goose update-goldens-goose
+.PHONY: test-goose test-goose-recipe update-goldens-goose
 test-goose: toolchain-goose build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goose/... ./internal/codegen/goosetable/...
+	$(MAKE) test-goose-recipe
+test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goose/...
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -skip '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]'
 update-goldens-goose: ;
 
 # THE FIXED FORM'S NEGATIVE CONTROL (make/negative-controls.json, group
@@ -133,6 +140,26 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
 
+# THE WRITE CONTRACT's controls (docs/SPEC.md §5.1). Goose refuses in every
+# build, so each removes one refusal from a copy of the generated units: the
+# fixed writer's ranged-int check (write-refusal), its finite-float check
+# (write-refusal-fixed) and SaveMessages's ranged-int check
+# (write-refusal-message). A fixed root is written through its own form's one
+# checked writer, so the first two turn write-refusal and write-refusal-fixed
+# red together; the message control turns write-refusal-message red alone.
+.PHONY: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message
+conformance-negative-control-goose-write-refusal: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal
+
+conformance-negative-control-goose-write-refusal-fixed: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-fixed
+
+conformance-negative-control-goose-write-refusal-message: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-message
+
 # Whole-load discard (§4), including retaining reads, and the cyclic wire as
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.
@@ -178,3 +205,5 @@ tables-goose-wire-fuzz-verdict: goose-toolchain-ready
 tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
+
+test-goose: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message
