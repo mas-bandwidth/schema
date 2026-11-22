@@ -1007,7 +1007,7 @@ func (g *tableGen) emitListAlignAsserts(members []*ir.Struct) {
 // for itself, because TableList<T> is a type it has no name for. The key
 // arguments are the map's and a list ignores them: it appends.
 func (g *tableGen) listPlaceThunk(f *ir.Field) string {
-	return fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(%s *) slot ); return NULL; } return (void *) TableListPlace( worker, *(%s *) slot ); }", g.listStorageType(f), g.listStorageType(f))
+	return fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd, bool ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(%s *) slot ); return NULL; } return (void *) TableListPlace( worker, *(%s *) slot ); }", g.listStorageType(f), g.listStorageType(f))
 }
 
 // emitUnboundedTextSurface emits the getter/setter surface for an unbounded scalar string field (§2.13.1).
