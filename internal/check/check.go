@@ -4649,7 +4649,7 @@ var tableGeneratedVerbs = []string{
 	// and the JavaScript message body's write preflight, a module-scope
 	// function per root that refuses in every build (docs/SPEC.md §5.1)
 	"MessageBodyOk",
-	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
+	"Reset", "LoadMeasure", "LoadMeasureParts", "LoadMeasureReason", "LoadMeasureWalk", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
 	// the read's two entries over a caller's region and a builder, which the
 	// plain Load and LoadBuilder and the integrity form call (docs/SPEC-TABLES.md §6.5)
 	"LoadRegion", "LoadBuilderRead",

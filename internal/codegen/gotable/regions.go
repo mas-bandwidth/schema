@@ -243,7 +243,8 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 		g.emitIntegrityMember(st, blobmask)
 	} else {
 		g.pf("func %sLoadMeasure(wire []byte) int64 { n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
-		g.pf("// %sLoadMeasureParts reports the region's DATA bytes and its ATTRIBUTION bytes separately (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum, and a refusal answers -1, 0.\nfunc %sLoadMeasureParts(wire []byte)(data,attribution int64){n,a,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);if n<0{return -1,0};return n-a,a}\n", n, n, n, n, blobmask)
+		// LoadMeasureParts reports the region DATA bytes and ATTRIBUTION bytes separately (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum, a refusal answers -1, 0.
+		g.pf("func %sLoadMeasureParts(wire []byte)(data,attribution int64){n,a,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);if n<0{return -1,0};return n-a,a}\n", n, n, n, blobmask)
 		g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
 		g.pf("func %sLoadRegion(region,wire []byte,report *TableReport) *%s { return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 		g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator) }\n", n, typ, n)

@@ -3116,11 +3116,8 @@ type tableFixedCompiler struct {
 	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
-	unlawful bool
-	// kindMismatch is a writer's optional read into a reader's bare field: the
-	// reader cannot hold an absent value, so the lineage refuses by name,
-	// kind_mismatch, as C++ and Rust do (rulings 2026-11-22, R2).
-	kindMismatch bool
+	unlawful       bool
+	absentIntoBare bool // writer's optional into reader's bare: refuses kind_mismatch (R2)
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -3300,7 +3297,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind == 35 && me.Kind != 35 {
-		c.kindMismatch = true
+		c.absentIntoBare = true
 		return
 	}
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -3562,7 +3559,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.unlawful {
 		return -2
 	}
-	if c.kindMismatch {
+	if c.absentIntoBare {
 		return -4
 	}
 	if c.overflow {
@@ -3757,16 +3754,8 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			plan := make([]TableFixedEntry, room)
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
-			if made == -2 {
-				out[i].Why = TableRefuseLayoutMalformed.Error()
-				break
-			}
-			if made == -3 {
-				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
-				break
-			}
-			if made == -4 {
-				out[i].Why = TableRefuseKindMismatch.Error()
+			if made <= -2 { // -2 layout_malformed, -3 layout_record_too_large, -4 kind_mismatch
+				out[i].Why = [...]error{2: TableRefuseLayoutMalformed, 3: TableRefuseLayoutRecordTooLarge, 4: TableRefuseKindMismatch}[-made].Error()
 				break
 			}
 			if made < 0 {

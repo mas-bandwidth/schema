@@ -61,9 +61,9 @@ func TestRulingR2OptionalIntoBareRefusesKindMismatchGo(t *testing.T) {
 	t.Parallel()
 	text := rulingEmitted(t)
 	for _, want := range []string{
-		"if te.Kind == 35 && me.Kind != 35 {\n\t\tc.kindMismatch = true",
-		"if c.kindMismatch {\n\t\treturn -4",
-		"out[i].Why = TableRefuseKindMismatch.Error()",
+		"if te.Kind == 35 && me.Kind != 35 {\n\t\tc.absentIntoBare = true",
+		"if c.absentIntoBare {\n\t\treturn -4",
+		"4: TableRefuseKindMismatch",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("R2: the Go fixed runtime lost %q", want)

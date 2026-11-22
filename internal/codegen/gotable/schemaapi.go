@@ -17,7 +17,7 @@ import (
 var schemaCallableSuffixes = map[string]bool{
 	"Reset": true, "TableType": true,
 	"Load": true, "LoadBody": true, "LoadRegion": true, "LoadMeasure": true,
-	"LoadMeasureReason": true, "LoadBuilder": true, "LoadBuilderRead": true,
+	"LoadMeasureParts": true, "LoadMeasureReason": true, "LoadBuilder": true, "LoadBuilderRead": true,
 	"LoadRetain": true, "ReadStrict": true,
 	"Measure": true, "MeasureReason": true, "MeasureBody": true,
 	"Save": true, "SaveBody": true, "SaveBodyFields": true,

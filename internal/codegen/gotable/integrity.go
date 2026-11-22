@@ -46,7 +46,8 @@ func tableIntegritySeal(buffer []byte, n int64) int64 {
 func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	n, typ := st.Name, g.storageName(st.Name)
 	g.pf("func %sLoadMeasure(wire []byte) int64 { wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1};n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
-	g.pf("// %sLoadMeasureParts reports the region's DATA bytes and its ATTRIBUTION bytes separately (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum, and a refusal answers -1, 0.\nfunc %sLoadMeasureParts(wire []byte)(data,attribution int64){wire,ok:=tableIntegrityOpen(wire,nil);if !ok{return -1,0};n,a,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);if n<0{return -1,0};return n-a,a}\n", n, n, n, n, blobmask)
+	// LoadMeasureParts reports the region DATA bytes and ATTRIBUTION bytes separately (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum, a refusal answers -1, 0.
+	g.pf("func %sLoadMeasureParts(wire []byte)(data,attribution int64){wire,ok:=tableIntegrityOpen(wire,nil);if !ok{return -1,0};n,a,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);if n<0{return -1,0};return n-a,a}\n", n, n, n, blobmask)
 	g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1,TableRefuseIntegrityMismatch};size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
 	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember over
 	// these two (docs/SPEC-TABLES.md §6.5); the trailer is checked first in each.

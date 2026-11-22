@@ -184,7 +184,7 @@ var lobsterRuntimeNames = map[string][]string{
 	},
 	"region_measure.lobster": {
 		"ExtentScan", "extent_body", "extent_field", "extent_field_of", "extent_record", "extent_union",
-		"load_measure", "region_round", "region_size",
+		"load_measure", "load_measure_parts", "region_round", "region_size",
 	},
 	"retain_unknown.lobster": {
 		"Cursor", "Emitter", "Resolver", "Retain", "RetainCaptureImpl", "RetainTailImpl", "cur_has", "cur_leb",

@@ -272,7 +272,7 @@ export class TableFixedPlan {
     this.ready = false;
     this.overflow = false;
     this.hostile = false;
-    this.kindMismatch = false;
+    this.absentIntoBare = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
@@ -1182,7 +1182,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   // and the payload is compiled against the writer's own entry under the same
   // guard and ordinal. It is not a kind that moved.
   if (theirKind === 35 && myKind !== 35) {
-    plan.kindMismatch = true;
+    plan.absentIntoBare = true;
     return;
   }
   if (myKind === 35 && theirKind !== 35) {
@@ -1589,7 +1589,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
-  plan.kindMismatch = false;
+  plan.absentIntoBare = false;
   plan.argw = 1;
   // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
@@ -1607,7 +1607,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
-  if (plan.kindMismatch) { return -3; }
+  if (plan.absentIntoBare) { return -3; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }

@@ -95,8 +95,8 @@ func TestRulingsR2R5R9PortRows(t *testing.T) {
 	}{
 		// R2: a writer's ?T read into a bare T refuses kind_mismatch
 		{"R2 dart", darttable.Generate, []string{"plan.optionalIntoBare = true", "static const int wrongKind = 24;"}},
-		{"R2 js", jstable.Generate, []string{"plan.kindMismatch = true", "KindMismatch: 24"}},
-		{"R2 rust", rusttable.Generate, []string{"c.kind_mismatch = true", "Self::KindMismatch => \"kind_mismatch\""}},
+		{"R2 js", jstable.Generate, []string{"plan.absentIntoBare = true", "KindMismatch: 24"}},
+		{"R2 rust", rusttable.Generate, []string{"c.absent_into_bare = true", "Self::KindMismatch => \"kind_mismatch\""}},
 		{"R2 goose", goosetable.Generate, []string{"FixedRefuseKindMismatch"}},
 		{"R2 lua", luatable.Generate, []string{"error(\"kind_mismatch\", 0)"}},
 		{"R2 squirrel", squirreltable.Generate, []string{"return \"kind_mismatch\";"}},

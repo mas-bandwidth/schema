@@ -1404,7 +1404,7 @@ struct Compiler<'a> {
     // too_large is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
     // WHOLE under layout_record_too_large and never lands a short read.
     too_large: bool,
-    kind_mismatch: bool,
+    absent_into_bare: bool,
     // record is the WRITER's declared root size, the bound every entry's
     // source extent is held to.
     record: u32,
@@ -1555,7 +1555,7 @@ pub fn table_fixed_compile(
         remap_used: 0,
         overflow: false,
         too_large: false,
-        kind_mismatch: false,
+        absent_into_bare: false,
         // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
         // declared size, taken from the layout this plan is compiled against.
         record: theirs.entry(0).size,
@@ -1566,7 +1566,7 @@ pub fn table_fixed_compile(
     if c.too_large {
         return report.refuse(TableFixedReason::LayoutRecordTooLarge);
     }
-    if c.kind_mismatch {
+    if c.absent_into_bare {
         return report.refuse(TableFixedReason::KindMismatch);
     }
     if c.overflow {
@@ -1719,7 +1719,7 @@ fn compile_entry(
     // which is the unguarded case the bill names, so the readings part only
     // under a union arm — where the guarded one is right.)
     if te.kind == 35 && me.kind != 35 {
-        c.kind_mismatch = true;
+        c.absent_into_bare = true;
         return;
     }
     if me.kind == 35 && te.kind != 35 {
