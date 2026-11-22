@@ -5515,6 +5515,11 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			case *ir.Enum:
 				fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
 				for j := range ref.Variants {
+					if variantDeprecated(ref, j) {
+						// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+						fmt.Fprintf(b, "                    case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
+						continue
+					}
 					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
 				}
 				fmt.Fprintf(b, "                    default: assert v.%s.get(i) == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n                }\n", m)
@@ -5856,6 +5861,11 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "        switch (v.%s) {\n", m)
 			for i := range enum.Variants {
+				if variantDeprecated(enum, i) {
+					// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+					fmt.Fprintf(b, "            case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
+					continue
+				}
 				fmt.Fprintf(b, "            case %d: TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
 			}
 			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
