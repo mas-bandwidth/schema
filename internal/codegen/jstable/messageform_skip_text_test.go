@@ -40,7 +40,7 @@ fixed table Msg
 	if !strings.Contains(textCase, "r.Align()") {
 		t.Errorf("kind 12 skip must align:\n%s", textCase)
 	}
-	if !strings.Contains(textCase, "r.Skip(Number(n) * 8)") {
+	if !strings.Contains(textCase, "r.Skip(globalThis.Number(n) * 8)") {
 		t.Errorf("kind 12 skip must skip count bytes after the alignment:\n%s", textCase)
 	}
 	if strings.Contains(textCase, "s.Kind") {

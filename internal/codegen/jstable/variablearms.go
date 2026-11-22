@@ -150,7 +150,7 @@ const jsVariableArmsRuntime = `
 let TableVariableEntryCache = null;
 
 function TableVariableBytesCompare(x, y) {
-  const n = Math.min(x.length, y.length);
+  const n = globalThis.Math.min(x.length, y.length);
   for (let i = 0; i < n; i++) { if (x[i] !== y[i]) { return x[i] < y[i] ? -1 : 1; } }
   return x.length === y.length ? 0 : (x.length < y.length ? -1 : 1);
 }
@@ -201,17 +201,17 @@ function TableVariableLinkDesc(d, codecs, unions) {
   if (d.un !== undefined) { d.u = unions[d.un]; }
   if (d.e !== undefined) { TableVariableLinkDesc(d.e, codecs, unions); }
   if (d.slots !== undefined) {
-    d.slotById = new Map();
-    d.slotByName = new Map();
+    d.slotById = new globalThis.Map();
+    d.slotByName = new globalThis.Map();
     d.slots.forEach((s, i) => { if (s !== null) { d.slotById.set(s[1], i); d.slotByName.set(s[0], i); } });
   }
 }
 
 function TableVariableLinkUnions(codecs, unions) {
-  for (const name of Object.keys(unions)) {
+  for (const name of globalThis.Object.keys(unions)) {
     const u = unions[name];
-    u.byId = new Map();
-    u.byName = new Map();
+    u.byId = new globalThis.Map();
+    u.byName = new globalThis.Map();
     for (const arm of u.arms) {
       u.byId.set(arm.id, arm);
       u.byName.set(arm.name, arm);
@@ -226,10 +226,10 @@ function TableVariableLinkUnions(codecs, unions) {
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": case "str": case "enum": return fd.def;
-    case "bytes": return Uint8Array.from(fd.def);
-    case "arr": return fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
+    case "bytes": return globalThis.Uint8Array.from(fd.def);
+    case "arr": return fd.fixed ? globalThis.Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
     case "tab": return fd.c.make();
-    case "map": return new Map();
+    case "map": return new globalThis.Map();
     case "keyed": return fd.slots.map(() => TableVariableElemDefault(fd.e));
   }
   return null;
@@ -302,7 +302,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "bytes": {
-      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
+      if (!(val instanceof globalThis.Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       TableVariableHeader(w, ids, fd, 14);
       const body = new TableVariableWriter();
       body.u8(6);
@@ -353,7 +353,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 // order, each entry ALWAYS riding (identity is the key); only a non-optional
 // empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (!(val instanceof Map)) { return false; }
+  if (!(val instanceof globalThis.Map)) { return false; }
   if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
@@ -457,7 +457,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       w.raw(TableVariableUtf8Encode(x));
       return true;
     case "bytes":
-      if (!(x instanceof Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
+      if (!(x instanceof globalThis.Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
       w.u8(6); w.leb(x.length); w.raw(x);
       return true;
     case "enum": {
@@ -564,10 +564,10 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
-    const m = new Map();
+    const m = new globalThis.Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
-    const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
+    const sub = new TableVariableReader(r.b, r.at, globalThis.Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false, kindBad = false;
     for (let i = 0; i < count; i++) {
@@ -626,7 +626,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
   // count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
   if (!TableVariableKeyedElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
-  const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
+  const sub = new TableVariableReader(r.b, r.at, globalThis.Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
@@ -814,7 +814,7 @@ const jsVariableArmsTextRuntime = `
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
-  if (!(val instanceof Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
+  if (!(val instanceof globalThis.Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
@@ -823,7 +823,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   for (let i = 0; i < ents.length; i++) {
     if (!TableVariableJsonField(kd, ents[i].key, depth + 1, g, [])) { return false; }
     if (i > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
+    out.push(ind + TableVariableJsonString(globalThis.String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
   }
   out.push("\n" + "  ".repeat(depth) + "}");
@@ -877,10 +877,10 @@ function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
   if (m === null) { return { status: "damaged" }; }
   if (!TableVariableIntegerToken(s)) { return { status: "mismatch" }; }
-  const digits = BigInt(m[2]);
+  const digits = globalThis.BigInt(m[2]);
   const x = m[1] === "-" ? -digits : digits;
   if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
-  return { status: "ok", key: kd.big ? x : Number(x) };
+  return { status: "ok", key: kd.big ? x : globalThis.Number(x) };
 }
 
 // Map values retain an entry even when its non-null value has the wrong
@@ -909,9 +909,9 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   // (linear work in the entry count): a string key is equal exactly when its
   // UTF-8 is, and an integer key (Number or BigInt) by value, which is Map's
   // own key equality
-  const at = new Map();
+  const at = new globalThis.Map();
   const mapField = inp.field;
-  v[fd.n] = new Map();
+  v[fd.n] = new globalThis.Map();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; break; }
@@ -959,7 +959,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   inp.p++;
   const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
   v[fd.n] = arr;
-  const seen = new Set();
+  const seen = new globalThis.Set();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; return true; }

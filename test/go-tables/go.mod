@@ -19,6 +19,17 @@ require github.com/mas-bandwidth/schema/v2 v2.0.0
 
 replace github.com/mas-bandwidth/schema/v2 => ../..
 
+// THIS MODULE DOES NOT BUILD FROM A PLAIN CLONE, and cannot: its units are
+// the generated Go of the tables corpora, written by
+// `make build/tables-generated-go/.stamp`, and its serialize.go runtime is
+// the sibling checkout ../serialize.go that `make deps` clones. `go test`
+// here fails at setup naming the missing replacement directory. Run
+//
+//	make deps build/tables-generated-go/.stamp
+//
+// first. `make test-go`, the lane that runs this module, builds the generated
+// units itself; the sibling is a bench prerequisite. Every test inside builds
+// the rest of what it reads itself.
 replace tabledemo => ../../build/tables-generated-go/examples
 
 replace tblv1 => ../../build/tables-generated-go/v1

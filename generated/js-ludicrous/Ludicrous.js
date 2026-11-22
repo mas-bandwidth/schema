@@ -30,7 +30,7 @@ export const MaxWorldUnits = 30000;
 // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const DriveMode = Object.freeze({
+export const DriveMode = globalThis.Object.freeze({
   None: 0,
   Cruise: 1,
   Warp: 2,
@@ -62,7 +62,7 @@ export class FixedProbe {
     this.position = 0n; // wire [-30000, 30000]
     this.reach = 0n; // wire [-1000000, 1000000]
     this.ticks = 0; // wire [0, 1000000]
-    this.samples = new Array(2).fill(0); // wire [-8, 8]
+    this.samples = new globalThis.Array(2).fill(0); // wire [-8, 8]
   }
 }
 
@@ -90,7 +90,7 @@ export function ZeroFixedProbe(value) {
 }
 
 export function WriteFixedProbe(stream, value) {
-  if (!Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return false;
   }
   NUMBER_SCRATCH.value = value.angle;
@@ -111,7 +111,7 @@ export function WriteFixedProbe(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, -1000000n, 1000000n)) {
     return false;
   }
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ticks;
@@ -119,7 +119,7 @@ export function WriteFixedProbe(stream, value) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    if (!Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
+    if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
       return false;
     }
     NUMBER_SCRATCH.value = value.samples[i];
@@ -163,7 +163,7 @@ export class UnsignedProbe {
     this.span = 0n; // wire [0, 281474976710655]
     this.reach = 0n; // wire [0, 2000000]
     this.ticks = 0; // wire [0, 1000000]
-    this.samples = new Array(2).fill(0); // wire [0, 16]
+    this.samples = new globalThis.Array(2).fill(0); // wire [0, 16]
     this.locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
     this.tail = 0;
   }
@@ -197,7 +197,7 @@ export function ZeroUnsignedProbe(value) {
 }
 
 export function WriteUnsignedProbe(stream, value) {
-  if (!Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return false;
   }
   NUMBER_SCRATCH.value = value.angle;
@@ -218,7 +218,7 @@ export function WriteUnsignedProbe(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, 0n, 2000000n)) {
     return false;
   }
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ticks;
@@ -226,7 +226,7 @@ export function WriteUnsignedProbe(stream, value) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    if (!Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 1048576) {
+    if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 1048576) {
       return false;
     }
     NUMBER_SCRATCH.value = value.samples[i];
@@ -237,7 +237,7 @@ export function WriteUnsignedProbe(stream, value) {
   if (value.locked !== 196608) {
     return false;
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -381,7 +381,7 @@ export class LudicrousState {
     this.mode = DriveMode.None;
     this.probe = new FixedProbe();
     this.wide = new WideProbe();
-    this.keys = new Array(4).fill(0n);
+    this.keys = new globalThis.Array(4).fill(0n);
     this.keysCount = 0;
     this.hasTarget = false;
 
@@ -419,7 +419,7 @@ export function ZeroLudicrousState(value) {
 }
 
 export function WriteLudicrousState(stream, value) {
-  if (!Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.mode;
@@ -432,7 +432,7 @@ export function WriteLudicrousState(stream, value) {
   if (!WriteWideProbe(stream, value.wide)) {
     return false;
   }
-  if (!Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.keysCount;
@@ -535,13 +535,13 @@ export function WriteDegenerateProbe(stream, value) {
   if (value.lockedFixed !== -196608) {
     return false;
   }
-  if (!Number.isInteger(value.lockedInt) || value.lockedInt < 7 || value.lockedInt > 7) {
+  if (!globalThis.Number.isInteger(value.lockedInt) || value.lockedInt < 7 || value.lockedInt > 7) {
     return false;
   }
   if (value.lockedWide !== -12345678901234n) {
     return false;
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -663,28 +663,28 @@ export function ZeroFixedQuat(value) {
 }
 
 export function WriteFixedQuat(stream, value) {
-  if (!Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
+  if (!globalThis.Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.w;
