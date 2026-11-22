@@ -30,6 +30,8 @@ type Rec
 
 fixed table FixI32 { few [2..4]int32 }
 fixed table FixRec { few [2..4]Rec }
+fixed table FixT3 { a [3]Rec }
+table VarT3 { a [3]Rec }
 fixed table FixF64 { few [2..4]float64 }
 table VarI32 { few [2..4]int32 }
 table VarRec { few [2..4]Rec }
@@ -50,6 +52,9 @@ func countedBirthCases() []countedBirthCase {
 		{"min_default", "FixRec", "VarRec", `{"few":[{},{}]}`, "v.few = {T.NewRec(), T.NewRec()}"},
 		{"min_one", "FixRec", "VarRec", `{"few":[{},{"n":56}]}`, "v.few[2].n = 56"},
 		{"min_plus1_default", "FixRec", "VarRec", `{"few":[{},{},{}]}`, "v.few = {T.NewRec(), T.NewRec(), T.NewRec()}"},
+		{"fresh", "FixT3", "VarT3", "", ""},
+		{"t3_default", "FixT3", "VarT3", `{"a":[{},{},{}]}`, "v.a = {T.NewRec(), T.NewRec(), T.NewRec()}"},
+		{"t3_one", "FixT3", "VarT3", `{"a":[{},{},{"n":56}]}`, "v.a[3].n = 56"},
 		{"fresh", "FixF64", "VarF64", "", ""},
 		{"min_default", "FixF64", "VarF64", `{"few":[0,0]}`, "v.few = {0.0, 0.0}"},
 		{"min_negzero", "FixF64", "VarF64", `{"few":[0,-0.0]}`, "v.few[2] = -0.0"},
