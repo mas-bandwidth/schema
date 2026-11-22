@@ -34,7 +34,6 @@ public final class TableCookFieldInfo {
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
     public int tag; // a union ARM's tag (§7.2); 0 for a record's field
-    public boolean ranged; // a COMPRESSED float (a declared range): its -0 cooks as +0 (§3.3)
 
     /**
      * a LIST or MAP holder: one element's size and alignment in the node extent, and the element as
@@ -44,6 +43,9 @@ public final class TableCookFieldInfo {
 
     public int extentAlign;
     public TableCookFieldInfo element;
+
+    /** a COMPRESSED float (§3.3): its -0 is cooked as +0, the bits +0 cooks. */
+    public boolean compressed;
 
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
@@ -84,20 +86,17 @@ public final class TableCookFieldInfo {
         return f;
     }
 
+    /** this field as a COMPRESSED float, whose -0 the writer stores as +0 (§3.3). */
+    public TableCookFieldInfo compressed() {
+        this.compressed = true;
+        return this;
+    }
+
     /** this field as a LIST or MAP holder over elements of the given size and alignment. */
     public TableCookFieldInfo extent(int size, int align, TableCookFieldInfo element) {
         this.extentSize = size;
         this.extentAlign = align;
         this.element = element;
-        return this;
-    }
-
-    /**
-     * this field as a COMPRESSED float (docs/SPEC-TABLES.md §3.3, ruling fixed-compressed-negzero):
-     * its -0 is cooked as +0, the bits +0 cooks; a plain float keeps its -0.
-     */
-    public TableCookFieldInfo ranged() {
-        this.ranged = true;
         return this;
     }
 }

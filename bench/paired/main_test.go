@@ -509,10 +509,15 @@ func TestDartIsATableOnlyLanguage(t *testing.T) {
 	if err := checkRequestShape("build", append(append([]string{}, languages...), "dart")); err != nil {
 		t.Fatal("the one build takes the whole sitting, dart included:", err)
 	}
-	for _, p := range ninePasses("out", []string{"cpp", "c", "go", "cs", "dart"}) {
-		if p.name == "paired" && contains(p.langs, "dart") {
-			t.Fatal("dart reached the paired pass:", p.langs)
-		}
+	passes := ninePasses("out", []string{"cpp", "c", "go", "cs", "dart"})
+	if len(passes) != 2 || passes[0].name != "paired" || passes[1].name != "dart" {
+		t.Fatal("cpp,c,go,cs,dart is one paired pass and one dart pass:", passes)
+	}
+	if strings.Join(passes[0].langs, ",") != "cpp,c,go,cs" {
+		t.Fatal("dart reached the paired pass:", passes[0].langs)
+	}
+	if strings.Join(passes[1].langs, ",") != "dart" {
+		t.Fatal("dart's own pass carries dart alone:", passes[1].langs)
 	}
 	args := runner("table", "dart", "--gate").args
 	if args[0] != binary("table", "dart") || args[0] != filepath.Join("build", "paired", "table-dart") {

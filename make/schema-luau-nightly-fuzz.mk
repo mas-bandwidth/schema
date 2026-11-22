@@ -803,8 +803,8 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		echo "negative control failed: the fuzzer did not find the planted reader bug" >&2; exit 1; fi; \
 	echo "negative control: the fuzzer found the planted reader bug"
 	@rm -rf $(LUAU_NF_NC)/findings && mkdir -p $(LUAU_NF_NC)/findings; \
-	line=$$(grep '^FINDING-MIN|' $(LUAU_NF_NC)/fuzz.log | head -1); \
-	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | head -1); \
+	line=$$(grep '^FINDING-MIN|' $(LUAU_NF_NC)/fuzz.log | sed -n 1p); \
+	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | sed -n 1p); \
 	echo "$$line" | while IFS='|' read -r _ kind unit root seed iter why hex; do \
 		f=$(LUAU_NF_NC)/findings/nc-input.bin; \
 		printf '%s' "$$hex" | xxd -r -p > "$$f"; \

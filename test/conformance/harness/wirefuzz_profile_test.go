@@ -154,6 +154,9 @@ func TestWireFuzzMixedBuilderRetainPreservesRetentionDomain(t *testing.T) {
 	if len(got) != len(base) || len(mixedRoots) != len(roots) || skipped != gotSkipped {
 		t.Fatal("mixed retain changed retention domain")
 	}
+	if len(got) == 0 || len(mixedRoots) == 0 {
+		t.Fatalf("the retaining roster is empty (%d seeds, %d roots): the policy checks below would compare nothing", len(got), len(mixedRoots))
+	}
 	for i, s := range got {
 		if s.name != base[i].name || s.vector != base[i].vector {
 			t.Fatal("mixed retain changed seed policy")

@@ -162,6 +162,9 @@ func TestSpecJsonReadIsClosed(t *testing.T) {
 		for _, r := range named {
 			files[r.json] = true
 		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
+		}
 		for _, e := range entries {
 			if e.IsDir() || e.Name() == "MANIFEST.tsv" {
 				continue

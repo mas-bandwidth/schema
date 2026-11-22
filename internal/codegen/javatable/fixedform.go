@@ -1128,7 +1128,7 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 // slot is a block — Int128.compareTo or UInt128.compareUnsigned, as the
 // packet emitter's emitCheck128Ranged — and every other slot is one assert
 // of fixedCheckElement, or no lines when the slot admits every value its
-// storage holds (a bool, a float — row 7 is the save's finite pass — a bare
+// storage holds (a bool, an unranged float — row 7 is the save's finite pass — a bare
 // uint128, a flags mask, a nested table or union, which assert their own).
 func fixedCheckSlot(f *ir.Field, e, ind string) []string {
 	typ := fixedScalarType(f.Type)
@@ -1193,6 +1193,17 @@ func fixedCheckElement(f *ir.Field, e string) string {
 			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
 		}
 		return ""
+	}
+	// A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
+	// §3.3): the slot is inside the float32 nearest each declared end, the
+	// test the reader's scatter holds, so a save never stores what its own
+	// load refuses. A NaN or an infinity is the finite pass's, not this one's.
+	if lo, hi, ok := fixedFloatRange(f); ok {
+		finite := "java.lang.Float.isFinite"
+		if f.Type.Kind == ir.TFloat64 {
+			finite = "java.lang.Double.isFinite"
+		}
+		return fmt.Sprintf("!%s(%s) || (%s >= %s && %s <= %s)", finite, e, e, lo, e, hi)
 	}
 	switch f.Type.Kind {
 	case ir.TInt, ir.TBits, ir.TFixed:
@@ -1320,9 +1331,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, off int64, buf, at, expr string
 	case ir.TBool:
 		g.pf("%sTableFixed.put8(%s, %s + %d, %s ? 1 : 0);\n", ind, buf, at, off, expr)
 	case ir.TFloat32:
-		g.pf("%sTableFixed.put32(%s, %s + %d, java.lang.Float.floatToRawIntBits(%s));\n", ind, buf, at, off, javaFloatStored(f, expr))
+		// a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+		g.pf("%sTableFixed.put32(%s, %s + %d, java.lang.Float.floatToRawIntBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	case ir.TFloat64:
-		g.pf("%sTableFixed.put64(%s, %s + %d, java.lang.Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, javaFloatStored(f, expr))
+		g.pf("%sTableFixed.put64(%s, %s + %d, java.lang.Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	default:
 		if w == 16 {
 			// the LOW 64-bit half then the HIGH, the type wire's own order (§3)

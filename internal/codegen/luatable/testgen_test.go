@@ -63,6 +63,9 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 			}
 		}
 	}
+	if len(roots) == 0 {
+		t.Fatal("roots is empty: the loop below would check nothing")
+	}
 	for _, root := range roots {
 		var seen, skipped bool
 		for _, src := range tests {

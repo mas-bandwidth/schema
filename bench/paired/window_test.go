@@ -389,12 +389,15 @@ func TestFinalWriteFailureRetainsJournalAndRefusesSeal(t *testing.T) {
 
 // This subprocess waits without doing benchmark work. The parent test must
 // terminate its own child when the synthetic monitor sees a foreign compiler.
+// Outside that parent it does nothing; as the child, surviving the whole wait
+// means the parent never stopped it, and that is a failure.
 func TestQuietWindowChild(t *testing.T) {
 	if os.Getenv("SCHEMA_WINDOW_TEST_CHILD") != "1" {
 		t.Skip("helper for TestQuietWindowStopsOwnedRunnerAndRetainsRefusal")
 	}
 	fmt.Print("child ready\n")
 	time.Sleep(30 * time.Second)
+	t.Fatal("quiet-window child outlived its 30s wait: the owning window never stopped it")
 }
 
 func TestQuietWindowStopsOwnedRunnerAndRetainsRefusal(t *testing.T) {

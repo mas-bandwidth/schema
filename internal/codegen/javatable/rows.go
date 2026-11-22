@@ -567,15 +567,15 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	// a COMPRESSED float's -0 cooks as +0 (docs/SPEC-TABLES.md §3.3, ruling
-	// fixed-compressed-negzero), in every build
-	ranged := ""
-	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && !f.Type.Pointer {
-		ranged = ".ranged()"
+	// a COMPRESSED float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3;
+	// docs/rulings.json fixed-compressed-negzero); a plain float's rides
+	compressed := ""
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		compressed = ".compressed()"
 	}
 	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)%s",
 		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
-		cookStorageKind(f), names, ranged)
+		cookStorageKind(f), names, compressed)
 }
 
 // cookStorageKind is what a cooked SLOT holds, which is not always what the

@@ -9,22 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// javaFloatStored is the value a float write stores: a compressed float's -0
-// is stored as +0 in every build (docs/SPEC-TABLES.md §3.3, docs/rulings.json
-// fixed-compressed-negzero), and a plain float keeps its bits.
-func javaFloatStored(f *ir.Field, expr string) string {
-	if !f.HasFloatRange {
-		return expr
-	}
-	switch f.Type.Kind {
-	case ir.TFloat32:
-		return "(" + expr + " == 0.0f ? 0.0f : " + expr + ")"
-	case ir.TFloat64:
-		return "(" + expr + " == 0.0 ? 0.0 : " + expr + ")"
-	}
-	return expr
-}
-
 func variableElement(f *ir.Field) *ir.Field {
 	one := *f
 	one.Array = ir.ArrayNone
@@ -33,6 +17,23 @@ func variableElement(f *ir.Field) *ir.Field {
 	one.KeyEnumRef = nil
 	one.Type.Optional = false
 	return &one
+}
+
+// javaStoredFloat is the value every writer stores for a float: the value
+// itself, except that a COMPRESSED float's -0 is stored as +0, the bits +0
+// stores (docs/SPEC-TABLES.md §3.3; docs/rulings.json fixed-compressed-negzero).
+// -0.0f == 0.0f in Java, so the test stores +0 for both zeros. A plain float's
+// -0 is a value and rides bit-exact. Elision and every store take it.
+func javaStoredFloat(f *ir.Field, expr string) string {
+	switch {
+	case !f.HasFloatRange:
+		return expr
+	case f.Type.Kind == ir.TFloat32:
+		return "(" + expr + " == 0.0f ? 0.0f : " + expr + ")"
+	case f.Type.Kind == ir.TFloat64:
+		return "(" + expr + " == 0.0 ? 0.0 : " + expr + ")"
+	}
+	return expr
 }
 
 func variableDefaultTest(f *ir.Field, expr string) string {
@@ -45,13 +46,6 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	if f.Type.Pointer {
 		return expr + "==null"
 	}
-	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
-		// A COMPRESSED float's -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
-		// fixed-compressed-negzero): it is its default BY VALUE, so a -0
-		// under a +0 default elides as +0 does; a NaN is never the default
-		// and reaches the writer's refusal.
-		return "(" + expr + ")==" + variableDefault(f)
-	}
 	switch f.Type.Kind {
 	case ir.TString:
 		return expr + ".equals(" + variableDefault(f) + ")"
@@ -61,12 +55,15 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 		// A FLOAT IS ITS DEFAULT BY ITS BITS (docs/SPEC-TABLES.md §3.3): a -0
 		// under a +0 default rides. The default's bits are a constant, parsed
 		// from the same literal javac reads, so the test stays one short line.
+		// A COMPRESSED float's -0 is +0 (javaStoredFloat).
+		expr = javaStoredFloat(f, expr)
 		def := variableDefault(f)
 		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "f"), 32); err == nil {
 			return fmt.Sprintf("java.lang.Float.floatToRawIntBits(%s)==0x%08x", expr, math.Float32bits(float32(v)))
 		}
 		return "java.lang.Float.floatToRawIntBits(" + expr + ")==java.lang.Float.floatToRawIntBits(" + def + ")"
 	case ir.TFloat64:
+		expr = javaStoredFloat(f, expr)
 		def := variableDefault(f)
 		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "d"), 64); err == nil {
 			return fmt.Sprintf("java.lang.Double.doubleToRawLongBits(%s)==0x%016xL", expr, math.Float64bits(v))

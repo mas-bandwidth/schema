@@ -21,6 +21,9 @@ func TestPythonPointerStreamManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(units) == 0 {
+		t.Fatal("units is empty: the loop below would check nothing")
+	}
 	for _, entry := range units {
 		if entry.key == "streamdemo" {
 			u, err := loadManifestUnit(repo, entry.paths)

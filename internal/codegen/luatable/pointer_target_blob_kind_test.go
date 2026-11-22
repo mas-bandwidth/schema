@@ -399,7 +399,11 @@ end
 				root = "Bin"
 			}
 			row := blobKindRow{name: fmt.Sprintf("%s save %d", root, i%6), root: root, wire: wire}
-			for name, a := range blobKindEngine(m, row) {
+			allBlobKindEngine := blobKindEngine(m, row)
+			if len(allBlobKindEngine) == 0 {
+				t.Fatal("blobKindEngine(m, row) is empty: the loop below would check nothing")
+			}
+			for name, a := range allBlobKindEngine {
 				if a.verdict != "read" || a.unknown != 0 {
 					t.Errorf("%s (%s): the engine's %s read answers %+v, want read with unknown 0", row.name, hex.EncodeToString(wire), name, a)
 				}

@@ -209,7 +209,8 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimX != 0.0f) {
+            if (java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(16L, 7);
                 if (!java.lang.Float.isFinite(v.aimX)) {
                     return false;
@@ -224,7 +225,8 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimY != 0.0f) {
+            if (java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(17L, 7);
                 if (!java.lang.Float.isFinite(v.aimY)) {
                     return false;
@@ -239,7 +241,8 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimZ != 0.0f) {
+            if (java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(18L, 7);
                 if (!java.lang.Float.isFinite(v.aimZ)) {
                     return false;
@@ -1258,7 +1261,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.aimX != 0.0f)) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1305,7 +1309,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.aimY != 0.0f)) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1352,7 +1357,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.aimZ != 0.0f)) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }

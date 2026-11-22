@@ -451,7 +451,12 @@ func idTableSpellings(data []byte) (map[string]bool, error) {
 // repeats are not judged here.
 func sharedFixtureSpellings(u *ir.Unit, root *ir.Struct, data []byte) (map[string]bool, error) {
 	out, err := damageAwareFileSpellings(u, root, data)
-	f, _ := damageAwareFrame(data)
+	f, frameErr := damageAwareFrame(data)
+	if err == nil {
+		// the same bytes framed twice: a frame error the spellings pass did
+		// not report is still the file's verdict
+		err = frameErr
+	}
 	scopes := damageAwareScopes(u, root, f)
 	complete := map[int]bool{}
 	for _, field := range f.fields {

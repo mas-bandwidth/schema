@@ -424,7 +424,7 @@ public final class BenchMixedRow {
                                     -1,
                                     TableCookStorage.FLOAT,
                                     null)
-                            .ranged();
+                            .compressed();
             fields[16] =
                     TableCookFieldInfo.of(
                                     "aim_y",
@@ -439,7 +439,7 @@ public final class BenchMixedRow {
                                     -1,
                                     TableCookStorage.FLOAT,
                                     null)
-                            .ranged();
+                            .compressed();
             fields[17] =
                     TableCookFieldInfo.of(
                                     "aim_z",
@@ -454,7 +454,7 @@ public final class BenchMixedRow {
                                     -1,
                                     TableCookStorage.FLOAT,
                                     null)
-                            .ranged();
+                            .compressed();
             fields[18] =
                     TableCookFieldInfo.of(
                             "recoil",

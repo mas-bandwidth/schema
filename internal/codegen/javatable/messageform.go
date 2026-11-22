@@ -2163,12 +2163,9 @@ func (g *messageGen) scalarOrUnionRidesExpr(f *ir.Field, expr string) string {
 		def = init
 	}
 	// A FLOAT RIDES BY ITS BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule): a
-	// -0 under a +0 default is not the default. A COMPRESSED float's -0 IS +0
-	// (ruling fixed-compressed-negzero): it rides by value, so a -0 under a
-	// +0 default elides as +0 does.
-	if f.HasFloatRange && (typ == "float" || typ == "double") {
-		return expr + " != " + def
-	}
+	// -0 under a +0 default is not the default. A COMPRESSED float's -0 is
+	// stored as +0 (fixed-compressed-negzero), so it compares as +0.
+	expr = javaStoredFloat(f, expr)
 	switch typ {
 	case "float":
 		return "java.lang.Float.floatToRawIntBits(" + expr + ") != java.lang.Float.floatToRawIntBits(" + def + ")"
@@ -2331,7 +2328,7 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 	// false before the quantizer runs, so measure and save both return -1.
 	case int(kind) == ir.TableKindF64:
 		g.pf("%sif (!java.lang.Double.isFinite(%s)) { return false; }\n", ind, expr)
-		g.pf("%sw.put(java.lang.Double.doubleToRawLongBits(%s), 64);\n", ind, javaFloatStored(f, expr))
+		g.pf("%sw.put(java.lang.Double.doubleToRawLongBits(%s), 64);\n", ind, expr)
 
 	case int(kind) == ir.TableKindF32:
 		g.pf("%sif (!java.lang.Float.isFinite(%s)) { return false; }\n", ind, expr)
@@ -2340,7 +2337,7 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 			g.pf("%sTableMessage.writeFloat32Quantized(w, %s, %s, %s, %dL, %d);\n",
 				ind, expr, fixedFloatLit(shape.QMin), fixedFloatLit(delta), count, shape.Bits)
 		} else {
-			g.pf("%sw.put((long) java.lang.Float.floatToRawIntBits(%s) & 0xffffffffL, 32);\n", ind, javaFloatStored(f, expr))
+			g.pf("%sw.put((long) java.lang.Float.floatToRawIntBits(%s) & 0xffffffffL, 32);\n", ind, expr)
 		}
 
 	default:

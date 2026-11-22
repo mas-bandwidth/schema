@@ -31,7 +31,11 @@ table Save
 func TestListsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, listSrc)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if target == "python" {
@@ -80,7 +84,11 @@ func TestNoTargetRefusesAListFreeUnit(t *testing.T) {
 		t.Fatalf("ListFields = %v for a list-free unit", got)
 	}
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		if _, err := c.Generate(u, target, Options{}); err != nil && strings.Contains(err.Error(), "unbounded array") {
 			t.Errorf("--lang %s refused a list-free unit over unbounded arrays: %v", target, err)
 		}

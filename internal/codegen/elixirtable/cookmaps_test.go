@@ -154,6 +154,9 @@ func TestCookWriteMapsAndListsElixir(t *testing.T) {
 	}
 	sort.Strings(paths)
 	t.Logf("cook-write: %d map and list rows, both byte orders, across %v", total, paths)
+	if len(paths) == 0 {
+		t.Fatal("paths is empty: the loop below would check nothing")
+	}
 	for _, p := range paths {
 		rows := byUnit[p]
 		t.Run(filepath.Base(p), func(t *testing.T) {

@@ -243,9 +243,8 @@ func t05R17(t *testing.T) {
 // proved end to end by the leg's own writer and reader.
 func t05R30(t *testing.T) {
 	files := t05Files(t, "VNEW_cfloat_range_widen.schema")
-	// RIDES AS THE FLOAT: the write is the raw bits, never a quantized index
-	// (a compressed float's -0 stored as +0, docs/rulings.json
-	// fixed-compressed-negzero).
+	// RIDES AS THE FLOAT: the write is the raw bits, never a quantized index,
+	// with a compressed -0 stored as +0 (§3.3, fixed-compressed-negzero).
 	t05Has(t, files, "CfloatRangeWidenFixed.java",
 		"Float.floatToRawIntBits((v.aim == 0.0f ? 0.0f : v.aim))",
 		"R30 the writer stores the raw float32 bits, never a quantized index (SPEC-TABLES §3.4)")

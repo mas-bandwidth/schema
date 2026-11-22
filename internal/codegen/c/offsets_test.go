@@ -125,6 +125,9 @@ type Refuse {
 		}
 		body, _, _ := strings.Cut(wire[i:], "\n}\n")
 		lines := strings.Split(body, "\n")
+		if len(lines) == 0 {
+			t.Fatal("lines is empty: the loop below would check nothing")
+		}
 		for n, line := range lines {
 			trimmed := strings.TrimSpace(line)
 			if !strings.HasPrefix(trimmed, "return 0") && !strings.Contains(trimmed, "{ return 0; }") {

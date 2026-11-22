@@ -120,7 +120,11 @@ func TestSquirrelFixedLoadIsTotalOverTheBatch(t *testing.T) {
 		t.Fatalf("the clean batch did not land: %s", out)
 	}
 
-	for _, c := range sqTotalCases() {
+	allSqTotalCases := sqTotalCases()
+	if len(allSqTotalCases) == 0 {
+		t.Fatal("sqTotalCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allSqTotalCases {
 		file := sqEvoClone(clean)
 		c.forge(file, rec)
 		got := g.run(t, sqTotalProbe(g), map[string][]byte{"file": file})
@@ -158,7 +162,11 @@ func TestSquirrelFixedLoadIsTotalNegativeControl(t *testing.T) {
 	clean := g.save(t, "TR", sqTotalFill)
 	rec := sqTotalLastBody(t, clean)
 	g.plant(t, "    local v = _M.TR();\n", "    local v = out[k];\n")
-	for _, c := range sqTotalCases() {
+	allSqTotalCases := sqTotalCases()
+	if len(allSqTotalCases) == 0 {
+		t.Fatal("sqTotalCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allSqTotalCases {
 		file := sqEvoClone(clean)
 		c.forge(file, rec)
 		got := g.run(t, sqTotalProbe(g), map[string][]byte{"file": file})

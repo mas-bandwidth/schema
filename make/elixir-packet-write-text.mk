@@ -17,9 +17,9 @@ build/packet-write-text/elixir/.stamp: bin/schema test/packet-write-text/Text.sc
 	@touch $@
 
 .PHONY: packet-write-text-elixir packet-write-text-elixir-negative-control
-packet-write-text-elixir: build/packet-write-text/elixir/.stamp
+packet-write-text-elixir: build/mustrun build/packet-write-text/elixir/.stamp
 	$(MIX) format --check-formatted build/packet-write-text/elixir/*.ex test/packet-write-text/elixir/*.exs
-	$(ELIXIR) test/packet-write-text/elixir/main.exs
+	$(MUSTRUN) -name packet-write-text-elixir -count 11 -- $(ELIXIR) test/packet-write-text/elixir/main.exs
 
 packet-write-text-elixir-negative-control: packet-write-text-elixir
 	@mkdir -p build/packet-write-text/elixir-negative/beam

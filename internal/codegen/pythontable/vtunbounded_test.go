@@ -251,7 +251,11 @@ func TestPythonVtUnbounded(t *testing.T) {
 		})
 	}
 
-	for _, c := range vtUnboundedRefusals(t, u) {
+	allVtUnboundedRefusals := vtUnboundedRefusals(t, u)
+	if len(allVtUnboundedRefusals) == 0 {
+		t.Fatal("vtUnboundedRefusals(t, u) is empty: the loop below would check nothing")
+	}
+	for _, c := range allVtUnboundedRefusals {
 		t.Run("refusal/"+c.name, func(t *testing.T) {
 			t.Parallel()
 			vtUnboundedExpectRefusal(t, files, "Save", c)
@@ -413,6 +417,9 @@ print("OK")
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if !strings.Contains(out, "OK\n") {
 			t.Fatalf("%s did not finish:\n%s", name, out)
+		}
+		if len(keys) == 0 {
+			t.Fatal("keys is empty: the loop below would check nothing")
 		}
 		for _, key := range keys {
 			value := timedValue(t, out, key)
