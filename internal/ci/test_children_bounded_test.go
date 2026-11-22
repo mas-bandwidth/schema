@@ -93,7 +93,7 @@ func TestEveryTestChildIsBounded(t *testing.T) {
 		}
 		for _, e := range entries {
 			n := e.Name()
-			if e.IsDir() || !strings.HasSuffix(n, ".go") || (!helperDir(dir) && !strings.HasSuffix(n, "_test.go")) {
+			if e.IsDir() || !judgedFile(dir, n) {
 				continue
 			}
 			rel := filepath.ToSlash(filepath.Join(dir, n))

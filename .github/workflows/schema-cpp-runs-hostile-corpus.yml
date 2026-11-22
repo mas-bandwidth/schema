@@ -31,7 +31,7 @@ env:
   GOFLAGS: -mod=readonly
   NOVA_TEST_NO_HOST: '1'
   # the runtime the generated C++ targets, at the tag ci-full.yml pins
-  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_TAG: v2.1.6
 
 jobs:
   corpus:

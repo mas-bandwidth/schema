@@ -2,68 +2,14 @@ package luautable_test
 
 import (
 	"encoding/hex"
-	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
-
-// The reader: bare integers of every width the cases cross.
-const luauRangedReaderSchema = `package probe
-
-fixed table Msg
-{
-    a uint8
-    b uint16
-    q int64
-    r uint64
-    h int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
-}
-`
-
-// The writer under another build: each integer ranged over the top six values
-// of its kind in three bits, so offsets 6 and 7 spell a sum past the kind
-// (no conforming writer emits them; b is announced as a uint8 and widens into
-// the reader's uint16); and s and z, which the reader does not declare and
-// skips.
-const luauRangedWriterSchema = `package probe
-
-fixed table Msg
-{
-    a uint8 = 250 | min = 250, max = 255
-    b uint8 = 250 | min = 250, max = 255
-    q int64 = 9223372036854775802 | min = 9223372036854775802, max = 9223372036854775807
-    r uint64 = 18446744073709551610 | min = 18446744073709551610, max = 18446744073709551615
-    h int128 = 170141183460469231731687303715884105722 | min = 170141183460469231731687303715884105722, max = 170141183460469231731687303715884105727
-    s uint8 = 250 | min = 250, max = 255
-    z int128 = 170141183460469231731687303715884105722 | min = 170141183460469231731687303715884105722, max = 170141183460469231731687303715884105727
-}
-`
-
-const luauRangedProbe = `local inputs = require("./inputs")
-require("./ProbeTable")
-local M = require("./schema_message")
-local voc = M.NewVocabulary()
-assert(M.AnnounceRead(voc, inputs.announce, {}), "announce")
-local function unhex(s: string): buffer
-	local b = buffer.create(#s // 2)
-	for i = 0, #s // 2 - 1 do buffer.writeu8(b, i, tonumber(string.sub(s, 2 * i + 1, 2 * i + 2), 16) :: number) end
-	return b
-end
-for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
-	local words = string.split(line, " ")
-	local r: any = {}
-	local ok, n = pcall(M.LoadMessages, voc, "Msg", unhex(words[2]), 256, r)
-	print(words[1] .. " " .. (if ok and n == 1 then "read" else "refused") .. " " .. tostring(if ok then r.reason else n))
-end
-`
 
 // luauMsgBits is the batch body's bit writer: least significant bit first.
 type luauMsgBits struct {
@@ -89,40 +35,21 @@ func (w *luauMsgBits) put(v uint64, bits int) {
 // plus offset held to the announced kind's domain, never wrapped: a sum past
 // it is refused, for 8, 64 and 128-bit kinds and where the reader is wider
 // than the announced kind. The skip path holds the same sum and calls it
-// damage. The lawful twin of every case reads.
+// damage. The lawful twin of every case reads. The reader and writer
+// schemas, the probe, every case and its batch bytes are the committed corpus
+// testdata/review1121/message-ranged.
 func TestLuauMessageRangedValueHeldToTheAnnouncedKind(t *testing.T) {
 	t.Parallel()
-	load := func(text string) *ir.Unit {
-		p := filepath.Join(t.TempDir(), "Probe.schema")
-		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		u, err := compiler.New().Load([]string{p})
-		if err != nil {
-			t.Fatalf("the unit does not load: %v", err)
-		}
-		return u
-	}
-	reader, writer := load(luauRangedReaderSchema), load(luauRangedWriterSchema)
-	dir := t.TempDir()
-	for _, gen := range []func() (map[string][]byte, error){
-		func() (map[string][]byte, error) { return luau.Generate(reader) },
-		func() (map[string][]byte, error) { return luautable.Generate(reader) },
-	} {
-		files, err := gen()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for name, data := range files {
-			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(luauRangedProbe), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	corpus := filepath.Join(luauReview1121, "message-ranged")
+	rows := review1121Rows(t, filepath.Join(corpus, "cases.tsv"), 5)
+	reader := review1121Unit(t, filepath.Join(corpus, "reader", "Probe.schema"))
+	writer := review1121Unit(t, filepath.Join(corpus, "writer", "Probe.schema"))
+	dir := review1121Modules(t, reader, filepath.Join(corpus, "probe.luau"))
 
+	// the committed batch is a body holding the field at its offset in its
+	// three bits (the high half of a 128-bit kind's offset is zero there
+	// too), then the terminator: rebuilt here under the writer's vocabulary,
+	// so a fixture that drifts from its schema is refused
 	vocab := tablewire.MessageVocabulary(writer)
 	refBits := ir.TableMessageRefBits(len(vocab))
 	field := map[string]*ir.Field{}
@@ -139,10 +66,12 @@ func TestLuauMessageRangedValueHeldToTheAnnouncedKind(t *testing.T) {
 		t.Fatalf("field %s outside the writer's vocabulary", name)
 		return 0
 	}
-	// ranged is a batch of one body holding field name at an offset in its
-	// three bits (the high half of a 128-bit kind's offset is zero there too).
 	ranged := func(name string, offset uint64) string {
-		e := ir.TableFieldEntry(field[name])
+		f := field[name]
+		if f == nil {
+			t.Fatalf("field %s is not the writer's", name)
+		}
+		e := ir.TableFieldEntry(f)
 		if bits := ir.TableMessageValueBits(e.Kind, e.Shape); bits != 3 {
 			t.Fatalf("field %s rides %d bits, want 3", name, bits)
 		}
@@ -152,41 +81,32 @@ func TestLuauMessageRangedValueHeldToTheAnnouncedKind(t *testing.T) {
 		w.put(0, refBits) // the body's terminator
 		return hex.EncodeToString(append([]byte{2, 0}, w.out...))
 	}
-	cases := []struct{ name, batch, want string }{
-		{"a-lawful-255", ranged("a", 5), "read"},
-		{"a-256-past-uint8", ranged("a", 6), "refused"},
-		{"a-257-past-uint8", ranged("a", 7), "refused"},
-		{"b-lawful-255-widened", ranged("b", 5), "read"},
-		{"b-257-past-announced-uint8", ranged("b", 7), "refused"},
-		{"q-lawful-int64-top", ranged("q", 5), "read"},
-		{"q-past-int64", ranged("q", 7), "refused"},
-		{"r-lawful-uint64-top", ranged("r", 5), "read"},
-		{"r-past-uint64", ranged("r", 7), "refused"},
-		{"h-lawful-int128-top", ranged("h", 5), "read"},
-		{"h-past-int128", ranged("h", 7), "refused"},
-		{"s-skip-lawful", ranged("s", 5), "read"},
-		{"s-skip-past-uint8", ranged("s", 7), "refused"},
-		{"z-skip-lawful", ranged("z", 5), "read"},
-		{"z-skip-past-int128", ranged("z", 7), "refused"},
+	read, refused := 0, 0
+	for _, r := range rows {
+		offset, err := strconv.ParseUint(r[2], 10, 3)
+		if err != nil {
+			t.Fatalf("%s: offset %s: %v", r[0], r[2], err)
+		}
+		if b := ranged(r[1], offset); b != r[3] {
+			t.Errorf("%s: field %s at offset %d is the batch %s, the corpus commits %s", r[0], r[1], offset, b, r[3])
+		}
+		if r[4] == "read" {
+			read++
+		} else {
+			refused++
+		}
 	}
-	var lines []string
-	for _, c := range cases {
-		lines = append(lines, c.name+" "+c.batch)
+	if read == 0 || refused == 0 {
+		t.Fatalf("the corpus holds %d read and %d refused rows: each is proven beside the other", read, refused)
 	}
 	raw := luaurun.Run(t, dir, "main.luau", map[string][]byte{
 		"announce": tablewire.Announce(writer),
-		"cases":    []byte(strings.Join(lines, "\n") + "\n"),
+		"cases":    review1121CaseLines(rows),
 	})
-	got := map[string]string{}
-	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
-		name, rest, _ := strings.Cut(line, " ")
-		verdict, why, _ := strings.Cut(rest, " ")
-		t.Logf("%s %s (%s)", name, verdict, why)
-		got[name] = verdict
-	}
-	for _, c := range cases {
-		if got[c.name] != c.want {
-			t.Errorf("%s: got %q, want %q", c.name, got[c.name], c.want)
+	got := review1121Verdicts(t, raw)
+	for _, r := range rows {
+		if got[r[0]] != r[4] {
+			t.Errorf("%s: got %q, want %q", r[0], got[r[0]], r[4])
 		}
 	}
 }

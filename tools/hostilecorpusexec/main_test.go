@@ -67,25 +67,46 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	corpus := t.TempDir()
-	manifest := "probe\twire\tprobe.schema\tRoot\tinputs/probe.bin\ttest\trefuse\tdamaged\t-\n"
-	if err := os.WriteFile(filepath.Join(corpus, "manifest.tsv"), []byte(manifest), 0o600); err != nil {
+	// the committed scenario corpus: one manifest case, the finding that
+	// carries it, and one row per scenario
+	corpus := filepath.Join("testdata", "scenarios")
+	data, err := os.ReadFile(filepath.Join(corpus, "scenarios.tsv"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	findings := filepath.Join(corpus, "findings.tsv")
-	if err := os.WriteFile(findings, []byte("probe\ttest-probe\tinputs/probe.bin\tknown verdict mismatch\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, mode := range []string{"mismatch", "match", "exit", "sanitizer", "hang", "error", "unbound", "unreadable", "skip"} {
-		t.Run(mode, func(t *testing.T) {
+	seen := map[string]int{}
+	for n, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 5 {
+			t.Fatalf("scenarios.tsv line %d: %d fields, want 5", n+1, len(f))
+		}
+		name, mode, budget, carried, want := f[0], f[1], f[2], f[3], f[4]
+		findings := ""
+		switch carried {
+		case "known":
+			findings = filepath.Join(corpus, "findings.tsv")
+		case "none":
+		default:
+			t.Fatalf("scenarios.tsv line %d: findings %q", n+1, carried)
+		}
+		if budget != "spent" && budget != "never" {
+			t.Fatalf("scenarios.tsv line %d: budget %q", n+1, budget)
+		}
+		if want != "true" && want != "false" {
+			t.Fatalf("scenarios.tsv line %d: success %q", n+1, want)
+		}
+		seen[budget+"/"+want]++
+		t.Run(name, func(t *testing.T) {
 			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", mode)
-			// the budget is injected, never read off a clock: the hanging
-			// case gets one that is already spent, every other case one
-			// that never runs out
-			spent := make(chan time.Time, 1)
-			spent <- time.Time{}
+			// the budget is injected, never read off a clock: a spent one
+			// has already run out, a never one never does
 			startBudget = func(time.Duration) (<-chan time.Time, func() bool) {
-				if mode == "hang" {
+				if budget == "spent" {
+					spent := make(chan time.Time, 1)
+					spent <- time.Time{}
 					return spent, func() bool { return true }
 				}
 				return nil, func() bool { return true }
@@ -95,10 +116,14 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if want := mode == "mismatch"; ok != want {
-				t.Fatalf("known finding with %s: success=%v, want %v", mode, ok, want)
+			if ok != (want == "true") {
+				t.Fatalf("%s (child %s, budget %s, findings %s): success=%v, want %s", name, mode, budget, carried, ok, want)
 			}
 		})
+	}
+	// an over-budget refusal is only proven beside a completed run that passes
+	if seen["spent/false"] == 0 || seen["never/true"] == 0 {
+		t.Errorf("the scenario corpus needs an over-budget failure and a completed success; it holds %v", seen)
 	}
 }
 
