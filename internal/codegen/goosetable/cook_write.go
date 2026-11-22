@@ -241,7 +241,14 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		w.cl(ind, "if %s { %s = %s != 0; }", ride, dst, bits)
 	case ir.TFloat32:
 		x := w.fresh("xb")
-		w.pl(ind, "let %s = %s::accel_f32_bits(%s);", x, rt, src)
+		// A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero); a plain float's rides
+		// bit-exact.
+		if f.HasFloatRange {
+			w.pl(ind, "let %s = %s::accel_cf32_bits(%s);", x, rt, src)
+		} else {
+			w.pl(ind, "let %s = %s::accel_f32_bits(%s);", x, rt, src)
+		}
 		w.pl(ind, "if (%s & 0x7F800000) == 0x7F800000 { return false; }", x)
 		w.pl(ind, "%s::cook_put(b, at + %s, %s, 4, big);", rt, at, x)
 		w.cl(ind, "if %s { %s = %s::accel_bits_f32(%s); }", ride, dst, rt, bits)

@@ -1,0 +1,5 @@
+package demo
+fixed table B {   y   uint32
+   level   uint32
+   score   uint32
+   health   int16   }

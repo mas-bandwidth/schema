@@ -1,0 +1,8 @@
+[
+  {"role": "cook-le", "file": "testdata/conformance/tables/cook-write/blob_shared.cook"},
+  {"role": "cook-be", "file": "testdata/conformance/tables/cook-write/blob_shared-be.cook"},
+  {"role": "block", "file": "testdata/wire/tables/block_render.bin"},
+  {"role": "variable", "file": "testdata/wire/tables/backend_conn.bin"},
+  {"role": "message", "file": "testdata/wire/tables/login_default_message.bin"},
+  {"role": "fixed", "file": "testdata/conformance/tables/wire/archive.bin"}
+]

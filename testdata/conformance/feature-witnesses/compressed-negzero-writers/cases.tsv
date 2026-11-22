@@ -1,0 +1,28 @@
+# THE COMPRESSED -0 WRITER CORPUS (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+# fixed-compressed-negzero: the writer stores +0 for a compressed float's -0,
+# the same bits it stores for +0). Probe.schema is the unit.
+#
+# Each row: load <base>.bin natively, then set <path> to -0 IN THE NATIVE
+# VALUE, after the load, so no reader normalizes it first; save the variable
+# form and owe <expect>.bin byte for byte. Every .bin is the reference
+# engine's variable-form encoding of the .json beside it, pinned by
+# internal/tablewire's TestCompressedNegZeroWriterWitnessPins.
+#
+# A compressed row's <expect> is its own <base>: the +0 twin. The plain rows
+# are the CONTROL: a plain float keeps its -0, so their <expect> is not their
+# <base>, and a writer that normalized every float would fail them.
+#
+# carrier `value`: the target's value writer. carrier `region`: the writer of
+# a native region the base was loaded into, where the target has regions; a
+# target without them runs the `value` rows.
+#
+# case	carrier	root	base	path	expect
+value_leaf_nonzero_default	value	Var	var-a-zero	a	var-a-zero
+value_leaf_zero_default_elided	value	Var	var-empty	z	var-empty
+value_array_element_forced	value	Var	var-xs-zero	xs[0]	var-xs-zero
+value_fixed_leaf_nonzero_default	value	Fix	fix-a-zero	a	fix-a-zero
+value_plain_keeps_negzero	value	Var	var-empty	p	var-p-negzero
+region_leaf_nonzero_default	region	Var	var-a-zero	a	var-a-zero
+region_leaf_zero_default_elided	region	Var	var-empty	z	var-empty
+region_array_element_forced	region	Var	var-xs-zero	xs[0]	var-xs-zero
+region_plain_keeps_negzero	region	Var	var-empty	p	var-p-negzero
