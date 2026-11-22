@@ -39,8 +39,8 @@ Every fixed row lands three ways:
 
 | leg | found | fixed | open |
 |---|---|---|---|
-| C | 2 (+1 noticed) | 1 | 2 |
-| C++ | 2 (+1 noticed) | 1 | 2 |
+| C | 2 (+1 noticed) | 2 (SF-36 rejected) | 0 |
+| C++ | 2 (+1 noticed) | 2 (SF-36 rejected) | 0 |
 | C# | 0 | 0 | 0 |
 | C# (unity) | 2 | 2 | 0 |
 | Rust | 7 (+2 noticed) | 6 (SF-11 rejected) | 2 |
@@ -81,8 +81,12 @@ Every fixed row lands three ways:
 | SF-21 | JavaScript | internal/codegen/jstable/fixedjs.go:446 | `FixedSave` accepted a count below `Min`. | SPEC.md §5.1 row 3 | `count < ArrayMin` refuses | M | `TestJsWritersRefuseSilentDrops` |
 | SF-25 | Lobster | internal/codegen/lobstertable/runtime/cook.lobster:462 (`cw_str`), :559 (`cw_array`) | `Cook` never ran the write contract. It cut an over-long string mid code point, wrote an over-bound count into the next field, wrote no arm for an out-of-set tag, and returned success. | SPEC-TABLES §7.6; SPEC.md §5.1 rows 3, 4, 6 | the `wc_body` walk before cook and measure; no clamp | M | `TestLobsterCookHoldsTheWriteContract` (slow) |
 | SF-26 | Lobster | internal/codegen/lobstertable/runtime/schema_save.lobster:873 | The variable `save` wrote a deprecated enum variant. | SPEC-TABLES §2.15 WRITE | `wc_value` refuses a deprecated variant with `invalid_value` | M | `TestLobsterCookHoldsTheWriteContract` |
+| SF-05 | C | internal/codegen/ctable/message_save.go (messageScalar); codecs.go (emitWriteRowAsserts); wide.go | A `fixed table` past the size ceiling got `save_messages` and `measure_messages` but no row 1, 2 or 10 assert, and `table_bit_put` masked the value. | SPEC.md §5.1 rows 1, 2, 10 (the paragraph on a fixed table past the ceiling) | the message body asserts each value it writes when no write check was emitted for its table: a ranged integer or fixed-point raw value, a `bits(N)` width, a 128-bit range and a ranged float | M | `TestCMessageCeilingWriteAssert`, `TestCMessageCeilingWriteAssertCompiled` |
+| SF-06 | C++ | internal/codegen/cpptable/messagecodec.go (emitMessageScalar, emitMessageArray measure pass) | The same as SF-05 for `SaveMessages` and `MeasureMessages`; the arithmetic measure never visited a scalar element, so a debug loop holds each one. | as SF-05 | as SF-05 | M | `TestCppMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssertCompiled` |
 
 SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the checker refuses those declarations (SPEC-TABLES §15), so the emitter branch is unreachable.
+
+SF-36 (a non-required ranged float64 with no row-10 write check) was rejected: the checker refuses a float64 range (SPEC §4.3, `the compressed float is float32`), so no such field can be declared. Its second half was real and is fixed: the C and C++ variable `Save` lines said `10 every build`, but only a `| required` float refuses in every build and any other ranged float32 is a debug assert; both lines now say so (SPEC.md §5.1).
 
 ## Still open, ranked by blast radius
 
@@ -90,8 +94,6 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 |---|---|---|---|---|---|---|
 | SF-01 | JavaScript | internal/codegen/jstable/variableruntime.go:1600 (binary read), :2871 (text read); fixedjs.go:912, :1261; fixedruntime.go:477 (fixed read) | A count below `Min` in `[Min..N]T` loads as success on every JS table read. | SPEC-TABLES §22.2 (a reader meeting a count below Min refuses `count_over_bound` in EVERY form) | refuse `count < min` on every read path | H |
 | SF-02 | Elixir | internal/codegen/elixirtable/variableform.go:2883, :3240, :5579, :9002; fixedelixir.go:857 | The same as SF-01 for the binary, JSON and fixed reads. The descriptor carries no `min_count`. | as SF-01 | emit `min_count`; refuse below it on every read | H |
-| SF-05 | C | internal/codegen/ctable/fixedform.go:1215 (`writeAdmits` gated on `TableFixedEmitted`); message_save.go:73 | A `fixed table` past the size ceiling still gets `save_messages` but no row 1, 2 or 10 assert, and `table_bit_put` masks the value. | SPEC.md §5.1 rows 1, 2, 10 | gate `writeAdmits` on `FixedDeclared`, or assert per value in `messageScalar` | M |
-| SF-06 | C++ | internal/codegen/cpptable/fixedform.go:1305; messagecodec.go:526; message.go:177 | The same as SF-05. | as SF-05 | as SF-05 | M |
 | SF-16 | Dart | internal/codegen/darttable/wireform.go:3848 (`<root>WireLoad`, `report ??= TableWireReport()`) | A caller who passes no report gets the defaults on any refusal and no signal. `<root>FromJson` throws in the same case. | SPEC-TABLES §4, §6.5 | throw `FormatException(reason)` when no report was passed and the load refused | M |
 | SF-22 | Elixir | internal/codegen/elixirtable/variableform.go:3700 (`check_field` `:list`) | `save/2` and `to_json` write a counted array below its `Min`. | SPEC.md §5.1 row 3 | refuse `n < min_count` (needs SF-02's descriptor key) | M |
 | SF-23 | Elixir | internal/codegen/elixirtable/messageform.go:2748, :875 | `save_messages` holds an integer to the union of every declaration that shares its field name and kind, so `A.hp = 6` passes on the strength of `B.hp`'s range. | SPEC.md §5.1 row 1; SPEC-TABLES §3.3 | key the rule by declaration | M |
@@ -99,7 +101,6 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 | SF-27 | Lobster | internal/codegen/lobstertable/runtime/text_form.lobster:516 | The text read gives a deprecated variant its own ordinal, not the field's default. | SPEC-TABLES §2.15 READ | map a deprecated match to the field default (0 for an element) | M |
 | SF-34 | Rust | internal/codegen/rusttable (fixed `[N]T` stored as `Vec`, `take(N)`) | A `[N]T` longer than N is cut on save with no assert (noticed, unverified). | SPEC.md §5.1; SPEC-TABLES §3 "never cut at N" | `debug_assert!(len == N)` | M |
 | SF-35 | Rust | internal/codegen/rusttable (keyed `[E]T` save, `if j >= len break`) | Values past the enum's variant count are dropped (noticed, unverified). | as SF-34 | `debug_assert!` on the length | M |
-| SF-36 | C, C++ | internal/codegen/ctable/codecs.go, cpptable/codecs.go | A non-required ranged float64 has no row-10 write check (noticed, unverified). The leg lines' "10 every build" covers `\| required` only. | SPEC.md §5.1 row 10 | `schema_assert` of the float range; correct both leg lines | M |
 | SF-37 | Lobster | internal/codegen/lobstertable/runtime/cook.lobster (contract walk) | The cook walk lets a NaN or an infinity in a plain float through. Save catches it in its encoder; cook does not (noticed, unverified). | SPEC.md §5.1 row 7 | refuse non-finite in the walk | M |
 | SF-38 | JavaScript | internal/codegen/jstable (`FixedFromText`, enum-keyed value as an object with no `length`) | It may fall back to defaults silently (noticed, unverified). | SPEC.md §5.1 | refuse a non-array | L |
 | SF-28 | Elixir | internal/codegen/elixirtable/variableform.go:4530 (`json_field(%{t: :list}, _other, _) -> "[]"`), :3714 | `to_json` writes a list field holding a non-list as `[]` and succeeds. | SPEC.md §5.1; SPEC-TABLES §16.3 | `nil -> "[]"`, anything else `throw(:invalid_value)` | L |
@@ -113,7 +114,6 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 
 - **JavaScript**: SF-01 (H; the text read is in #4689, but the binary and fixed reads are not), SF-24, SF-38.
 - **Elixir**: SF-02 (H; partly in #4689), SF-22, SF-23, SF-28.
-- **C, C++**: SF-05, SF-06, SF-36.
 - **Rust**: SF-34, SF-35.
 - **Dart**: SF-16.
 - **Lobster**: SF-27, SF-31, SF-37.

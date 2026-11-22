@@ -170,6 +170,10 @@ type tableGen struct {
 	// names its table; fixedLoop is that body's element-loop nesting depth.
 	fixedTable string
 	fixedLoop  int
+	// writeChecked is every type a write check is emitted for: the closure of
+	// each table the fixed form is emitted for, less the closure of each table
+	// declared fixed that it is NOT emitted for (messageNeedsWriteAsserts).
+	writeChecked map[string]bool
 	// fixedWriteCheck is set while the bounds pass is emitted as the WRITE
 	// CHECK (docs/SPEC.md §5.1) rather than the read-side clamp: the same
 	// closed list of value bounds, over const storage a caller filled.

@@ -2247,3 +2247,53 @@ func TableFixedJSUnions(u *Unit) map[string]bool {
 	}
 	return unions
 }
+
+// TableWriteChecked answers, for each struct name of a unit, whether the
+// message writers can lean on a write check emitted by the fixed form
+// (docs/SPEC.md §5.1): the type lies in the closure of a table the fixed form
+// is emitted for ([TableFixedEmitted]) and in the closure of NO table declared
+// `fixed` that it is not emitted for (past the size ceiling, the leaf cap or
+// the depth bound). Such a table still rides the message form and holds the
+// same write contract, so a backend asserts per value in the message body of
+// every type this map leaves out, and only there.
+func TableWriteChecked(u *Unit) map[string]bool {
+	var walk func(st *Struct, into map[string]bool)
+	walk = func(st *Struct, into map[string]bool) {
+		if into[st.Name] {
+			return
+		}
+		into[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *Struct:
+				walk(r, into)
+			case *Union:
+				for _, v := range r.Variants {
+					if v.F == nil {
+						continue
+					}
+					if s, ok := v.F.Type.Ref.(*Struct); ok && v.F.Type.Kind == TNamed {
+						walk(s, into)
+					}
+				}
+			}
+		}
+	}
+	emitted, bare := map[string]bool{}, map[string]bool{}
+	for _, st := range u.Tables {
+		switch {
+		case !st.IsTable || st.IsMapEntry():
+		case TableFixedEmitted(u, st):
+			walk(st, emitted)
+		case st.FixedDeclared:
+			walk(st, bare)
+		}
+	}
+	for name := range bare {
+		delete(emitted, name)
+	}
+	return emitted
+}

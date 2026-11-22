@@ -2454,9 +2454,9 @@ Each leg's variable `Save` and its `Measure`:
 
 <!-- One line per leg and writer, a blank line between every two: a change to one leg's line never touches the line next to another's. Edit your own line only; never reflow this list into a table. -->
 
-- **C++**: 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build
+- **C++**: 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build for a `| required` float and debug for any other ranged float (a float64 declares no range, SPEC §4.3)
 
-- **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build
+- **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build for a `| required` float and debug for any other ranged float (a float64 declares no range, SPEC §4.3)
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
@@ -2499,6 +2499,12 @@ A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
 writer holds exactly N values: a writer checks any other length like a count
 past its storage, and never cuts or pads it to N (SF-20,
 docs/silent-failure-audit-1122.md).
+A `fixed table` past the size ceiling of the fixed form (SPEC-TABLES §3.4: the
+65536-byte record, the leaf cap, the depth bound) has no `FixedSave`, but it
+rides the message form and the same write contract: its `SaveMessages` and
+`MeasureMessages` hold rows 1, 2 and 10 over every value they write exactly as
+one inside the ceiling does, and no writer masks, clamps or quantizes an
+off-range value onto the wire (SF-05, SF-06).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.

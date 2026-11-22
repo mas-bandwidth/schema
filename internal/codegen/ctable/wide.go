@@ -136,3 +136,25 @@ func (g *tableGen) wireWideRead(f *ir.Field, source int, dst, rdr, ind, onBad st
 	}
 	g.pf("%s%s = decoded_wide;\n", ind, dst)
 }
+
+// emitWideWriteRowAsserts is row 1 of the write contract (docs/SPEC.md §5.1)
+// for a 128-bit value: a ranged integer off its min/max is a debug assert. The
+// test is one unsigned compare of the offset from the min against the span of
+// the range, in the two 64-bit lanes, so it holds for a signed and an unsigned
+// kind alike and needs no 128-bit operator.
+func (g *tableGen) emitWideWriteRowAsserts(f *ir.Field, expr, ind string) {
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok {
+		return
+	}
+	baseLo, baseHi := wideLanes(lo)
+	span := new(big.Int).Sub(hi, lo)
+	spanLo, spanHi := wideLanes(span)
+	g.pf("%s{ uint64_t wr_lo = (%s).lo - %sull, wr_hi = (%s).hi - %sull - ( (%s).lo < %sull );\n", ind, expr, baseLo, expr, baseHi, expr, baseLo)
+	test := fmt.Sprintf("wr_hi < %sull || ( wr_hi == %sull && wr_lo <= %sull )", spanHi, spanHi, spanLo)
+	if spanHi.Sign() == 0 {
+		test = fmt.Sprintf("wr_hi == 0ull && wr_lo <= %sull", spanLo) // no lane below zero to compare
+	}
+	g.pf("%s  schema_assert( %s ); /* a ranged 128-bit value off its range, debug only (SPEC.md §5.1 row 1) */\n", ind, test)
+	g.pf("%s  (void) wr_lo; (void) wr_hi; }\n", ind)
+}
