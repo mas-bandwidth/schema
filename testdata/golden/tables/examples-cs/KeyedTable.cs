@@ -1774,6 +1774,20 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = TeamConfigFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long TeamConfigFixedLoadWalk(
+            Span<TeamConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -1907,7 +1921,6 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -1920,7 +1933,6 @@ namespace Tabledemo
                 string run_why = TeamConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -1933,7 +1945,6 @@ namespace Tabledemo
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -2358,6 +2369,20 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = GunnerConfigFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long GunnerConfigFixedLoadWalk(
+            Span<GunnerConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -2485,7 +2510,6 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -2498,14 +2522,12 @@ namespace Tabledemo
                 string run_why = GunnerConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = GunnerConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -2516,7 +2538,6 @@ namespace Tabledemo
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -2971,6 +2992,20 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = TurretConfigFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long TurretConfigFixedLoadWalk(
+            Span<TurretConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -3098,7 +3133,6 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -3111,14 +3145,12 @@ namespace Tabledemo
                 string run_why = TurretConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = TurretConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -3129,7 +3161,6 @@ namespace Tabledemo
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -3675,6 +3706,20 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = HullConfigFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long HullConfigFixedLoadWalk(
+            Span<HullConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -3802,7 +3847,6 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -3815,14 +3859,12 @@ namespace Tabledemo
                 string run_why = HullConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = HullConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -3833,7 +3875,6 @@ namespace Tabledemo
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -4695,6 +4736,20 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = KeyedConfigFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long KeyedConfigFixedLoadWalk(
+            Span<KeyedConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -4822,7 +4877,6 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -4835,14 +4889,12 @@ namespace Tabledemo
                 string run_why = KeyedConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = KeyedConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -4854,7 +4906,6 @@ namespace Tabledemo
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }

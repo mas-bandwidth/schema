@@ -40,7 +40,7 @@ fixed table Holder {
 		t.Error("the bounds pass's count never reaches the report")
 	}
 
-	load := csFn(src, "public static long HolderFixedLoad(")
+	load := csFn(src, "static long HolderFixedLoadWalk(")
 	if load == "" {
 		t.Fatal("HolderFixedLoad was not emitted")
 	}

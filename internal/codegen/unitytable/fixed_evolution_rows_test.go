@@ -479,8 +479,8 @@ static class Program
 		t.Fatalf("clean own load: %s, want ok 1 u0 w0", cleanRes.head())
 	}
 	nc := unityRowLoad(t, newer, "C", lin, ownClean, plantInFile(t, "probe.Tables.cs",
-		"CFixedLoad(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            report = default;",
-		"CFixedLoad(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            // report = default;"))
+		"CFixedLoadWalk(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            report = default;",
+		"CFixedLoadWalk(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            // report = default;"))
 	if nc.head() == "ok 1 u0 w0" {
 		t.Errorf("negative control: un-reset report still produced %s", nc.head())
 	}
@@ -633,7 +633,8 @@ static class Program
                     {
                         ok = false;
                     }
-                    if (back[0].Small != 4242 || back[0].Tail != 4242 || back[0].MarksCount != 0 || back[0].NotePresent || back[0].Flag)
+                    // R4: a refusal resets every row handed in to its declared default (small 5, tail 7).
+                    if (back[0].Small != 5 || back[0].Tail != 7 || back[0].MarksCount != 0 || back[0].NotePresent || back[0].Flag)
                     {
                         ok = false;
                     }

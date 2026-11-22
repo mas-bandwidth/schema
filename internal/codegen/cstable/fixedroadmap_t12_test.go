@@ -213,7 +213,7 @@ func t12R15(t *testing.T) {
 	// The §4.6 bounds pass (emitFixedClamp) is not a forward-read clamp and stays;
 	// the clamps that REMAIN in the read are the writer's bounds above, never the
 	// reader's own. The behavioural half — each of the four retired forward-read
-	// clamps comes back layout_newer with the destination untouched — runs through
+	// clamps comes back layout_newer with the destination at its declared default (R4) — runs through
 	// one dotnet build and run, under the make target that sets SCHEMA_REQUIRE_CORPUS.
 	t.Run("forward-reads", func(t *testing.T) {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
@@ -252,8 +252,8 @@ var t12ForwardClamps = []t12ForwardClamp{
 
 // t12R15ForwardBody writes the newer writer's own record, then reads it with the
 // older reader: layout_newer, the file's hash on the report, nothing marked
-// malformed, no counter moved, and the destination still the sentinel — REFUSE
-// is total.
+// malformed, no counter moved, and the destination reset to its declared
+// default (R4).
 const t12R15ForwardBody = `
             var w = new @W@.T();
             w.Tail = 5;
@@ -270,7 +270,7 @@ const t12R15ForwardBody = `
             if (r.LayoutHash != want) { bad += ProbeLog.Fail(@NAME@, "layout_newer reports the file's hash and nothing else"); }
             if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too"); }
             if (r.Widened != 0 || r.Unknown != 0) { bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves"); }
-            if (back.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "REFUSE wrote the destination: tail=" + back.Tail); }
+            if (back.Tail != 7) { bad += ProbeLog.Fail(@NAME@, "R4: a refusal resets the destination to its declared default 7: tail=" + back.Tail); }
 `
 
 // t12R15Forward builds the four clamp probes into one assembly and runs it with
