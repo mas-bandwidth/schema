@@ -1,11 +1,18 @@
 // The generated-Go corpus runner calls dispatch.go's generated public readers.
 // Manifest expectations are compared only after the reader returns a verdict.
+// A refusal conforms on its verdict alone (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the reader gives
+// it is printed on a FAIL line as its diagnostic and never compared.
+// `runner scorer <scorer-outcomes.tsv>` grades the shared scorer outcome cases
+// (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+// expected and agrees the corpus run uses.
 package main
 
 import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,8 +22,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "scorer" {
+		os.Exit(scorer(os.Args[2]))
+	}
 	if len(os.Args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: go-hostile <corpus-dir>")
+		fmt.Fprintln(os.Stderr, "       go-hostile scorer <scorer-outcomes.tsv>")
 		os.Exit(2)
 	}
 	if err := run(os.Args[1]); err != nil {
@@ -54,16 +65,11 @@ func run(dir string) error {
 		}
 		total++
 		got := dispatch(row[1], row[2], row[3], data)
-		var want string
-		switch row[6] {
-		case "accept":
-			want = "accept " + row[8]
-		case "refuse":
-			want = "refuse " + row[7]
-		default:
-			return fmt.Errorf("invalid expected verdict %q", row[6])
+		want, err := expected(row[6], row[7], row[8])
+		if err != nil {
+			return err
 		}
-		if got == want {
+		if agrees(got, want) {
 			passed++
 			fmt.Printf("PASS %s\n", row[0])
 		} else {
@@ -79,6 +85,86 @@ func run(dir string) error {
 		return fmt.Errorf("generated Go corpus disagrees: %d failures across %d cases", failed, total)
 	}
 	return nil
+}
+
+// expected is the manifest's answer for a case.
+func expected(verdict, reason, digest string) (string, error) {
+	switch verdict {
+	case "accept":
+		return "accept " + digest, nil
+	case "refuse":
+		return "refuse " + reason, nil
+	}
+	return "", fmt.Errorf("invalid expected verdict %q", verdict)
+}
+
+func refused(answer string) bool {
+	return answer == "refuse" || strings.HasPrefix(answer, "refuse ")
+}
+
+// agrees reports whether a reader's answer conforms to the manifest's: a
+// refusal on its verdict alone (refusal-verdict-only), an accept on its digest.
+// An error or a panic is never a refusal.
+func agrees(got, want string) bool {
+	if refused(got) && refused(want) {
+		return true
+	}
+	return got == want
+}
+
+// scorer grades each row of the shared scorer fixture: the expected verdict,
+// reference diagnostic and accepted SHA-256 make the manifest's answer; the
+// worker reply makes the reader's (a refusal with the name it gives or none,
+// an accept of the text body's digest, or a worker that exits). agrees must
+// pass exactly the rows whose scorer exit is 0.
+func scorer(path string) int {
+	text, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	cases, wrong := 0, 0
+	for _, line := range strings.Split(string(text), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 7 {
+			fmt.Fprintf(os.Stderr, "%s: row has %d fields, want 7: %s\n", path, len(f), line)
+			return 2
+		}
+		cases++
+		var got string
+		switch reply, body := f[4], f[5]; {
+		case refused(reply):
+			got = reply
+		case reply == "accept text":
+			if body == "-" {
+				body = ""
+			}
+			sum := sha256.Sum256([]byte(body))
+			got = "accept " + hex.EncodeToString(sum[:])
+		case reply == "exit":
+			got = "error: the worker exited with status 3"
+		default:
+			fmt.Fprintf(os.Stderr, "%s: %s: unknown worker reply %s\n", path, f[0], reply)
+			return 2
+		}
+		want, err := expected(f[1], f[2], f[3])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", path, f[0], err)
+			return 2
+		}
+		if pass := agrees(got, want); pass != (f[6] == "0") {
+			fmt.Printf("SCORER %s: graded pass=%t, the fixture says scorer exit %s\n", f[0], pass, f[6])
+			wrong++
+		}
+	}
+	fmt.Printf("generated go scorer outcomes: %d cases, %d graded as the fixture says, %d wrong\n", cases, cases-wrong, wrong)
+	if wrong != 0 || cases == 0 {
+		return 1
+	}
+	return 0
 }
 
 // corpusReason maps the generated reader's diagnostic to the corpus's own
@@ -103,9 +189,7 @@ func corpusReason(s string) string {
 
 func wireRefusal(ok bool, r *goruntime.TableReport) string {
 	if r.Verdict == goruntime.TableOpenRefused {
-		if r.Reason == "" {
-			return "error: unnamed public refusal"
-		}
+		// an unnamed refusal is still a refusal: the name is diagnostic
 		return "refuse " + corpusReason(r.Reason)
 	}
 	switch r.Refusal {

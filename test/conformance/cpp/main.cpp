@@ -523,6 +523,11 @@ struct MsgCodec
     bool ( *round_trip )( const uint8_t * announcement, int64_t announcement_bytes,
                           const uint8_t * message, int64_t message_bytes,
                           std::vector<uint8_t> & out, Report * r );
+    // One `message-batch` row (docs/SPEC-TABLES.md §3.3): load the batch with
+    // room for every body and answer the count the loader left in its
+    // out-parameter.
+    bool ( *batch )( const uint8_t * announcement, int64_t announcement_bytes,
+                     const uint8_t * message, int64_t message_bytes, int64_t & reported );
 };
 
 #define MSGCODEC( unit_key, ns, type )                                                          \
@@ -544,6 +549,19 @@ struct MsgCodec
             if ( size < 0 ) return false;                                                       \
             out.assign( (size_t) size, 0 );                                                     \
             return ns::type##SaveMessages( values.data(), count, out.data(), size, &inner ) == size;   \
+        },                                                                                      \
+        []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n, int64_t & reported ) { \
+            const int64_t vocab_cap = ns::kTableMessageEntriesHere > 4096 ? ns::kTableMessageEntriesHere : 4096; \
+            std::vector<ns::TableMessageEntry> entries( (size_t) vocab_cap );                   \
+            ns::TableVocabulary vocabulary( entries.data(), vocab_cap );                        \
+            ns::TableReport inner;                                                              \
+            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { return false; }             \
+            std::vector<ns::type> values( 256 );                                                \
+            for ( size_t i = 0; i < values.size(); i++ ) { ns::type##Reset( values[i] ); }      \
+            ns::TableReport loaded;                                                             \
+            reported = (int64_t) values.size();                                                 \
+            (void) ns::type##LoadMessages( values.data(), &reported, vocabulary, b, n, &loaded ); \
+            return true;                                                                        \
         }                                                                                       \
     }
 
@@ -1084,6 +1102,25 @@ static int surface_message( const std::string & out )
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] == "message-batch" )
+        {
+            // message-batch <case> <connection> <root> <wire>
+            std::string batch_unit, batch_announcement;
+            for ( size_t j = 0; j < manifest_lines.size(); j++ )
+            {
+                const std::vector<std::string> & c = manifest_lines[j].field;
+                if ( c[0] == "connection" && c[1] == f[2] ) { batch_unit = c[2]; batch_announcement = c[4]; break; }
+            }
+            const MsgCodec * batch_codec = find_msg_codec( batch_unit, f[3] );
+            if ( batch_codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", batch_unit.c_str(), f[3].c_str() ); return 1; }
+            std::vector<uint8_t> announcement, message;
+            if ( !slurp( batch_announcement.c_str(), announcement ) || !slurp( f[4].c_str(), message ) ) { fprintf( stderr, "driver: cannot read the files of %s\n", f[1].c_str() ); return 1; }
+            int64_t reported = 0;
+            if ( !batch_codec->batch( announcement.data(), (int64_t) announcement.size(), message.data(), (int64_t) message.size(), reported ) ) { fprintf( stderr, "driver: %s: the announcement did not read\n", f[1].c_str() ); return 1; }
+            std::string text = "count " + std::to_string( (long long) reported ) + "\n";
+            if ( !spill( out, f[1], (const uint8_t *) text.data(), text.size() ) ) return 1;
+            continue;
+        }
         if ( f[0] != "message" ) continue;
         // message <name> <connection> <root> <file-form wire> <message-form wire>
         std::string unit, announcement_path;

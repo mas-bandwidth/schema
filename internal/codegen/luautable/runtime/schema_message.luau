@@ -1788,8 +1788,8 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
-	if len < 1 then report.malformed = true; return -1, {} end
-	if buffer.readu8(data, 0) ~= 2 then return -1, refuse(report, "newer_form") end
+	if len < 1 then report.malformed = true; return 0, {} end
+	if buffer.readu8(data, 0) ~= 2 then return 0, refuse(report, "newer_form") end
 	-- THE INTEGRITY TRAILER IS CHECKED BEFORE ANY BODY IS DECODED
 	-- (docs/SPEC-TABLES.md §2.14, §3.3): the form byte is read first, then a
 	-- declaring root's batch must end in the CRC-32C of the bytes before it,
@@ -1800,23 +1800,23 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 		if body == nil then
 			report.malformed = true
 			report.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		data = body
 		len = buffer.len(data)
 	end
-	if not v.announced then return -1, refuse(report, "no_vocabulary") end
-	if len < 2 then report.malformed = true; return -1, {} end
+	if not v.announced then return 0, refuse(report, "no_vocabulary") end
+	if len < 2 then report.malformed = true; return 0, {} end
 	local count = buffer.readu8(data, 1) + 1
 	if count > capacity then
 		refuse(report, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	local got, bodies, malformed, dep, nonFinite = walkBodies(v, data, desc, count, false)
 	if nonFinite ~= nil then
 		-- the refusal outranks every verdict a body could reach after it
 		refuseNonFinite(report, nonFinite, true)
-		return -1, {}
+		return 0, {}
 	end
 	if malformed then
 		report.malformed = true
@@ -1833,7 +1833,7 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 				br.n = b.to
 				local tree, tok = transcodeBody(br, v, ov, desc.name, desc, report)
 				if not tok or tree == nil then
-					return got, {}
+					return 0, {}
 				end
 				transcoded[i] = { ownTree = tree, ownVocab = ov, from = b.from, to = b.to }
 			end
@@ -1856,19 +1856,20 @@ end
 -- LoadMessages is the PLAIN batch read, and it is STRICT (docs/SPEC-TABLES.md
 -- §6.5, Go's <T>LoadMessages over <T>loadMessagesWalk): a batch the
 -- walk read found damaged, or whose report counts a clamp or a kind that
--- moved, answers -1 with no body handed back and report.reason the one name
--- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name.
--- unknown and widened alone never refuse.
+-- moved, answers 0 with no body handed back and report.reason the one name
+-- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name:
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (§3.3). A delivered batch is never empty, so 0 says refused. unknown and
+-- widened alone never refuse.
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local rep: any = report or {}
 	local count, bodies = M.loadMessagesWalk(v, root, data, capacity, rep)
-	if count < 0 then return count, bodies end
-	-- a refusal the walk read already named answers as it did (batch_too_large
-	-- keeps the count the caller needs)
-	if rep.reason ~= nil and rep.reason ~= "" then return count, bodies end
-	if rep.malformed then rep.reason = "wire_damaged"; return -1, {} end
-	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return -1, {} end
-	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return -1, {} end
+	-- a refusal the walk read already named keeps its name (batch_too_large
+	-- included) and answers 0
+	if rep.reason ~= nil and rep.reason ~= "" then return 0, {} end
+	if rep.malformed then rep.reason = "wire_damaged"; return 0, {} end
+	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return 0, {} end
+	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return 0, {} end
 	return count, bodies
 end
 
@@ -2093,6 +2094,10 @@ local function mAtDefault(fd: any, val: any): boolean
 	if fd.s == "enum" then return val == (fd.def or 0) end
 	if fd.s == "float" then
 		local def = fd.def or 0.0
+		if fd.lo ~= nil then
+			if val == 0 then val = 0 end
+			if def == 0 then def = 0 end
+		end
 		if fd.f32 then
 			buffer.writef32(msgScratch, 0, val)
 			local a = buffer.readu32(msgScratch, 0)
@@ -2141,6 +2146,8 @@ end
 local function mEncodeScalar(c: any, owner: string, e: any, kind: number, shape: any, val: any, fname: string): boolean
 	local ok, why = mValidScalar(e, val)
 	if not ok then return mFail(c, why or "invalid_value", owner, fname) end
+	-- a ranged float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+	if (kind == 10 or kind == 11) and e.lo ~= nil and val == 0 then val = 0 end
 	if kind == 1 then
 		mPut(c.w, if val then 1 else 0, 1)
 		return true

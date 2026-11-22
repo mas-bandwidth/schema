@@ -5710,8 +5710,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_messages(benchtable_table_
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6057,8 +6057,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_st
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -8827,8 +8827,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_messages(benchtable_table_m
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -9354,8 +9354,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages(benchtable_tab
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -9720,8 +9720,8 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages(benchtable_ta
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10086,8 +10086,8 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages(benchtable_
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
  return 0;
  }

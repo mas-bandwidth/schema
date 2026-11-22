@@ -123,6 +123,14 @@ fn accel_f32_bits(x: f32) -> u64 {
     return accel_u32(bytes_of(a), 0);
 }
 
+// accel_cf32_bits is a COMPRESSED float's stored bits: its -0 is stored as +0
+// (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero), in
+// every build; every other value is its own pattern.
+fn accel_cf32_bits(x: f32) -> u64 {
+    if x == 0.0 { return 0; }
+    return accel_f32_bits(x);
+}
+
 fn accel_bits_f32(u: u64) -> f32 {
     var img: u8[>..] = [];
     img.push(4);

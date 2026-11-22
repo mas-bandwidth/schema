@@ -3,8 +3,9 @@
 #
 # The corpus is the committed manifest plus one raw input per case. This target
 # generates the Luau reader for each schema the manifest names, runs every
-# carrier through it, and holds the port to the manifest's verdict, named reason
-# and (for an accept) decoded-value digest. It reads files only: no network, no
+# carrier through it, and holds the port to the manifest's verdict and (for an
+# accept) decoded-value digest; a refusal conforms on its verdict alone
+# (docs/rulings.json refusal-verdict-only). It reads files only: no network, no
 # real time, no sockets.
 #
 # The runner is internal/ci/schema_luau_runs_hostile_corpus_test.go. It is part
@@ -18,8 +19,8 @@
 # skipped run can never pass as green.
 schema-luau-runs-hostile-corpus: toolchain-luau
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus \
-		'TestLuauRunsHostileCorpus TestLuauVocabularyDefaultEntryBound' \
-		./internal/ci -run '^(TestLuauRunsHostileCorpus|TestLuauVocabularyDefaultEntryBound)$$' -count=1 -timeout 600s
+		'TestLuauRunsHostileCorpus TestLuauVocabularyDefaultEntryBound TestLuauHostileScorerOutcomes' \
+		./internal/ci -run '^(TestLuauRunsHostileCorpus|TestLuauVocabularyDefaultEntryBound|TestLuauHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 schema-luau-runs-hostile-corpus-negative-control: toolchain-luau
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus-negative-control \

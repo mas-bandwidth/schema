@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -25,8 +26,15 @@ const (
 	rubyHostileProbeSchemaPath = "schemas/probe.schema"
 	rubyHostileProbeSchema     = "package probe\n\ntable Root\n{\n    entries map[int32]int32\n}\n"
 
-	rubyHostilePlantFrom = "if form != FORM"
-	rubyHostilePlantTo   = "if form != FORM && form != 0xff"
+	// The planted reader bug: the fixed-form gates refuse the form they carry,
+	// so the fixed wire the corpus accepts (wire-valid, form 3) is refused. The
+	// plant changes a verdict: a refusal conforms on its verdict alone
+	// (refusal-verdict-only), so a plant that only renamed a refusal would
+	// leave the corpus green.
+	rubyHostilePlantFrom     = "if b0 != 3"
+	rubyHostilePlantTo       = "if b0 != 3 || true"
+	rubyHostilePlantFormFrom = "if b0 != form"
+	rubyHostilePlantFormTo   = "if b0 != form || true"
 
 	rubyAllocationFactorF = 512.0
 	rubyAllocationSlackKB = 2048.0
@@ -127,29 +135,33 @@ func rubyHostilePackage(t *testing.T, schema string, files map[string][]byte) st
 	return ""
 }
 
-func rubyHostilePlant(t *testing.T, files map[string][]byte) {
+// rubyHostilePlant plants the reader bug in a unit's fixed-form reader and
+// reports whether it landed. The variable-form gate in _table/load.rb is not
+// planted: the corpus accepts no form-1 wire, so refusing one changes no
+// verdict, and the same gate guards the module's own load-time reads.
+func rubyHostilePlant(t *testing.T, files map[string][]byte) bool {
 	t.Helper()
+	landed := false
 	for name := range files {
 		if strings.HasSuffix(name, "/_fixed.rb") {
-			src := string(files[name])
-			src = strings.ReplaceAll(src, "if b0 != 3", "if b0 != 3 && b0 != 0xff")
-			src = strings.ReplaceAll(src, "if b0 != form", "if b0 != form && b0 != 0xff")
-			files[name] = []byte(src)
-		}
-		if strings.HasSuffix(name, "/_table/load.rb") {
 			src := string(files[name])
 			if !strings.Contains(src, rubyHostilePlantFrom) {
 				t.Fatalf("%s does not carry the planted pattern %q", name, rubyHostilePlantFrom)
 			}
-			files[name] = []byte(strings.ReplaceAll(src, rubyHostilePlantFrom, rubyHostilePlantTo))
+			src = strings.ReplaceAll(src, rubyHostilePlantFrom, rubyHostilePlantTo)
+			src = strings.ReplaceAll(src, rubyHostilePlantFormFrom, rubyHostilePlantFormTo)
+			files[name] = []byte(src)
+			landed = true
 		}
 	}
+	return landed
 }
 
 func rubyHostileGenerate(t *testing.T, root, dir string, cases []rubyHostileCase, plant bool) []rubyHostileUnit {
 	t.Helper()
 	seen := map[string]bool{}
 	var units []rubyHostileUnit
+	planted := false
 	for _, c := range cases {
 		if seen[c.Schema] {
 			continue
@@ -173,12 +185,15 @@ func rubyHostileGenerate(t *testing.T, root, dir string, cases []rubyHostileCase
 			entry.unavailable = err.Error()
 		} else {
 			entry.pkg = rubyHostilePackage(t, c.Schema, files)
-			if plant {
-				rubyHostilePlant(t, files)
+			if plant && rubyHostilePlant(t, files) {
+				planted = true
 			}
 			rubyHostileWriteTree(t, unitDir, files)
 		}
 		units = append(units, entry)
+	}
+	if plant && !planted {
+		t.Fatal("no emitted unit carries a fixed-form reader (_fixed.rb), so the planted reader bug went nowhere")
 	}
 	return units
 }
@@ -207,8 +222,16 @@ def refuse_reason(carrier, exc)
   reason.empty? ? 'damaged' : reason
 end
 
+# A writer that refuses the value the read accepted is an error, never a
+# refusal: a refusal conforms on its verdict alone (refusal-verdict-only).
+def written(what)
+  yield
+rescue Refused => e
+  raise "#{what} refused the decoded value: #{e.respond_to?(:reason) ? e.reason : ''}"
+end
+
 def canonical_text(value)
-  text = value.to_json
+  text = written('the text writer') { value.to_json }
   text = text.byteslice(0, text.bytesize - 1) if text.getbyte(-1) == 10
   text.b
 end
@@ -218,7 +241,7 @@ def run_case(carrier, root_name, payload)
   case carrier
   when 'packet'
     value = root.read(payload)
-    ['accept', '-', value.write]
+    ['accept', '-', written('the packet writer') { value.write }]
   when 'text'
     text = payload.dup.force_encoding(Encoding::UTF_8)
     raise Refused.new('invalid_utf8') unless text.valid_encoding?
@@ -348,7 +371,9 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 						t.Fatalf("read Ruby answer for %s: %v", fields[1], err)
 					}
 				}
-				if prev, ok := answers[fields[1]]; ok && (prev.verdict != answer.verdict || prev.reason != answer.reason) {
+				// two refusals agree whatever each names (refusal-verdict-only)
+				if prev, ok := answers[fields[1]]; ok && (prev.verdict != answer.verdict ||
+					(answer.verdict != rubyHostileRefuse && prev.reason != answer.reason)) {
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %s/%s vs %s/%s",
 						fields[1], prev.verdict, prev.reason, answer.verdict, answer.reason)
 				}
@@ -359,39 +384,66 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 	return answers
 }
 
+// rubyHostileGrade grades one answer against its case and returns "" when it
+// conforms, else the disagreement. A refusal conforms on its verdict alone,
+// whatever reason either side names (docs/rulings.json refusal-verdict-only,
+// SPEC-TABLES §6.5 and §13.10); an accept on its decoded value's digest; a
+// crash or no answer never conforms.
+func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) string {
+	if !answered {
+		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason)
+	}
+	if a.verdict != c.Verdict || (c.Verdict != rubyHostileRefuse && a.reason != c.Reason) {
+		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason)
+	}
+	if c.Verdict == rubyHostileAccept {
+		if a.text == nil {
+			return fmt.Sprintf("%s: want digest %s, got no text", c.Name, c.Digest)
+		}
+		sum := sha256.Sum256(a.text)
+		if got := hex.EncodeToString(sum[:]); got != c.Digest {
+			return fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, got)
+		}
+	}
+	return ""
+}
+
 func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer) []string {
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		if !ok {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason))
+		if ok && a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
 			continue
 		}
-		if a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
-			continue
-		}
-		verdictOK := a.verdict == c.Verdict && a.reason == c.Reason
-		digestOK := true
-		gotDigest := ""
-		if c.Verdict == rubyHostileAccept && a.verdict == rubyHostileAccept {
-			if a.text == nil {
-				digestOK = false
-			} else {
-				sum := sha256.Sum256(a.text)
-				gotDigest = hex.EncodeToString(sum[:])
-				digestOK = gotDigest == c.Digest
-			}
-		}
-		if verdictOK && digestOK {
-			continue
-		}
-		if !verdictOK {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason))
-		} else {
-			bad = append(bad, fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, gotDigest))
+		if why := rubyHostileGrade(c, a, ok); why != "" {
+			bad = append(bad, why)
 		}
 	}
 	return bad
+}
+
+// TestSchemaRubyHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through rubyHostileGrade: a refusal with
+// another reason or none passes; a changed verdict either way, a different
+// accepted value or a crash fails. It runs no Ruby.
+func TestSchemaRubyHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := rubyHostileCase{Name: o.Name, Carrier: "text", Verdict: o.Verdict, Reason: o.Reason, Digest: o.Digest}
+		a := rubyHostileAnswer{verdict: "crash", reason: "SystemExit: the worker exited with status 3"}
+		if name, refused := o.Refused(); refused {
+			a = rubyHostileAnswer{verdict: rubyHostileRefuse, reason: name}
+		} else if text, accepted := o.Accepted(); accepted {
+			a = rubyHostileAnswer{verdict: rubyHostileAccept, reason: "-", text: text}
+		}
+		if why := rubyHostileGrade(c, a, true); (why == "") != o.Pass {
+			t.Errorf("%s: graded %q, the fixture says pass=%t", o.Name, why, o.Pass)
+		}
+	}
 }
 
 func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
@@ -413,6 +465,7 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
+	corpusDir, cases = rubyHostileFormFFValidBody(t, corpusDir, cases)
 	clean := rubyHostileRun(t, root, corpusDir, cases, false)
 	if bad := rubyHostileCompare(cases, clean); len(bad) != 0 {
 		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
@@ -422,6 +475,50 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	if len(bad) == 0 {
 		t.Fatal("the planted variable-table form gate bug (0xff admitted) was not observed: corpus stayed green")
 	}
+}
+
+// rubyHostileFormFFValidBody returns a copy of the corpus with one more case:
+// wire-valid's bytes with the form byte set to 0xff, refused by a clean reader
+// (newer_form) and ACCEPTED by a reader whose form gate admits 0xff. The
+// corpus's own wire-form-ff is a single byte, which a planted reader still
+// refuses (as damaged), so under docs/rulings.json refusal-verdict-only the
+// plant is seen only through a verdict this case flips.
+func rubyHostileFormFFValidBody(t *testing.T, corpusDir string, cases []rubyHostileCase) (string, []rubyHostileCase) {
+	t.Helper()
+	dir := t.TempDir()
+	var valid *rubyHostileCase
+	for i, c := range cases {
+		data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(c.Input)))
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		p := filepath.Join(dir, filepath.FromSlash(c.Input))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if c.Name == "wire-valid" {
+			valid = &cases[i]
+		}
+	}
+	if valid == nil {
+		t.Fatal("the corpus carries no wire-valid case to build the form-0xff body from")
+	}
+	data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(valid.Input)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] = 0xff
+	ff := *valid
+	ff.Name = "wire-form-ff-valid-body"
+	ff.Input = "inputs/wire-form-ff-valid-body.bin"
+	ff.Verdict, ff.Reason, ff.Digest = rubyHostileRefuse, "newer_form", "-"
+	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(ff.Input)), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir, append(slices.Clone(cases), ff)
 }
 
 const rubyResourceBoundsSchema = `package probe
@@ -454,6 +551,7 @@ func rubyResourceBoundsDocs() map[string]string {
 	unk.WriteByte('}')
 	return map[string]string{
 		"deep-nesting":        strings.Repeat("[", 132) + strings.Repeat("]", 132),
+		"deep-unknown":        `{"zz": ` + strings.Repeat("[", 132) + strings.Repeat("]", 132) + "}",
 		"huge-count":          `{"big": [` + strings.Repeat("1,", 99999) + "1]}",
 		"recursion":           chain,
 		"giant-string":        `"` + strings.Repeat("x", 70000) + `"`,
@@ -469,6 +567,7 @@ type rubyResourceBoundsWant struct {
 func rubyResourceBoundsWants() map[string]rubyResourceBoundsWant {
 	return map[string]rubyResourceBoundsWant{
 		"deep-nesting":        {"REFUSED", "malformed"},
+		"deep-unknown":        {"REFUSED", "malformed"},
 		"huge-count":          {"REFUSED", "count_over_bound"},
 		"recursion":           {"REFUSED", "malformed"},
 		"giant-string":        {"REFUSED", "kind_mismatch"},
@@ -480,7 +579,7 @@ const rubyResourceBoundsProbe = `# frozen_string_literal: true
 
 require_relative 'probe'
 
-NAMES = %w[deep-nesting huge-count recursion giant-string many-unknown-fields].freeze
+NAMES = %w[deep-nesting deep-unknown huge-count recursion giant-string many-unknown-fields].freeze
 SLOT_SIZE = GC::INTERNAL_CONSTANTS[:RVALUE_SIZE] || 40
 
 NAMES.each do |shape|
@@ -579,7 +678,7 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 				t.Fatalf("%s: bad bytes %q: %v", fields[0], fields[5], err)
 			}
 			if prev, ok := got[fields[0]]; ok {
-				if prev.verdict != r.verdict || prev.reason != r.reason || prev.bytes != r.bytes {
+				if prev.verdict != r.verdict || prev.bytes != r.bytes { // the verdict only: refusal-verdict-only
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %+v vs %+v", fields[0], prev, r)
 				}
 				r.allocated = max(r.allocated, prev.allocated)
@@ -603,7 +702,7 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 			t.Fatalf("shape %s: the probe wrote no line", name)
 		}
 		want := wants[name]
-		if r.verdict != want.verdict || r.reason != want.reason {
+		if r.verdict != want.verdict { // the verdict only: refusal-verdict-only
 			t.Fatalf("shape %s: %s %s, want %s %s", name, r.verdict, r.reason, want.verdict, want.reason)
 		}
 		budget := int(rubyAllocationFactorF*float64(r.bytes)) + int(rubyAllocationSlackKB*1024)
@@ -620,16 +719,19 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 func TestSchemaRubyResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters")
-	guarded, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "", ""))["deep-nesting"]
-	if !ok || guarded.verdict != "REFUSED" || guarded.reason != "malformed" {
-		t.Fatalf("with the depth guard in place deep-nesting must refuse malformed, got %+v", guarded)
+	// deep-unknown, not deep-nesting: a root array is refused whatever the
+	// cap (H is an object), so only nesting under a skipped unknown field
+	// shows the cap as a verdict (docs/rulings.json refusal-verdict-only)
+	guarded, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "", ""))["deep-unknown"]
+	if !ok || guarded.verdict != "REFUSED" {
+		t.Fatalf("with the depth guard in place deep-unknown must refuse, got %+v", guarded)
 	}
-	planted, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "fail_scan if depth > MAX_DEPTH", "fail_scan if depth > 100_000"))["deep-nesting"]
+	planted, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "fail_scan if depth > MAX_DEPTH", "fail_scan if depth > 100_000"))["deep-unknown"]
 	if !ok {
-		t.Fatal("the planted run wrote no deep-nesting line")
+		t.Fatal("the planted run wrote no deep-unknown line")
 	}
-	if planted.verdict == "REFUSED" && planted.reason == "malformed" {
-		t.Fatalf("the planted pattern (depth cap raised) did not change deep-nesting verdict: %+v", planted)
+	if planted.verdict == "REFUSED" {
+		t.Fatalf("the planted pattern (depth cap raised) did not change deep-unknown verdict: %+v", planted)
 	}
 }
 
