@@ -732,6 +732,9 @@ local function save_with(T, name, v, typed)
     w_leb(idx, sub.n)
     w_raw(idx, table.concat(sub.parts))
   end
+  -- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+  -- than 4096 entries, so the writer refuses a value that needs more.
+  if #ids.list > 4096 then return nil, "id_table_over_bound" end
   w_u8(idx, 0)
   for _, id in ipairs(ids.list) do
     w_u64(idx, id)

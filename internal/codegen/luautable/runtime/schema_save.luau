@@ -1165,6 +1165,9 @@ local function walk(d: any, v: any, count: boolean, outIndex: { [any]: number }?
 		w_sub(w, p)
 	end
 	w_u8(w, 0) -- the root body ends at its own zero reference
+	-- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+	-- than 4096 entries, so the writer refuses a value that needs more.
+	if #c.ids.list > 4096 then return nil, { name = "id_table_over_bound" } end
 	-- THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
 	for _, id in c.ids.list do w_int(w, id) end
 	w_int(w, integer.create(#c.ids.list))
