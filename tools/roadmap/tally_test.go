@@ -32,6 +32,7 @@ func isValidCell(cell string, inGenerated bool) bool {
 // grammar). Markers must pair up by id and never nest.
 func checkRoadmapText(raw string) error {
 	currentColumns, rows := 0, 0
+	tableOpen, freeText := false, false
 	inGenerated := ""
 	for n, line := range strings.Split(raw, "\n") {
 		if m := startMarkerRx.FindStringSubmatch(line); m != nil {
@@ -49,9 +50,23 @@ func checkRoadmapText(raw string) error {
 			continue
 		}
 		if !strings.HasPrefix(line, "|") {
+			tableOpen = false
 			continue
 		}
 		cells := strings.Split(strings.Trim(line, "|"), "|")
+		if !tableOpen {
+			// The first line of a table is its header. A header that is not
+			// the language matrix's is a Fixes table: free text, one row per fix.
+			tableOpen = true
+			freeText = strings.TrimSpace(cells[0]) != "feature"
+			if freeText {
+				if inGenerated == "" {
+					return fmt.Errorf("ROADMAP.md:%d: a free-text table outside every nova-work block: %q", n+1, line)
+				}
+				currentColumns = len(cells)
+				continue
+			}
+		}
 		if strings.TrimSpace(cells[0]) == "feature" {
 			currentColumns = len(cells) - 1
 			if currentColumns <= 0 {
@@ -60,6 +75,13 @@ func checkRoadmapText(raw string) error {
 			continue
 		}
 		if strings.HasPrefix(line, "|---") {
+			continue
+		}
+		if freeText {
+			if len(cells) != currentColumns {
+				return fmt.Errorf("fix row %q carries %d cells and the table header carries %d", strings.TrimSpace(cells[0]), len(cells), currentColumns)
+			}
+			rows++
 			continue
 		}
 		if len(cells)-1 != currentColumns {
@@ -139,11 +161,11 @@ func TestEveryTableIsGenerated(t *testing.T) {
 	}
 }
 
-// TestThePageCarriesTheThreeTables holds the page to the three roadmaps, in
-// order: packet wire, fixed tables, variable tables.
+// TestThePageCarriesTheThreeTables holds the page to its roadmaps, in order:
+// packet wire, fixed tables, variable tables, then the Fixes table.
 func TestThePageCarriesTheThreeTables(t *testing.T) {
 	got := generatedBlockIDs(readRoadmap(t))
-	want := []string{"packet-wire", "fixed-tables", "variable-tables"}
+	want := []string{"packet-wire", "fixed-tables", "variable-tables", "fixes"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("ROADMAP.md carries blocks %v; want %v", got, want)
 	}
@@ -420,4 +442,28 @@ func renderCopy(t *testing.T, sbcl, page string) string {
 		t.Fatal(err)
 	}
 	return string(got)
+}
+
+// TestFixesTableIsFreeText holds the Fixes table to its own header: any text
+// in a cell, one cell per header column, inside a block only. The language
+// matrix beside it keeps its grammar.
+func TestFixesTableIsFreeText(t *testing.T) {
+	block := func(id, body string) string {
+		return "<!-- nova-work:" + id + ":start -->\n\n" + body + "\n[Source data](docs/roadmap.sexp)\n\n<!-- nova-work:" + id + ":end -->\n"
+	}
+	matrix := block("m", "| feature | c1 |\n|---|:---:|\n| Row | \u2705 |\n| complete | 100% |\n")
+	good := block("fixes", "| Fix | Languages |\n|---|---|\n| A refused read resets the values | Java, Dart |\n| not a tick or a cross | 4097 |\n")
+	if err := checkRoadmapText(matrix + good); err != nil {
+		t.Fatalf("matrix then Fixes table refused: %v", err)
+	}
+	for name, bad := range map[string]string{
+		"short row":                 matrix + block("fixes", "| Fix | Languages |\n|---|---|\n| only one cell |\n"),
+		"long row":                  matrix + block("fixes", "| Fix | Languages |\n|---|---|\n| a | b | c |\n"),
+		"outside block":             matrix + "| Fix | Languages |\n|---|---|\n| a | b |\n",
+		"matrix keeps tick grammar": block("fixes", "| Fix |\n|---|\n| a |\n") + block("m", "| feature | c1 |\n|---|:---:|\n| Row | free text |\n"),
+	} {
+		if err := checkRoadmapText(bad); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
 }

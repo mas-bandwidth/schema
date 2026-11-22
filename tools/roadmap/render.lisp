@@ -35,6 +35,8 @@
 
 (in-package :roadmap-renderer)
 
+(load (merge-pathnames "fixes.lisp" (or *load-truename* *default-pathname-defaults*)))
+
 (defparameter *max-file-size* (* 5 1024 1024)) ; 5 MB
 (defparameter *max-ast-depth* 64)
 (defparameter *max-node-count* 10000)
@@ -181,7 +183,7 @@ an evidence overlay file, one plist per task."
             (type (getf node :type)))
         (unless (and (stringp id) (> (length (string-trim " " id)) 0))
           (error "Node missing valid non-empty string :id: ~s" node))
-        (unless (member type '(:task :work-set :roadmap))
+        (unless (member type '(:task :work-set :roadmap :fixes))
           (error "Unsupported work node type ~s in node ~s" type id))
         (when (gethash id table)
           (error "Duplicate node ID: ~s" id))
@@ -274,6 +276,8 @@ an evidence overlay file, one plist per task."
                       (error "Missing cell for row ~s and column ~s in roadmap ~s" r-id c-id id)))
                   col-ids))
                row-ids)))
+           (:fixes
+            (validate-fixes-node id node))
            (otherwise
             nil))))
      table)
@@ -389,6 +393,9 @@ name; nil when DIR does not exist."
                  (let ((sorted (sort accum #'string<)))
                    (setf (gethash work-node-id memo) sorted)
                    sorted)))
+              ((eq type :fixes)
+               (setf (gethash work-node-id memo) nil)
+               nil)
               ((eq type :roadmap)
                ;; Recursive roadmap support: traverse its cell work references
                (let ((cells (getf node :cells))
@@ -417,7 +424,7 @@ name; nil when DIR does not exist."
                (let ((node (gethash node-id table)))
                  (when node
                    (let ((type (getf node :type)))
-                     (when (eq type :roadmap)
+                     (when (member type (quote (:roadmap :fixes)))
                        (when (or (null target-id) (string= (getf node :id) target-id))
                          (return-from find-reachable-roadmap node)))
                      (case type
@@ -736,7 +743,7 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
              (page-block-ids existing) ids))
     (dolist (id ids)
       (setf text (splice-block text id
-                               (render-table-string (find-reachable-roadmap root-id table id)
+                               (render-page-block (find-reachable-roadmap root-id table id)
                                                     table sexp-path))))
     (unless (string= (outside-markers text) (outside-markers existing))
       (error "Splicing changed ROADMAP.md outside the nova-work markers"))
@@ -1426,7 +1433,44 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
                                         table "docs/roadmap.sexp")
                   (error () (setf caught t)))
                 (unless caught
-                  (error "Spliced into a page with bad markers: ~s" bad))))))))
+                  (error "Spliced into a page with bad markers: ~s" bad)))))))
+      ;; Test 23: the Fixes table: one row per fix, rendered from the data, held to its columns
+      (test "fixes table renders and is held to its columns"
+        (lambda ()
+          (let* ((cols (list (list "fix" "Fix") (list "languages" "Languages")))
+                 (entries (list (list "e1" "A refused read resets the caller values" "Java, Dart")
+                                (list "e2" "A duplicate map key refuses" "Go, Java, Dart")))
+                 (mk (lambda (c e)
+                       (list :schema 1 :root "goal" :page (list :roadmaps (list "fx"))
+                             :nodes (list (list :id "fx" :type :fixes :title "Fixes" :columns c :entries e)
+                                          (list :id "goal" :type :work-set :children (list "fx"))))))
+                 (sexp (funcall mk cols entries))
+                 (table (build-and-validate-node-table (validate-root sexp) "goal"))
+                 (hand (format nil "# Title~%~%## Fixes~%~%<!-- nova-work:fx:start -->~%stale~%<!-- nova-work:fx:end -->~%Tail~%"))
+                 (page (splice-page-string hand sexp table "docs/roadmap.sexp"))
+                 (expected (format nil "# Title~%~%## Fixes~%~%<!-- nova-work:fx:start -->~%~%| Fix | Languages |~%|---|---|~%| A refused read resets the caller values | Java, Dart |~%| A duplicate map key refuses | Go, Java, Dart |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:fx:end -->~%Tail~%")))
+            (unless (string= page expected)
+              (error "Fixes page differs:~%~a~%--- expected ---~%~a" page expected))
+            (unless (string= page (splice-page-string page sexp table "docs/roadmap.sexp"))
+              (error "Fixes splice is not idempotent"))
+            (unless (string= (outside-markers page) (outside-markers hand))
+              (error "Fixes splice changed the page outside the markers"))
+            ;; Negative controls: each of these data shapes must be refused.
+            (dolist (bad (list (list cols nil)
+                               (list nil entries)
+                               (list cols (list (list "e1" "only one cell")))
+                               (list cols (list (list "e1" "a" "b" "c")))
+                               (list cols (list (list "e1" "a | b" "c")))
+                               (list cols (list (list "e1" "a" "   ")))
+                               (list cols (list (list "e1" "a" "b") (list "e1" "c" "d")))
+                               (list (list (list "fix" "Fix") (list "fix" "Again")) (list (list "e1" "a" "b")))))
+              (let ((caught nil))
+                (handler-case
+                    (build-and-validate-node-table
+                     (validate-root (funcall mk (first bad) (second bad))) "goal")
+                  (error () (setf caught t)))
+                (unless caught
+                  (error "Accepted a bad Fixes node: ~s" bad))))))))
 
     (format t "=== Results: ~D passed, ~D failed ===~%" pass-count fail-count)
     (if (zerop fail-count)
