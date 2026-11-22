@@ -2061,6 +2061,14 @@ internal static class TableJson
             {
                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                 {
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and
+                    // as None inside an array; it is never counted unknown
+                    // (docs/SPEC-TABLES.md §2.15).
+                    if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                    {
+                        f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw);
+                        return true;
+                    }
                     f.SetRaw(owner, index, (ulong)v);
                     return true;
                 }

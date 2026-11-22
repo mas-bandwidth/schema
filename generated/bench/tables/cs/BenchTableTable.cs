@@ -140,6 +140,8 @@ namespace Benchtable
         public string NonFiniteField, NonFiniteReason;
         // Typed callbacks retain exact integer bounds and defaults without boxing.
         public ulong DefaultRaw;
+        // true for the raw value of a DEPRECATED variant; null when the enum has none
+        public Func<ulong, bool> EnumDeprecated = null;
         public Func<object, bool> WireGuard;
         public int[] NativeGuardOffsets;
         public bool[] NativeGuardValues;
@@ -2714,6 +2716,14 @@ namespace Benchtable
                     {
                         if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                         {
+                            // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and
+                            // as None inside an array; it is never counted unknown
+                            // (docs/SPEC-TABLES.md §2.15).
+                            if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                            {
+                                f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw);
+                                return true;
+                            }
                             f.SetRaw(owner, index, (ulong)v);
                             return true;
                         }
@@ -5161,8 +5171,10 @@ namespace Benchtable
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
                     int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
+                    ulong raw = (ulong)variant;
                     if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-                    if (keep) { f.SetRaw(value, index, (ulong)variant); }
+                    else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
+                    if (keep) { f.SetRaw(value, index, raw); }
                     return true;
                 }
                 if (kind == 15)
@@ -6026,6 +6038,7 @@ namespace Benchtable
                     if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
                     int variant = reference == 0 ? 0 : FindVariant(f, id, false);
                     if (reference != 0 && variant == 0) { report.Unknown++; }
+                    else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                     raw = (ulong)variant;
                 }
                 else

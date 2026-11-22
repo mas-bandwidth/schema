@@ -326,8 +326,10 @@ const tableMessageReadSource = `
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
             int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
+            ulong raw = (ulong)variant;
             if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-            if (keep) { f.SetRaw(value, index, (ulong)variant); }
+            else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
+            if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
         if (kind == 15)

@@ -129,6 +129,21 @@ func leafFiniteCondition(f *ir.Field) string {
 	return ""
 }
 
+// enumVariantDeprecated reports whether variant idx carries the deprecated tag.
+func enumVariantDeprecated(en *ir.Enum, idx int) bool {
+	if idx < len(en.VariantDeprecated) && en.VariantDeprecated[idx] {
+		return true
+	}
+	if idx < len(en.VariantTags) {
+		for _, t := range en.VariantTags[idx] {
+			if t == "deprecated" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	name := st.Name
 	g.pf("public static bool %sCollectTyped(%s v, ref TableWire.Ids ids)\n{\n", name, name)
@@ -446,7 +461,21 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		owner := g.owner.DeclaredName() + "." + f.Name
 		fmt.Fprintf(&b, ", NonFiniteField = %q, NonFiniteReason = %q", owner, "non_finite_float: "+owner)
 	}
-	if kind == tkBool || enumRef(f) != nil {
+	if en := enumRef(f); en != nil {
+		var depConds []string
+		for i := range en.Variants {
+			if enumVariantDeprecated(en, i) {
+				depConds = append(depConds, fmt.Sprintf("v == %dUL", i+1))
+			}
+		}
+		if len(depConds) > 0 {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as None
+			// inside an array (docs/SPEC-TABLES.md §2.15).
+			fmt.Fprintf(&b, ", EnumDeprecated = delegate (ulong v) { return %s; }", strings.Join(depConds, " || "))
+		}
+		return b.String()
+	}
+	if kind == tkBool {
 		return b.String()
 	}
 	if f.HasIntRange {
@@ -1345,6 +1374,7 @@ public static partial class TableWire
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
+            else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
             raw = (ulong)variant;
         }
         else
