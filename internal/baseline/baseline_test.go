@@ -73,9 +73,9 @@ type Boon
 }
 
 // the same twin under a different wire kind
-type BoonWide
+type BoonRetyped
 {
-    multiplier float64 = 1.0
+    multiplier int32 = 1
 }
 
 // a pointer arm's target: a pointer points at a TABLE (§3.1)
@@ -252,10 +252,12 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Gold, Platinum }"),
 		},
 		{
+			// a RETYPE across the ladders: int16 to int32 is a widening and
+			// passes (R17, TestBaselinePassesEveryWidening)
 			name:   "a field's kind changed",
-			edited: replace(t, "heading int16", "heading int32"),
+			edited: replace(t, "heading int16", "heading uint16"),
 			where:  "Config.heading",
-			what:   "wire kind 3 -> 4",
+			what:   "wire kind 3 -> 7",
 			token:  "kind",
 			// the absorbed edit of the same shape: a NEW field of the changed
 			// type beside the old one, which is the migration the wire wants
@@ -263,9 +265,9 @@ func TestRefusals(t *testing.T) {
 		},
 		{
 			name:    "an array's element kind changed",
-			edited:  replace(t, "slots   [..Slots]int32", "slots   [..Slots]int64"),
+			edited:  replace(t, "slots   [..Slots]int32", "slots   [..Slots]uint32"),
 			where:   "Config.slots",
-			what:    "array element kind 4 -> 5",
+			what:    "array element kind 4 -> 8",
 			token:   "elem",
 			control: replace(t, "slots   [..Slots]int32", "slots   [Slots]int32"), // fixed vs bounded frames identically
 		},
@@ -328,9 +330,9 @@ func TestRefusals(t *testing.T) {
 		},
 		{
 			name:    "a nested table swapped for a twin carrying the same id under a different kind",
-			edited:  replace(t, "    swap Buff", "    swap BoonWide"),
+			edited:  replace(t, "    swap Buff", "    swap BoonRetyped"),
 			where:   "Config.swap",
-			what:    "nested table Buff -> BoonWide, and multiplier's wire kind 10 -> 11",
+			what:    "nested table Buff -> BoonRetyped, and multiplier's wire kind 10 -> 4",
 			token:   "kind",
 			control: replace(t, "    swap Buff", "    swap BuffPlus"),
 		},
@@ -353,10 +355,10 @@ func TestRefusals(t *testing.T) {
 		// THE ARM REFUSAL'S SUB-CASES (§18.6). An arm is a field line, so each
 		// goes red for one reason, the token beside it.
 		{
-			name:    "a scalar arm's kind widened",
-			edited:  replace(t, "    tally  int32\n", "    tally  int64\n"),
+			name:    "a scalar arm's kind changed across the ladders",
+			edited:  replace(t, "    tally  int32\n", "    tally  uint32\n"),
 			where:   "union Shape.tally",
-			what:    "wire kind 4 -> 5",
+			what:    "wire kind 4 -> 8",
 			token:   "kind",
 			control: replace(t, "    ack\n", "    ack\n    extra  int32\n"), // an arm ADDED: an id no reader names
 		},

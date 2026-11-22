@@ -245,8 +245,9 @@ func frameRows(t *testing.T) []frameRow {
 			edited:   frameEdit(t, "    hits   int32\n", "    hits   int64\n"),
 			instance: `{"hits":5}`,
 			read:     "0,1",
-			baseline: "refuse",
-			build:    "moves",
+			baseline: "pass", // R17: the new reader reads the old value exactly
+
+			build: "moves",
 		},
 		{
 			name:     "a specified default changed",

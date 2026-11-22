@@ -334,7 +334,7 @@ committed rule and say what the repository does today.
 | a bound raised or lowered, a capacity or array bound grown | refuses `count_over_bound` or `length_over_bound` where a stored value exceeds it | passes; warns on a shrink | moves |
 | a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
-| a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
+| a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **passes**: a widening, and the new reader reads every old value exactly; an OLD build given the new file stops on it, `kind_mismatch` by name, which is lawful and never promised to work (R17; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves |
 | `T`→`?T` | nothing: non-default content shares bytes, and a present field at its defaults reads (SPEC-TABLES.md §4.1) | passes: a widening, and every old value lands present (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
 | `?T`→`T` | nothing on the variable form: one framing (the fixed form is SPEC-TABLES.md §3.4's) | **refuses**, naming the field: a narrowing, and once a field is optional it stays optional (R16; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
@@ -1044,15 +1044,16 @@ years, and several of the answers are patterns rather than syntax.
 
 - **Widen a field.** A NEW build reads an OLD file's narrower integer of the
   same signedness, and its `float32` as a `float64`, exactly, counting
-  `widened` (SPEC-TABLES.md §4). What is free besides, for the NEW reader:
-  growing an array bound, a string or bytes capacity, loosening a range; an
-  OLD reader refuses a value or a count past its own bound by name. **What the widening does not
-  do is run backwards**, and that is the whole of the pattern: the OLD build
-  meets `int64` where it declares `int32`, which is a narrowing, and it
-  refuses `kind_mismatch`. So `int32` to `int64` is a one-way
-  edit, safe the moment every reader is on the new build and lossy for every
-  reader that is not. Flip the whole fleet first and the edit is one line.
-  Where a reader can still be old, the pattern is unchanged: `gold2 ?int64`
+  `widened` (SPEC-TABLES.md §4), and the baseline passes the edit. What is
+  free besides, for the NEW reader: growing an array bound, a string or bytes
+  capacity, loosening a range; an OLD reader refuses a value or a count past
+  its own bound by name. **The widening does not run backwards, and nothing
+  promises that it does** (R17, 2026-11-22: "the newer reader can read old
+  data, but never the other way"): the OLD build meets `int64` where it
+  declares `int32` and refuses the file `kind_mismatch` by name, which is
+  lawful. So `int32` to `int64` is one line, and what it asks of a fleet is
+  an order: put every reader on the new build before a new file can reach it.
+  Where an old reader must still read the new files, keep the old field: `gold2 ?int64`
   beside `gold`, old saves read `gold2` absent, the load shim copies `gold`
   across, new saves write it present, retire `gold` after the horizon. Nothing
   widens across the signed and unsigned ladders, out of the fixed-point kinds,
@@ -1078,7 +1079,10 @@ years, and several of the answers are patterns rather than syntax.
   the first staged rollout, or turn retain-unknown on and check `retain_lost`.
   Roll back freely: the old build reads the new files and counts what it
   cannot use, and under retention it writes the unknown fields back out
-  unharmed.
+  unharmed. A WIDENED field is the exception: the old build refuses the new
+  files `kind_mismatch` by name, which is lawful, because only the newer
+  reader is promised the older data (R17, SPEC-TABLES.md §4). Put every
+  reader on the new build before any writer widens.
 - **Debug an old file.** `unpack` renders a wire file of a newer version to
   text and reports what it did not understand, and a damaged file is refused,
   because a bit with no name has no text spelling. `uncook` renders a cook written by
@@ -1115,13 +1119,15 @@ still open.
 - **Retention covers `unknown` and nothing else**, and nothing else needs it:
   every other condition refuses the load, so there is no partial value to
   rewrite.
-- **The widening path runs FORWARD only.** A new build reads an old file's
-  narrower integer of the same signedness, and its `float32` as a `float64`,
-  exactly, counting `widened`. An OLD build reading a NEW file gets nothing:
-  the narrowing refuses the load `kind_mismatch`. A rolling deploy that widens
-  a field therefore stops every peer still running the old build from reading
-  the new files, and the baseline refuses the edit until a `--reason`
-  says the fleet is flipped. The pairs are the two integer ladders and the one
+- **The widening path runs FORWARD only, and that is the promise** (R17,
+  2026-11-22: "the newer reader can read old data, but never the other
+  way"). A new build reads an old file's narrower integer of the same
+  signedness, and its `float32` as a `float64`, exactly, counting `widened`,
+  so the baseline passes the edit. An OLD build reading a NEW file refuses
+  the load `kind_mismatch` by name, which is lawful and never promised to
+  work. A rolling deploy that widens a field therefore stops every peer still
+  running the old build from reading the new files: put the readers on the
+  new build first. The pairs are the two integer ladders and the one
   float rung and no others (SPEC-TABLES.md §4), which is what keeps the rest of
   the kind space refusing loudly instead of guessing.
 - **A variant or union arm reordered or renamed is a lockstep redeploy**
@@ -1156,8 +1162,9 @@ still open.
 - **`bits(N)` grows freely, and across a storage width it now costs a
   counter rather than the values**: `bits(9)` to `bits(16)` is one kind and is
   silent, and `bits(8)` to `bits(9)` moves kind `6` to kind `7`, which the
-  widening rule decodes exactly and counts `widened`. Old builds reading the
-  new file refuse it `kind_mismatch`, on the row above.
+  widening rule decodes exactly and counts `widened`, and the baseline passes
+  it. Old builds reading the new file refuse it `kind_mismatch` by name,
+  which is lawful (R17), on the row above.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.

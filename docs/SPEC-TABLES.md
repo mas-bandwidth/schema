@@ -9280,10 +9280,14 @@ diagnostic name, which is not normative and is never compared:
   narrowing the variable form cannot see, because both spellings share one
   framing (§2.3), so the baseline check refuses it at check time, naming the
   field (§18.2); the lock refuses it for a fixed table (§21.1) and the fixed
-  form refuses it at read (§3.4). The baseline also refuses a KIND widening
-  (the table below): the newer reader accepts it, but on a mixed fleet the
-  older reader meets the narrowing, while `T` to `?T` leaves every older plain
-  reader reading the newer file. The kinds are a coarser vocabulary than
+  form refuses it at read (§3.4). **THE DIRECTION RULE** (R17, the owner,
+  2026-11-22: *"the newer reader can read old data, but never the other
+  way."*): a NEW reader reads OLD data, and that is the promise; an OLD
+  reader given a NEW file whose field widened refuses it by name,
+  `kind_mismatch`, which is lawful and never promised to work. So the
+  baseline PASSES every widening, a kind widening as well as `T` to `?T`, and
+  refuses only what a new reader cannot read from old data: a narrowing, a
+  retype, and `?T` to `T` (§18.2). The kinds are a coarser vocabulary than
   the declaration side, so this catches a change of KIND, not every change of
   type. **The reverse of every widening is a kind mismatch**: a narrowing
   loses what does not fit. Across the ladders, signed into unsigned or
@@ -9557,8 +9561,8 @@ only.
 | a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
 | a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | **moves**: the cook projection carries each variant's bit position (§20.1), and the protocol id moves too, because the bit positions are the declaration's variant names and they ride in the wire-shape projection (SPEC.md §3.1) |
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
-| a field's wire KIND, or an array's ELEMENT kind, changed | refuses `kind_mismatch` | **refuses** | **moves** |
-| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the widening runs ONE WAY, so the old build reading the NEW file refuses `kind_mismatch`, and a mixed fleet has readers on both sides | **moves** |
+| a field's wire KIND, or an array's ELEMENT kind, changed, other than by a widening: a narrowing or a retype (§4) | refuses `kind_mismatch` | **refuses** | **moves** |
+| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **passes** — a widening (§4, THE ONE WIDENING RULE; R17): the new reader reads every old value exactly, and the old build given the NEW file refuses it `kind_mismatch` by name, which is lawful and never promised to work | **moves** |
 | an array changed between keyed and positional | refuses `kind_mismatch` | **refuses** | **moves** |
 | an enum-keyed array's KEY enum swapped for another (§2.4) | `unknown` for each stored slot keyed by a variant name the new enum does not declare, and the slot is dropped; the new enum's unreached slots read their defaults | **refuses**, unless the new enum declares every variant name the old one did (§18.2) | **moves** |
 | a counted array's MINIMUM count moved, or gained or lost with the array's shape (SPEC §4.6) | refuses `count_over_bound` on a count below a raised minimum; silent on an array the writer elided at its born count, which reads back as the READER's minimum of default elements | **refuses** — the `mincount=` token is the array's born count as well as its floor (§18.1) | **moves** |
@@ -18673,7 +18677,7 @@ committed file whenever one is there, and:
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
-  changed; a field moved from `?T` to `T` (`optional=true` removed), the
+  NARROWED or RETYPED (a widening passes, below); a field moved from `?T` to `T` (`optional=true` removed), the
   narrowing of THE ONE WIDENING RULE (§4; R16); a `| required` marker added to a shipped field (`required=true`),
   or a new field carrying it — records written before it lack the field and a
   newer reader refuses them as `missing_required` — while removing it passes;
@@ -18741,8 +18745,12 @@ committed file whenever one is there, and:
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array that declares no
   minimum made fixed, or the reverse; an enum variant's `deprecated` marker
-  taken off; a field moved from `T` to `?T`, the widening (its reverse is the
-  narrowing refused above, and a field moved to or from `*T` is a kind change
+  taken off; a field's, an arm's, an element's or a map key's kind
+  WIDENED (an integer kind to a wider one of the same signedness, `f32` to
+  `f64`) and a field moved from `T` to `?T`, the widenings of §4 THE ONE
+  WIDENING RULE: the new reader reads every old value, and an old reader
+  given the new file refuses it by name, which is lawful (R17) (the reverse
+  of each is a narrowing refused above, and a field moved to or from `*T` is a kind change
   refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
