@@ -1,0 +1,25 @@
+schema-tables-baseline 10
+package decls
+
+table Holder
+    field c id=0xaf63de4c8601eff2 kind=4
+
+## retired
+    table Leaf id=0xa5c085b4bb73d1b5 date=2026-11-21
+    union Choice id=0xb0aadaa04e658ad6 date=2026-11-21
+    field Holder.pick id=0xbf0bc40dc513bbd8 date=2026-11-21
+    field Leaf.n id=0xaf63e34c8601f871 date=2026-11-21
+    union-arm Choice.leaf id=0x24ad84ada20208d5 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- table Leaf: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- union Choice: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- retired table Leaf id=0xa5c085b4bb73d1b5 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired union Choice id=0xb0aadaa04e658ad6 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Holder.pick id=0xbf0bc40dc513bbd8 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Leaf.n id=0xaf63e34c8601f871 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired union-arm Choice.leaf id=0x24ad84ada20208d5 — a re-added name or id is refused until this entry is acknowledged (issue #441)

@@ -311,8 +311,10 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		switch ref := f.Type.Ref.(type) {
 		case *Struct:
 			// the WIRE name (§5): a table renamed under `was` keeps the name
-			// every cooked node directory carries, so the rename moves nothing
-			fmt.Fprintf(&b, " type=%s", ref.WireName())
+			// every cooked node directory carries, so the rename moves nothing;
+			// a generated record is spelled from its holder's and its field's
+			// wire names (GeneratedWireName), for the same reason
+			fmt.Fprintf(&b, " type=%s", ProjectionReferentName(u, ref))
 		case *Enum:
 			fmt.Fprintf(&b, " enum=%s", ref.Name)
 			enums[ref.Name] = ref
