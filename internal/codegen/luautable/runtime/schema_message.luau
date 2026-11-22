@@ -440,8 +440,16 @@ end
 -- (docs/SPEC-TABLES.md §3.3: "The ANNOUNCEMENT READS walkLY, WITH EXACTLY
 -- TWO STRICT CHECKS"; a refusal is terminal and a second is
 -- `second_announcement`).
-function M.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096 }
+--
+-- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): `strict` is false when
+-- the vocabulary is made. Set before the first announcement, an announcement
+-- whose build version is not the reader's own (`ownVersion`, the unit's
+-- TableMessageBuildVersion handed to NewVocabulary) is refused
+-- `build_version_mismatch`, sets no vocabulary, keeps the peer's build version
+-- and names both versions in report.remote and report.own. A strict
+-- vocabulary made without its own version refuses every peer.
+function M.NewVocabulary(own: integer?): any
+	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096, strict = false, ownVersion = own }
 end
 
 local function refuse(report: any, why: string): boolean
@@ -525,6 +533,11 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	end
 	if r.at ~= start or ((report.unknown or 0) == 0 and nextRef - 1 ~= #ids) then report.malformed = true; return false end
 	if versions ~= 1 or vocabs ~= 1 then report.malformed = true; return false end
+	if v.strict and v.buildVersion ~= v.ownVersion then
+		report.remote = v.buildVersion
+		report.own = v.ownVersion
+		return refuse(report, "build_version_mismatch")
+	end
 	local w = { b = words, at = 0, e = buffer.len(words), bad = false }
 	local entries = {}
 	local seenRaw = {}
