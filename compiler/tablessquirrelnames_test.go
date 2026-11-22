@@ -159,7 +159,11 @@ func TestSquirrelTableRuntimeNamesAreClaimed(t *testing.T) {
 	for _, name := range tablenames.SquirrelModuleKeys() {
 		known[name] = true
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Squirrel) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Squirrel)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Squirrel) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !known[name] {
 			t.Errorf("the registry says the Squirrel backend defines %s, and SquirrelModuleKeys does not list it", name)
 		}

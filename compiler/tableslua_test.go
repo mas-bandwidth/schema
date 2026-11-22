@@ -115,11 +115,15 @@ func TestLuaTablesMoveNoGeneratedPacketByte(t *testing.T) {
 		t.Error(f)
 	}
 	// a table-free unit emits none of the table sources
+	runtimeFiles := slices.Sorted(maps.Keys(mustLuaRuntime(t)))
+	if len(runtimeFiles) == 0 {
+		t.Fatal("the Lua table backend emitted no runtime files: the runtime check below would compare nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Tables.lua") || strings.HasSuffix(name, "View.lua") {
 			t.Errorf("a table-free unit emitted %s", name)
 		}
-		for _, runtimeFile := range slices.Sorted(maps.Keys(mustLuaRuntime(t))) {
+		for _, runtimeFile := range runtimeFiles {
 			if name == runtimeFile {
 				t.Errorf("a table-free unit emitted the table runtime file %s", name)
 			}

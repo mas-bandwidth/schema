@@ -232,6 +232,9 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
+		}
 		for _, entry := range entries {
 			if strings.HasPrefix(entry.Name(), ".serialize.go.deps.") {
 				t.Fatalf("failed staged fetch left temporary directory %s\n%s", entry.Name(), out)

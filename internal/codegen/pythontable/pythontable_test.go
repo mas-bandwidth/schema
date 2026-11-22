@@ -349,12 +349,23 @@ print("OK")
 			fmt.Fprintf(&want, "field %s %s %d %s %t %d %s %t %t %s\n", st.Name, f.Name, ir.TableWireFieldKind(f), codecOf(f), f.Array != ir.ArrayNone, f.ArrayBound, key, f.Type.Pointer, f.Type.Optional, target)
 		}
 	}
+	tableLines, fieldLines := 0, 0
 	for line := range strings.SplitSeq(strings.TrimRight(got, "\n"), "\n") {
 		if strings.HasPrefix(line, "table ") || strings.HasPrefix(line, "field ") {
+			if strings.HasPrefix(line, "table ") {
+				tableLines++
+			} else {
+				fieldLines++
+			}
 			if !strings.Contains(want.String(), line+"\n") {
 				t.Errorf("probe line is not in the descriptor set:\n%s", line)
 			}
 		}
+	}
+	// the probe prints one table line for each of Lean and LeanLookupEntry,
+	// then a field line per descriptor field
+	if tableLines != 2 || fieldLines == 0 {
+		t.Errorf("the probe printed %d table and %d field descriptor lines, want 2 tables and their fields:\n%s", tableLines, fieldLines, got)
 	}
 }
 

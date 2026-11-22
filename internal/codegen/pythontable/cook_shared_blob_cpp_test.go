@@ -109,7 +109,11 @@ for order in (1, 2): print(cook.cook(r, order).hex())
 		planted[path] = []byte(strings.Replace(body, anchor, "identity = None", 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
-		for name, runner := range cookPins() {
+		allCookPins := cookPins()
+		if len(allCookPins) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name, runner := range allCookPins {
 			got := runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 			if string(got) == string(want) {
 				t.Errorf("%s: lost identity was not detected", name)

@@ -71,6 +71,9 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, unit := range names {
 		t.Run(unit, func(t *testing.T) {
 			t.Parallel()

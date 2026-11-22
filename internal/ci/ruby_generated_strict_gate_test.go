@@ -185,9 +185,11 @@ func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 		}
 		probe := map[string][]byte{"_probe.rb": []byte("# frozen_string_literal: true\n\nrequire_relative '" + pkg + "'\n")}
 		for _, interp := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
-			_, stderr, _ := rubyrun.Try(t, interp, dir, "_probe.rb", probe)
+			// a warning does not fail the interpreter, so stderr is the verdict;
+			// the run's error only says why stderr may be missing
+			_, stderr, runErr := rubyrun.Try(t, interp, dir, "_probe.rb", probe)
 			if !strings.Contains(stderr, "unused_planted_local") {
-				t.Fatalf("%s: planted ruby -w warning was not caught on stderr: %q", filepath.Base(interp), stderr)
+				t.Fatalf("%s: planted ruby -w warning was not caught on stderr: %q (run error: %v)", filepath.Base(interp), stderr, runErr)
 			}
 		}
 	})

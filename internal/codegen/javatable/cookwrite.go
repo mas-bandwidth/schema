@@ -468,7 +468,7 @@ public final class TableCookWrite {
         if (out != null) { TableBytes.put(out, (int) at, value, width, order == BIG); }
     }
 
-    private static long bits(java.lang.Object source, TableCookStorage storage, int width) {
+    private static long bits(java.lang.Object source, TableCookStorage storage, int width, boolean compressed) {
         if (source == null) { return 0; }
         if (storage == TableCookStorage.BOOL) { return java.lang.Boolean.TRUE.equals(source) ? 1 : 0; }
         if (storage == TableCookStorage.FLOAT) {
@@ -479,6 +479,8 @@ public final class TableCookWrite {
                     : java.lang.Double.doubleToRawLongBits(((java.lang.Number) source).doubleValue());
             long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
             if ((raw & exponent) == exponent) { throw new NonFiniteFloat(); }
+            // a COMPRESSED float's -0 is cooked as +0 (fixed-compressed-negzero)
+            if (compressed && raw == (width == 4 ? 0x80000000L : 0x8000000000000000L)) { return 0; }
             return raw;
         }
         if (source instanceof java.lang.Character) { return ((java.lang.Character) source).charValue(); }
@@ -512,7 +514,7 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            put(out, order, at, bits(source, f.storage, f.elemSize, f.compressed), f.elemSize);
         }
     }
 

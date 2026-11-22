@@ -1960,7 +1960,9 @@ end
 function M.saveMessages(T, root, vocab, values)
   message_root(T, root)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return nil end
-  if not vocab.announced then return nil end
+  -- a send uses the unit's own vocabulary (T.MessageVocabulary), as Go's
+  -- EncodeMessages does, so an unannounced receiver vocabulary is no reason to
+  -- refuse: measureMessages never asked for it either
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return nil, refused end
   local W = new_writer(false)

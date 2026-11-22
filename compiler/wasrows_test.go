@@ -66,7 +66,11 @@ func TestDartWasRowsCarriers(t *testing.T) {
 func TestWasRowsCarriers(t *testing.T) {
 	u := unitFromSource(t, wasRowsUnit)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		out, err := c.Generate(u, target, Options{})
 		if target == "goose" {
 			gooseCarriesTableWire(t, out, err)

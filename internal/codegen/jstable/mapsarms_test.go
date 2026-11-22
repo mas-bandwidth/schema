@@ -188,6 +188,9 @@ func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
 	}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for _, w := range want {
 		if !got[w] {
 			t.Errorf("the probe did not print %q", w)

@@ -100,6 +100,9 @@ fixed table FixedRoot
 			}
 		}
 	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		check(name, string(files[name]))
 	}
@@ -118,6 +121,9 @@ fixed table FixedRoot
 	entries, err := os.ReadDir(corpusDir)
 	if err != nil {
 		t.Fatalf("read %s: %v", corpusDir, err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
 	}
 	for _, e := range entries {
 		if e.IsDir() {

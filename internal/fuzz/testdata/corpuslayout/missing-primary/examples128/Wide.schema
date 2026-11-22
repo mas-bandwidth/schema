@@ -1,0 +1,8 @@
+// A corpus layout fixture for TestCorpusUnitsRefuseAMissingCorpus (F-048):
+// examples128 is here and examples is not.
+package layout
+
+type Wide
+{
+    y uint16
+}

@@ -288,7 +288,11 @@ func t15GoR28(t *testing.T) {
 	if !named {
 		t.Fatalf("%d nested unions: the depth bound turned the table away without naming it", deepest+1)
 	}
-	for name, data := range generate(t, t15DeepUnionSchema(deepest+1)) {
+	allGenerate := generate(t, t15DeepUnionSchema(deepest+1))
+	if len(allGenerate) == 0 {
+		t.Fatal("generate(t, t15DeepUnionSchema(deepest+1)) is empty: the loop below would check nothing")
+	}
+	for name, data := range allGenerate {
 		if strings.Contains(string(data), "func RootFixedLoad(") {
 			t.Fatalf("%d nested unions: %s emits the fixed form past the depth bound", deepest+1, name)
 		}

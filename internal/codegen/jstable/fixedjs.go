@@ -368,6 +368,12 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		}
 	}
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+		// docs/rulings.json fixed-compressed-negzero): -0 === 0, so the test
+		// stores the +0 bits. A plain float's -0 rides bit-exact.
+		expr = fmt.Sprintf("(%s === 0 ? 0 : %s)", expr, expr)
+	}
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 

@@ -1629,7 +1629,9 @@ element column, so one walk reaches the whole graph from either root. The wire's
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
 
 **Java carries the two table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Table>Block.java`
+and both table wires — the fixed form through `<Name>Fixed.java` and the
+variable form through `<Name>Variable.java`, with the message form in
+`<Name>Message.java` (SPEC-TABLES.md, ENTRY POINTS, PER LANGUAGE): a unit that declares tables grows `<Table>Block.java`
 and `<Table>Cook.java` per table beside its packet classes, `<Name>Row.java`
 for every blittable record in the closure, and the runtime types those need —
 one file per type (`TableBytes.java`, `TableBlockInfo.java`,
@@ -1639,11 +1641,9 @@ with which schema file sorts first, and a unit that declares no table emits not
 one of them. A block is pointed at and a cook is opened; neither parses a wire,
 both are read-only, and both refuse a forged image rather than throwing on it
 (`make tables-java-fuzz` is that oracle over mutated corpus images, with its
-planted control). There is no `<Base>Table.java`: the Java port of the table
-wire wrote the form that preceded the id-table wire, which the current
-specification does not describe, and it was removed rather than carried;
-schema#517 is the row that brings the id-table wire to Java, and ROADMAP.md
-marks the cells.
+planted control). There is no `<Base>Table.java`: the table wire is spelled per
+table, in the three classes above, and the runtime they share is
+`TableFixed.java`, `TableVariable.java` and `TableMessage.java`.
 
 **A block row and a cooked record have no Java type at all.** There is no struct
 to lay out, so `<Name>Row`'s generated accessors read each field at its offset

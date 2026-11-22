@@ -500,7 +500,11 @@ func TestSquirrelLoadMessagesIsTheStrictRead(t *testing.T) {
 
 func TestSquirrelLoadMessagesStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	for _, row := range messageStrictRows() {
+	allMessageStrictRows := messageStrictRows()
+	if len(allMessageStrictRows) == 0 {
+		t.Fatal("messageStrictRows() is empty: the loop below would check nothing")
+	}
+	for _, row := range allMessageStrictRows {
 		if row.control[0] == "" {
 			continue
 		}

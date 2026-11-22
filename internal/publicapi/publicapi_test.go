@@ -195,6 +195,9 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		args := []string{"generate", "--lang", c.target, "--out", outDir}
 		return append(args, c.corpus)
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		wantDir := filepath.Join(work, "want", c.name)
 		gotDir := filepath.Join(work, "got", c.name)
@@ -240,6 +243,9 @@ func compareTrees(t *testing.T, label, wantDir, gotDir string) {
 		if !bytes.Equal(wantBytes, gotBytes) {
 			t.Errorf("%s: %s differs between the in-repo and external builds", label, name)
 		}
+	}
+	if len(got) == 0 {
+		t.Fatal("got is empty: the loop below would check nothing")
 	}
 	for name := range got {
 		if _, ok := want[name]; !ok {

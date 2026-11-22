@@ -99,10 +99,15 @@ func cppRunUnitFlags(t *testing.T, schema, pkg, body string, includes, flags []s
 	// copied beside its endpoint exactly as the driver merges the two.
 	if after, ok := strings.CutPrefix(base, "VNEW_"); ok {
 		endpoint := filepath.Join(filepath.Dir(schema), "VOLD_"+after)
-		if pd, err := os.ReadFile(endpoint); err == nil {
-			if err := os.WriteFile(filepath.Join(dir, filepath.Base(endpoint)), pd, 0o644); err != nil {
-				t.Fatal(err)
-			}
+		pd, err := os.ReadFile(endpoint)
+		if err != nil {
+			// every VNEW_ fixture has its VOLD_ beside it: without it the unit
+			// would generate with no lineage and the probe would run against a
+			// reader the row never meant
+			t.Fatalf("%s has no readable VOLD_ endpoint beside it: %v", base, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(endpoint)), pd, 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 

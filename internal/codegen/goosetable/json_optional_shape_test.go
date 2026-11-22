@@ -161,6 +161,9 @@ func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
 	t.Parallel()
 	got, want := jsonOptionalRun(t, nil), jsonOptionalOracle(t)
 	texts := jsonOptionalTexts()
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("%s: Goose lands %s, the Go engine %s", texts[i], got[i], want[i])

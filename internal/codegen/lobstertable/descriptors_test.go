@@ -165,6 +165,9 @@ func TestLobsterDescriptorsNegativeControl(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		tc := cases[name]
 		t.Run(name, func(t *testing.T) {

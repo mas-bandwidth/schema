@@ -52,7 +52,11 @@ func TestLuauFeatureFullLayoutNegativeControl(t *testing.T) {
 		"return { size = align_up(((fd.bound or 0) + 1) * w, 4) + 4, align = 4 }",
 		"return { size = ((fd.bound or 0) + 1) * w, align = w }",
 	}})
-	for _, lu := range luauLayoutUnits(t) {
+	allLuauLayoutUnits := luauLayoutUnits(t)
+	if len(allLuauLayoutUnits) == 0 {
+		t.Fatal("luauLayoutUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, lu := range allLuauLayoutUnits {
 		if lu.key != "featurewitnesses" {
 			continue
 		}
