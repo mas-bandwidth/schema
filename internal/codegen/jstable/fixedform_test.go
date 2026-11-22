@@ -369,7 +369,7 @@ func TestFixedIdentityPlanIsElevenLanes(t *testing.T) {
 	t.Parallel()
 
 	src := guardProbeSource(t)
-	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1, 0, 0])") {
+	if !strings.Contains(src, "RootFixedIdentity = new globalThis.Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1, 0, 0])") {
 		t.Error("the identity plan omitted the ArgW lane (ninth is 1, the guard chain's offset and count are the last two)")
 	}
 }

@@ -56,8 +56,8 @@ func TestJsPacketWriteGuardsTheValueBeforeItNarrows(t *testing.T) {
 		`typeof value.boundary !== "bigint" || value.boundary < 0n || value.boundary > 8589934591n`,
 		`typeof value.wide !== "bigint" || value.wide < -10n || value.wide > 10n`,
 		`typeof value.q !== "bigint" || value.q < -256000n || value.q > 256000n`,
-		`!Number.isInteger(value.small) || value.small < 0 || value.small > 511`,
-		`!Number.isInteger(value.nq) || value.nq < -128 || value.nq > 112`,
+		`!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511`,
+		`!globalThis.Number.isInteger(value.nq) || value.nq < -128 || value.nq > 112`,
 	}
 	for _, tier := range []struct{ name, module, writer string }{
 		{"runtime", "P.js", "WriteP"},

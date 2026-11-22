@@ -1,0 +1,10 @@
+package badtypes
+
+type unknown { value uint32 }
+type never { value uint32 }
+type symbol { value uint32 }
+type number { value uint32 }
+type bigint { value uint32 }
+type undefined { value uint32 }
+type eval { value uint32 }
+type arguments { value uint32 }

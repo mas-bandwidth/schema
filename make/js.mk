@@ -62,6 +62,12 @@ packet-defaults-js-negative-control: packet-defaults-js
 
 test-js: packet-defaults-js packet-defaults-js-negative-control packet-end-js packet-end-js-negative-control
 
+.PHONY: js-binding-names
+js-binding-names: bin/schema
+	NODE="$(NODE)" python3 test/js/binding-names/run.py -v
+
+test-js: js-binding-names
+
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
 # the stream parameter), so the serialize.js sibling checkout is a test-leg

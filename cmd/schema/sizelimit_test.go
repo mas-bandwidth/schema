@@ -255,7 +255,7 @@ func TestARealSizeLimitFormatsADirectoryAllOrNothing(t *testing.T) {
 func TestGenerateOverAReadOnlyFileThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
-		t.Skip("root writes a read-only file")
+		t.Skip("root writes into a read-only file")
 	}
 	bin := buildCLI(t)
 	unit, out := realTempDir(t), realTempDir(t)
