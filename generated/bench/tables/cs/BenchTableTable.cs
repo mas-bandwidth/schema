@@ -1472,6 +1472,9 @@ namespace Benchtable
                     // no wire identity: the writer REFUSES rather than writing None
                     // over it, the rule measure and save already apply (§5)
                     if ((long)value > f.EnumMax) { return false; }
+                    // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15): a
+                    // write-side check, so a debug assert in this language (SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated variant is never written");
                     if (value != 0 && f.VariantId(value) == 0) { return false; }
                     string name = f.EnumName(value);
                     if (!Named(name)) { return false; }
