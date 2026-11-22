@@ -174,7 +174,8 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 #
 # A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
 # and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
-# fails when no test ran, or none passed (all skipped). PKG and RUN are both
+# fails when no test ran, or none passed (all skipped); it runs uncached
+# (-count=1 unless EXTRA names a -count). PKG and RUN are both
 # required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
 # not bare go test -run, in every brief, recipe and by hand.
 .PHONY: test-run
