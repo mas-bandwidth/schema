@@ -13,4 +13,4 @@
 # missing one is a failure.
 .PHONY: test-moo-tagged
 test-moo-tagged: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/codegen/mootable/ ./test/conformance/harness/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/ ./internal/codegen/mootable/ ./test/conformance/harness/

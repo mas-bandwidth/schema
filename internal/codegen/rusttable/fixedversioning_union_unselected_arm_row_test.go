@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // union_unselected_arm (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
@@ -123,7 +124,7 @@ debug = 0
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast")
+	cmd := testproc.Command(t, "cargo", "test", "--workspace", "--no-fail-fast")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, runErr := cmd.CombinedOutput()

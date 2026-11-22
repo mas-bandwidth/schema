@@ -27,13 +27,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // nestedTrailSchema is the pair the assertions generate: the outer union's
@@ -223,8 +224,8 @@ int main( void )
 		cxx = "c++"
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }

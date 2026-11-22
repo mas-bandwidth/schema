@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // §5.8 row cfloat_res_refine: the NEW reader (aim resolution 0.01) reads the OLD
@@ -86,7 +87,7 @@ fn v_cfloat_res_refine_new_reads_old() {
 		src:    versionProbeSource(tests),
 	})
 
-	cmd := exec.Command("cargo", "test")
+	cmd := testproc.Command(t, "cargo", "test")
 	cmd.Dir = filepath.Join(root, "probe_cfloat_res_refine")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

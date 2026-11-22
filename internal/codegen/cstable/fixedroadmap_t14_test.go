@@ -15,13 +15,14 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const t14CSOld = `package cfold
@@ -262,7 +263,7 @@ func t14CSRun(t *testing.T, schema string, older []string, mode, file string) {
 		t.Fatalf("sources: %v", err)
 	}
 	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc (%s): %v\n%s", mode, err, out)
@@ -271,7 +272,7 @@ func t14CSRun(t *testing.T, schema string, older []string, mode, file string) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app, mode, file)
+	run := testproc.Command(t, dotnet, "exec", app, mode, file)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	out, err := run.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "PROBE OK") || strings.Contains(string(out), "FAIL") {

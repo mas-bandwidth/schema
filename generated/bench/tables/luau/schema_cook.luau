@@ -828,8 +828,8 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 	end
 	if s == "float" then
 		local f = x or 0
-		-- a compressed float's -0 is stored as +0 (§3.3, fixed-compressed-negzero)
-		if e.res ~= nil and f == 0 then f = 0 end
+		-- a ranged float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+		if e.lo ~= nil and f == 0 then f = 0 end
 		if not finite(f, e.f32 == true) then
 			if _refusal == nil then _refusal = _owner .. "." .. (e.name or _field) end
 			return false

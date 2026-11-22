@@ -1304,6 +1304,9 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       return false
     end
   end
+  -- A COUNTED ARRAY BELOW ITS MIN (docs/SPEC.md §5.1 row 3): off the
+  -- reader's declaration, as an element past its bound is
+  if not fd.fixed and not fd.list and fd.keyed == nil and placed < (fd.min or 0) then report.clamped = report.clamped + 1 end
   holder[key] = out
   return true
 end
@@ -2068,7 +2071,7 @@ local function float_ok(fd: any, v: number): boolean
   local x = v
   if fd.f32 and x == x then buffer.writef32(narrowScratch, 0, x); x = buffer.readf32(narrowScratch, 0) end
   if x ~= x or x == math.huge or x == -math.huge then refuse_reason = "non_finite_float"; return false end
-  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "out_of_range"; return false end
+  if fd.lo ~= nil and (x < fd.lo or x > fd.hi) then refuse_reason = "out_of_range"; return false end
   return true
 end
 
@@ -2667,8 +2670,8 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     return true
   elseif s == "float" then
     if not float_ok(d, val) then return false end
-    -- a compressed float's -0 is written as 0 (§3.3, fixed-compressed-negzero)
-    if d.res ~= nil and val == 0 then val = 0 end
+    -- a ranged float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
+    if d.lo ~= nil and val == 0 then val = 0 end
     local text = float_text(val, d.f32)
     if text == nil then return false end
     raw(w, text)
@@ -2826,6 +2829,7 @@ adapt_field = function(fd: any, owner: any): any
     o.bound = fd.bound or 0
     o.fixed = fd.array == "fixed"
     o.list = fd.array == "list"
+    o.min = fd.min or 0
     o.keyed = fd.array == "keyed" and fd.keyvs or nil
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")

@@ -10,12 +10,13 @@ import (
 // TestLuauCompressedFloatStoresAreGuarded is the fast twin of
 // TestLuauCompressedNegZeroCorpus (docs/SPEC-TABLES.md §3.3, docs/rulings.json
 // fixed-compressed-negzero): it reads the embedded Luau runtime rather than
-// running it. Every Luau writer is data-driven, so a compressed float is the
-// descriptor carrying `res`; at every write site the value is normalised
-// (a -0 that compares equal to 0 becomes the literal 0) BEFORE the bits are
-// taken, and the variable form's elision compares the normalised value. The
-// plain float's path is the control: same_float, the bit comparison a plain
-// float elides by, carries no normalisation of its own.
+// running it. Every Luau writer is data-driven, so a ranged (compressed) float
+// is the descriptor carrying `lo` (the generator emits lo, hi and res
+// together); at every write site the value is normalised (a -0 that compares
+// equal to 0 becomes the literal 0) BEFORE the bits are written, and the
+// variable form's elision compares the normalised value through held_float.
+// The plain float's path is the control: same_float, the bit comparison a
+// plain float elides by, carries no normalisation of its own.
 func TestLuauCompressedFloatStoresAreGuarded(t *testing.T) {
 	t.Parallel()
 	rt := luautable.Runtime()
@@ -37,11 +38,11 @@ func TestLuauCompressedFloatStoresAreGuarded(t *testing.T) {
 			return ""
 		}
 		rest := text[at:]
-		end := strings.Index(rest, "\nend\n")
-		if end < 0 {
+		head, _, found := strings.Cut(rest, "\nend\n")
+		if !found {
 			t.Fatalf("%s: %q has no end", file, header)
 		}
-		return rest[:end]
+		return head
 	}
 	// before requires guard to occur in fn, ahead of the first write.
 	before := func(file, fn, where, guard, write string) {
@@ -59,39 +60,46 @@ func TestLuauCompressedFloatStoresAreGuarded(t *testing.T) {
 	}
 
 	save := src("schema_save.luau")
-	stored := body("schema_save.luau", save, "local function stored_float(")
-	if !strings.Contains(stored, "e.res ~= nil and v == 0 then return 0 end") {
-		t.Errorf("schema_save.luau stored_float does not store +0 for a compressed -0:\n%s", stored)
+	held := body("schema_save.luau", save, "local function held_float(")
+	if !strings.Contains(held, "if e.lo ~= nil and v == 0 then v = 0 end") {
+		t.Errorf("schema_save.luau held_float does not hold +0 for a ranged -0:\n%s", held)
 	}
 	same := body("schema_save.luau", save, "local function same_float(")
-	if strings.Contains(same, "stored_float") || strings.Contains(same, "res") {
+	if strings.Contains(same, "held_float") || strings.Contains(same, ".lo") {
 		t.Errorf("schema_save.luau same_float normalises: a plain float's -0 must ride bit-exact:\n%s", same)
 	}
 	before("schema_save.luau", body("schema_save.luau", save, "write_value = function("), "write_value (scalars, elements, keyed slots, union arms)",
-		"val = stored_float(e, val)", "narrow_f32(val)")
-	if fn := body("schema_save.luau", save, "local function elem_is_default("); !strings.Contains(fn, "same_float(stored_float(e, val), 0, e.f32)") {
+		"if e.lo ~= nil and val == 0 then val = 0 end", "narrow_f32(val)")
+	if fn := body("schema_save.luau", save, "local function elem_is_default("); !strings.Contains(fn, "same_float(held_float(e, val), 0, e.f32)") {
 		t.Errorf("schema_save.luau elem_is_default elides an element by the -0 bits:\n%s", fn)
 	}
-	if fn := body("schema_save.luau", save, "local function at_default("); !strings.Contains(fn, "same_float(stored_float(fd, val), stored_float(fd, fd.def), fd.f32)") {
+	if fn := body("schema_save.luau", save, "local function at_default("); !strings.Contains(fn, "same_float(held_float(fd, val), held_float(fd, fd.def), fd.f32)") {
 		t.Errorf("schema_save.luau at_default elides a field by the -0 bits:\n%s", fn)
 	}
 
 	fixed := src("schema_fixed.luau")
-	before("schema_fixed.luau", body("schema_fixed.luau", fixed, "local function writeLeaf("), "writeLeaf",
-		"if f.res ~= nil and v == 0 then v = 0 end", "doubleToF32(v)")
+	leaf := body("schema_fixed.luau", fixed, "local function writeLeaf(")
+	before("schema_fixed.luau", leaf, "writeLeaf (float32)",
+		"if f.lo ~= nil and v == 0 then bits = 0 end", "buffer.writeu32(buf, off, bits)")
+	before("schema_fixed.luau", leaf, "writeLeaf (float64)",
+		"if f.lo ~= nil and v == 0 then v = 0 end", "buffer.writef64(buf, off, v)")
 
 	cook := src("schema_cook.luau")
 	before("schema_cook.luau", body("schema_cook.luau", cook, "write_value = function("), "write_value",
-		"if e.res ~= nil and f == 0 then f = 0 end", "put_float(w, at, f,")
+		"if e.lo ~= nil and f == 0 then f = 0 end", "put_float(w, at, f,")
 
 	json := src("schema_json.luau")
-	jw := json[strings.Index(json, "  elseif s == \"float\" then\n    if not float_ok(d, val)"):]
+	const floatWriter = "  elseif s == \"float\" then\n    if not float_ok(d, val)"
+	_, jw, found := strings.Cut(json, floatWriter)
+	if !found {
+		t.Fatalf("schema_json.luau: no float value writer %q", floatWriter)
+	}
 	before("schema_json.luau", jw, "the float value writer",
-		"if d.res ~= nil and val == 0 then val = 0 end", "float_text(val, d.f32)")
+		"if d.lo ~= nil and val == 0 then val = 0 end", "float_text(val, d.f32)")
 
 	msg := src("schema_message.luau")
 	before("schema_message.luau", body("schema_message.luau", msg, "local function mEncodeScalar("), "mEncodeScalar",
-		"(kind == 10 or kind == 11) and e.res ~= nil and val == 0 then val = 0 end", "buffer.writef32(msgScratch, 0, val)")
+		"(kind == 10 or kind == 11) and e.lo ~= nil and val == 0 then val = 0 end", "buffer.writef32(msgScratch, 0, val)")
 	before("schema_message.luau", body("schema_message.luau", msg, "local function mAtDefault("), "mAtDefault",
 		"if val == 0 then val = 0 end", "buffer.writef32(msgScratch, 0, val)")
 }

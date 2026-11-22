@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestEscapeKind31SkippedAndCountedJava carries the 64-bit id-table wire's
@@ -55,10 +56,10 @@ table Card { id string(64) }
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

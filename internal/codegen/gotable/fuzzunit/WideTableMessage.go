@@ -335,7 +335,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 							}
 							{
 								v := payload7.Unsigned(element.Shape.Kind)
-								(*p) = uint16(v)
+								(*p) = uint16(v & 0xffff)
 							}
 						}
 					}

@@ -24,11 +24,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var (
@@ -50,7 +51,7 @@ func t12SchemaBinary(t *testing.T) string {
 			return
 		}
 		bin := filepath.Join(dir, "schema")
-		cmd := exec.Command("go", "build", "-o", bin, "../../../cmd/schema")
+		cmd := testproc.Command(t, "go", "build", "-o", bin, "../../../cmd/schema")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t12SchemaErr = fmt.Errorf("go build cmd/schema: %w\n%s", err, out)
 			return
@@ -86,7 +87,7 @@ func t12BuildRegistered(t *testing.T, pkg string, schemas map[string]string, pro
 	if err := os.MkdirAll(srcPkg, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "generate", "--lang", "java", "--out", srcPkg, schemaDir)
+	cmd := testproc.Command(t, bin, "generate", "--lang", "java", "--out", srcPkg, schemaDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("schema generate --lang java: %v\n%s", err, out)
 	}
@@ -104,7 +105,7 @@ func t12BuildRegistered(t *testing.T, pkg string, schemas map[string]string, pro
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, genJava...)
 	args = append(args, probePath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes
@@ -116,7 +117,7 @@ func t12RunJava(t *testing.T, classes, mainClass string, extraArgs ...string) st
 	t.Helper()
 	_, javaBin := javaTools(t)
 	args := append([]string{"-ea", "-cp", classes, mainClass}, extraArgs...)
-	out, err := exec.Command(javaBin, args...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", mainClass, err, out)
 	}

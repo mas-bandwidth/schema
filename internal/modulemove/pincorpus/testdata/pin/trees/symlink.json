@@ -1,0 +1,16 @@
+{
+  "layout": [
+    {"path": "real/gen.go", "lines": ["package p1", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "func Thing() {}"]},
+    {"path": "p1/generate.go", "symlink": "../real/gen.go"},
+    {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "func Other() {}"]}
+  ],
+  "cases": [
+    {"id": "symlink-pin-v2.6.0", "finding": "F-157", "note": "control: pin follows the link and rewrites the file it names; the link stays a link", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "after": [
+       {"path": "real/gen.go", "lines": ["package p1", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "func Thing() {}"]},
+       {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "func Other() {}"]}]},
+    {"id": "symlink-publish-fails-on-second", "finding": "F-157", "note": "rollback used to replace the symbolic link with a regular file", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"onto": "p2/generate.go", "from": 1, "until": 1}], "error": "nothing was changed"},
+    {"id": "symlink-refuse-month-19", "finding": "F-161", "version": "v2.5.1-0.20261999185943-f397f5f7765d", "dirs": ["p1", "p2"], "error": "month 19"}
+  ]
+}

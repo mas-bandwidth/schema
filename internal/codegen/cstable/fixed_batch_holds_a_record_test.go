@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpFixedBatchHoldsARecord holds docs/SPEC-TABLES.md §22.6 and
@@ -84,7 +85,7 @@ func TestCSharpFixedBatchHoldsARecord(t *testing.T) {
 		dotnet = "dotnet"
 	}
 	run := func(mode string) ([]byte, error) {
-		cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--", mode)
+		cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--", mode)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "SCHEMA_FIXED_EMPTY_BATCH="+vector, "DOTNET_NOLOGO=1")
 		return cmd.CombinedOutput()
