@@ -456,7 +456,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.pf("  function Layout() {\n")
 	g.pf("    if (!layoutChecked) {\n")
 	g.pf("      if (!TableCookLayout.verify(root)) {\n")
-	g.pf("        throw new Error(\"%sCook: this build's generated cook descriptors disagree with each other (docs/SPEC-TABLES.md §20.3) — regenerate\");\n", st.Name)
+	g.pf("        throw new globalThis.Error(\"%sCook: this build's generated cook descriptors disagree with each other (docs/SPEC-TABLES.md §20.3) — regenerate\");\n", st.Name)
 	g.pf("      }\n")
 	g.pf("      layoutChecked = true;\n")
 	g.pf("    }\n")
@@ -464,7 +464,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.pf("  }\n\n")
 	g.emitOpen(st, ml, align)
 	g.emitAt(st)
-	g.pf("  return Object.freeze({\n")
+	g.pf("  return globalThis.Object.freeze({\n")
 	g.pf("    // §7.1's constants, so a consumer reading this module has the facts and\n")
 	g.pf("    // not a description of them.\n")
 	g.pf("    RegionAlignment: %d, // the greatest alignof in the region, floor eight\n", align)
@@ -508,8 +508,8 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("  // that opens — the cook-reason surface (test/conformance/README.md).\n")
 	g.pf("  function openCheck(bytes) {\n")
 	g.pf("    if (bytes.length < %d) { return \"truncated\"; }\n", cookHeaderBytes)
-	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
-	g.pf("    const extent = BigInt(bytes.length);\n\n")
+	g.pf("    const view = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("    const extent = globalThis.BigInt(bytes.length);\n\n")
 	g.pf("    // THE MAGIC, before anything else: it is what establishes the byte order\n")
 	g.pf("    // every other header word is written in. A cook of the other order reads\n")
 	g.pf("    // back this constant byte-reversed and refuses HERE, rather than reaching\n")
@@ -560,22 +560,22 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("    // carries the property from the file's base to the region's. A base that\n")
 	g.pf("    // is not aligned is the CALLER's placement, not the file: Open throws it,\n")
 	g.pf("    // and OpenReason names it unaligned_base, as the reference does.\n")
-	g.pf("    if ((BigInt(bytes.byteOffset) %% alignment) !== 0n) { return \"unaligned_base\"; }\n\n")
+	g.pf("    if ((globalThis.BigInt(bytes.byteOffset) %% alignment) !== 0n) { return \"unaligned_base\"; }\n\n")
 	g.pf("    // `region` is the DATA part's offset inside the caller's view: the root\n")
 	g.pf("    // sits at region + 0, and every accessor takes an offset in these bytes.\n")
-	g.pf("    return { Bytes: bytes, View: view, Region: Number(dataOffset), Length: Number(dataLength) };\n")
+	g.pf("    return { Bytes: bytes, View: view, Region: globalThis.Number(dataOffset), Length: globalThis.Number(dataLength) };\n")
 	g.pf("  }\n\n")
 	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
+	g.pf("    if (!(bytes instanceof globalThis.Uint8Array)) {\n")
+	g.pf("      throw new globalThis.TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
 	g.pf("    const handle = openCheck(bytes);\n")
 	g.pf("    if (handle === \"unaligned_base\") {\n")
-	g.pf("      const alignment = new DataView(bytes.buffer, bytes.byteOffset, bytes.length).getBigUint64(40, true);\n")
-	g.pf("      throw new RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
+	g.pf("      const alignment = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length).getBigUint64(40, true);\n")
+	g.pf("      throw new globalThis.RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
 	g.pf("        \"must be a multiple of \" + alignment + \" (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n")
-	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("        \"into a fresh Uint8Array first: new globalThis.Uint8Array(bytes)\");\n")
 	g.pf("    }\n")
 	g.pf("    return typeof handle === \"string\" ? null : handle;\n")
 	g.pf("  }\n\n")
@@ -583,8 +583,8 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("  // all is the reference's null base, unaligned_base, rather than a throw.\n")
 	g.pf("  function OpenReason(bytes) {\n")
 	g.pf("    if (bytes === null || bytes === undefined) { return \"unaligned_base\"; }\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sCook.OpenReason takes the cook's bytes as a Uint8Array, not \" + typeof bytes);\n", st.Name)
+	g.pf("    if (!(bytes instanceof globalThis.Uint8Array)) {\n")
+	g.pf("      throw new globalThis.TypeError(\"%sCook.OpenReason takes the cook's bytes as a Uint8Array, not \" + typeof bytes);\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
 	g.pf("    const handle = openCheck(bytes);\n")
@@ -625,7 +625,7 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.pf("    if (high === 0 && low === 0) { return null; } // a null reference\n")
 	g.pf("    const target = slot + high * 4294967296 + low;\n")
 	g.pf("    if (target < cook.Region || target >= cook.Region + cook.Length) {\n")
-	g.pf("      throw new RangeError(\"%sCook.At: the reference at offset \" + (slot - cook.Region) + \" leaves the region — this cook is corrupt (docs/SPEC-TABLES.md §6.3); run schema cook-check\");\n", st.Name)
+	g.pf("      throw new globalThis.RangeError(\"%sCook.At: the reference at offset \" + (slot - cook.Region) + \" leaves the region — this cook is corrupt (docs/SPEC-TABLES.md §6.3); run schema cook-check\");\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    return target;\n")
 	g.pf("  }\n\n")
@@ -646,10 +646,10 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 		return
 	}
 	g.need(g.recordModule(record), recordName(record))
-	g.pf("  const %s = Object.freeze({\n", cookInfoSymbol(record))
+	g.pf("  const %s = globalThis.Object.freeze({\n", cookInfoSymbol(record))
 	g.pf("    Name: %q, Size: %d, Align: %d, NumFields: %d, Row: %s,\n",
 		record, ml.Size, ml.Align, len(ml.Fields), recordName(record))
-	g.pf("    Fields: Object.freeze([\n")
+	g.pf("    Fields: globalThis.Object.freeze([\n")
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		names := "null"
@@ -799,9 +799,9 @@ export const TableCookMaxAlign = ` + fmt.Sprintf("%d", cookMaxAlign) + `;
 // size, and every array's element size dividing its extent. It runs ONCE,
 // before any Open returns a handle, and a failure is a REFUSAL rather than a
 // throw.
-export const TableCookLayout = Object.freeze({
+export const TableCookLayout = globalThis.Object.freeze({
   verify(root) {
-    const seen = new Set();
+    const seen = new globalThis.Set();
     function record(info) {
       if (info === null || seen.has(info)) { return true; }
       seen.add(info);

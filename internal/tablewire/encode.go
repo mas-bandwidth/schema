@@ -548,12 +548,12 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u32(math.Float32bits(float32(cell.F)))
+		w.u32(math.Float32bits(float32(tabletext.StoredFloat(f, cell.F))))
 	case ir.TableKindF64:
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u64(math.Float64bits(cell.F))
+		w.u64(math.Float64bits(tabletext.StoredFloat(f, cell.F)))
 	case ir.TableKindTable:
 		body, err := encodeBody(e, subInstance(e, f, cell))
 		if err != nil {
