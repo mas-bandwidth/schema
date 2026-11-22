@@ -71,7 +71,7 @@ WRAP
 chmod +x "$out/driver"
 printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
 rc=0
-build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
+build/conformance-harness run --claims --surfaces json-read,json-write,json-hostile --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = replacement ]; then
     if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
         cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
