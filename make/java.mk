@@ -1195,7 +1195,7 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 # supplies that type and this leg needs no C++ serialize checkout to produce
 # the oracle.
 JAVA_FIXEDFORM_CORPUS := build/java-fixedform-corpus
-build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk
+build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf $(JAVA_FIXEDFORM_CORPUS)
 	@mkdir -p $(JAVA_FIXEDFORM_CORPUS)
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
