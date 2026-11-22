@@ -777,6 +777,9 @@ local writeScalar = function(T, w, fd, value) {
     else put(w, castf2i(value), 64);
     return;
   }
+  // a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+  // §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): never masked to fit
+  if (fd.shape == "flags" && (typeof value != "integer" || (fd.flagbits < 64 && (value >>> fd.flagbits) != 0))) { refuseValue(w); return; }
   if (fd.shape == "int" && !intAdmits(fd, value)) { refuseValue(w); return; }
   local raw = value;
   if (fd.shape == "int" && fd.lo != null) {
@@ -870,6 +873,10 @@ local readScalar = function(r, T, v, fd, shape) {
   }
   // bits(N) holds N bits: a value past them is outside the reader's range
   if (fd.shape == "int" && fd.bits > 0 && fd.bits < 64 && (x < 0 || x > (1 << fd.bits) - 1)) { refuseRead(r, "out_of_range"); return 0; }
+  // A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+  // §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+  // mask, and each value is held to this reader's W
+  if (fd.shape == "flags" && fd.flagbits != null && fd.flagbits < 64 && typeof x == "integer" && (x >>> fd.flagbits) != 0) { refuseRead(r, "out_of_range"); return 0; }
   return x;
 };
 

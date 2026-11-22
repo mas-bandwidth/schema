@@ -488,6 +488,9 @@ local integerAdmits = function(d, val) {
     return true;
   }
   if (typeof val != "integer") return false;
+  // a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+  // §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+  if (d.shape == "flags" && d.flagbits != null && d.flagbits < 64 && (val >>> d.flagbits) != 0) return false;
   local bits = (d.bits != null && d.bits > 0) ? d.bits : d.width * 8;
   if (d.signed) {
     if (bits < 64) {
@@ -1018,6 +1021,11 @@ fixedWriteElement = function(T, owner, fname, e, val, out, off) {
     if (("fmin" in e) && e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;
     putFixedU(out, off, e.f32 ? 4 : 8, bits);
     return true;
+  }
+  if (e.shape == "flags" && (typeof val != "integer" || (e.flagbits != null && e.flagbits < 64 && (val >>> e.flagbits) != 0))) {
+    // a mask is held to W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+    _M.SaveReason <- "invalid_value: " + owner + "." + fname;
+    return false;
   }
   if (e.shape == "int" || e.shape == "flags") {
     if (e.sw == 16) {
