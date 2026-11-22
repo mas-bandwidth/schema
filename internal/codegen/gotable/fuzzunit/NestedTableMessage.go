@@ -229,9 +229,9 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 }
 
 // ArchiveConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -244,6 +244,11 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 		if read.Refused() {
 			tableRefused(read)
 		}
+		if !ok {
+			for j := range values {
+				ArchiveConfigReset(&values[j])
+			}
+		}
 	}()
 	if count < 0 {
 		return 0, false
@@ -254,16 +259,10 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 	}
 	for i := range count {
 		if !ArchiveConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				ArchiveConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			ArchiveConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true

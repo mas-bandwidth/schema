@@ -16,7 +16,7 @@ import (
 // forges ONLY the second arm, rest % recordBytes != 0, by appending 1 to
 // recordBytes-1 bytes. extra == recordBytes is one more whole record, not a
 // ragged tail, so it owes a different answer and is measured separately. The
-// destination is filled with a sentinel Point and proved still the sentinel.
+// destination is filled with a sentinel Point and proved to hold its declared default after the refusal (R4, docs/SPEC-TABLES.md §6.5).
 // CONTROL 2 turns the ragged-tail arm (rest%recordBytes != 0) into false and
 // the row must go RED.
 func TestFixedFormRaggedTail(t *testing.T) {
@@ -41,12 +41,14 @@ func TestRaggedTail(t *testing.T) {
 	if n := PointFixedLoad(good, buf, plan, &r); n != 1 || r != (TableReport{}) || good[0] != one {
 		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, good[0], r)
 	}
+	var def Point
+	PointReset(&def) // R4: a refusal leaves every value handed in at its declared default
 	recordBytes := PointFixedRecordBytes
 	for extra := 1; extra < recordBytes; extra++ {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
 		ragged := append(buf, make([]byte, extra)...)
-		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != def {
 			t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 		}
 	}

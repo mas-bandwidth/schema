@@ -13,7 +13,7 @@ import (
 // docs/FIXED-FORM-ALGORITHM.md §4.5). A counted `[..95]T` and a `string(41)`
 // carry forged counts/lengths past their bounds, each with and without slack
 // behind the bound, on the IDENTITY plan and on a compiled lineage plan, and in
-// every case the load refuses by name and writes no destination byte (§5.8:
+// every case the load refuses by name and every row handed in holds its declared default (R4, docs/SPEC-TABLES.md §6.5; §5.8:
 // REFUSE is total).
 func TestFixedFormCountAndLengthOverBoundRefuseByName(t *testing.T) {
 	t.Parallel()
@@ -66,9 +66,11 @@ func TestRefuseByName(t *testing.T) {
 		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%s: refusal moved a counter or marked malformed: %+v", name, r)
 		}
-		for i, b := range pdst {
-			if b != 0x5A {
-				t.Fatalf("%s: the refusal wrote destination byte %d: 0x%02X, want 0x5A (§5.8: not one destination byte)", name, i, b)
+		var r4want Root
+		RootReset(&r4want)
+		for k := range got {
+			if got[k] != r4want {
+				t.Fatalf("%s: R4: row %d handed in is %+v after the refusal, want its declared default %+v", name, k, got[k], r4want)
 			}
 		}
 	}
@@ -142,9 +144,11 @@ func TestCountOverBoundCompiled(t *testing.T) {
 		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
 		}
-		for i, b := range pdst {
-			if b != 0x5A {
-				t.Fatalf("%%s: wrote destination byte %%d: 0x%%02X", name, i, b)
+		var r4want %[2]s
+		%[2]sReset(&r4want)
+		for k := range back {
+			if back[k] != r4want {
+				t.Fatalf("%%s: R4: row %%d handed in is %%+v after the refusal, want its declared default %%+v", name, k, back[k], r4want)
 			}
 		}
 	}
@@ -200,9 +204,11 @@ func TestLengthOverBoundCompiled(t *testing.T) {
 		if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%%s: refusal moved a counter or marked malformed: %%+v", name, r)
 		}
-		for i, b := range pdst {
-			if b != 0x5A {
-				t.Fatalf("%%s: wrote destination byte %%d: 0x%%02X", name, i, b)
+		var r4want %[2]s
+		%[2]sReset(&r4want)
+		for k := range back {
+			if back[k] != r4want {
+				t.Fatalf("%%s: R4: row %%d handed in is %%+v after the refusal, want its declared default %%+v", name, k, back[k], r4want)
 			}
 		}
 	}

@@ -1008,9 +1008,19 @@ func ArchiveConfigFixedSaveReason(values []ArchiveConfig, buffer []byte) (int64,
 }
 
 // ArchiveConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
+// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
+// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
 func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	n := fixedLoadWalkArchiveConfig(values, data, plan, report)
+	if n < 0 {
+		for j := range values {
+			ArchiveConfigReset(&values[j])
+		}
+	}
+	return n
+}
+
+func fixedLoadWalkArchiveConfig(values []ArchiveConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -1120,9 +1130,6 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 			return tableFixedRefuse(report, why)
 		}
 		if why := ArchiveConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				ArchiveConfigReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -1130,18 +1137,12 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		switch pick {
 		case 0:
 			if !ArchiveConfigFixedBoundsKnown0(&values[k : k+1][0]) {
-				for j := range values[:k+1] {
-					ArchiveConfigReset(&values[j])
-				}
 				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !ArchiveConfigFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				ArchiveConfigReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]

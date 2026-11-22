@@ -64,7 +64,7 @@ fixed table Point {
 	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	fixedLoad := funcSource(body, "func fixedLoadWalkPoint(")
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -122,7 +122,7 @@ fixed table Point {
 	if !strings.Contains(load, "data[0] == 1") || !strings.Contains(load, "TableRefusePreviousForm") {
 		t.Error("PointLoad of a DECLARED fixed table must refuse a form-1 file as previous_form before it decodes")
 	}
-	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	fixedLoad := funcSource(body, "func fixedLoadWalkPoint(")
 	if !strings.Contains(fixedLoad, "TableRefusePreviousForm.Error()") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
@@ -820,9 +820,10 @@ func TestFixedTableSaveAndLoadAreFormThree(t *testing.T) {
 }
 
 // TestFixedFormRefuseIsTotal asserts §5.3 "REFUSE is total: no counter moves,
-// nothing is decoded, and not one destination byte is written". The destination
-// is pre-poisoned with 0x5A and every poisoned byte is still 0x5A after the
-// refusal. Every counter is zero at the same time.
+// nothing is decoded" and, by R4 (docs/SPEC-TABLES.md §6.5), every value handed
+// in holds its declared default. The destination is pre-poisoned with 0x5A so
+// the reset is visible, and after the refusal it equals a zero value put
+// through PointReset. Every counter is zero at the same time.
 func TestFixedFormRefuseIsTotal(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Point {
@@ -854,9 +855,10 @@ func TestFixedFormRefuseIsTotal(t *testing.T) {
 	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
 		t.Fatalf("REFUSE is total: want refusal, got n=%d %+v", n, r)
 	}
-	if dst[0] != poison || dst[1] != poison || dst[2] != poison || dst[3] != poison ||
-		dst[4] != poison || dst[5] != poison || dst[6] != poison || dst[7] != poison {
-		t.Fatalf("REFUSE is total: destination changed")
+	var want Point
+	PointReset(&want)
+	if batch[0] != want {
+		t.Fatalf("REFUSE is total: the value handed in is %+v after the refusal, want its declared default %+v (R4)", batch[0], want)
 	}
 	if r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: counters not zero: %+v", r)
@@ -1817,7 +1819,7 @@ fixed table Cfg {
 	if !strings.Contains(clampBody, "if value.NotePresent") {
 		t.Error("an absent optional's payload must not be held to a bound")
 	}
-	load := funcSource(body, "func CfgFixedLoad(")
+	load := funcSource(body, "func fixedLoadWalkCfg(")
 	if !strings.Contains(load, "if !CfgFixedBounds(&values[k : k+1][0]) {") {
 		t.Error("FixedLoad must call the storage pass after the run, both paths")
 	}
@@ -2128,6 +2130,11 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, got[0], r)
 	}
 
+	// R4 (docs/SPEC-TABLES.md §6.5): each refusal below leaves the sentinel
+	// value handed in at its declared default.
+	var def Point
+	PointReset(&def)
+
 	// THE REFERENCE'S FILE, byte for byte: twenty bytes of header, its u32
 	// length word naming 100 bytes the file does not carry.
 	ref := make([]byte, TableFixedHeaderBytes+4)
@@ -2135,7 +2142,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	tableFixedPut32(ref[TableFixedHeaderBytes:], 100)
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
+	if n := PointFixedLoad(got, ref, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != def {		t.Fatalf("declared length 100 in a twenty-byte file: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 
 	// AND A REAL FILE TRUNCATED, so its OWN declared layout no longer fits: the
@@ -2145,7 +2152,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 	short := buf[:TableFixedHeaderBytes+4+int(tableFixedGet32(buf[TableFixedHeaderBytes:]))-1]
 	got = []Point{{X: -1, Y: -1}}
 	r = TableReport{}
-	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != (Point{X: -1, Y: -1}) {		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
+	if n := PointFixedLoad(got, short, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}) || got[0] != def {		t.Fatalf("a file truncated one byte into its own layout: n=%d report=%+v dest=%+v", n, r, got[0])
 	}
 }
 `)
@@ -2810,8 +2817,10 @@ func TestNonZeroSlackRefused(t *testing.T) {
 		if n := SlackFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
 			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
 		}
-		if got[0].Tail != 1234 {
-			t.Fatalf("%s: the refused load wrote the destination: %+v", tc.name, got[0])
+		var want Slack
+		SlackReset(&want)
+		if got[0] != want {
+			t.Fatalf("%s: R4: the value handed in is not its declared default after the refusal: %+v want %+v", tc.name, got[0], want)
 		}
 	}
 
@@ -2932,15 +2941,16 @@ func TestWriteSideRefusesByName(t *testing.T) {
 	for i := range fgot[0].Name {
 		fgot[0].Name[i] = 0x5A
 	}
-	before := fgot[0]
+	var want Host
+	HostReset(&want)
 	if n := HostFixedLoad(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableRefuseCountOverBound.Error() {
 		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
 	}
 	if fr.Unknown != 0 || fr.Widened != 0 || fr.Retained != 0 || fr.RetainLost != 0 || (fr.Refusal.Error() == "wire_damaged" || fr.Refusal.Error() == "malformed") {
 		t.Fatalf("forged refusal moved a counter or marked malformed: %+v", fr)
 	}
-	if fgot[0] != before {
-		t.Fatalf("forged refusal touched destination: before=%+v after=%+v", before, fgot[0])
+	if fgot[0] != want {
+		t.Fatalf("R4: after the forged refusal the value handed in is %+v, want its declared default %+v", fgot[0], want)
 	}
 }
 `)

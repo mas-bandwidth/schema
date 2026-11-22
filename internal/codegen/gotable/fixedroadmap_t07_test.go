@@ -156,7 +156,7 @@ func t07RuntimeCase(t *testing.T, op, next string) string {
 // loop". The prefill is the hole list, copied one hole at a time, and never a
 // whole-record copy that would clobber what the plan lands.
 func t07GoW9(t *testing.T) {
-	load := funcSource(t07Emitted(t), "func RootFixedLoad(")
+	load := funcSource(t07Emitted(t), "func fixedLoadWalkRoot(")
 	if load == "" {
 		t.Fatal("RootFixedLoad is not emitted")
 	}

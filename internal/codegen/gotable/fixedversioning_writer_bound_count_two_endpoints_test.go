@@ -14,7 +14,7 @@ import (
 // not. The count word is forged to 7 — past the WRITING endpoint's bound of 4. The
 // OWNER RULE (2026-10-15) replaced the count clamp with a NAMED REFUSAL: the
 // forged count refuses `count_over_bound` against the WRITER's bound carried by
-// the plan, before any destination byte is written.
+// the plan, before any record lands, and every row handed in then holds its declared default (R4).
 func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := fixedCorpus(t)
 	newer := readSchema(t, "VNEW_array_bounded_grow")
@@ -50,9 +50,11 @@ func TestWriterBoundCount(t *testing.T) {
 	if n >= 0 || r.Reason != "count_over_bound" {
 		t.Fatalf("writer_bound_count: n=%%d reason=%%q, want count_over_bound", n, r.Reason)
 	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("writer_bound_count: the refusal wrote destination byte %%d: 0x%%02X (§5.8: not one destination byte)", i, b)
+	var r4want %[2]s
+	%[2]sReset(&r4want)
+	for k := range back {
+		if back[k] != r4want {
+			t.Fatalf("writer_bound_count: R4: row %%d handed in is %%+v after the refusal, want its declared default %%+v", k, back[k], r4want)
 		}
 	}
 }

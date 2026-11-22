@@ -12,7 +12,7 @@ import (
 // titles were "count clamp v<0" and "count clamp v>Max". The OWNER RULE
 // (2026-10-15) replaced the count clamp with a NAMED REFUSAL: a count past the
 // PLAN's bound — negative or over — refuses `count_over_bound` before any
-// destination byte is written (docs/SPEC-TABLES.md §3.4,
+// record lands, and every row handed in then holds its declared default (R4) (docs/SPEC-TABLES.md §3.4,
 // docs/FIXED-FORM-ALGORITHM.md §4.5). Row 4 (writer_bound_count) forges the
 // count word to 7 — past the PLAN's bound of 4 but neither negative nor past
 // the READER's own 8 — so it exercises neither end. Both ends here assert the
@@ -51,9 +51,11 @@ func TestCountClampEndsC1(t *testing.T) {
 	if n >= 0 || r.Reason != "count_over_bound" {
 		t.Fatalf("count_over_bound_ends C1: n=%%d reason=%%q, want count_over_bound", n, r.Reason)
 	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("count_over_bound_ends C1: the refusal wrote destination byte %%d: 0x%%02X (§5.8: not one destination byte)", i, b)
+	var r4want %[2]s
+	%[2]sReset(&r4want)
+	for k := range back {
+		if back[k] != r4want {
+			t.Fatalf("count_over_bound_ends C1: R4: row %%d handed in is %%+v after the refusal, want its declared default %%+v", k, back[k], r4want)
 		}
 	}
 }
@@ -83,9 +85,11 @@ func TestCountClampEndsC2(t *testing.T) {
 	if n >= 0 || r.Reason != "count_over_bound" {
 		t.Fatalf("count_over_bound_ends C2: n=%%d reason=%%q, want count_over_bound", n, r.Reason)
 	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("count_over_bound_ends C2: the refusal wrote destination byte %%d: 0x%%02X (§5.8: not one destination byte)", i, b)
+	var r4want %[2]s
+	%[2]sReset(&r4want)
+	for k := range back {
+		if back[k] != r4want {
+			t.Fatalf("count_over_bound_ends C2: R4: row %%d handed in is %%+v after the refusal, want its declared default %%+v", k, back[k], r4want)
 		}
 	}
 }

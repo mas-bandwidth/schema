@@ -1999,9 +1999,9 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 }
 
 // TableEntityLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -2014,6 +2014,11 @@ func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, 
 		if read.Refused() {
 			tableRefused(read)
 		}
+		if !ok {
+			for j := range values {
+				TableEntityReset(&values[j])
+			}
+		}
 	}()
 	if count < 0 {
 		return 0, false
@@ -2024,16 +2029,10 @@ func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, 
 	}
 	for i := range count {
 		if !TableEntityLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				TableEntityReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			TableEntityReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -2271,9 +2270,9 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 }
 
 // TableStatLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -2286,6 +2285,11 @@ func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data
 		if read.Refused() {
 			tableRefused(read)
 		}
+		if !ok {
+			for j := range values {
+				TableStatReset(&values[j])
+			}
+		}
 	}()
 	if count < 0 {
 		return 0, false
@@ -2296,16 +2300,10 @@ func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data
 	}
 	for i := range count {
 		if !TableStatLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				TableStatReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			TableStatReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -4446,9 +4444,9 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 }
 
 // TableMixedLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -4461,6 +4459,11 @@ func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
+		if !ok {
+			for j := range values {
+				TableMixedReset(&values[j])
+			}
+		}
 	}()
 	if count < 0 {
 		return 0, false
@@ -4471,16 +4474,10 @@ func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, da
 	}
 	for i := range count {
 		if !TableMixedLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				TableMixedReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			TableMixedReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
