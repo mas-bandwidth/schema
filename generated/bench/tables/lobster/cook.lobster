@@ -459,12 +459,11 @@ def cw_wide(c:CookWrite, at:int, v:Int128, width:int) -> void:
         co_u64(c.o, at, v.lo, false)
         co_u64(c.o, at + 8, v.hi, false)
 
-def cw_str(c:CookWrite, at:int, value:string, used:int, bufsize:int, countoff:int) -> void:
-    var n = used
-    if n < 0:
-        n = 0
-    if n > bufsize:
-        n = bufsize
+// cw_str writes the whole value: cook_write ran the write contract first, so
+// a string(N) or bytes(N) past N was refused there and never cut here.
+def cw_str(c:CookWrite, at:int, value:string, bufsize:int, countoff:int) -> void:
+    let n = length(value)
+    assert n <= bufsize
     if n > 0:
         co_bytes(c.o, at, substring(value, 0, n))
     if countoff >= 0:
@@ -496,11 +495,11 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     elif s == "union":
         cw_union(c, at, sl.cell, fd, cf)
     elif s == "str":
-        cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
+        cw_str(c, at, sl.cell.s, cf.size, cf.count)
     elif s == "text":
         return // the extent carver writes its self-relative blob reference
     elif s == "bytes":
-        cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
+        cw_str(c, at, sl.cell.s, cf.size, cf.count)
     elif s == "bool":
         co_u8(c.o, at, if sl.cell.b: 1 else: 0)
     elif s == "float":
@@ -536,11 +535,11 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
     elif s == "union":
         cw_union(c, at, v, e, CookField { tag: tag, arm: arm })
     elif s == "str":
-        cw_str(c, at, v.s, length(v.s), vsize, countoff)
+        cw_str(c, at, v.s, vsize, countoff)
     elif s == "text":
         return // the extent carver writes its self-relative blob reference
     elif s == "bytes":
-        cw_str(c, at, v.s, length(v.s), vsize, countoff)
+        cw_str(c, at, v.s, vsize, countoff)
     elif s == "bool":
         co_u8(c.o, at, if v.b: 1 else: 0)
     elif s == "float":
@@ -811,10 +810,31 @@ def cg_place(g:CookGraph) -> int, int:
     let data = cook_align_up(off, align)
     return data, align
 
-def cook_plan(rec:Record) -> CookGraph, int, int:
+// THE WRITE CONTRACT (docs/SPEC.md §5.1; docs/SPEC-TABLES.md §7.6): a cook
+// refuses, in every build, a value its declaration does not admit, before it
+// places a byte — the save's own walk (wc_body) over every record the
+// numbering reached, and a *string node's text (row 8). A string(N) past N,
+// a count past its bound or a union tag past its arms is refused here rather
+// than cut or written past its storage.
+def cook_contract_holds(g:CookGraph) -> bool:
+    for(g.nodes) n:
+        let r = n.rec
+        if r and not wc_body(r):
+            return false
+        let b = n.blob
+        if n.kind == 2 and b and not text_valid(b, 0, length(b)):
+            return false
+    return true
+
+// cook_plan numbers and places the graph; check runs the write contract over
+// it first. A fixed root's measure is the layout constant whatever the value
+// holds (§7.6), so its measure passes check = false; every write checks.
+def cook_plan(rec:Record, check:bool) -> CookGraph, int, int:
     let g = CookGraph {}
     cg_add_rec(g, rec)
     if g.cycle:
+        return g, -1, 8
+    if check and not cook_contract_holds(g):
         return g, -1, 8
     let data, align = cg_place(g)
     return g, data, align
@@ -822,7 +842,7 @@ def cook_plan(rec:Record) -> CookGraph, int, int:
 def cook_measure(rec:Record, build:int) -> int:
     if not rec.d.cook_form:
         return -1
-    let g, data, _ = cook_plan(rec)
+    let g, data, _ = cook_plan(rec, not rec.d.fixed)
     if data < 0:
         return -1
     let attrib = length(g.nodes) * cook_directory_entry
@@ -831,7 +851,7 @@ def cook_measure(rec:Record, build:int) -> int:
 def cook_write(rec:Record, build:int, big:bool) -> string:
     if not rec.d.cook_form:
         return ""
-    let g, data, align = cook_plan(rec)
+    let g, data, align = cook_plan(rec, true)
     if data < 0:
         return ""
     let attrib = length(g.nodes) * cook_directory_entry

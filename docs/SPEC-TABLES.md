@@ -12718,6 +12718,16 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
   out the entry arrays, and §7.2 names the independent layout test that holds
   them.
+- **THE LOBSTER WRITER REFUSES IN EVERY BUILD** (docs/SPEC.md §5.1: Lobster's
+  table writers refuse in every build). `<Name>Cook` and `<Name>CookMeasure`
+  run the variable save's write-contract walk over every record the
+  numbering reached, and check a `*string` node's text, before a byte is
+  placed: a value SPEC.md §5.1 does not admit (rows 1–6, 8 and 10 — a `string(N)` or
+  `bytes(N)` past `N`, a counted array's count past its bound, a union tag
+  past its arms among them) or a deprecated enum variant (§2.15) makes
+  `CookMeasure` answer `-1` and `Cook` answer `""`. Nothing is cut to fit: a
+  string past its buffer is refused, never written as its first `N` bytes.
+  A fixed root's `CookMeasure` stays the layout constant; its `Cook` checks.
 - **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
   buffer and nothing is allocated toward it. What the pointered writer
   allocates is the NUMBERING — the identity map, the entry array, and one

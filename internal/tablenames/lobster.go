@@ -46,7 +46,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
 		"cg_add_rec", "cg_blob_index", "cg_place", "cg_rec_index", "cg_visit_edges", "cg_visit_union",
 		"cg_visit_value", "co_bytes", "co_u16", "co_u32", "co_u64", "co_u8", "cook_align_up", "cook_bswap16",
-		"cook_bswap32", "cook_bswap64", "cook_byte_order_big", "cook_byte_order_little", "cook_directory_entry",
+		"cook_bswap32", "cook_bswap64", "cook_byte_order_big", "cook_byte_order_little", "cook_contract_holds", "cook_directory_entry",
 		"cook_dump", "cook_f32frombits", "cook_header_bytes", "cook_magic", "cook_magic_swapped", "cook_measure",
 		"cook_open", "cook_open_named", "cook_open_reason", "cook_plan", "cook_read", "cook_table",
 		"cook_table_of", "cook_tables", "cook_union_named", "cook_union_of", "cook_unions", "cook_wide",

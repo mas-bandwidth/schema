@@ -20,6 +20,7 @@
 
 import .load
 import .schema_tables
+import .descriptors
 
 namespace schema_rt
 
@@ -871,7 +872,11 @@ def wc_value(d:FieldDescriptor, kind:int, v:Value) -> bool:
             return true
         return scalar_admitted(d, kind, v)
     if s == "enum":
-        return v.i >= 0 and v.i <= length(d.vs)
+        if v.i < 0 or v.i > length(d.vs):
+            return false
+        // A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+        // §2.15), as the fixed, message and JSON writers do
+        return v.i == 0 or not is_deprecated_variant(d.t, d.vs[v.i - 1].name)
     if s == "str":
         return length(v.s) <= d.bound and text_valid(v.s, 0, length(v.s))
     if s == "text":
