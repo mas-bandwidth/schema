@@ -928,11 +928,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if finite {
 		g.pf("    read_widened = report->widened;\n")
 	}
+	g.pf("    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,\n")
+	g.pf("       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]\n")
+	g.pf("       as untouched as values[k]. */\n")
+	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
+	g.pf("        if ( table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n    }\n")
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
-	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
 	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
