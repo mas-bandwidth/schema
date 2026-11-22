@@ -1961,7 +1961,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
 	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
-	if g.isVariableRoot(st) {
+	if ir.VariableTables(g.unit)[st.Name] {
 		fmt.Fprintf(b, "    jr.graph = true;\n")
 	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
