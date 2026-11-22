@@ -589,6 +589,23 @@ but a maintainer has to enter it in the ledger by hand. Comment `recheck` on a
 pull request to re-run the check once that is done. Any other open pull request
 of yours stays red until it is rechecked too.
 
+### Commit identity in agent clones
+
+An agent clone sets its identity once, right after cloning, and runs `make setup`
+(`make deps` runs it too):
+
+```bash
+git config user.name "Rowan Claude"
+git config user.email 305107455+rowan-claude@users.noreply.github.com
+make setup
+```
+
+`make setup` points `core.hooksPath` at the tracked `.githooks/`. Its `pre-push`
+hook acts only in a clone whose `user.email` is that rowan-claude address: there it
+refuses a push when any pushed commit has an author or committer other than
+rowan-claude, and prints the offending commits and the one-line fix. In every
+other clone the hook does nothing; the CAA check on GitHub covers those.
+
 ## License
 
 The compiler ships under the license in [LICENSE](../LICENSE), and the
