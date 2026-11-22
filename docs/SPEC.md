@@ -1603,6 +1603,40 @@ All compile errors with positions:
   rejected, with one diagnostic per name listing every language it collides
   with; every collision in the unit is reported in the same run. Outside the Go escape below there is no escaping
   machinery; rename at the source.
+
+  **The reserved-word table.** The rule is an EXACT, CASE-SENSITIVE match of
+  the schema name against the union of the rows below (`Self` and `self` are
+  each Rust's; `String` is Dart's and `string` is not). This is the checker's
+  table word for word (`internal/check`, `reservedLanguages`); a change to one
+  is a change to the other. The `cs` and `unity` targets share the C# row.
+  Python's soft keywords (`match`, `case`, `type`, `lazy`, `_`) are not in its
+  row, and Ruby's `next`, `alias` and `defined?` are not in its row: those
+  targets carry them.
+
+  | language | reserved words |
+  |---|---|
+  | C | `auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while _Alignas _Alignof _Atomic _Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local alignas alignof bool constexpr false nullptr static_assert thread_local true typeof typeof_unqual _BitInt _Decimal32 _Decimal64 _Decimal128` |
+  | C++ | `alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private protected public register reinterpret_cast requires return short signed sizeof static static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq` |
+  | C# | `abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while` |
+  | Go | `break byte case chan const continue default defer else fallthrough false for func go goto if import interface map package range ref return select struct switch true type unsafe var append cap clear close complex copy delete imag len make max min new panic print println real recover any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16 uint32 uint64 uintptr iota nil` |
+  | Rust | `abstract as async await become box break char const continue crate do dyn else enum extern false final fn for if impl in let loop macro match mod move mut override priv pub ref return self Self static struct super trait true try type typeof unsafe unsized use virtual where while yield` |
+  | Java | `abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var yield record _` |
+  | JavaScript | `await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield __proto__ __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__` |
+  | Dart | `assert break case catch class const continue default do else enum extends false final finally for if in is new null rethrow return super switch this throw true try var void when while with bool double int num String List Object Endian ByteData dynamic hashCode runtimeType toString noSuchMethod` |
+  | Elixir | `true false nil when and or not in fn do end catch rescue after else node self make_ref binding` |
+  | Lua | `and break do else elseif end false for function goto if in local nil not or repeat return then true until while` |
+  | Luau | `and break do else elseif end false for function if in local nil not or repeat return then true until while continue export type typeof` |
+  | moo | `and break do else elseif end false for function if in local nil not or repeat return then true until while continue export type typeof` |
+  | Squirrel | `while do if else break continue return null function local for foreach in typeof base delete try catch throw clone yield resume switch case default this class extends constructor instanceof true false static enum const __LINE__ __FILE__ rawcall` |
+  | Goose | `as block break const continue else enum export extern false fn for from guard if import in inline let loop match namespace null pad recursive return reusable self simd struct thread_fn true type var varint while` |
+  | Lobster | `nil return class struct import int float string any void def fn is from program private resource enum enum_flags typeof var let pakfile switch case default out_of_range namespace not and or attribute if for while super constructor guard abstract union member member_frame static static_frame operator elif else break continue bool true false` |
+  | Python | `False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield` |
+  | Ruby | `and begin break case class def do else elsif end ensure false for if in module nil not or redo rescue retry return self super then true undef unless until when while yield __FILE__ __LINE__ __ENCODING__ BEGIN END` |
+
+  A NEW language adds its row here and in the checker's table in the same
+  change, before its target registers (the compiler refuses to register a
+  target whose language has no row); from that change on, its words are
+  refused for every target.
 - **The Go escape.** Go is the one target that carries a reserved word
   instead of refusing it. In every command, a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go
@@ -2338,13 +2372,17 @@ a caller can hold that the declaration does not admit:
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
-| 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one |
+| 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
-where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart)
+where its check is active. **The assert legs are a closed list: C, C++, C#,
+Rust, Java and Dart, and Lobster for its packet `Write` only (its table
+writers refuse in every build). Every other leg, and every NEW language, refuses in every
+build**; a new port does not choose by its own reading of its idioms.
+**In an assert leg (C, C++, C#, Rust, Java, Dart)
 every write check is a debug assert and nothing else, the storage checks
 included** (a count or length that would index past the array it describes):
 correct writes are the programmer's responsibility, and the assert is how the
@@ -2369,7 +2407,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name`; a packet `Write` returns a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8, embedded NUL) |
-| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
+| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason. The packet `Write` is a Lobster `assert`: the default JIT traps on it and the release configuration `--runtime-no-asserts` removes it, the assert placement the `write-refusal` ruling gives Lobster's packets alone; its table writers refuse in every build |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
 is the leg's assert, "every build" its refusal. These tables record the code as
@@ -2448,7 +2486,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 unrepresentable (the storage is `intN_t`/`uintN_t`)
 
 - **C**
 
@@ -2456,7 +2494,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 unrepresentable (the storage is `intN_t`/`uintN_t`)
 
 - **C#**
 
@@ -2464,7 +2502,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 debug
 
-  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 not yet held
+  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 unrepresentable (the storage is `sbyte`…`ulong`)
 
 - **Rust**
 
@@ -2480,7 +2518,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 debug for an unsigned width whose Java storage is wider (`checkWrite`'s `assert value.<field> <= 2^N−1`); unrepresentable for a signed width and a `byte`-stored one, whose storage is exactly `N` bits
 
 - **Dart**
 
@@ -2496,7 +2534,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 not yet held
+  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 unrepresentable (the storage is `intN`/`uintN`)
 
 - **JavaScript**
 
@@ -2560,7 +2598,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1 and 3–6 and 10 debug; 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
 
 - **Python**
 

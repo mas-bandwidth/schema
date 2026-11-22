@@ -29,7 +29,7 @@ func TestSpecJsonIntegers(t *testing.T) {
 			// the wide integer reads as the string only
 			"reads as that STRING only; a bare number token there refuses `kind_mismatch`",
 			// a wide fixed-point kind is a string, a narrow one a number
-			"one whose storage is wider than 32 bits — 64- or 128-bit — is written as a string of digits",
+			"one whose storage is wider than 32 bits — 64- or 128-bit — is written as a JSON STRING whose content is the same decimal spelling W11 gives",
 			// the map key is the same digits
 			"an integer key is its decimal spelling, quoted",
 		} {
