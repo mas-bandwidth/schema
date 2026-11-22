@@ -128,7 +128,7 @@ says so there; it is held per port until a surface carries it.
 | FL-08 announcement over capacity refused before any entry | hostile corpus `announce-entries-too-large` |
 | FL-09 map key bounded by its own `string(N)` | `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` |
 | FL-10 the JSON read holds bytes to the UTF-8 rules | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` |
-| FL-12 the read depth cap counts every container | `rr-depth-placed-union-map-128`, `rr-depth-placed-union-map-129`, `rr-depth-placed-keyed-map-128`, `rr-depth-placed-keyed-map-129`, `sp-skip-depth-129`, `sp-skip-depth-130` |
+| FL-12 the read depth cap counts every container | `rr-depth-placed-union-map-128`, `rr-depth-placed-union-map-129`, `rr-depth-placed-keyed-map-128`, `rr-depth-placed-keyed-map-129`, `sp-skip-depth-129`, `sp-skip-depth-130`, **ADDED** `rr-depth-skipped-union-arm-128`, `-129`, `rr-depth-skipped-keyed-slot-128`, `-129` (a skipped value under an unknown union arm or enum key) |
 | FL-13 the sign of zero survives a long token | `rr-num-negative-zero-long-token` |
 | FL-19 deprecated enum variant (owned by #4689) | `sp-enum-elem-deprecated-array` |
 | FL-20 labels are exact 64-bit values | `rr-label-past-2-53-distinct`, `rr-label-past-2-53-undefined`, `label-overflow` |
