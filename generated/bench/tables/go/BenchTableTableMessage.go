@@ -2015,6 +2015,11 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 					}
 					{
 						v := payload11.Unsigned(entry.Shape.Kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "TableEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = TableDamage(v)
 					}
 				}

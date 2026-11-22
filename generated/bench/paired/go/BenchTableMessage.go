@@ -1966,6 +1966,11 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 					}
 					{
 						v := payload11.Unsigned(entry.Shape.Kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = MixedDamage(v)
 					}
 				}

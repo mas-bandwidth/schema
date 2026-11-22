@@ -2931,6 +2931,7 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
       default: w.putLeb(0);
     }
   }
+  assert((v.damage >>> 8) == 0);
   if (v.damage != 0) {
     w.putLeb(w.refFor(9179190079975030720));
     w.putByte(9);
@@ -3660,6 +3661,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
             default:
               r.report.refuse('kind_mismatch'); return;
           }
+          if ((value >>> 8) != 0) { r.report.refuse('out_of_range'); return; }
           v.damage = value;
         }
         break;

@@ -714,6 +714,11 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail) {
+                        if ((v.damage >>> 8) != 0L) {
+                            report.refuse("out_of_range");
+                        }
+                    }
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");

@@ -1402,9 +1402,9 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
         lo = lo - s.base_lo
         hi = hi - s.base_hi - borrow
         // A ranged value whose offset from its base does not fit its bits
-        // is refused, a flags bit past the declared W among them: a file
-        // keeps all flags bits, but a message carries only W bits, and a
-        // writer never truncates (Go's tableMessageWriteScalar)
+        // is refused, a flags bit past the declared W among them: a mask
+        // holds to W in every form (docs/SPEC-TABLES.md §4), and a writer
+        // never truncates (Go's tableMessageWriteScalar)
         if kind_wide(kind):
             if s.bits < 64 and (hi != 0 or shr(lo, s.bits) != 0):
                 return false

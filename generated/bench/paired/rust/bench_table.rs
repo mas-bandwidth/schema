@@ -541,6 +541,7 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
         let vref = match v.weapon { MixedWeapon::None => 0, MixedWeapon::Fists => ids.id_ref(0xa790eee12766cf0c), MixedWeapon::Pistol => ids.id_ref(0x9fbfefa835da8476), MixedWeapon::Shotgun => ids.id_ref(0x188bbb1783928a95), MixedWeapon::Rifle => ids.id_ref(0x2c3667b9c2f272f1), MixedWeapon::Sniper => ids.id_ref(0x0ca8b41b00d755f6), MixedWeapon::Smg => ids.id_ref(0x985fc819fab21a4e), MixedWeapon::Rocket => ids.id_ref(0x229d0447c3086a55), MixedWeapon::Grenade => ids.id_ref(0x011c7b49a7228f9d), MixedWeapon::Plasma => ids.id_ref(0x89f7566e1123e15f), MixedWeapon::Railgun => ids.id_ref(0x8d7f25318b3b4469), MixedWeapon::Flamer => ids.id_ref(0xd9cd0dcc285b7816), MixedWeapon::Mine => ids.id_ref(0x04dc16aea8ff5276), MixedWeapon::Turret => ids.id_ref(0x35e53bc341129217), MixedWeapon::Drone => ids.id_ref(0x2cc8282fb0de8831), MixedWeapon::Repair => ids.id_ref(0x20bada21bc8cb334) };
         leb_write(out, vref);
     }
+    debug_assert!(v.damage >> 8 == 0, "damage has a flags bit at or above its width 8");
     if v.damage != 0u64 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(9);
@@ -1429,6 +1430,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 9 { report.widened += 1; }
                     let x = raw;
+                    if x >> 8 != 0 { report.damaged = true; }
                     v.damage = x;
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }

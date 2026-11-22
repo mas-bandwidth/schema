@@ -831,6 +831,11 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail) {
+                        if ((v.damage >>> 8) != 0L) {
+                            report.refuse("out_of_range");
+                        }
+                    }
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
@@ -1096,6 +1101,7 @@ public final class MixedEntityVariable {
         assert v.velZ >= -2048 && v.velZ <= 2047 : "MixedEntity.vel_z";
         assert v.health >= 0 && v.health <= 1000 : "MixedEntity.health";
         assert v.weapon >= 0 && v.weapon <= 15 : "MixedEntity.weapon";
+        assert (v.damage >>> 8) == 0L : "MixedEntity.damage";
         return true;
     }
 

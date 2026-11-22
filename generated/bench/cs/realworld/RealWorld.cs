@@ -40,8 +40,8 @@ namespace Realworld
     }
 
     // PacketFlags — one bit per variant, consumed as masks; wire 5 bits (SPEC §4.2).
-    // The backing type is ulong in every declaration, the full width §4.2
-    // requires, so bits a newer build appended survive a read and a rewrite.
+    // The backing type is ulong in every declaration: 64 bits is the variant
+    // ceiling (§4.2), and a table load refuses a bit at or above the wire width.
     [Flags]
     public enum PacketFlags : ulong
     {

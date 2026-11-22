@@ -7472,6 +7472,7 @@ inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return -1; }
         bytes += TableLebBytes( ref_weapon ) + 1 + TableLebBytes( variant_weapon ); // weapon: the variant's reference
     }
+    schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
     if ( value.moving != false ) { bytes += TableLebBytes( ids.ref_at( 5, 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
     if ( value.firing != false ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
@@ -7568,6 +7569,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ), 9 ); // damage
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
@@ -8272,6 +8274,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
+                        if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                        {
+                            decoded_v &= 0xffull;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.damage = decoded_v;
                         r.report->widened++;
                         break;
@@ -8293,6 +8301,12 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
+                if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                {
+                    decoded_v &= 0xffull;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.damage = decoded_v;
                 break;
             }
@@ -9824,6 +9838,12 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_wide &= 0xffull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.damage = decoded_v;
                         }
@@ -9856,6 +9876,12 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
+                    if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                    {
+                        decoded_wide &= 0xffull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
@@ -18446,6 +18472,7 @@ TABLE_FIXED_INLINE bool TableEntityFixedInRange( const TableEntity & value )
     bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
     bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     bad |= (int) ( (uint64_t) value.weapon > 15u );
+    bad |= (int) ( ( (uint64_t) value.damage >> 8 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     return bad == 0;
 }
 
@@ -18469,6 +18496,7 @@ inline bool TableEntityFixedWriteAdmits( const TableEntity & value )
     bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
     bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     bad |= (int) ( (uint64_t) value.weapon > 15u );
+    bad |= (int) ( ( (uint64_t) value.damage >> 8 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     return bad == 0;
 }
 
@@ -18502,6 +18530,7 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & TABLE_CLAM
     oor_count += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; oor_count++; }
+    if ( ( (uint64_t) value.damage >> 8 ) != 0 ) { value.damage &= 0xffull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
 }
 
 // TableStat's read-side bounds, CHECKED: true when every clamp below would

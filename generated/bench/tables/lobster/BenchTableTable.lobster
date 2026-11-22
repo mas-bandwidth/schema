@@ -174,7 +174,7 @@ let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
         schema_rt.FieldDescriptor { id: 0x6cede8b6eb60f1cd, name: "vel_z", slot: "VelZ", json: "vel_z", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 8, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0x7f69d4b5288ba9cf, name: "health", slot: "Health", json: "health", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 9, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000003e8, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0xa0b610205f2c6e01, name: "weapon", slot: "Weapon", json: "weapon", type_name: "TableWeapon", type_ref: "TableWeapon", doc: "", tags: []::string, o: 10, k: 30, s: "enum", t: "TableWeapon", vs: [schema_rt.EnumVariant { name: "Fists", id: 0xa790eee12766cf0c }, schema_rt.EnumVariant { name: "Pistol", id: 0x9fbfefa835da8476 }, schema_rt.EnumVariant { name: "Shotgun", id: 0x188bbb1783928a95 }, schema_rt.EnumVariant { name: "Rifle", id: 0x2c3667b9c2f272f1 }, schema_rt.EnumVariant { name: "Sniper", id: 0x0ca8b41b00d755f6 }, schema_rt.EnumVariant { name: "Smg", id: 0x985fc819fab21a4e }, schema_rt.EnumVariant { name: "Rocket", id: 0x229d0447c3086a55 }, schema_rt.EnumVariant { name: "Grenade", id: 0x011c7b49a7228f9d }, schema_rt.EnumVariant { name: "Plasma", id: 0x89f7566e1123e15f }, schema_rt.EnumVariant { name: "Railgun", id: 0x8d7f25318b3b4469 }, schema_rt.EnumVariant { name: "Flamer", id: 0xd9cd0dcc285b7816 }, schema_rt.EnumVariant { name: "Mine", id: 0x04dc16aea8ff5276 }, schema_rt.EnumVariant { name: "Turret", id: 0x35e53bc341129217 }, schema_rt.EnumVariant { name: "Drone", id: 0x2cc8282fb0de8831 }, schema_rt.EnumVariant { name: "Repair", id: 0x20bada21bc8cb334 }]::schema_rt.EnumVariant, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", type_name: "TableDamage", type_ref: "TableDamage", doc: "", tags: []::string, o: 11, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", type_name: "TableDamage", type_ref: "TableDamage", doc: "", tags: []::string, o: 11, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0x11a44fc1d1243da7, name: "moving", slot: "Moving", json: "moving", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 12, k: 1, s: "bool", has_def: true, def_bool: false },
         schema_rt.FieldDescriptor { id: 0x7674cfd19b9031ca, name: "firing", slot: "Firing", json: "firing", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 13, k: 1, s: "bool", has_def: true, def_bool: false }
     ]::schema_rt.FieldDescriptor
@@ -3126,6 +3126,8 @@ def TableEntityFixedBoundsBody(v·:TableEntity) -> bool:
         return false
     if schema_rt.ult(15, int(v·.Weapon)):
         return false
+    if schema_rt.ult(255, v·.Damage):
+        return false
     return true
 
 def TableEntityFixedCheckBody(v·:TableEntity) -> bool:
@@ -3164,6 +3166,8 @@ def TableEntityFixedCheckBody(v·:TableEntity) -> bool:
     if (v·.Health < 0) or (v·.Health > 1000):
         return false
     if schema_rt.ult(15, int(v·.Weapon)):
+        return false
+    if schema_rt.ult(255, v·.Damage):
         return false
     return true
 

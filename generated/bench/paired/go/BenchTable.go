@@ -3995,6 +3995,9 @@ func MixedEntityMeasureBody(value *MixedEntity, ids *TableIds) int64 {
 		}
 		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
 	}
+	if (value.Damage != 0) && (value.Damage>>8 != 0) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 8
 	} // damage
@@ -4186,6 +4189,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Damage != 0 {
 			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
+			}
+			if value.Damage>>8 != 0 {
+				return false
 			}
 			w.Put64(uint64(value.Damage))
 		}
@@ -4662,6 +4668,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = MixedDamage(v)
 					}
 					r.Report.Widened++
@@ -4676,6 +4687,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			}
 			{
 				v := r.Get64()
+				if v>>8 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Damage = MixedDamage(v)
 			}
 		case 0x11a44fc1d1243da7: // moving
@@ -8028,6 +8044,9 @@ func MixedEntityFixedBoundsBody(value *MixedEntity, over *int32) {
 	if uint64(value.Weapon) > 15 {
 		(*over)++
 	}
+	if value.Damage>>8 != 0 {
+		(*over)++
+	}
 }
 
 // MixedStat's read-side bounds: each value outside them counts one in over.
@@ -8198,6 +8217,9 @@ func MixedEntityFixedCheckBody(value *MixedEntity) bool {
 		return false
 	}
 	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	if value.Damage>>8 != 0 {
 		return false
 	}
 	return true
