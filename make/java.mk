@@ -1729,7 +1729,12 @@ conformance-java-absent: build/conformance-harness build-conformance-java
 # ITS NEGATIVE CONTROL: the driver's two absence writers (spillAbsent and
 # spillAbsentReason) write no marker. Every case the leg cannot answer then has
 # no answer at all, and the gate must go red on "the driver wrote nothing".
+# The Java leg answers every committed case (ruling R13 turned its last
+# absences, the must-refuse rows, into `refused`), so the control runs over a
+# copy of the manifest with one instance whose unit no leg generates,
+# absent_probe: the real driver answers it absent, the sabotaged one nothing.
 JAVA_ABSENT_SABOTAGE := build/conformance-java-absent-sabotage
+JAVA_ABSENT_PROBE := instance absent_probe nothere Root testdata/wire/tables/blob_small.bin no-text
 JAVA_ABSENT_SED := s@Files.write(Path.of(out, name + ".absent"), @if (false) Files.write(Path.of(out, name + ".absent"), /* SABOTAGED */ @
 conformance-java-absent-negative-control: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_ABSENT_SABOTAGE) && mkdir -p $(JAVA_ABSENT_SABOTAGE)/src $(JAVA_ABSENT_SABOTAGE)/classes
@@ -1740,15 +1745,18 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" "$(CURDIR)" > $(JAVA_ABSENT_SABOTAGE)/driver
 	@chmod +x $(JAVA_ABSENT_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" > $(JAVA_ABSENT_SABOTAGE)/drivers.txt
+	@cp testdata/conformance/tables/MANIFEST.txt $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
+	@echo '$(JAVA_ABSENT_PROBE)' >> $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
 	@if ./build/conformance-harness run --drivers $(JAVA_ABSENT_SABOTAGE)/drivers.txt \
+			--manifest $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt \
 			--work $(JAVA_ABSENT_SABOTAGE)/work > $(JAVA_ABSENT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a driver that writes no absence marker left the harness green"; \
 		cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
+	@grep -q "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a missing answer"; \
 		  cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; }
-	@grep -m1 "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
+	@grep -m1 "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
 	@echo "negative control: a driver that writes no absence marker turns the harness RED on the cases it cannot answer"
 
 # THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md

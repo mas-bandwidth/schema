@@ -41,5 +41,6 @@ with tempfile.TemporaryDirectory() as temp:
         print("message applicability fault detected")
     else:
         module.run(str(manifest), str(temp))
-        assert (temp / "graph_tree.absent").read_text() == "message form is inapplicable to this variable root"
+        assert (temp / "graph_tree").read_bytes() == b"refused\n"
+        assert not (temp / "graph_tree.absent").exists()
         print("message applicability passed")

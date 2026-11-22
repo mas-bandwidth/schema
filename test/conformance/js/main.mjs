@@ -567,8 +567,8 @@ function surfaceReason(kindName, lines, outDir) {
 // carries the unit's `TableVocabulary` and `AnnounceRead`; the table module
 // carries the root's `LoadMessages`, `MeasureMessages` and `SaveMessages`
 // verbs (docs/SPEC-TABLES.md §3.3). A row whose unit this backend cannot
-// generate, or whose root is a variable table, which has no message form, is
-// answered `<case>.absent` beside where the answer would go.
+// generate is answered `<case>.absent` beside where the answer would go; a
+// variable root, which has no message form, is answered `refused` (R13).
 const messageRows = [
   ["backenddemo", "LoginRequest", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
   ["backenddemo", "MatchResult", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
@@ -625,6 +625,13 @@ function messageAbsent(outDir, name, reason) {
   writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
+// A VARIABLE ROOT IS INAPPLICABLE TO THE MESSAGE FORM (§3.3): that row must
+// refuse, and an absence is never credited on a must-refuse row (ruling R13),
+// so the leg answers `refused` in <case>.
+function messageRefused(outDir, name) {
+  writeFileSync(join(outDir, name), "refused\n");
+}
+
 async function surfaceMessage(lines, outDir) {
   const connections = kind(lines, "connection");
   for (const f of kind(lines, "message")) {
@@ -632,7 +639,13 @@ async function surfaceMessage(lines, outDir) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
     const row = messageRow(conn[2], f[3]);
-    if (row === null) { messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
+    if (row === null) {
+      // a variable root (the row's message wire is `-`) carries no message
+      // verbs and is answered `refused` (ruling R13); any other row this leg
+      // does not carry is a missing feature, absent
+      if (f[5] === "-") { messageRefused(outDir, f[1]); } else { messageAbsent(outDir, f[1], "no message row for " + f[3] + " on this leg"); }
+      continue;
+    }
     let runtime, unit;
     try {
       runtime = await load(row[2]);
@@ -645,7 +658,7 @@ async function surfaceMessage(lines, outDir) {
     const measureMessages = unit[f[3] + "MeasureMessages"];
     const saveMessages = unit[f[3] + "SaveMessages"];
     if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
-      messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      if (f[5] === "-") { messageRefused(outDir, f[1]); } else { messageAbsent(outDir, f[1], "no message verbs emitted for " + f[3]); }
       continue;
     }
     // AnnounceRead the connection's announcement into one direction's
@@ -1012,7 +1025,8 @@ async function surfaceWire(lines, outDir) {
       // A BLOB TWO SLOTS NAME IS REFUSED BY THE ONE STRICT READ (§2.5, §6.5),
       // by its own name, which is the wire refusal the harness holds a
       // wire-refused instance to.
-      if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      // Answered `refused` (ruling R13: an absence is never credited).
+      if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
       fail(f[1] + ": load refused " + f[4]);
     }
     const saved = codec.save(v);
@@ -1023,7 +1037,7 @@ async function surfaceWire(lines, outDir) {
       // holds the reason to the manifest's; any other refusal is a red here.
       const reason = codec.measureReason(v)[1];
       if (reason !== "blob_shared") { fail(f[1] + ": save refused the value (" + reason + ")"); }
-      writeFileSync(join(outDir, f[1] + ".absent"), reason);
+      writeFileSync(join(outDir, f[1]), "refused\n");
       continue;
     }
     writeFileSync(join(outDir, f[1]), saved);

@@ -33,7 +33,9 @@ def self.run(manifest, outdir)
       end
       raise "#{case_name}: message reader accepted an inapplicable root" unless refused_read
 
-      RubyConformance.absent(outdir, case_name, 'message form is inapplicable to this variable root')
+      # inapplicable to this variable root: a must-refuse row, answered
+      # `refused` (ruling R13: an absence is never credited)
+      RubyConformance.write_bytes(outdir, case_name, "refused\n".b)
       next
     end
     if pkg.nil? || cls.nil? || !has_msg

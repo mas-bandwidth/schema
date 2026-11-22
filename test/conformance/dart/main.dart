@@ -4318,9 +4318,10 @@ int surfaceWire(String outDir) {
       saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
     } on StateError catch (e) {
       // a blob two slots name is refused by every writer
-      // (docs/SPEC-TABLES.md §2.5): the case's answer is that refusal
+      // (docs/SPEC-TABLES.md §2.5): the case's answer is that refusal,
+      // written as `refused` (ruling R13: an absence is never credited)
       if (!e.message.startsWith('blob_shared')) rethrow;
-      File('$outDir/${f[1]}.absent').writeAsStringSync('blob_shared');
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
       continue;
     }
     if (saved == null) {
@@ -5335,12 +5336,13 @@ int surfaceMessage(String outDir) {
     if (f[5] == '-') {
       // A named refusal row: the root is a variable table, which carries no
       // message verbs (docs/SPEC-TABLES.md §3.3: the message form is fixed
-      // tables only), so the driver answers ABSENT and names the reason.
+      // tables only), so the driver answers REFUSED (ruling R13: an absence
+      // is never credited on a must-refuse row).
       if (run != null) {
         stderr.writeln('message ${f[1]}: a variable table carries a message batch');
         return 1;
       }
-      File('$outDir/${f[1]}.absent').writeAsStringSync('variable table: the message form is fixed tables only (SPEC-TABLES §3.3)');
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
       continue;
     }
     if (run == null) {

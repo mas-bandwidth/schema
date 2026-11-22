@@ -1711,6 +1711,11 @@ tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp 
 # cases with no answer at all, and the leg's conformance run must go red naming
 # one. The driver copy runs from build/ over the same generated tree, through a
 # substituted one-leg registry.
+# The leg answers every committed case (ruling R13 turned its last absences,
+# the must-refuse rows, into `refused`), so the run reads a copy of the
+# manifest with one instance whose unit no leg generates, absent_probe: the
+# real driver answers it absent, the sabotaged one nothing.
+JS_ABSENT_PROBE := instance absent_probe nothere Root testdata/wire/tables/blob_small.bin no-text
 conformance-negative-control-js-absent: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
@@ -1721,10 +1726,12 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
 	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
 	@printf 'js build/$@/driver\n' > build/$@/drivers.txt
-	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
+	@cp testdata/conformance/tables/MANIFEST.txt build/$@/MANIFEST.txt
+	@echo '$(JS_ABSENT_PROBE)' >> build/$@/MANIFEST.txt
+	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --manifest build/$@/MANIFEST.txt --work build/$@/work > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the JavaScript leg's absences wrote nothing and the run stayed green"; cat build/$@/log; exit 1; \
 	fi
-	@grep -qF 'driver wrote nothing' build/$@/log || \
+	@grep -qF 'absent_probe: the driver wrote nothing' build/$@/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 

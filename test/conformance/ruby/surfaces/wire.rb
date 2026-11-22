@@ -14,7 +14,9 @@ def self.run(manifest, outdir)
     rescue pkg::Refused => e
       raise "#{case_name}: unexpected public wire refusal: #{e.reason}" unless e.reason == 'blob_shared'
 
-      RubyConformance.absent(outdir, case_name, 'blob_shared')
+      # the strict blob refusal (§2.5) is answered `refused` (ruling R13:
+      # an absence is never credited on a must-refuse row)
+      RubyConformance.write_bytes(outdir, case_name, "refused\n".b)
       next
     end
     RubyConformance.write_bytes(outdir, case_name, value.save)

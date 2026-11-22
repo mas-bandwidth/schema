@@ -1061,11 +1061,11 @@ public final class Driver {
                 if (value == null || codec.flag(report, "refused")) {
                     // SPEC-TABLES §2.5: a blob belongs to one slot, and the one
                     // strict read refuses a file whose two slots name one blob.
-                    // That refusal is this wire-refused row's answer, written by
-                    // the same absence writer as every other missing answer.
+                    // That refusal is this wire-refused row's answer, written as
+                    // `refused` (ruling R13: an absence is never credited).
                     String reason = codec.reason(report);
                     if (reason != null && reason.startsWith("blob_shared")) {
-                        spillAbsentReason(out, f[1], "blob_shared");
+                        spill(out, f[1], "refused\n");
                         continue;
                     }
                     return failInt(f[1] + ": load refused " + f[4] + (reason == null ? "" : " (" + reason + ")"));
@@ -2332,9 +2332,10 @@ public final class Driver {
                 if (f[5].equals("-")) {
                     // a named refusal row: the root is a variable table, which
                     // carries no message verbs (docs/SPEC-TABLES.md §3.3: the
-                    // message form is fixed tables only)
+                    // message form is fixed tables only); answered `refused`
+                    // (ruling R13: an absence is never credited)
                     if (codec != null) { return failInt(f[1] + ": a variable table carries a message codec"); }
-                    spillAbsentReason(out, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+                    spill(out, f[1], "refused\n");
                     continue;
                 }
                 if (codec == null) { spillAbsentReason(out, f[1], ""); continue; }

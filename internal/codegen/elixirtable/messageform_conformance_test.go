@@ -9,11 +9,12 @@ package elixirtable
 // surface routes to its own handler, which writes the saved bytes, never only
 // the ABSENT fallback. (2) THE ROWS: every manifest `message` row names a
 // connection the manifest defines, and is either answered (its root is a fixed
-// table of a unit the leg's stamp generates) or absent because its root is a
+// table of a unit the leg's stamp generates) or refused because its root is a
 // variable table: the message form is fixed tables only (§3.3). Both read
 // files only. (3) THE HARNESS (functional): it runs
 // `./build/conformance-harness run --only elixir` over the built leg and
-// requires every answered row byte-equal and every variable root absent; it skips by
+// requires every answered row byte-equal and every variable root `refused`
+// (ruling R13: an absence is never credited on a must-refuse row); it skips by
 // name without Elixir or the built harness unless SCHEMA_REQUIRE_CORPUS=1,
 // under which a skip is a failure. make tables-elixir-message-conformance is
 // that gate.
@@ -33,7 +34,8 @@ import (
 )
 
 // messageVariableRows is the manifest's message rows whose root is a variable
-// table: each writes `<case>.absent`, and every other row is answered.
+// table: each writes `refused` in <case> (ruling R13), and every other row is
+// answered.
 func messageVariableRows(t *testing.T, root, manifest string) map[string]bool {
 	t.Helper()
 	units, connections := messageManifest(t, manifest)
@@ -106,7 +108,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		rows := messageBatchRows(t, manifest)
 		stamped := elixirStampUnits(t, root)
 		var answered []string
-		absent := 0
+		refused := 0
 		for _, row := range rows {
 			conn, ok := connections[row.connection]
 			if !ok {
@@ -127,7 +129,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 				continue
 			}
 			if !st.FixedDeclared {
-				absent++ // a variable table carries no message form (§3.3)
+				refused++ // a variable table carries no message form (§3.3)
 				continue
 			}
 			answered = append(answered, row.name)
@@ -135,7 +137,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		if len(answered) == 0 {
 			t.Fatal("no message row is answered: the clause would pass over the empty set")
 		}
-		t.Logf("%d message rows answered, %d absent over a variable root", len(answered), absent)
+		t.Logf("%d message rows answered, %d refused over a variable root", len(answered), refused)
 	})
 
 	t.Run("harness_answers_the_rows", func(t *testing.T) {
@@ -175,8 +177,12 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		var passed []string
 		for _, row := range rows {
 			if variable[row.name] {
-				if _, err := os.Stat(filepath.Join(dir, row.name+".absent")); err != nil {
-					t.Errorf("message %s: the driver wrote no %s.absent for the variable root", row.name, row.name)
+				got, err := os.ReadFile(filepath.Join(dir, row.name))
+				if err != nil || string(got) != "refused\n" {
+					t.Errorf("message %s: the driver answered %q (%v) for the variable root, want %q", row.name, got, err, "refused\n")
+				}
+				if _, err := os.Stat(filepath.Join(dir, row.name+".absent")); err == nil {
+					t.Errorf("message %s: the driver wrote an absence for the variable root", row.name)
 				}
 				continue
 			}
