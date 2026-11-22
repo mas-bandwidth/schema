@@ -516,6 +516,15 @@ const fixedRuntimeBody = `  @moduledoc """
           "non_finite_float: a float64 writes a finite float, got: #{inspect(value)}"
   end
 
+  # A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3, ruled
+  # 2026-11-10 fixed-compressed-negzero), in every build: the bits +0 stores.
+  # value == 0.0 holds for both zeros. A plain float rides f32_bits/f64_bits.
+  def cf32_bits(value) when is_float(value) and value == 0.0, do: 0
+  def cf32_bits(value), do: f32_bits(value)
+
+  def cf64_bits(value) when is_float(value) and value == 0.0, do: 0
+  def cf64_bits(value), do: f64_bits(value)
+
   @doc """
   A ` + "`" + `string(N)` + "`" + `'s used bytes: well-formed UTF-8 with no zero among them, or
   a REFUSAL BY NAME. An ABSENT optional does not run the rule — the payload is

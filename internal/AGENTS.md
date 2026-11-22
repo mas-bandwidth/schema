@@ -5,6 +5,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `ast/` | parsed *.schema form | `go test ./internal/parser` | `go test ./internal/parser` |
+| `atomicfile/` | the one publisher every CLI write goes through | `go test ./internal/atomicfile` | `go test ./internal/atomicfile` |
 | `baseline/` | tables baseline pins | `go test ./internal/baseline` | `go test ./internal/baseline` |
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
@@ -24,6 +25,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `modulemove/` | pin and release boundary of the /v3 module move | `go test ./internal/modulemove` | `go test ./internal/modulemove` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
+| `pathid/` | where a path lands, by the file system's identity | `go test ./internal/pathid` | `go test ./internal/pathid` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |

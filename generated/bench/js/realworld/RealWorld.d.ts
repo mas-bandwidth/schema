@@ -21,13 +21,13 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 
 export declare const ProtocolId: bigint;
 
-export declare const PacketMode: Readonly<{
+export declare const PacketMode: globalThis.Readonly<{
   None: 0;
   Idle: 1;
   Active: 2;

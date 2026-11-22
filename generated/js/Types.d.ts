@@ -23,7 +23,7 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 

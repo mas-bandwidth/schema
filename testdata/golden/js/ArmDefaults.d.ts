@@ -23,7 +23,7 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 
@@ -39,7 +39,7 @@ export declare function ZeroDefaultArm(value: DefaultArm): void;
 export declare function WriteDefaultArm(stream: SerializeStream, value: DefaultArm): boolean;
 export declare function ReadDefaultArm(stream: SerializeStream, value: DefaultArm): boolean;
 
-export declare const DefaultChoiceType: Readonly<{
+export declare const DefaultChoiceType: globalThis.Readonly<{
   None: 0;
   First: 1;
   Second: 2;
@@ -70,7 +70,7 @@ export declare function ReadDefaultChoicePacket(stream: SerializeStream, value: 
 
 export declare class DefaultBulkArm {
   payload: DefaultArm;
-  data: Uint8Array;
+  data: globalThis.Uint8Array;
   dataLength: number;
 }
 export declare const DefaultBulkArmMaxBits: number;
@@ -80,7 +80,7 @@ export declare function ZeroDefaultBulkArm(value: DefaultBulkArm): void;
 export declare function WriteDefaultBulkArm(stream: SerializeStream, value: DefaultBulkArm): boolean;
 export declare function ReadDefaultBulkArm(stream: SerializeStream, value: DefaultBulkArm): boolean;
 
-export declare const DefaultBulkChoiceType: Readonly<{
+export declare const DefaultBulkChoiceType: globalThis.Readonly<{
   None: 0;
   First: 1;
   Second: 2;

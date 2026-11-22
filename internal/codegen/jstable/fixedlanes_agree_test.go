@@ -111,7 +111,7 @@ func TestJSFixedLanesAgree(t *testing.T) {
 	// a flat type coalesces to one COPY), so the emitted array holds exactly
 	// one entry's lanes. A constant that drifted from what the emitter lays
 	// down goes red here even if every test agreed with the constant.
-	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
+	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new globalThis.Int32Array([", "]);"), ",")
 	if len(lanes) != width {
 		t.Errorf("the emitted one-entry identity plan has %d lanes, TableFixedLanes says %d", len(lanes), width)
 	}
