@@ -175,7 +175,7 @@ func (v *viewGen) outside() {
 		g.Declare(name)
 		parts := make([]string, len(e.Variants))
 		for i := range e.Variants {
-			parts[i] = fmt.Sprintf("%s::VariantDesc { name: %q, id: 0x%016x }", goose.RuntimeNamespace, e.Variants[i], 0)
+			parts[i] = fmt.Sprintf("%s::VariantDesc { name: %q, id: 0x%016x, deprecated: false }", goose.RuntimeNamespace, e.Variants[i], 0)
 		}
 		g.Pf("let %s: %s::VariantDesc[%d] = [%s];\n", name, goose.RuntimeNamespace, len(parts), strings.Join(parts, ", "))
 	}
