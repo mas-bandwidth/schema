@@ -65,14 +65,15 @@ fixed table Flags {
 // TestUnityFixedFormMatchesCpp is the Unity leg's fixed form, form 3
 // (docs/FIXED-FORM-ALGORITHM.md, strict-only): the plan and the lineage, the
 // selection by hash, the bounds pass, file save and load and measurement, a
-// batch that is total, and a refusal that leaves the caller's rows untouched.
+// batch that is total, and a refusal that leaves every row handed in at its
+// declared defaults (R4).
 //
 // The surface and the generator's lineage refusals are checked in process.
 // Then (slow) every proof row whose root this leg carries is saved by the live
 // C++ reference, and the Unity build — every row in one assembly, compiled in
 // the Unity dialect — must load it, re-save it byte for byte, save the same
 // values from scratch to the same bytes, have its own bytes accepted by the C++
-// reference, and refuse every damaged file by name with the rows untouched. A
+// reference, and refuse every damaged file by name with every row at its defaults. A
 // lineage reader must read an older writer's file through its plan to the
 // bytes the C++ reference writes for the same values, and refuse a retired, an
 // unknown and an unlawful layout by name. Each refusal is sabotaged in a copy
@@ -281,12 +282,12 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 	planned2 := lineageNS["planned"]
 	p.add("lineage-read", fmt.Sprintf("%s load %s", planned2, p.file(oldFile)), "2 accepted 4 0000000000000000 | 123 -20 99;65535 -50 99", lineageOracle)
 	p.add("lineage-own", fmt.Sprintf("%s load %s", planned2, p.file(lineageOracle)), "2 accepted 0 0000000000000000 | 123 -20 99;65535 -50 99", lineageOracle)
-	p.add("lineage-writer-bounds", fmt.Sprintf("%s mut %s %s 4 3", planned2, p.file(lineageOracle), p.file(oldPast)), "-1 1 out_of_range 0 0 0000000000000000 untouched", nil)
-	p.add("lineage-plan-capacity", fmt.Sprintf("%s mut %s %s 4 2", planned2, p.file(lineageOracle), p.file(oldFile)), "-1 1 plan_too_large 0 0 0000000000000000 untouched", nil)
-	p.add("lineage-retired", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["retired"], p.file(lineageOracle), p.file(oldFile)), fmt.Sprintf("-1 1 layout_unsupported 0 0 %016x untouched", oldEntry.Wire), nil)
+	p.add("lineage-writer-bounds", fmt.Sprintf("%s mut %s %s 4 3", planned2, p.file(lineageOracle), p.file(oldPast)), "-1 1 out_of_range 0 0 0000000000000000 defaults", nil)
+	p.add("lineage-plan-capacity", fmt.Sprintf("%s mut %s %s 4 2", planned2, p.file(lineageOracle), p.file(oldFile)), "-1 1 plan_too_large 0 0 0000000000000000 defaults", nil)
+	p.add("lineage-retired", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["retired"], p.file(lineageOracle), p.file(oldFile)), fmt.Sprintf("-1 1 layout_unsupported 0 0 %016x defaults", oldEntry.Wire), nil)
 	p.add("lineage-retired-own", fmt.Sprintf("%s load %s", lineageNS["retired"], p.file(lineageOracle)), "2 accepted 0 0000000000000000 | 123 -20 99;65535 -50 99", lineageOracle)
-	p.add("lineage-unknown", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["none"], p.file(lineageOracle), p.file(oldFile)), fmt.Sprintf("-1 1 layout_unknown 0 0 %016x untouched", oldEntry.Wire), nil)
-	p.add("lineage-unlawful", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["unlawful"], p.file(lineageOracle), p.file(unlawfulFile)), "-1 1 layout_malformed 0 0 0000000000000000 untouched", nil)
+	p.add("lineage-unknown", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["none"], p.file(lineageOracle), p.file(oldFile)), fmt.Sprintf("-1 1 layout_unknown 0 0 %016x defaults", oldEntry.Wire), nil)
+	p.add("lineage-unlawful", fmt.Sprintf("%s mut %s %s 4 3", lineageNS["unlawful"], p.file(lineageOracle), p.file(unlawfulFile)), "-1 1 layout_malformed 0 0 0000000000000000 defaults", nil)
 
 	// THE BUILDS: the one under test and each sabotage, four at once.
 	sabotages := []unityFixedSabotage{
@@ -298,7 +299,7 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		{"widen sign", "lineage-read", "unchecked((ulong)FixedSigned(FixedGet(body, o.Src, o.Size), o.Size))", "FixedGet(body, o.Src, o.Size)", nil, ""},
 		{"widened count", "lineage-read", "report.Widened = lane.Widens * n;", "report.Widened = 0 * n;", nil, ""},
 		{"floor", "lineage-retired", "if (selected < floor)", "if (selected < 0)", nil, ""},
-		{"land before the check pass", "untouched", "", "", regexp.MustCompile(`int why = TableWire\.FixedOpen\(data, (\w+)FixedLanes`), ""},
+		{"reset every row on a refusal", "defaults", "    if (loaded < 0)\n    {\n        for (int k = 0; k < values.Length; k++)", "    if (loaded < -1)\n    {\n        for (int k = 0; k < values.Length; k++)", nil, ""},
 		{"short header", "short", "if (data.Length < FixedHead) { return TableReport.Truncated; }", "", nil, ""},
 		{"reserved bytes", "reserved", "if (data[i] != 0) { return TableReport.ReservedNotZero; }", "if (data[i] == 255) { return TableReport.ReservedNotZero; }", nil, ""},
 		{"layout length", "layout-length", "if ((ulong)FixedHead + layoutBytes > (ulong)data.Length)", "if ((ulong)FixedHead + layoutBytes > (ulong)data.Length + 0xFFFFFFFFUL)", nil, ""},
@@ -353,7 +354,7 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 	if bad > 0 {
 		t.Fatalf("unity disagrees on %d of %d probes", bad, len(p.want))
 	}
-	t.Logf("unity answers all %d probes: every carried row's C++ bytes loaded, re-saved and saved from scratch byte for byte, every damaged file refused by name with the rows untouched, the lineage read through its plan", len(p.want))
+	t.Logf("unity answers all %d probes: every carried row's C++ bytes loaded, re-saved and saved from scratch byte for byte, every damaged file refused by name with every row at its defaults, the lineage read through its plan", len(p.want))
 
 	// THE OTHER DIRECTION needs no second run: every byte Unity wrote above is
 	// the C++ reference's own save byte for byte (the probes compare the hex),
@@ -473,7 +474,7 @@ func (r *unityFixedRow) values(file []byte) string {
 
 // probes lays one row's probes: the load and re-save of the C++ bytes, the save
 // of the same values from scratch, the save of the defaults, and every damaged
-// file of §5.3, each refused by name with the rows untouched.
+// file of §5.3, each refused by name with every row at its defaults.
 func (r *unityFixedRow) probes(t *testing.T, p *unityFixedProbes) {
 	t.Helper()
 	f := r.oracle
@@ -492,7 +493,7 @@ func (r *unityFixedRow) probes(t *testing.T, p *unityFixedProbes) {
 	hash := binary.LittleEndian.Uint64(f[8:16])
 	mutant := func(name string, file []byte, capacity, plan int, reason string, reportHash uint64) {
 		p.add(name+"-"+id, fmt.Sprintf("%s mut %s %s %d %d", ns, p.file(f), p.file(file), capacity, plan),
-			fmt.Sprintf("-1 1 %s 0 0 %016x untouched", reason, reportHash), nil)
+			fmt.Sprintf("-1 1 %s 0 0 %016x defaults", reason, reportHash), nil)
 	}
 	edit := func(fn func(b []byte) []byte) []byte { return fn(append([]byte(nil), f...)) }
 	for _, form := range []struct {
@@ -690,11 +691,11 @@ type unityFixedSabotage struct {
 }
 
 // red reports whether a probe's answer in the planted build shows the
-// sabotage: a probe it decides answers otherwise, or, for the landing control,
-// a refusal leaves a row touched.
+// sabotage: a probe it decides answers otherwise, or, for the reset control,
+// a refusal leaves a row off its declared defaults (R4).
 func (s unityFixedSabotage) red(name, want, got string) bool {
-	if s.decides == "untouched" {
-		return strings.HasSuffix(want, " untouched") && strings.HasSuffix(got, " touched")
+	if s.decides == "defaults" {
+		return strings.HasSuffix(want, " defaults") && strings.HasSuffix(got, " off-defaults")
 	}
 	return got != want && strings.HasPrefix(name, s.decides)
 }
@@ -709,8 +710,7 @@ func (s unityFixedSabotage) plant(t *testing.T, files map[string][]byte) map[str
 		}
 		var next string
 		if s.re != nil {
-			// land the first record before the check pass has answered
-			next = s.re.ReplaceAllString(string(data), "if (values.Length > 0 && data.Length >= TableWire.FixedHead + ${1}FixedLayout.Length + ${1}FixedRecordBytes) { ${1}FixedDecode(data.Slice(TableWire.FixedHead + ${1}FixedLayout.Length + 8, ${1}FixedBodyBytes), ref values[0]); }\n            int why = TableWire.FixedOpen(data, ${1}FixedLanes")
+			next = s.re.ReplaceAllString(string(data), s.to)
 		} else {
 			next = strings.ReplaceAll(string(data), s.from, s.to)
 		}
@@ -770,11 +770,11 @@ func unityFixedProbeSource(rows []*unityFixedRow, namespaces []string) string {
 		b.WriteString("                case \"defaults\":\n                {\n                    Save(Fresh(1), a[2]);\n                    return new FileInfo(a[2]).Length.ToString(CI);\n                }\n")
 		// mut <valid> <mutant> <capacity> <plan capacity>
 		fmt.Fprintf(&b, "                case \"mut\":\n                {\n                    %s[] all = Fresh(1024);\n                    long vn = Schema.%sFixedLoad(all, File.ReadAllBytes(a[2]), ref r);\n", root, root)
-		fmt.Fprintf(&b, "                    int cap = int.Parse(a[4], CI);\n                    %s[] rows = Fresh(cap);\n                    // each row holds the record after its own, so a landing shows\n                    for (int i = 0; i < cap && vn > 0; i++) { rows[i] = all[(i + 1) %% vn]; }\n                    %s[] before = (%s[])rows.Clone();\n", root, root, root)
+		fmt.Fprintf(&b, "                    int cap = int.Parse(a[4], CI);\n                    %s[] rows = Fresh(cap);\n                    // each row holds the record after its own, so a row a refusal leaves off its defaults shows\n                    for (int i = 0; i < cap && vn > 0; i++) { rows[i] = all[(i + 1) %% vn]; }\n", root)
 		b.WriteString("                    r = default;\n                    r.Unknown = 7;\n                    r.Widened = 7;\n                    r.LayoutHash = 7;\n")
 		fmt.Fprintf(&b, "                    long n = Schema.%sFixedLoad(rows, File.ReadAllBytes(a[3]), ref r, int.Parse(a[5], CI));\n", root)
-		b.WriteString("                    bool same = true;\n                    for (int i = 0; i < cap; i++) { if (!rows[i].Equals(before[i])) { same = false; } }\n")
-		b.WriteString("                    return n.ToString(CI) + \" \" + (r.Refused ? \"1\" : \"0\") + \" \" + Schema.TableReport.ReasonName(r.Reason) + \" \" + r.Widened.ToString(CI) + \" \" + r.Unknown.ToString(CI) + \" \" + r.LayoutHash.ToString(\"x16\", CI) + \" \" + (same ? \"untouched\" : \"touched\");\n                }\n")
+		b.WriteString("                    bool same = Values(rows, cap) == Values(Fresh(cap), cap);\n")
+		b.WriteString("                    return n.ToString(CI) + \" \" + (r.Refused ? \"1\" : \"0\") + \" \" + Schema.TableReport.ReasonName(r.Reason) + \" \" + r.Widened.ToString(CI) + \" \" + r.Unknown.ToString(CI) + \" \" + r.LayoutHash.ToString(\"x16\", CI) + \" \" + (same ? \"defaults\" : \"off-defaults\");\n                }\n")
 		b.WriteString("            }\n            return \"no mode \" + a[1];\n        }\n    }\n}\n\n")
 	}
 	b.WriteString("namespace FixedProbeHost\n{\n    public static class FixedProbeMain\n    {\n        public static int Run(string[] args)\n        {\n            StringBuilder outp = new StringBuilder();\n            foreach (string line in File.ReadAllLines(args[0]))\n            {\n                string[] a = line.Split(' ');\n                string got;\n                try { got = Dispatch(a); }\n                catch (Exception e) { got = \"exception \" + e.GetType().Name; }\n                outp.Append(got).Append('\\n');\n            }\n            File.WriteAllText(args[1], outp.ToString());\n            return 0;\n        }\n\n        private static string Dispatch(string[] a)\n        {\n            switch (a[0])\n            {\n")
