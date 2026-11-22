@@ -48,6 +48,7 @@ $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/
 UNITY_HOSTILE_CASES ?= 192
 .PHONY: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
+	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)"
 
 # The port's normal unit target runs the corpus: this file is included after

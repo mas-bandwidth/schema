@@ -1010,9 +1010,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     put_int(buf, base + off, v, w, Map.get(f, :signed, false), order)
   end
 
-  defp cook_value(%{t: :float, cook_off: off, width: w}, v, base, _index, order, buf) do
+  defp cook_value(%{t: :float, cook_off: off, width: w} = f, v, base, _index, order, buf) do
     if not is_number(v), do: throw(:invalid)
-    put_float(buf, base + off, v, w, order)
+    put_float(buf, base + off, stored_float(f, v), w, order)
   end
 
   defp cook_value(%{t: :bool, cook_off: off}, v, base, _index, _order, buf) do
@@ -1106,9 +1106,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     put_u8(buf, at, if(e, do: 1, else: 0))
   end
 
-  defp cook_elem(%{elem_t: :float, elem_size: w}, e, at, _index, order, buf) do
+  defp cook_elem(%{elem_t: :float, elem_size: w} = f, e, at, _index, order, buf) do
     if not is_number(e), do: throw(:invalid)
-    put_float(buf, at, e, w, order)
+    put_float(buf, at, stored_float(f, e), w, order)
   end
 
   defp cook_elem(%{elem_t: :int, elem_size: w} = f, e, at, _index, order, buf) do

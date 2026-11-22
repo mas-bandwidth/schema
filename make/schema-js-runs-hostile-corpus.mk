@@ -42,6 +42,7 @@ schema-js-hostile-generate: bin/schema
 JS_HOSTILE_ROWS ?= 216
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
+	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated \
 		"$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)"
 

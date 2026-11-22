@@ -65,6 +65,7 @@ $(ELIXIR_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh m
 ELIXIR_HOSTILE_CASES ?= 192
 .PHONY: schema-elixir-runs-hostile-corpus
 schema-elixir-runs-hostile-corpus: build/mustrun $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
+	$(ELIXIR) test/elixir-hostile/runner.exs --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) \
 		$(MUSTRUN) -name schema-elixir-runs-hostile-corpus -count $(ELIXIR_HOSTILE_CASES) -- $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" \
 		"$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet"
