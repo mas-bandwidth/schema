@@ -3727,6 +3727,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case f do
       %{min: lo, max: hi} when is_number(v) and (v < lo or v > hi) -> throw(:invalid_value)
+      %{flags_bits: bits} when v > Bitwise.bsl(1, bits) - 1 -> throw(:invalid_value)
       _ -> :ok
     end
 
@@ -3786,6 +3787,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if not is_integer(e), do: throw(:invalid_value)
 
     if Map.has_key?(f, :elem_min) and (e < f.elem_min or e > f.elem_max),
+      do: throw(:invalid_value)
+
+    if Map.has_key?(f, :elem_flags_bits) and e > Bitwise.bsl(1, f.elem_flags_bits) - 1,
       do: throw(:invalid_value)
 
     bits = Map.get(f, :elem_bits, kind_width(kind) * 8)
@@ -4106,10 +4110,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       else: {v, report}
   end
 
+  # A FLAGS MASK HOLDS TO W, its declaration's wire width (docs/SPEC-TABLES.md
+  # §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a bit at or above W refuses
+  # the whole load, out_of_range, naming the field, on the raw u64 and on
+  # every widening alike. The newer reader reads old data, never the reverse.
+  defp clamp_int(v, %{flags_bits: bits, name: name}, report) do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, %{elem_flags_bits: bits, name: name}, report),
+    do: clamp_int(v, %{flags_bits: bits, name: name}, report)
 
   defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
 
@@ -9155,6 +9172,10 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 				fmt.Fprintf(&b, "%q, ", v)
 			}
 			b.WriteString("]")
+			if fl.WireBits < 64 {
+				// each element holds to W (docs/SPEC-TABLES.md §4)
+				fmt.Fprintf(&b, ", elem_flags_bits: %d", fl.WireBits)
+			}
 		}
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
@@ -9216,6 +9237,11 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 			fmt.Fprintf(&b, "%q, ", v)
 		}
 		b.WriteString("]")
+		if w := flagsRef(f).WireBits; w < 64 {
+			// the mask holds to W (docs/SPEC-TABLES.md §4): clamp_int refuses a
+			// bit at or above it out_of_range and write_value invalid_value
+			fmt.Fprintf(&b, ", flags_bits: %d", w)
+		}
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
 		fmt.Fprintf(&b, ", size: %d, unbounded: %v", f.Type.Size, f.Type.TextUnbounded())

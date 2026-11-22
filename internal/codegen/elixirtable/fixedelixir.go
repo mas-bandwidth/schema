@@ -486,6 +486,11 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
 			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, elixir.ModuleName(r.Name), name, r.StorageBits)
 		case *ir.Flags:
+			if r.WireBits < 64 {
+				// THE MASK HOLDS TO W on the way out (docs/SPEC-TABLES.md §4), so a
+				// writer never writes a mask its own reader refuses
+				return fmt.Sprintf("R.fits(%s, %d, false)::little-unsigned-64", name, r.WireBits)
+			}
 			return fmt.Sprintf("%s::little-unsigned-64", name)
 		}
 	}
@@ -1044,7 +1049,19 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 				count: rawf("R.past(c, %s, %d)", name, n),
 			}
 		case *ir.Flags:
-			return leafDec{spec: name + "::little-unsigned-64", wrap: raw(name)}
+			// A MASK BIT AT OR ABOVE W REFUSES out_of_range (docs/SPEC-TABLES.md §4,
+			// A TABLE LOAD HOLDS A MASK TO ITS WIDTH), as a bits(N) past 2^N - 1
+			// does: the count moves and the load refuses, so the clamp never lands.
+			spec := name + "::little-unsigned-64"
+			if r.WireBits >= 64 {
+				return leafDec{spec: spec, wrap: raw(name)}
+			}
+			hi := fixedIntLiteral(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(r.WireBits)), big.NewInt(1)))
+			return leafDec{
+				spec:  spec,
+				wrap:  call("min", raw(name), raw(hi)),
+				count: call("R.clamps", raw("c"), raw(name), raw("0"), raw(hi)),
+			}
 		}
 	}
 	switch f.Type.Kind {

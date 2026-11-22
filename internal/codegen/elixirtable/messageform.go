@@ -2616,6 +2616,16 @@ const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @m
 // of them, and nil for every other field, an enum-keyed array included. Only a
 // DECLARED range is held here, as the Go engine's message read holds it.
 func messageReadRange(f *ir.Field) string {
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 && !f.IsMap() && !f.Type.Pointer && f.KeyEnum == "" {
+		// A MASK HOLDS TO W, the reader's own width (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+		// wider mask, and a bit at or above W refuses the batch
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1))
+		if f.Array != ir.ArrayNone {
+			return fmt.Sprintf("{:each, 0, %s}", hi.String())
+		}
+		return fmt.Sprintf("{0, %s}", hi.String())
+	}
 	if !f.HasIntRange || f.IsMap() || f.Type.Pointer || f.KeyEnum != "" {
 		return "nil"
 	}
