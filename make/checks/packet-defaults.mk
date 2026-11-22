@@ -11,15 +11,28 @@ build/packet-defaults/cpp/.stamp: bin/schema $(PACKET_DEFAULT_SCHEMAS) make/chec
 build/schema_test_packet_defaults: build/packet-defaults/cpp/.stamp test/packet-defaults/cpp_main.cpp $(SERIALIZE)/serialize.h
 	$(CXX) $(CXXFLAGS) -Ibuild/packet-defaults/cpp/defaults -Ibuild/packet-defaults/cpp/plain test/packet-defaults/cpp_main.cpp -o $@
 
+# The constant-default pins (O-01, O-02): one oracle binary per schema of
+# test/conformance/packet/testdata/constant-defaults, each generated into its
+# own directory because every one of them declares the package arithmetic.
+PACKET_CONSTANT_DIR := test/conformance/packet/testdata/constant-defaults
+PACKET_CONSTANT_BINS := build/schema_test_packet_constant_hexadecimal-addition build/schema_test_packet_constant_unsigned-subtraction
+
+build/schema_test_packet_constant_%: bin/schema $(PACKET_CONSTANT_DIR)/%/Defaults.schema test/packet-defaults/cpp_constant_main.cpp test/packet-defaults/golden.h $(SERIALIZE)/serialize.h make/checks/packet-defaults.mk
+	@mkdir -p build/packet-defaults/cpp-constant/$*
+	./bin/schema generate --lang cpp --out build/packet-defaults/cpp-constant/$* $(PACKET_CONSTANT_DIR)/$*/Defaults.schema
+	$(CXX) $(CXXFLAGS) -DPIN_NAME='"$*"' -Ibuild/packet-defaults/cpp-constant/$* -Itest/packet-defaults test/packet-defaults/cpp_constant_main.cpp -o $@
+
 .PHONY: packet-defaults-cpp
-packet-defaults-cpp: build/schema_test_packet_defaults
+packet-defaults-cpp: build/schema_test_packet_defaults $(PACKET_CONSTANT_BINS)
 	env -u SCHEMA_UPDATE_WIRE_GOLDENS ./build/schema_test_packet_defaults testdata/wire/packet-defaults
+	for b in $(PACKET_CONSTANT_BINS); do env -u SCHEMA_UPDATE_WIRE_GOLDENS ./$$b testdata/wire/packet-defaults || exit 1; done
 
 # Golden updates are explicit. Ordinary test runs only compare checked-in bytes.
 .PHONY: packet-defaults-goldens
-packet-defaults-goldens: build/schema_test_packet_defaults
+packet-defaults-goldens: build/schema_test_packet_defaults $(PACKET_CONSTANT_BINS)
 	@mkdir -p testdata/wire/packet-defaults
 	./build/schema_test_packet_defaults testdata/wire/packet-defaults --write-goldens
+	for b in $(PACKET_CONSTANT_BINS); do ./$$b testdata/wire/packet-defaults --write-goldens || exit 1; done
 
 update-goldens: packet-defaults-goldens
 test: packet-defaults-cpp

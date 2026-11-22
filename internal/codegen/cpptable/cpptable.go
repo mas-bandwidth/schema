@@ -714,7 +714,7 @@ func tableMessageReasonMembers(refuseReason, pkg string) string {
 		}
 		b.WriteString("    static constexpr TableRefuseReason " + name + " = TableRefuseReason::" + name + ";\n")
 	}
-	for _, name := range []string{"no_vocabulary", "second_announcement", "vocabulary_too_large"} {
+	for _, name := range []string{"no_vocabulary", "second_announcement", "vocabulary_too_large", "build_version_mismatch"} {
 		b.WriteString("    static constexpr TableRefuseReason " + name + " = ::" + pkg + "::" + name + ";\n")
 	}
 	return b.String()
@@ -853,6 +853,9 @@ namespace ` + pkg + ` {
 constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+// STRICT MODE's one refusal (§3.3): a strict vocabulary's announcement whose
+// build version is not this unit's own. The report carries both versions.
+constexpr TableRefuseReason build_version_mismatch = (TableRefuseReason) 0x20000003; // a strict announcement whose build version is not this unit's own
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -926,6 +929,11 @@ struct TableReport
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on reason build_version_mismatch, the peer's announced build version
+    // (remote) and this unit's own (own). Zero on every other path.
+    uint64_t build_version_remote = 0;
+    uint64_t build_version_own = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
