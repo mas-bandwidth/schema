@@ -14,6 +14,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v2/internal/pathid"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -131,12 +133,39 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 	if !ok {
 		return report, noVerdict("message batch")
 	}
-	for i, tree := range trees {
-		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.NeedsLabels(tree.Root)); err != nil {
+	// a batch is one publish: every tree lands, or none does
+	txn := atomicfile.New()
+	defer txn.Close()
+	// EVERY MESSAGE GETS A TREE OF ITS OWN: two destinations that are one
+	// directory would leave both messages reading the second, and one inside
+	// another becomes an entry of it that pack refuses. Which directories are
+	// one is the file system's answer, so each destination is made first (the
+	// transaction's own, removed again unless the batch lands) and then
+	// compared by identity: a symlinked spelling, a case-folded or Unicode
+	// spelling on a volume that takes it for the same name, and a nested path
+	// are all found, whether the destination existed or not.
+	for _, tree := range trees {
+		if err := txn.MkdirAll(tree.Dir); err != nil {
 			return report, err
 		}
 	}
-	return report, nil
+	for i := range trees {
+		for j := i + 1; j < len(trees); j++ {
+			same, err := pathid.Overlap(trees[i].Dir, trees[j].Dir)
+			if err != nil {
+				return report, err
+			}
+			if same {
+				return report, fmt.Errorf("the tree for message %d (%s, %s) and the tree for message %d (%s, %s) are one directory, or one is inside the other: every message of a batch is written to a tree of its own, and nothing was written (docs/SPEC-TABLES.md §3.3, §17.3)", i+1, trees[i].Root, trees[i].Dir, j+1, trees[j].Root, trees[j].Dir)
+			}
+		}
+	}
+	for i, tree := range trees {
+		if err := writeTree(txn, m, insts[i], tree.Root, tree.Dir, oneFile || m.NeedsLabels(tree.Root)); err != nil {
+			return report, err
+		}
+	}
+	return report, txn.Commit()
 }
 
 func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool) (tabletext.Report, error) {
@@ -168,13 +197,24 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 	if !ok {
 		return report, noVerdict(root)
 	}
-	return report, writeTree(m, inst, root, dir, oneFile)
+	txn := atomicfile.New()
+	defer txn.Close()
+	if err := writeTree(txn, m, inst, root, dir, oneFile); err != nil {
+		return report, err
+	}
+	return report, txn.Commit()
 }
 
 // writeTree is the half after the decode: one instance onto disk, in the shape
 // §17.2 asks for. Both forms and both shapes land here, because the tree a
 // message writes is the tree a file writes.
-func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
+//
+// It changes nothing itself. Every file it writes, every entry it prunes and
+// every directory it respells is a change of txn, and the caller's Commit
+// publishes them together (internal/atomicfile): a write that fails leaves
+// the tree that was there, whole. What it reads of the directory is
+// therefore the tree as it stood before this unpack.
+func writeTree(txn *atomicfile.Txn, m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
 	st := inst.Def
 	if !oneFile {
 		// a key that is no safe path component at all is refused by name, as
@@ -195,14 +235,18 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		// the disk.
 		oneFile = true
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// the transaction's directory: one this unpack made is removed again if
+	// the unpack is refused or fails. Spelled clean, as it is made, so a
+	// dotted spelling never makes a directory on the way to it.
+	dir = filepath.Clean(dir)
+	if err := txn.MkdirAll(dir); err != nil {
 		return err
 	}
-	out, err := os.OpenRoot(dir)
+	view, err := txn.OpenRoot(dir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
+	out := view.Root() // read through; the transaction closes it
 	// what the ROOT's shape owns at this level, whichever shape is written:
 	// every field key, and the root's own name
 	owned := map[string]bool{root: true}
@@ -220,13 +264,11 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			return err
 		}
 		name := root + ".json"
-		if err := claimEntry(out, dir, name, false, owned); err != nil {
+		if _, err := claimEntry(view, out, dir, name, false, owned); err != nil {
 			return err
 		}
-		if err := out.WriteFile(name, append(text, '\n'), 0o644); err != nil {
-			return err
-		}
-		return prune(out, owned, map[string]bool{name: true})
+		view.Write(name, append(text, '\n'), 0o644)
+		return prune(view, out, owned, map[string]bool{name: true})
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}
@@ -241,7 +283,7 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			continue
 		}
 		if f.KeyEnum != "" {
-			if err := unpackKeyed(m, fv, out, dir, key, owned); err != nil {
+			if err := unpackKeyed(m, fv, view, out, dir, key, owned); err != nil {
 				return err
 			}
 			written[key] = true
@@ -251,15 +293,13 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		if err != nil {
 			return err
 		}
-		if err := claimEntry(out, dir, key+".json", false, owned); err != nil {
+		if _, err := claimEntry(view, out, dir, key+".json", false, owned); err != nil {
 			return err
 		}
-		if err := out.WriteFile(key+".json", append(text, '\n'), 0o644); err != nil {
-			return err
-		}
+		view.Write(key+".json", append(text, '\n'), 0o644)
 		written[key+".json"] = true
 	}
-	return prune(out, owned, written)
+	return prune(view, out, owned, written)
 }
 
 // treeNamesOverlap reports whether the expanded tree's entries at the root
@@ -331,18 +371,28 @@ func portableName(name string) bool {
 	return true
 }
 
-func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, where, dir string, parentOwned map[string]bool) error {
-	if err := claimEntry(parent, where, dir, true, parentOwned); err != nil {
-		return err
-	}
-	if err := parent.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	out, err := parent.OpenRoot(dir)
+func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.View, parent *os.Root, where, dir string, parentOwned map[string]bool) error {
+	alias, err := claimEntry(parentView, parent, where, dir, true, parentOwned)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
+	// the directory as it stands now, under the spelling it has: read for
+	// what is in the way and what is stale. One that is not there yet holds
+	// neither, and the commit makes it with its first file.
+	at := dir
+	if alias != "" {
+		at = alias
+	}
+	var out *os.Root
+	if _, err := parent.Lstat(at); err == nil {
+		if out, err = parent.OpenRoot(at); err != nil {
+			return err
+		}
+		defer func() { _ = out.Close() }() // only the directory handle, for reading
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	view := parentView.Under(dir)
 	f := fv.Def
 	written := map[string]bool{}
 	owned := map[string]bool{}
@@ -356,15 +406,18 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, where
 		if err != nil {
 			return err
 		}
-		if err := claimEntry(out, filepath.Join(where, dir), name+".json", false, owned); err != nil {
-			return err
+		if out != nil {
+			if _, err := claimEntry(view, out, filepath.Join(where, dir), name+".json", false, owned); err != nil {
+				return err
+			}
 		}
-		if err := out.WriteFile(name+".json", append(text, '\n'), 0o644); err != nil {
-			return err
-		}
+		view.Write(name+".json", append(text, '\n'), 0o644)
 		written[name+".json"] = true
 	}
-	return prune(out, owned, written)
+	if out == nil {
+		return nil
+	}
+	return prune(view, out, owned, written)
 }
 
 // prune removes the entries at one level that NAME something this level owns —
@@ -372,7 +425,7 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, where
 // write. Both spellings of a value are pruned, so a stale `<field>/` directory
 // left beside a fresh `<field>.json` cannot become "two entries claim one
 // value" on the next pack. Anything the level does not own is left alone.
-func prune(out *os.Root, owned, written map[string]bool) error {
+func prune(view atomicfile.View, out *os.Root, owned, written map[string]bool) error {
 	entries, err := fs.ReadDir(out.FS(), ".")
 	if err != nil {
 		return err
@@ -388,9 +441,7 @@ func prune(out *os.Root, owned, written map[string]bool) error {
 		if !ok || !owned[key] {
 			continue
 		}
-		if err := out.RemoveAll(e.Name()); err != nil {
-			return err
-		}
+		view.Delete(e.Name())
 	}
 	return nil
 }
@@ -464,32 +515,27 @@ func obstruction(out *os.Root, where, name string, dir bool, owned map[string]bo
 // is renamed to it (a directory, keeping every child) or removed (a value
 // file), so the name lands spelled as written (pack matches names
 // exactly); anything else in the way refuses the unpack and stays.
-func claimEntry(out *os.Root, where, name string, dir bool, owned map[string]bool) error {
+//
+// The removal and the rename are changes of the unpack's transaction, made
+// when it commits and undone if it fails. It answers the other spelling it
+// found, "" for none.
+func claimEntry(view atomicfile.View, out *os.Root, where, name string, dir bool, owned map[string]bool) (string, error) {
 	alias, err := obstruction(out, where, name, dir, owned)
 	if err != nil || alias == "" {
-		return err
+		return "", err
 	}
 	if !dir {
 		// one owned value file, about to be written again
-		return out.Remove(alias)
+		view.Delete(alias)
+		return alias, nil
 	}
 	// a directory may hold entries no schema owns (§17.3): it is renamed to
 	// the written spelling with every child in it, never removed. Through a
-	// temporary name, because a case-insensitive filesystem may take a
-	// rename between two spellings of one name as a rename onto itself.
-	tmp := ""
-	for i := 0; ; i++ {
-		tmp = fmt.Sprintf(".%s.unpack-rename-%d", name, i)
-		if _, err := out.Lstat(tmp); errors.Is(err, fs.ErrNotExist) {
-			break
-		} else if err != nil {
-			return err
-		}
-	}
-	if err := out.Rename(alias, tmp); err != nil {
-		return err
-	}
-	return out.Rename(tmp, name)
+	// temporary name (atomicfile's Respell), because a case-insensitive
+	// filesystem may take a rename between two spellings of one name as a
+	// rename onto itself.
+	view.Respell(alias, name)
+	return alias, nil
 }
 
 // preflight refuses, before anything is written, an entry that stands where

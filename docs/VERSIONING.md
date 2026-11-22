@@ -22,10 +22,12 @@ named in its section below.
 
 1. **From 3.0.0, data written by any build reads in any other build of the
    same major, in either direction, and never crashes.** A table wire from a
-   newer build reads in an older one and the other way round. Every
-   difference lands in the read report; none is fatal.
+   newer build reads in an older one and the other way round across every
+   lawful edit: an unknown field is skipped and counted, a widening is
+   counted, and an edit the reader cannot honour (a changed kind, a value
+   past a tightened bound) refuses the whole load by name and never crashes.
 2. **Nothing is misdecoded.** A value is read as what it was written as, or
-   it is skipped and counted. The edits the wire cannot report, the *silent
+   the load refuses by name. The edits the wire cannot report, the *silent
    class* (the bold cells in the table below), are refused at compile time by
    a committed baseline, so commit one before the first build whose data
    leaves the building; the one the repository could not refuse until the
@@ -994,8 +996,32 @@ either by hand.
   newest `v` tag's under an equal protocol id (the previous-release
   differential). It tags that one commit with that one annotated tag and pushes
   nothing else, and the workflow then publishes the GitHub release on that
-  tag: a release is never a bare tag. CI must be green on the commit, including the full
-  certification run across every language, before the release is dispatched.
+  tag: a release is never a bare tag. What must be green on the commit first
+  depends on the release's lane, and the two lanes promise different things:
+
+  - **The full lane** (`lane=full`, any release, and the only lane for a
+    minor or major one): `make release` refuses unless a `ci-full.yml` run
+    at that exact commit concluded success and its `proof` job's report is
+    green there. That is the whole `go test`, the pins, every language's
+    conformance legs, the negative controls, Windows, MSVC, big-endian and
+    vuln, before the tag.
+  - **The fast lane** (`lane=fast`, the workflow's default, patch releases
+    only, Glenn, 2026-11-21: "Only run fast CI checks for the point
+    releases."): `make release` refuses unless a `ci-fast.yml` run at that
+    exact commit concluded success. Nothing more is proven before the tag.
+    A fast-lane release does NOT run, before it is tagged: `ci-full.yml`
+    (the whole `go test` with `SCHEMA_SLOW=1`, the pins, the conformance
+    legs, the negative controls, Windows, MSVC, big-endian, vuln and the
+    proof report), `certify.yml` (every `tables-<lang>-release` gate, the
+    release wire-fuzz campaigns, the inline gate, the nightly negative
+    controls), `nightly-conformance.yml`, the per-language hostile-corpus,
+    fuzz, resource-bound and strict-analysis workflows, `tla-nightly.yml`,
+    or `ci-fast.yml`'s dispatch-only leg gates; and the CI fast run it
+    takes tested only what that run's planner selected from the push's
+    diff. Those run nightly on `main` and on dispatch, so they may first
+    see a fast-lane release's commit after it is published. The
+    previous-release differential and the tagger's own refusals run in both
+    lanes.
 
 The rules for which number a release takes are the ones above; the tooling
 checks the form and the order, and the person dispatching it chooses the
@@ -1135,8 +1161,9 @@ still open.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.
-- **The baseline refuses `T`→`?T`.** A new optional writer can store a
-  present field at its defaults, which an old plain reader refuses (§4).
+- **`T`→`?T` passes the baseline.** A new optional writer stores a present
+  field at its defaults as a body, and an old plain reader reads that body
+  as the declared defaults (SPEC-TABLES.md §2.3, §4.1).
 - **A tightened range refuses every stored file holding a value past it.** A
   narrowing is a data edit; migrate or back the files up first. A committed
   baseline warns on it, from either end and on a range declared where the

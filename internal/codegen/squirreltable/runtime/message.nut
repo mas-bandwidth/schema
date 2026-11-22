@@ -959,6 +959,24 @@ local sameBuild = function(T, v) {
   return ("Announced" in own) && own.Announced && v.BuildVersion == own.BuildVersion;
 };
 
+// ONE DEFAULT ELEMENT PER SLOT A GROWN BOUND ADDS (docs/SPEC-TABLES.md §21.1,
+// "a grown bound"): a fixed array written under a smaller bound reads as the
+// writer's elements, then each new slot born as the record's constructor bears
+// it — an empty union, a record at its declared defaults, a null enum or
+// reference, a zero scalar — a fresh one per slot, never the field's default
+// and never nothing (the Go engine's message decoder)
+local bornElem = function(T, e) {
+  if (e.shape == "tab") return T.Descriptors[e.table].make();
+  if (e.shape == "union") return T[e.table + "Descriptor"].make();
+  if (e.shape == "enum" || e.shape == "ptr") return null;
+  if (e.shape == "str") return "";
+  if (e.shape == "bytes") return blob(0);
+  if (e.shape == "bool") return false;
+  if (e.shape == "float") return 0.0;
+  if (("width" in e) && e.width == 16) return [0, 0];
+  return 0;
+};
+
 readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false) {
   if (depth > 128) { r.bad = true; return; }
   if (fd.shape == "str") {
@@ -1012,6 +1030,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
       // past Max does (docs/SPEC.md §5.1 row 3; tablewire messagedecode.go)
       if(fd.counted&&n<fd.min){refuseRead(r,"count_over_bound");return;}
       local size=((fd.list||fd.counted)?n:fd.bound),a=array(size,fd.elem.def);
+      for(local i=n;i<size;i++)a[i]=bornElem(T,fd.elem);
       for(local i=0;i<n;i++){readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;a[i]=holder.value;}
       owner[member]=a;return;
     }

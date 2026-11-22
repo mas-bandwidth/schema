@@ -3,7 +3,7 @@
 def self.run(manifest, outdir)
   instances = {}
   RubyConformance.entries(manifest, 'instance').each { |row| instances[row[1]] = row }
-  RubyConformance.entries(manifest, 'cook-write').each do |row|
+  RubyConformance.cases(manifest, 'cook-write') do |row|
     name, text, source, alias_name = row[1, 4]
     instance = instances[name]
     pkg = RubyConformance.unit_package(instance[2])

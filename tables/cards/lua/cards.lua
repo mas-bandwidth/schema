@@ -267,7 +267,7 @@ local function readWire(wire)
 end
 
 -- Load reads wire into a Record (docs/SPEC-TABLES.md §6.2). Refusals and
--- malformed wire are errors; tolerant events ride in the returned report. The
+-- malformed wire are errors; evolution events ride in the returned report. The
 -- ORIGINAL wire is kept, never rewritten, so an old input is preserved byte
 -- for byte.
 function M.Load(wire)

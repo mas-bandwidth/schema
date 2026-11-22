@@ -824,12 +824,13 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
             fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
             return 1;
         }
-        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED )
+        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED && verdict != CONFORMANCE_UNREPRESENTABLE )
         {
             fprintf( stderr, "driver: %s %s: the case did not run\n", surface, f->field[1] );
             return 1;
         }
-        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : "refused\n";
+        /* a value the leg's storage cannot hold is said so, never narrowed */
+        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : verdict == CONFORMANCE_REFUSED ? "refused\n" : "unrepresentable\n";
         if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
     }
     return 0;

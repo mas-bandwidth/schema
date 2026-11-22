@@ -17,7 +17,8 @@ package bench;
 public final class TableJson {
     private TableJson() {}
 
-    static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+    static void writeFlags(
+            java.lang.StringBuilder b, long bits, java.lang.String[] names, int depth) {
         assert names.length >= 64 || (bits >>> names.length) == 0
                 : "flags value sets a bit no variant names";
         b.append('[');
@@ -33,7 +34,7 @@ public final class TableJson {
         b.append(']');
     }
 
-    static Long readFlags(In in, String[] names) {
+    static java.lang.Long readFlags(In in, java.lang.String[] names) {
         if (in.peek() != '[') {
             in.skipValue();
             in.rep.refuse("kind_mismatch");
@@ -50,7 +51,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanVariantName();
+                java.lang.String name = in.scanVariantName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -95,11 +96,11 @@ public final class TableJson {
         return new long[] {y, m, d};
     }
 
-    public static void writeTimestamp(StringBuilder b, long nanos) {
-        long sec = Math.floorDiv(nanos, 1_000_000_000L);
-        long sub = Math.floorMod(nanos, 1_000_000_000L);
-        long days = Math.floorDiv(sec, 86400L);
-        long sod = Math.floorMod(sec, 86400L);
+    public static void writeTimestamp(java.lang.StringBuilder b, long nanos) {
+        long sec = java.lang.Math.floorDiv(nanos, 1_000_000_000L);
+        long sub = java.lang.Math.floorMod(nanos, 1_000_000_000L);
+        long days = java.lang.Math.floorDiv(sec, 86400L);
+        long sod = java.lang.Math.floorMod(sec, 86400L);
         long[] ymd = civilFromDays(days);
         int hour = (int) (sod / 3600L);
         int minute = (int) ((sod % 3600L) / 60L);
@@ -176,17 +177,17 @@ public final class TableJson {
         return era * 146097L + doe - 719468L;
     }
 
-    static int timestampDigit(String s, int i) {
+    static int timestampDigit(java.lang.String s, int i) {
         char c = s.charAt(i);
         return (c >= '0' && c <= '9') ? (c - '0') : -1;
     }
 
-    public static long readTimestamp(In in, String field) {
-        String s = in.scanString();
+    public static long readTimestamp(In in, java.lang.String field) {
+        java.lang.String s = in.scanString();
         if (in.bad || s == null) {
             return 0L;
         }
-        Long parsed = parseRfc3339(s);
+        java.lang.Long parsed = parseRfc3339(s);
         if (parsed == null) {
             in.bad = true;
             if (in.rep != null && in.rep.reason == null) {
@@ -197,7 +198,7 @@ public final class TableJson {
         return parsed;
     }
 
-    static Long parseRfc3339(String s) {
+    static java.lang.Long parseRfc3339(java.lang.String s) {
         int n = s.length();
         if (n < 20) return null;
         int y0 = timestampDigit(s, 0),
@@ -276,13 +277,13 @@ public final class TableJson {
         if (sec == -9223372037L && sub < 145_224_192L) return null;
         if (sec == 9223372036L && sub > 854_775_807L) return null;
         if (sec == -9223372037L) {
-            return Long.MIN_VALUE + (sub - 145_224_192L);
+            return java.lang.Long.MIN_VALUE + (sub - 145_224_192L);
         }
         return sec * 1_000_000_000L + sub;
     }
 
     // indent starts a new line at the given depth: two spaces per level.
-    public static void indent(StringBuilder b, int depth) {
+    public static void indent(java.lang.StringBuilder b, int depth) {
         b.append('\n');
         for (int i = 0; i < depth; i++) {
             b.append("  ");
@@ -293,7 +294,7 @@ public final class TableJson {
     // requires and passing every other code point through raw (§16.2). A
     // control character becomes an escape; a lone surrogate is not text and
     // refuses the write (invalid_value, §16.3, §16.14 W0), nothing replaced.
-    public static void esc(StringBuilder b, String s) {
+    public static void esc(java.lang.StringBuilder b, java.lang.String s) {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -344,10 +345,10 @@ public final class TableJson {
     // REFUSED is how the walk refuses a value it cannot name (§16.3): a
     // non-finite float has no JSON spelling, and toJson answers null rather
     // than write text that does not say what the instance holds.
-    public static final class Refused extends RuntimeException {
+    public static final class Refused extends java.lang.RuntimeException {
         private static final long serialVersionUID = 1L;
 
-        public Refused(String why) {
+        public Refused(java.lang.String why) {
             super(why, null, false, false);
         }
     }
@@ -361,8 +362,8 @@ public final class TableJson {
     // Float.parseFloat for a float32, never a double narrowed. It is NOT
     // Float.toString or Double.toString, whose shortest spelling is Java's own
     // ("1.0E10", "0.0") and whose digits can differ from C's on a tie.
-    public static void writeFloat(StringBuilder b, double value, boolean single) {
-        if (!Double.isFinite(value)) {
+    public static void writeFloat(java.lang.StringBuilder b, double value, boolean single) {
+        if (!java.lang.Double.isFinite(value)) {
             throw new Refused("a non-finite float has no JSON spelling");
         }
         int low = 15;
@@ -372,15 +373,15 @@ public final class TableJson {
             high = 9;
         }
         for (int digits = low; ; digits++) {
-            String text = formatG(value, digits);
+            java.lang.String text = formatG(value, digits);
             if (digits >= high) {
                 b.append(text);
                 return;
             }
             boolean same =
                     single
-                            ? (double) Float.parseFloat(text) == value
-                            : Double.parseDouble(text) == value;
+                            ? (double) java.lang.Float.parseFloat(text) == value
+                            : java.lang.Double.parseDouble(text) == value;
             if (same) {
                 b.append(text);
                 return;
@@ -395,19 +396,19 @@ public final class TableJson {
     // decimal exponent is below -4 or at least prec, the plain form otherwise,
     // trailing zeros and a trailing point removed, an exponent of at least two
     // digits, and a negative zero's sign kept.
-    static String formatG(double value, int prec) {
+    static java.lang.String formatG(double value, int prec) {
         if (prec < 1) {
             prec = 1;
         }
-        String digits = "0";
+        java.lang.String digits = "0";
         int exp = 0;
         if (value != 0.0) {
             java.math.BigDecimal r =
-                    new java.math.BigDecimal(Math.abs(value))
+                    new java.math.BigDecimal(java.lang.Math.abs(value))
                             .round(
                                     new java.math.MathContext(
                                             prec, java.math.RoundingMode.HALF_EVEN));
-            String u = r.unscaledValue().toString();
+            java.lang.String u = r.unscaledValue().toString();
             exp = u.length() - 1 - r.scale();
             int end = u.length();
             while (end > 1 && u.charAt(end - 1) == '0') {
@@ -415,8 +416,8 @@ public final class TableJson {
             }
             digits = u.substring(0, end);
         }
-        StringBuilder s = new StringBuilder();
-        if (Double.doubleToRawLongBits(value) < 0) {
+        java.lang.StringBuilder s = new java.lang.StringBuilder();
+        if (java.lang.Double.doubleToRawLongBits(value) < 0) {
             s.append('-');
         }
         if (exp < -4 || exp >= prec) {
@@ -425,7 +426,7 @@ public final class TableJson {
                 s.append('.').append(digits, 1, digits.length());
             }
             s.append('e').append(exp < 0 ? '-' : '+');
-            int a = Math.abs(exp);
+            int a = java.lang.Math.abs(exp);
             if (a < 10) {
                 s.append('0');
             }
@@ -450,11 +451,11 @@ public final class TableJson {
     // THE READER: a cursor over the byte[] the caller owns, one report shared
     // with the wire (§4). Nothing allocates beyond the strings it reads.
     public static final class LabelEntry {
-        public final Object value;
+        public final java.lang.Object value;
         public final long typeId;
         public boolean open;
 
-        public LabelEntry(Object value, long typeId, boolean open) {
+        public LabelEntry(java.lang.Object value, long typeId, boolean open) {
             this.value = value;
             this.typeId = typeId;
             this.open = open;
@@ -466,7 +467,7 @@ public final class TableJson {
         // uses (internal/tabletext maxJsonDepth), so a tree past it is
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
-        public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
+        public final java.util.Map<java.lang.Long, LabelEntry> labels = new java.util.HashMap<>();
         // graph: the root is variable, so its text carries labels (§16.7) and
         // a skipped object's & key is held to the label rules; a fixed root's
         // reader skips such a value whole (internal/tabletext Read).
@@ -558,7 +559,7 @@ public final class TableJson {
             while (p < t.length && t[p] >= '0' && t[p] <= '9') {
                 int digit = t[p] - '0';
                 p++;
-                if (label > (Long.MAX_VALUE - digit) / 10) {
+                if (label > (java.lang.Long.MAX_VALUE - digit) / 10) {
                     bad = true;
                     return -1;
                 }
@@ -570,21 +571,21 @@ public final class TableJson {
         public double number() {
             rejected = false;
             boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
+            java.lang.String tok = scanNumber(integral);
             if (bad || tok == null) {
                 return 0.0;
             }
             double value;
             try {
-                value = Double.parseDouble(tok);
-            } catch (NumberFormatException e) {
+                value = java.lang.Double.parseDouble(tok);
+            } catch (java.lang.NumberFormatException e) {
                 bad = true;
                 return 0.0;
             }
             // §16.2, §16.3: a magnitude the format cannot hold is the wrong
             // shape for the kind, never stored as an infinity the writer
             // would refuse.
-            if (!Double.isFinite(value)) {
+            if (!java.lang.Double.isFinite(value)) {
                 rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0;
@@ -600,21 +601,21 @@ public final class TableJson {
         public float number32() {
             rejected = false;
             boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
+            java.lang.String tok = scanNumber(integral);
             if (bad || tok == null) {
                 return 0.0f;
             }
             float value;
             try {
-                value = Float.parseFloat(tok);
-            } catch (NumberFormatException e) {
+                value = java.lang.Float.parseFloat(tok);
+            } catch (java.lang.NumberFormatException e) {
                 bad = true;
                 return 0.0f;
             }
             // §16.2: the conversion at the field's own width turns a decimal
             // at or past the float32 overflow midpoint into an infinity; that
             // is the wrong shape for the kind (§16.3).
-            if (!Float.isFinite(value)) {
+            if (!java.lang.Float.isFinite(value)) {
                 rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0f;
@@ -627,7 +628,7 @@ public final class TableJson {
             return p < t.length ? (t[p] & 0xff) : 0;
         }
 
-        boolean lit(String w) {
+        boolean lit(java.lang.String w) {
             space();
             if (p + w.length() > t.length) {
                 bad = true;
@@ -675,14 +676,14 @@ public final class TableJson {
         // raw control character in the body, an invalid escape, or a lone or
         // out-of-order surrogate escape is damaged and refuses the whole read
         // (§16.2, §16.3; docs/plans/strict-only.md decision 9): no U+FFFD.
-        public String scanString() {
+        public java.lang.String scanString() {
             space();
             if (p >= t.length || t[p] != '"') {
                 bad = true;
                 return null;
             }
             p++;
-            StringBuilder b = new StringBuilder();
+            java.lang.StringBuilder b = new java.lang.StringBuilder();
             while (true) {
                 if (p >= t.length) {
                     bad = true;
@@ -783,8 +784,8 @@ public final class TableJson {
         // §16.2's 255-byte cap after decoding. A longer one refuses the read,
         // and one that decodes to U+0000 refuses too; a map key and a string
         // value are data and go through scanStored, never this.
-        public String scanName() {
-            String s = scanStored();
+        public java.lang.String scanName() {
+            java.lang.String s = scanStored();
             if (s == null) {
                 return null;
             }
@@ -798,8 +799,8 @@ public final class TableJson {
             return s;
         }
 
-        public String scanVariantName() {
-            String s = scanString();
+        public java.lang.String scanVariantName() {
+            java.lang.String s = scanString();
             if (s == null) {
                 return null;
             }
@@ -815,7 +816,7 @@ public final class TableJson {
 
         // loneSurrogate refuses a string whose u-escape is a surrogate half
         // with no partner after it, as damage (strict-only decision 9).
-        String loneSurrogate() {
+        java.lang.String loneSurrogate() {
             bad = true;
             if (rep.reason == null) {
                 rep.reason = "string_lone_surrogate: <root>";
@@ -865,7 +866,7 @@ public final class TableJson {
         // scanNumber reads one JSON number token (RFC 8259 §6) and reports
         // whether it is an integral spelling: no fraction, no exponent (§16.2).
         // A token that is not a JSON number is damaged.
-        public String scanNumber(boolean[] integral) {
+        public java.lang.String scanNumber(boolean[] integral) {
             space();
             int start = p;
             if (p < t.length && t[p] == '-') {
@@ -911,7 +912,8 @@ public final class TableJson {
                 }
                 integral[0] = false;
             }
-            return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
+            return new java.lang.String(
+                    t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
         }
 
         // integer reads one integer token into a long. A wide kind (storage
@@ -921,7 +923,7 @@ public final class TableJson {
         // double. A value past the declared range refuses (§16.2).
         public long integer(boolean signed, boolean wide, long min, long max) {
             rejected = false;
-            String tok;
+            java.lang.String tok;
             if (wide && peek() == '"') {
                 tok = scanString();
                 if (bad || tok == null) {
@@ -948,8 +950,8 @@ public final class TableJson {
             long v;
             if (signed) {
                 try {
-                    v = Long.parseLong(tok);
-                } catch (NumberFormatException e) {
+                    v = java.lang.Long.parseLong(tok);
+                } catch (java.lang.NumberFormatException e) {
                     rep.refuse("out_of_range");
                     return tok.charAt(0) == '-' ? min : max;
                 }
@@ -958,8 +960,8 @@ public final class TableJson {
                 return min;
             } else {
                 try {
-                    v = Long.parseUnsignedLong(tok);
-                } catch (NumberFormatException e) {
+                    v = java.lang.Long.parseUnsignedLong(tok);
+                } catch (java.lang.NumberFormatException e) {
                     rep.refuse("out_of_range"); // past what sixty-four bits hold
                     // the largest unsigned magnitude; the range checks below add
                     // a second clamp when the bound is narrower than uint64
@@ -976,11 +978,11 @@ public final class TableJson {
                     return max;
                 }
             } else {
-                if (Long.compareUnsigned(v, min) < 0) {
+                if (java.lang.Long.compareUnsigned(v, min) < 0) {
                     rep.refuse("out_of_range");
                     return min;
                 }
-                if (Long.compareUnsigned(v, max) > 0) {
+                if (java.lang.Long.compareUnsigned(v, max) > 0) {
                     rep.refuse("out_of_range");
                     return max;
                 }
@@ -992,8 +994,8 @@ public final class TableJson {
         // or *string value, a text-list element, a map key). A stored string that
         // decodes to U+0000 refuses the read (§16.3): no wire carries a zero in
         // text. A string only compared or skipped goes through scanString.
-        public String scanStored() {
-            String s = scanString();
+        public java.lang.String scanStored() {
+            java.lang.String s = scanString();
             if (s != null && s.indexOf('\0') >= 0) {
                 bad = true;
                 if (rep.reason == null) {
@@ -1007,15 +1009,15 @@ public final class TableJson {
         // readString reads one string and clamps it at the bound, counting the
         // clamp (§16.2). The cut lands at a code point boundary, never through
         // a multi-byte character.
-        public String readString(int bound) {
-            String s = scanStored();
+        public java.lang.String readString(int bound) {
+            java.lang.String s = scanStored();
             if (s == null) {
                 return "";
             }
             return clamp(s, bound);
         }
 
-        String clamp(String s, int bound) {
+        java.lang.String clamp(java.lang.String s, int bound) {
             byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             if (b.length <= bound) {
                 return s;
@@ -1026,7 +1028,7 @@ public final class TableJson {
             while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
                 keep--;
             }
-            return new String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
+            return new java.lang.String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
         }
 
         // skipValue steps over one value of any shape, so an unknown key's
@@ -1075,7 +1077,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
-            java.util.Set<String> seenKey = null;
+            java.util.Set<java.lang.String> seenKey = null;
             // the label a definition in this skipped object opened: it stays
             // open until the object closes (§16.7)
             boolean first = true;
@@ -1094,7 +1096,7 @@ public final class TableJson {
                 if (closing == '}') {
                     // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
                     // (§16.3): one that decodes to U+0000 refuses.
-                    String key = scanName();
+                    java.lang.String key = scanName();
                     if (bad) {
                         return;
                     }
@@ -1186,7 +1188,7 @@ public final class TableJson {
 
     // integerToken is the digits-and-optional-minus spelling an integer takes:
     // no fraction, no exponent, no plus, no leading zero, and not -0 (§16.2).
-    static boolean integerToken(String token) {
+    static boolean integerToken(java.lang.String token) {
         if (token == null || token.isEmpty()) return false;
         int i = 0;
         boolean negative = false;
@@ -1204,7 +1206,7 @@ public final class TableJson {
         return true;
     }
 
-    static String wideText(
+    static java.lang.String wideText(
             java.math.BigInteger raw,
             java.math.BigInteger lo,
             java.math.BigInteger hi,
@@ -1214,9 +1216,9 @@ public final class TableJson {
         return wideText(raw, fraction, fixed);
     }
 
-    static String wideText(java.math.BigInteger raw, int fraction, boolean fixed) {
+    static java.lang.String wideText(java.math.BigInteger raw, int fraction, boolean fixed) {
         if (!fixed) return raw.toString();
-        String text =
+        java.lang.String text =
                 new java.math.BigDecimal(raw)
                         .divide(
                                 new java.math.BigDecimal(
@@ -1238,7 +1240,7 @@ public final class TableJson {
             java.math.BigInteger lo,
             java.math.BigInteger hi) {
         int c = in.peek();
-        String token;
+        java.lang.String token;
         if (stringOk && c == '"') {
             token = in.scanString();
             if (in.bad || token == null) return null;
@@ -1261,7 +1263,7 @@ public final class TableJson {
                         new In(
                                 token.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                                 new TableVariable.Report());
-                String scanned = probe.scanNumber(new boolean[1]);
+                java.lang.String scanned = probe.scanNumber(new boolean[1]);
                 if (probe.bad || scanned == null || probe.p != probe.t.length) {
                     in.rep.refuse("kind_mismatch");
                     return null;
@@ -1347,7 +1349,7 @@ public final class TableJson {
                     in.rep.refuse("kind_mismatch");
                     return null;
                 }
-                StringBuilder digits = new StringBuilder(sig);
+                java.lang.StringBuilder digits = new java.lang.StringBuilder(sig);
                 for (int q = first; q <= last; q++)
                     digits.append(
                             q < intLen
@@ -1374,7 +1376,7 @@ public final class TableJson {
 
     // A map key is an exact integer token, answered from its significant
     // digits: a token past the band is refused before any big-number work.
-    static java.math.BigInteger exactIntegerToken(String token) {
+    static java.math.BigInteger exactIntegerToken(java.lang.String token) {
         int n = token.length(), at = 0;
         boolean negative = false;
         if (at < n && (token.charAt(at) == '-' || token.charAt(at) == '+')) {
@@ -1421,7 +1423,7 @@ public final class TableJson {
         int sig = last - first + 1;
         long scale = point - (long) sig;
         if (point > 40 || scale < 0) return null;
-        StringBuilder digits = new StringBuilder(sig);
+        java.lang.StringBuilder digits = new java.lang.StringBuilder(sig);
         for (int q = first; q <= last; q++)
             digits.append(
                     q < intLen ? token.charAt(intStart + q) : token.charAt(fracStart + q - intLen));

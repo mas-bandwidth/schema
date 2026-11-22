@@ -1,0 +1,6 @@
+package claims
+
+table Handover
+{
+    rules [..16]string(64)
+}

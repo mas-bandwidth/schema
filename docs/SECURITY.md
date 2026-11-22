@@ -59,7 +59,7 @@ the buffer. Specifically:
   verdict, so a target that skips one is a divergence bug as well as an
   acceptance bug. **The TABLE wire enforces the same rules** (SPEC-TABLES §3,
   §4): a kind `12` payload that is not well-formed UTF-8 or that carries a
-  zero byte is damage, and damage discards the whole load as `malformed`. **A
+  zero byte is damage, and damage refuses the whole load (`wire_damaged`). **A
   table reader that STORES one is an acceptance bug on this list**,
   exactly as a packet reader that accepts one is. In scope beside it is the
   framing: a length past a declared bound, refused before it drives a copy.

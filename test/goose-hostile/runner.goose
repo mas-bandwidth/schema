@@ -126,6 +126,11 @@ fn main() {
                     out.append(" refuse newer_form");
                 } else if fr == schema_rt::FixedRefuseMessageFormAsFile {
                     out.append(" refuse message_form_as_file");
+                } else if fr == 1000 {
+                    // the fixed writer refused the value the load accepted:
+                    // an error, never a refusal (a refusal conforms on its
+                    // verdict alone, docs/rulings.json refusal-verdict-only)
+                    out.append(" error fixed_save_refused");
                 } else {
                     out.append(" refuse damaged");
                 }
@@ -151,7 +156,9 @@ fn main() {
             var saved: u8[>..<] = [];
             let refusal = schema_rt::save_table(unit, f[3], data, vals, nodes, root, saved);
             if refusal != 0 {
-                out.append(" refuse ");
+                // the writer refused the value the load accepted: an error,
+                // never a refusal (refusal-verdict-only)
+                out.append(" error save_refused:");
                 out.append(schema_rt::save_refusal_name(refusal));
                 out.push('\n');
             } else {

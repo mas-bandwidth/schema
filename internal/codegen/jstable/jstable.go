@@ -196,6 +196,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // THE BACKEND OPENS NO FILE: `lockfile.Open`, `lockfile.Lineage` and
 // `lockfile.Floor` are the CALLER's three calls, so the disk is read in one
 // place and a test can play the lock in one line.
+//
+// Every builtin the table code calls is written `globalThis.X`, as in the
+// packet modules (internal/codegen/js): a table module imports the unit's
+// types, so a type named like a builtin is bound in its scope too.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil

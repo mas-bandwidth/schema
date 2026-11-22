@@ -821,8 +821,8 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 }
 
 // emitMapLoad reads a map as an array of entry tables, scanning each entry's
-// key first, keeping an ascending prefix and counting a repeated
-// (docs/SPEC-TABLES.md §2.8, §4).
+// key first; a key out of ascending order or repeated refuses the whole load,
+// keeping no prefix (docs/SPEC-TABLES.md §2.8, §4).
 func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
 	key := ir.RustSnake(ir.MapKeyFieldName)
 	keyField := ir.MapKeyField(f)

@@ -4,9 +4,11 @@ package pythontable_test
 // (docs/HOSTILE-CORPUS.md; schema-shared-hostile-corpus). The corpus is one
 // committed manifest plus one raw input per case, and its verdicts are the Go
 // engine's. This runner decodes each input with the port's generated table or
-// packet reader and compares the verdict, the named refusal and (on an accept)
-// the SHA-256 of the canonical decoded text against the manifest. Files are
-// read; nothing here uses a socket, a clock or a service.
+// packet reader and compares the verdict and (on an accept) the SHA-256 of the
+// canonical decoded text against the manifest; a refusal conforms on its
+// verdict alone, the reason the port names being its diagnostic
+// (docs/rulings.json refusal-verdict-only, SPEC-TABLES §6.5 and §13.10).
+// Files are read; nothing here uses a socket, a clock or a service.
 //
 // The generated package is emitted once per schema the manifest names and the
 // probe runs under both pinned interpreters (pyrun). A generated unit is a
@@ -26,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -44,10 +47,12 @@ const (
 	pythonHostileProbeSchema     = "package probe\n\ntable Root\n{\n    entries map[int32]int32\n}\n"
 
 	// pythonHostilePlantFrom is the fixed form's form gate. The planted reader
-	// admits the byte past the carried forms (0xff) as form 3, so a refusal
-	// the corpus names newer_form is reported as damaged instead.
+	// refuses the form it carries, so every clean fixed wire the corpus
+	// accepts is refused. The plant changes a verdict: a refusal conforms on
+	// its verdict alone (refusal-verdict-only), so a plant that only renamed a
+	// refusal would leave the corpus green.
 	pythonHostilePlantFrom = "    if source[0] != 3:\n"
-	pythonHostilePlantTo   = "    if source[0] not in (3, 0xff):\n"
+	pythonHostilePlantTo   = "    if True:  # PLANTED: the form gate refuses the form it carries\n"
 )
 
 // pythonHostileCase is one manifest row.
@@ -261,8 +266,17 @@ def refuse_reason(carrier, exc):
     return reason if reason else "damaged"
 
 
+# A writer that refuses the value the read accepted is an error, never a
+# refusal: a refusal conforms on its verdict alone (refusal-verdict-only).
+def written(write, what):
+    try:
+        return write()
+    except Refused as exc:
+        raise RuntimeError(what + " refused the decoded value: " + str(getattr(exc, "reason", ""))) from None
+
+
 def canonical_text(value):
-    text = value.to_json()
+    text = written(value.to_json, "the text writer")
     if text.endswith("\n"):
         text = text[:-1]
     return text.encode("utf-8")
@@ -272,7 +286,7 @@ def run_case(carrier, root_name, payload):
     root = getattr(pkg, root_name)
     if carrier == "packet":
         value = root.read(payload)
-        return "accept", "-", value.write()
+        return "accept", "-", written(value.write, "the packet writer")
     if carrier == "text":
         try:
             text = payload.decode("utf-8")
@@ -392,7 +406,9 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 						t.Fatalf("read the Python answer for %s: %v", fields[1], err)
 					}
 				}
-				if previous, ok := answers[fields[1]]; ok && (previous.verdict != answer.verdict || previous.reason != answer.reason) {
+				// two refusals agree whatever each names (refusal-verdict-only)
+				if previous, ok := answers[fields[1]]; ok && (previous.verdict != answer.verdict ||
+					(answer.verdict != pythonHostileRefuse && previous.reason != answer.reason)) {
 					t.Fatalf("%s: the two pinned interpreters disagree: %s/%s vs %s/%s",
 						fields[1], previous.verdict, previous.reason, answer.verdict, answer.reason)
 				}
@@ -403,41 +419,67 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 	return answers
 }
 
+// pythonHostileGrade grades one answer against its case and returns "" when it
+// conforms, else the disagreement. A refusal conforms on its verdict alone,
+// whatever reason either side names; an accept on its decoded value's digest;
+// a crash or no answer never conforms.
+func pythonHostileGrade(c pythonHostileCase, a pythonHostileAnswer, answered bool) string {
+	if !answered {
+		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason)
+	}
+	if a.verdict != c.Verdict || (c.Verdict != pythonHostileRefuse && a.reason != c.Reason) {
+		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason)
+	}
+	if c.Verdict == pythonHostileAccept {
+		if a.text == nil {
+			return fmt.Sprintf("%s: want digest %s, got no text", c.Name, c.Digest)
+		}
+		sum := sha256.Sum256(a.text)
+		if got := hex.EncodeToString(sum[:]); got != c.Digest {
+			return fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, got)
+		}
+	}
+	return ""
+}
+
 // pythonHostileCompare returns every disagreement with the manifest.
 func pythonHostileCompare(cases []pythonHostileCase, answers map[string]pythonHostileAnswer) []string {
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		if !ok {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason))
-			continue
-		}
-		verdictOK := a.verdict == c.Verdict && a.reason == c.Reason
-		digestOK := true
-		gotDigest := ""
-		if c.Verdict == pythonHostileAccept && a.verdict == pythonHostileAccept {
-			if a.text == nil {
-				digestOK = false
-			} else {
-				sum := sha256.Sum256(a.text)
-				gotDigest = hex.EncodeToString(sum[:])
-				digestOK = gotDigest == c.Digest
-			}
-		}
-		if verdictOK && digestOK {
-			continue
-		}
-		if !verdictOK {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason))
-		} else {
-			bad = append(bad, fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, gotDigest))
+		if why := pythonHostileGrade(c, a, ok); why != "" {
+			bad = append(bad, why)
 		}
 	}
 	return bad
 }
 
+// TestPythonHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through pythonHostileGrade: a refusal
+// with another reason or none passes; a changed verdict either way, a
+// different accepted value or a crash fails. It runs no Python.
+func TestPythonHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := pythonHostileCase{Name: o.Name, Carrier: "text", Verdict: o.Verdict, Reason: o.Reason, Digest: o.Digest}
+		a := pythonHostileAnswer{verdict: "crash", reason: "SystemExit: 3"}
+		if name, refused := o.Refused(); refused {
+			a = pythonHostileAnswer{verdict: pythonHostileRefuse, reason: name}
+		} else if text, accepted := o.Accepted(); accepted {
+			a = pythonHostileAnswer{verdict: pythonHostileAccept, reason: pythonHostileNoReason, text: text}
+		}
+		if why := pythonHostileGrade(c, a, true); (why == "") != o.Pass {
+			t.Errorf("%s: graded %q, the fixture says pass=%t", o.Name, why, o.Pass)
+		}
+	}
+}
+
 // TestPythonRunsHostileCorpus: every corpus input reaches the manifest's
-// verdict, named reason and decoded-value digest under both pinned
+// verdict and decoded-value digest under both pinned
 // interpreters, and no input crashes or hangs the leg.
 func TestPythonRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
@@ -481,7 +523,7 @@ func TestPythonHostileCorpusPlantedReader(t *testing.T) {
 	planted := pythonHostileRun(t, root, corpusDir, cases, true)
 	bad := pythonHostileCompare(cases, planted)
 	if len(bad) == 0 {
-		t.Fatal("the planted fixed-form reader bug (the form gate admits 0xff) was not observed: the corpus stayed green")
+		t.Fatal("the planted fixed-form reader bug (the form gate refuses form 3) was not observed: the corpus stayed green")
 	}
 	t.Logf("the planted fixed-form reader bug is red: %s", bad[0])
 }

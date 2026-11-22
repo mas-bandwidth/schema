@@ -86,6 +86,13 @@ var versionRows = []versionRow{
     check(values[0].vals[i].x == 7 && values[0].vals[i].y == 9,
         'slot $i past the old bound is not the ELEMENT default: '
         '${values[0].vals[i].x} ${values[0].vals[i].y}');
+  }
+  // F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  check(values[0].ints.length == 8 && values[0].octet.length == 8,
+      'a grown scalar array is not its new bound');
+  for (var i = 0; i < 8; i++) {
+    check(values[0].ints[i] == (i < 4 ? -800 - i : 0) && values[0].octet[i] == (i < 4 ? 200 + i : 0),
+        'scalar slot $i: ${values[0].ints[i]} ${values[0].octet[i]}');
   }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},

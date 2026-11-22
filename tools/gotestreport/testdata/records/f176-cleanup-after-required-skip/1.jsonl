@@ -1,0 +1,11 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:10:44.063448525+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:10:44.065432253+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestCleanup"}
+{"Time":"2026-11-21T21:10:44.065464864+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestCleanup","Output":"=== RUN   TestCleanup\n"}
+{"Time":"2026-11-21T21:10:44.065679005+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestCleanup","Output":"    ledger_test.go:30: no cargo on PATH\n"}
+{"Time":"2026-11-21T21:10:44.065700055+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestCleanup","Output":"    ledger_test.go:29: SCHEMA_SLOW: auxiliary log\n"}
+{"Time":"2026-11-21T21:10:44.065706988+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestCleanup","Output":"--- SKIP: TestCleanup (0.00s)\n"}
+{"Time":"2026-11-21T21:10:44.065710404+01:00","Action":"skip","Package":"example.org/ledgertest","Test":"TestCleanup","Elapsed":0}
+{"Time":"2026-11-21T21:10:44.065715894+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:10:44.065742144+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.002s\n"}
+{"Time":"2026-11-21T21:10:44.065748375+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.002}

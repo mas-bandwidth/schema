@@ -1192,7 +1192,7 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 # supplies that type and this leg needs no C++ serialize checkout to produce
 # the oracle.
 JAVA_FIXEDFORM_CORPUS := build/java-fixedform-corpus
-build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk
+build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf $(JAVA_FIXEDFORM_CORPUS)
 	@mkdir -p $(JAVA_FIXEDFORM_CORPUS)
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
@@ -2385,13 +2385,19 @@ tables-java-view: bin/schema test/java-view/View.java
 		set -e; dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		source=tables/$$dir; \
 		./bin/schema generate --lang java --out build/java-view/generated/$$dir $$source > build/java-view/$$pkg.generate.log 2>&1 || { cat build/java-view/$$pkg.generate.log; exit 1; }; \
-		mkdir -p build/java-view/src-$$pkg build/java-view/classes-$$pkg; \
-		sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java > build/java-view/src-$$pkg/View.java; \
-		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; }; \
-		$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes-$$pkg \
-			build/java-view/generated/$$dir/*.java build/java-view/src-$$pkg/View.java; \
-		$(JAVA) -cp build/java-view/classes-$$pkg View > build/java-view/$$pkg.listing \
+		mkdir -p build/java-view/src-$$pkg; \
+		{ echo "package view_$$pkg;"; sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java; } > build/java-view/src-$$pkg/View.java; \
+		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; } \
 	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	@# ONE javac for every unit (each unit's package is its own, and each View
+	@# copy sits in a package of its own, view_<unit>): fourteen JVMs compiling
+	@# side by side were most of this gate's time on a four-core slot.
+	@mkdir -p build/java-view/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes \
+		$(foreach entry,$(VIEW_CORPUS),build/java-view/generated/$(firstword $(subst :, ,$(entry)))/*.java build/java-view/src-$(lastword $(subst :, ,$(entry)))/View.java)
+	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
+		$(JAVA) -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
+	done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing

@@ -149,3 +149,14 @@ torture_fixed_wref 9191 75 5494
 torture_fixed_wref_str 8844 69 5385
 torture_wide_cook 26214 67 14927
 torture_wide_cook_extremes 71553 122 31800
+shapes_bounds_ends 17735 62 9899
+shapes_bounds_negzero 10428 55 6902
+shapes_bounds_octets_at_min 8363 38 6093
+shapes_fixed_ends 13089 78 8728
+shapes_fixed_negzero 10332 69 6499
+shapes_fixed_octets_at_min 8943 42 5865
+shapes_fixed_octets_three 9118 42 6001
+shapes_fixed_tenth_at_max 13065 78 8724
+shapes_fixed_seventh_at_min 13088 78 8717
+shapes_fixed_f32_ok 13089 78 8728
+shapes_fixed_f64_ok 13089 78 8728

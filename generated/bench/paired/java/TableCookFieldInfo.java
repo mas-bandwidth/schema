@@ -21,8 +21,8 @@ public final class TableCookFieldInfo {
         TableCookInfo get();
     }
 
-    public String name;
-    public String sourceName; // generated Java Value member (§7.6)
+    public java.lang.String name;
+    public java.lang.String sourceName; // generated Java Value member (§7.6)
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its whole storage there, companions included
     public int elemSize; // one element's size, for an array; the field's own otherwise
@@ -55,8 +55,8 @@ public final class TableCookFieldInfo {
     }
 
     public static TableCookFieldInfo of(
-            String name,
-            String sourceName,
+            java.lang.String name,
+            java.lang.String sourceName,
             int offset,
             int size,
             int elemSize,

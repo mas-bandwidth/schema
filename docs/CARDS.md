@@ -10,6 +10,7 @@ releases.
 
 The current declaration, verbatim from `tables/cards/Card.schema`:
 
+<!-- example: fragment -->
 ```go
 // Card.schema — the CARDS corpus (docs/SPEC-TABLES.md §2): a typed work card
 // plus one opaque body. Every bounded scalar and string field is declared at
@@ -104,6 +105,7 @@ The generated package is a local module named `cards`, produced by
 `make cards-generate` into `build/tables-generated-go/cards`. A customer
 imports it as:
 
+<!-- example: fragment -->
 ```go
 import "cards"
 ```
@@ -125,9 +127,10 @@ returns another copy, so a caller can never mutate stored bytes and no raw
 generated `*Card` or shallow relative-pointer root escapes (docs/SPEC-TABLES.md
 §6.2).
 
+<!-- example: fragment -->
 ```go
-rec, report, err := cards.Load(wire)   // tolerant read, original wire preserved
-strict, err := cards.ReadStrict(wire)  // refuses unknown/lossy data
+rec, report, err := cards.Load(wire)   // the strict read, original wire preserved
+strict, err := cards.ReadStrict(wire)  // also refuses unknown fields
 json, report, err := cards.ToJSON(rec) // known-field view
 rec2, err := cards.FromJSON(json)      // checked reconstruct, no loss events
 text, report, err := cards.Render(rec) // informational text, body verbatim
@@ -135,13 +138,15 @@ out, report, err := cards.Upgrade(wire)// retained-region rewrite, idempotent
 rec3, err := cards.Parse(brief)        // admitted brief text -> typed Record
 ```
 
-`Load` never rewrites: it copies the input and reports tolerant events in the
-generated `Report` alias. Malformed or failed loads refuse; a `Report` counter
-is a count, not a field name. `ReadStrict` rejects unknown or lossy reads on top
-of `Load`; it does not detect writer chronology, and a compatible newer wire may
+`Load` is the one strict read (docs/SPEC-TABLES.md §4, §6.5): any damage, an
+out-of-range value, a kind mismatch or a repeated field refuses the whole load
+and returns no record. It never rewrites: it copies the input, and an accepted
+read reports only its evolution events (`Unknown`, `Widened`) in the generated
+`Report` alias; a `Report` counter is a count, not a field name. `ReadStrict`
+also refuses a read that carried unknown fields, on top of `Load`; it does not detect writer chronology, and a compatible newer wire may
 carry zero unknowns. `Upgrade` is not implicit in `Load`: it runs the
-retained-region path, accumulates one report, and refuses retention loss, kind
-mismatch, clamp, malformed input or any failed operation. `Unknown`, `Retained`
+retained-region path, accumulates one report, and refuses retention loss or any
+read or write the strict path refuses. `Unknown`, `Retained`
 and `Widened` alone are not loss. A shipped historical fixture upgrades, keeps
 its values and body, and is idempotent.
 
@@ -156,6 +161,7 @@ Six setters edit a record. Each validates its input, allocates a complete
 replacement, serializes it, and only then swaps the owned wire; a refusal leaves
 the original bytes unchanged.
 
+<!-- example: fragment -->
 ```go
 err = cards.SetNeeds(rec, []string{"dep-alpha"})       // 64-byte elements
 err = cards.SetPaths(rec, []string{"tables/cards"})    // 192-byte elements
@@ -176,6 +182,7 @@ element's declared string bound. An invalid write refuses rather than truncates.
 and done, framed so boundaries cannot collide and excluding needs, tier,
 priority and machine fields.
 
+<!-- example: fragment -->
 ```go
 sum, err := cards.TaskHash(rec) // [32]byte; refused for a lossy record
 ```
@@ -191,6 +198,7 @@ of generated code, not a `github.com/.../tables/cards` distribution promise.
 The checkout-relative replaces are materialized from absolute paths because Go
 does not inherit replace directives from module `cards`:
 
+<!-- example: fragment -->
 ```go
 replace cards => <checkout>/build/tables-generated-go/cards
 replace github.com/mas-bandwidth/serialize.go/v2 => <checkout>/../serialize.go
@@ -202,6 +210,7 @@ lossy-probe assertions. This is the recipe a later sprint integration follows:
 parse briefly at admission, keep machine fields server-owned, index the
 authoritative record, preserve the wire, and hash the task-bearing fields.
 
+<!-- example: fragment -->
 ```go
 // BEGIN CARDS-CUSTOMER-EXAMPLE
 	rec, err := cards.Parse([]byte(
@@ -276,18 +285,18 @@ Facade (`tables/cards/cpp/cards.hpp`, `tables/cards/cpp/cards.cpp`, namespace `c
 | Go name | C++ spelling | Notes |
 | --- | --- | --- |
 | `Record` | `cards::Record` | Owns a defensive `std::vector<uint8_t>` copy of the wire. |
-| `Report` | `cards::TableReport` | Tolerant load/save counters (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `Report` | `cards::TableReport` | Load/save counters an accepted read moves (`retained`, `retain_lost`, `widened`, `unknown`). |
 | `MaxBodyBytes` | `cards::MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `cards::MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `cards::MaxRetainBytes` (`1 << 20`), `cards::MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
-| `Load` | `cards::CardLoad(wire, len, rec, report)` | Tolerant load into `cards::Record`; copies `wire`. |
+| `Load` | `cards::CardLoad(wire, len, rec, report)` | Strict load into `cards::Record`; copies `wire`. |
 | `FromJSON` | `cards::CardFromJSON(text, len, rec, report, refusal_class)` | Strict JSON read and checked save. |
 | `ToJSON` | `cards::CardToJSON(rec, out, report)` | Known-field JSON view. |
 | `Wire` | `cards::CardWire(rec)` | Returns a defensive copy of the owned wire bytes. |
 | `Parse` | `cards::Parse(text, len, rec, refusal_class)` | Admitted brief text to `cards::Record`. |
 | `Render` | `cards::Render(rec, out, report)` | Informational brief text view. |
 | `Upgrade` | `cards::Upgrade(wire, len, out, report, refusal_class)` | Atomic retained region round trip (`CardLoadRetain` / `CardSaveRetain`). |
-| `ReadStrict` | `cards::ReadStrict(wire, len, rec, report, refusal_class)` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `cards::ReadStrict(wire, len, rec, report, refusal_class)` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `cards::TaskHash(rec, out, refusal_class)` | Framed SHA-256 over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
 | `SetNeeds` | `cards::SetNeeds(rec, needs, refusal_class)` | Atomic `needs` replacement (64-byte element bound, 512 ceiling). |
 | `SetPaths` | `cards::SetPaths(rec, paths, refusal_class)` | Atomic `paths` replacement (192-byte element bound, 512 ceiling). |
@@ -312,18 +321,18 @@ Facade (`tables/cards/c/cards.h`, `tables/cards/c/cards.c`):
 | Go name | C spelling | Notes |
 | --- | --- | --- |
 | `Record` | `CardsRecord` | Owns a heap copy of `wire` and the last `TableReport`; released with `cards_record_clear`. |
-| `Report` | `TableReport` | Generated C report struct (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `Report` | `TableReport` | Generated C report struct (`retained`, `retain_lost`, `widened`, `unknown`). |
 | `MaxBodyBytes` | `CARDS_MAX_BODY_BYTES` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `CARDS_MAX_LIST_ENTRIES` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `CARDS_MAX_RETAIN_BYTES` (`1 << 20`), `CARDS_MAX_RETAIN_IDS` (`4096`) | Caller-owned retention store ceilings per `cards_upgrade` call. |
-| `Load` | `cards_load(wire, wire_len, rec, report, err, err_cap)` | Tolerant load into `CardsRecord`; copies `wire`. |
+| `Load` | `cards_load(wire, wire_len, rec, report, err, err_cap)` | Strict load into `CardsRecord`; copies `wire`. |
 | `FromJSON` | `cards_from_json(text, text_len, rec, err, err_cap)` | Strict JSON read and checked save. |
 | `ToJSON` | `cards_to_json(rec, out, out_len, err, err_cap)` | Known-field JSON view. |
 | `Wire` | `cards_wire(rec, out, out_len, err, err_cap)` | Allocates and copies the owned wire bytes. |
 | `Parse` | `cards_parse(text, text_len, rec, err, err_cap)` | Admitted brief text to `CardsRecord`. |
 | `Render` | `cards_render(rec, out, out_len, err, err_cap)` | Informational brief text view. |
 | `Upgrade` | `cards_upgrade(wire, wire_len, out, out_len, report, err, err_cap)` | Atomic retained region round trip (`Card_load_retain` / `Card_save_retain`). |
-| `ReadStrict` | `cards_read_strict(wire, wire_len, rec, err, err_cap)` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `cards_read_strict(wire, wire_len, rec, err, err_cap)` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `cards_task_hash(rec, hex_out, err, err_cap)` | Framed SHA-256 over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
 | `SetNeeds` | `cards_set_needs(rec, needs, count, err, err_cap)` | Atomic `needs` replacement. |
 | `SetPaths` | `cards_set_paths(rec, paths, count, err, err_cap)` | Atomic `paths` replacement. |
@@ -352,14 +361,14 @@ Facade (`tables/cards/cs/Cards.cs`, `tables/cards/cs/Driver/Program.cs`, namespa
 | `MaxBodyBytes` | `Record.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `Record.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `Record.MaxRetainBytes` (`1 << 20`), `Record.MaxRetainIds` (`4096`) | Caller-owned retention store ceilings per `Record.Upgrade` call. |
-| `Load` | `Record.Load(byte[] wire, out TableReport report)` | Tolerant load into `Record`; copies `wire`. |
+| `Load` | `Record.Load(byte[] wire, out TableReport report)` | Strict load into `Record`; copies `wire`. |
 | `FromJSON` | `Record.FromJson(byte[] text)` | Strict JSON read and checked save. |
 | `ToJSON` | `record.ToJson()` | Known-field JSON `byte[]` view. |
 | `Wire` | `record.Wire()` | Returns a fresh `byte[]` copy of the owned wire. |
 | `Parse` | `Record.Parse(byte[] bytes)` | Admitted brief text to `Record`. |
 | `Render` | `record.Render()` | Informational brief text `byte[]` view. |
 | `Upgrade` | `Record.Upgrade(byte[] wire, out TableReport report)` | Atomic retained region round trip (`Schema.CardLoadRetain` / `Schema.CardSaveRetain`). |
-| `ReadStrict` | `Record.ReadStrict(byte[] wire)` | Refuses `Unknown`, `KindMismatch`, `Clamped`, and `Malformed`. |
+| `ReadStrict` | `Record.ReadStrict(byte[] wire)` | Refuses a read with `Unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `Record.TaskHash(Record record)` | Framed SHA-256 `byte[32]` digest over the six task fields. |
 | `SetNeeds` | `record.SetNeeds(string[] needs)` | Atomic `needs` replacement. |
 | `SetPaths` | `record.SetPaths(string[] paths)` | Atomic `paths` replacement. |
@@ -384,18 +393,18 @@ Facade (`tables/cards/cards.go`, `parse.go`, `render.go`, `upgrade.go`, `edit.go
 | Go name | Go spelling | Notes |
 | --- | --- | --- |
 | `Record` | `cards.Record` | Owns a defensive `[]byte` copy of the wire and the decoded `Card`. |
-| `Report` | `cards.Report` (`= cards.TableReport`) | Tolerant load/save report counters. |
+| `Report` | `cards.Report` (`= cards.TableReport`) | Load/save report counters an accepted read moves (`Retained`, `RetainLost`, `Widened`, `Unknown`). |
 | `MaxBodyBytes` | `cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `cards.MaxRetainBytes` (`1 << 20`), `cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
-| `Load` | `cards.Load(wire []byte) (*Record, Report, error)` | Tolerant load into `*Record`; copies `wire`. |
+| `Load` | `cards.Load(wire []byte) (*Record, Report, error)` | Strict load into `*Record`; copies `wire`. |
 | `FromJSON` | `cards.FromJSON(text []byte) (*Record, error)` | Strict JSON read and checked save. |
 | `ToJSON` | `cards.ToJSON(rec *Record) ([]byte, Report, error)` | Known-field JSON view. |
 | `Wire` | `(*Record).Wire() []byte` | Returns a defensive copy of the owned wire bytes. |
 | `Parse` | `cards.Parse(text []byte) (*Record, error)` | Admitted brief text to `*Record`. |
 | `Render` | `cards.Render(rec *Record) ([]byte, Report, error)` | Informational brief text view. |
 | `Upgrade` | `cards.Upgrade(wire []byte) ([]byte, Report, error)` | Atomic retained region round trip (`CardLoadRetain` / `CardSaveRetain`). |
-| `ReadStrict` | `cards.ReadStrict(wire []byte) (*Record, Report, error)` | Refuses `Unknown`, `KindMismatch`, `Clamped`, and `Malformed`. |
+| `ReadStrict` | `cards.ReadStrict(wire []byte) (*Record, Report, error)` | Refuses a read with `Unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `cards.TaskHash(rec *Record) ([32]byte, error)` | Framed SHA-256 digest over `body`, `paths`, `_new`, `shared`, `test`, `done`. |
 | `SetNeeds` | `cards.SetNeeds(rec *Record, needs []string) error` | Atomic `needs` replacement. |
 | `SetPaths` | `cards.SetPaths(rec *Record, paths []string) error` | Atomic `paths` replacement. |
@@ -420,18 +429,18 @@ Facade (`tables/cards/rust/src/lib.rs`, crate `cards`):
 | Go name | Rust spelling | Notes |
 | --- | --- | --- |
 | `Record` | `cards::Record` | Owns a private `Vec<u8>` copy of the wire, `Card`, and `TableReport`. |
-| `Report` | `cards::TableReport` (`record.report()`) | Generated report struct (`retained`, `retain_lost`, `widened`, `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`). |
+| `Report` | `cards::TableReport` (`record.report()`) | Generated report struct (`retained`, `retain_lost`, `widened`, `unknown`). |
 | `MaxBodyBytes` | `cards::MAX_BODY_BYTES` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `cards::MAX_LIST_ENTRIES` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `cards::MAX_RETAIN_BYTES` (`1 << 20`), `cards::MAX_RETAIN_IDS` (`4096`) | Caller-owned retention store ceilings per `upgrade` call. |
-| `Load` | `cards::load(wire: &[u8]) -> Result<(Record, TableReport), String>` | Tolerant load into `Record`; clones `wire`. |
+| `Load` | `cards::load(wire: &[u8]) -> Result<(Record, TableReport), String>` | Strict load into `Record`; clones `wire`. |
 | `FromJSON` | `cards::from_json(text: &str) -> Result<Record, String>` | Strict JSON read and checked save. |
 | `ToJSON` | `cards::to_json(record: &Record) -> Result<(String, TableReport), String>` | Known-field JSON view. |
 | `Wire` | `Record::wire(&self) -> Vec<u8>` | Returns a cloned `Vec<u8>` of the owned wire. |
 | `Parse` | `cards::parse(text: &[u8]) -> Result<Record, String>` | Admitted brief text to `Record`. |
 | `Render` | `cards::render(record: &Record) -> Result<Vec<u8>, String>` | Informational brief text view. |
 | `Upgrade` | `cards::upgrade(wire: &[u8]) -> Result<(Vec<u8>, TableReport), String>` | Atomic retained round trip (`card_load_retain` / `card_save_retain`). |
-| `ReadStrict` | `cards::read_strict(wire: &[u8]) -> Result<Record, String>` | Refuses `unknown`, `kind_mismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `cards::read_strict(wire: &[u8]) -> Result<Record, String>` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `cards::task_hash(record: &Record) -> Result<[u8; 32], String>` | Framed SHA-256 digest over the six task fields. |
 | `SetNeeds` | `cards::set_needs(record: &mut Record, needs: &[String]) -> Result<(), String>` | Atomic `needs` replacement. |
 | `SetPaths` | `cards::set_paths(record: &mut Record, paths: &[String]) -> Result<(), String>` | Atomic `paths` replacement. |
@@ -460,14 +469,14 @@ Facade (`tables/cards/java/src/cards/Cards.java`, `tables/cards/java/src/cards/D
 | `MaxBodyBytes` | `Cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `Cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `Cards.MaxRetainBytes` (`1 << 20`), `Cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Cards.upgrade` call. |
-| `Load` | `Cards.load(byte[] wire)` | Tolerant load into `Cards.Record`; copies `wire`. |
+| `Load` | `Cards.load(byte[] wire)` | Strict load into `Cards.Record`; copies `wire`. |
 | `FromJSON` | `Cards.fromJSON(byte[] text)` | Strict JSON read and checked save. |
 | `ToJSON` | `Cards.toJSON(Cards.Record record)` | Known-field JSON `byte[]` view. |
 | `Wire` | `record.wire()` | Returns `Arrays.copyOf` of the owned wire bytes. |
 | `Parse` | `Cards.parse(byte[] text)` | Admitted brief text to `Cards.Record`. |
 | `Render` | `Cards.render(Cards.Record record)` | Informational brief text `byte[]` view. |
 | `Upgrade` | `Cards.upgrade(byte[] wire)` | Atomic retained round trip (`CardRetain.loadRetain` / `CardRetain.saveRetain`). |
-| `ReadStrict` | `Cards.readStrict(byte[] wire)` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `Cards.readStrict(byte[] wire)` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `Cards.taskHash(byte[] wire)` | Framed SHA-256 64-char hex digest over the six task fields. |
 | `SetNeeds` | `Cards.setNeeds(byte[] wire, List<String> needs)` | Atomic `needs` replacement returning a fresh `Cards.Record`. |
 | `SetPaths` | `Cards.setPaths(byte[] wire, List<String> paths)` | Atomic `paths` replacement. |
@@ -496,14 +505,14 @@ Facade (`tables/cards/js/cards.mjs`, `tables/cards/js/driver.mjs`):
 | `MaxBodyBytes` | `MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `MaxRetainBytes` (`1 << 20`), `MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
-| `Load` | `Load(wire)` | Tolerant load returning `{ record, report, error }`; copies `wire`. |
+| `Load` | `Load(wire)` | Strict load returning `{ record, report, error }`; copies `wire`. |
 | `FromJSON` | `FromJSON(text)` | Strict JSON read and checked save returning `{ record, error }`. |
 | `ToJSON` | `ToJSON(record)` | Known-field JSON view returning `{ text, report, error }`. |
 | `Wire` | `record.Wire()` | Returns a fresh `Uint8Array` copy of the owned wire. |
 | `Parse` | `Parse(text)` | Admitted brief text to `{ record, error }`. |
 | `Render` | `Render(record)` | Informational brief text view returning `{ text, report, error }`. |
 | `Upgrade` | `Upgrade(wire)` | Atomic retained round trip (`CardLoadRetain` / `CardSaveRetain`) returning `{ out, report, error }`. |
-| `ReadStrict` | `ReadStrict(wire)` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `ReadStrict(wire)` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `TaskHash(record)` | Framed SHA-256 64-char hex digest over the six task fields. |
 | `SetNeeds` | `SetNeeds(record, needs)` | Atomic `needs` replacement on `record`. |
 | `SetPaths` | `SetPaths(record, paths)` | Atomic `paths` replacement on `record`. |
@@ -532,14 +541,14 @@ Facade (`tables/cards/dart/lib/cards.dart`):
 | `MaxBodyBytes` | `maxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `maxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `maxRetainBytes` (`1 << 20`), `maxRetainIds` (`4096`) | Caller-owned retention store ceilings per `upgrade` call. |
-| `Load` | `load(Uint8List wire) -> Record` | Tolerant load into `Record`; copies `wire`. |
+| `Load` | `load(Uint8List wire) -> Record` | Strict load into `Record`; copies `wire`. |
 | `FromJSON` | `fromJson(String text) -> Record` | Strict JSON read and checked save. |
 | `ToJSON` | `toJson(Record record) -> String` | Known-field JSON view. |
 | `Wire` | `record.wire() -> Uint8List` | Returns `Uint8List.fromList` of the owned wire. |
 | `Parse` | `parse(String text) -> Record` | Admitted brief text to `Record`. |
 | `Render` | `render(Record record) -> String` | Informational brief text view. |
 | `Upgrade` | `upgrade(Uint8List wire) -> UpgradeResult` | Atomic retained round trip (`cardWireLoadRetain` / `cardWireSaveRetain`). |
-| `ReadStrict` | `readStrict(Uint8List wire) -> Record` | Refuses `unknown`, `kindMismatch`, `clamped`, and `malformed`. |
+| `ReadStrict` | `readStrict(Uint8List wire) -> Record` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `taskHash(Record record) -> Uint8List` (`taskHashHex`) | Framed SHA-256 digest over the six task fields. |
 | `SetNeeds` | `setNeeds(Record r, List<String> needs)` | Atomic `needs` replacement on `r`. |
 | `SetPaths` | `setPaths(Record r, List<String> paths)` | Atomic `paths` replacement on `r`. |
@@ -564,18 +573,18 @@ Facade (`tables/cards/elixir/cards.ex`, module `Cards.Cards`):
 | Go name | Elixir spelling | Notes |
 | --- | --- | --- |
 | `Record` | `%Cards.Cards.Record{wire, value, report}` | Struct owning the immutable BEAM binary `wire`, decoded `value` map, and `report`. |
-| `Report` | `record.report` (map from `Cards.Table`) | Tolerant read/save counters (`:retained`, `:retain_lost`, `:widened`, `:unknown`, `:kind_mismatch`, `:clamped`, `:duplicate`, `:malformed`). |
+| `Report` | `record.report` (map from `Cards.Table`) | Read/save counters an accepted read moves (`:retained`, `:retain_lost`, `:widened`, `:unknown`). |
 | `MaxBodyBytes` | `@max_body_bytes` (`64 * 1024`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `@max_list_entries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `@max_retain_bytes` (`1_048_576`), `@max_retain_ids` (`4096`) | Caller-owned retention store ceilings per `Cards.Cards.upgrade/1` call. |
-| `Load` | `Cards.Cards.load(wire)` | Tolerant load returning `{:ok, record, report}` or `{:error, reason, report}`. |
+| `Load` | `Cards.Cards.load(wire)` | Strict load returning `{:ok, record, report}` or `{:error, reason, report}`. |
 | `FromJSON` | `Cards.Cards.from_json(text)` | Strict JSON read and checked save returning `{:ok, record}` or `{:error, reason}`. |
 | `ToJSON` | `Cards.Cards.to_json(record)` | Known-field JSON view returning `{:ok, text, report}`. |
 | `Wire` | `Cards.Cards.wire(record)` | Returns the record's owned wire binary. |
 | `Parse` | `Cards.Cards.parse(text)` | Admitted brief text to `{:ok, record}` or `{:error, reason}`. |
 | `Render` | `Cards.Cards.render(record)` | Informational brief text view returning `{:ok, text, report}`. |
 | `Upgrade` | `Cards.Cards.upgrade(wire)` | Atomic retained round trip (`Cards.Table.load_retain` / `Cards.Table.save_retain`). |
-| `ReadStrict` | `Cards.Cards.read_strict(wire)` | Refuses `:unknown`, `:kind_mismatch`, `:clamped`, and `:malformed`. |
+| `ReadStrict` | `Cards.Cards.read_strict(wire)` | Refuses a read with `:unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `Cards.Cards.task_hash(record)` | Framed SHA-256 `{:ok, <<digest::binary-size(32)>>}` over the six task fields. |
 | `SetNeeds` | `Cards.Cards.set_needs(record, needs)` | Atomic `needs` replacement returning `{:ok, record}` or `{:error, reason}`. |
 | `SetPaths` | `Cards.Cards.set_paths(record, paths)` | Atomic `paths` replacement. |
@@ -600,18 +609,18 @@ The facade is `tables/cards/lua/cards.lua` (`require("cards")`, with the generat
 | Go name | Lua spelling | Notes |
 | --- | --- | --- |
 | `Record` | `cards.Record` (`{ wire, root, report }`) | Owns the wire and the decoded Card; a Lua string is immutable, so the wire is its own by construction. |
-| `Report` | the zeroed counters table (`cards.NewReport()`) | `retained`, `retainLost`, `widened`, `unknown`, `kindMismatch`, `clamped`, `duplicate`, `malformed`. |
+| `Report` | the zeroed counters table (`cards.NewReport()`) | `retained`, `retainLost`, `widened`, `unknown` on an accepted read; the refusal counters beside them (`kindChanged`, `outOfRange`, `repeatedKey`, ...) move only on a refused load. |
 | `MaxBodyBytes` | `cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
 | `MaxListEntries` | `cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
 | `MaxRetainBytes` / `MaxRetainIDs` | `cards.MaxRetainBytes` (`1 << 20`), `cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
-| `Load` | `cards.Load(wire)` | Tolerant load returning `record, report` or `nil, err`. |
+| `Load` | `cards.Load(wire)` | Strict load returning `record, report` or `nil, err`. |
 | `FromJSON` | `cards.FromJSON(text)` | Strict JSON read and checked save returning `record, report` or `nil, err`. |
 | `ToJSON` | `cards.ToJSON(record)` | Known-field JSON view returning `text, report`. |
 | `Wire` | `record:Wire()` | The owned wire bytes. |
 | `Parse` | `cards.Parse(text)` | Admitted brief text to `record, report` or `nil, err`. |
 | `Render` | `cards.Render(record)` | Informational brief text view returning `text, report`. |
 | `Upgrade` | `cards.Upgrade(wire)` | Atomic retained round trip (`retain.LoadRetain` / `retain.SaveRetain`) returning `out, report` or `nil, err`. |
-| `ReadStrict` | `cards.ReadStrict(wire)` | Refuses `unknown`, `kindMismatch`, `clamped` and `malformed`. |
+| `ReadStrict` | `cards.ReadStrict(wire)` | Refuses a read with `unknown` fields, on top of every refusal `Load` makes. |
 | `TaskHash` | `cards.TaskHash(record)` | Framed SHA-256 64-char hex digest over the six task fields (a pure-Lua SHA-256 in the facade). |
 | `SetNeeds` | `cards.SetNeeds(record, needs)` | Atomic `needs` replacement returning `true` or `nil, err`. |
 | `SetPaths` | `cards.SetPaths(record, paths)` | Atomic `paths` replacement. |

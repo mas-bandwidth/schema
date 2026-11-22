@@ -136,12 +136,18 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], "refused\n")
 					continue
 				end
-				local out = ctx.write(f[3], f[4], rec)
-				if out == nil then
-					error("driver: " .. f[2] .. ": Save refused a value the text read accepted", 0)
+				-- THE READ ACCEPTED: that is the verdict, whatever the writers
+				-- make of the value afterwards. A writer that refuses the value
+				-- (a tree past the depth cap the reader let through) leaves its
+				-- half out, and the harness fails the case by name, by verdict
+				-- or by the missing value or wire; the surface goes on to the
+				-- next case rather than dying here.
+				local okw, out = pcall(ctx.write, f[3], f[4], rec)
+				if okw and out ~= nil then
+					ctx.say(f[2] .. ".wire", buffer.tostring(out))
 				end
-				ctx.say(f[2] .. ".wire", buffer.tostring(out))
-				ctx.say(f[2], "read\n" .. J.toJson(d, rec))
+				local okj, js = pcall(J.toJson, d, rec)
+				ctx.say(f[2], "read\n" .. (if okj and js ~= nil then js else ""))
 			end
 		end,
 	}

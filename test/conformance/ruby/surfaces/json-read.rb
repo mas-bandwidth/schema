@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'instance').each do |row|
+  RubyConformance.cases(manifest, 'instance') do |row|
     case_name, unit, root = row[1, 3]
     next if row.length > 5 && row[5] == 'no-text'
 

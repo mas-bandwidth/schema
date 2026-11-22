@@ -1454,6 +1454,11 @@ end
 -- THE READER (docs/SPEC-TABLES.md §16.1, §16.2): one text, one cursor.
 ----------------------------------------------------------------------------
 
+-- THE DEPTH CAP (§16.2) counts every container, placed or skipped, the root at
+-- depth 0: 128 reads, 129 refuses. A read function handed `depth` is handed its
+-- HOLDER's depth, so the array, map, union or flags object it opens sits at
+-- depth + 1 and that container's values at depth + 2; skipValue and readTable
+-- are handed the depth of the value itself.
 local MAX_DEPTH = 128
 local MAX_KEY = 255
 
@@ -1876,21 +1881,22 @@ end
 
 local skipValue: (Reader, number) -> boolean
 
-local function skippedAmpersand(r: Reader, key: string): boolean
+-- skippedAmpersand scans a skipped object's `&node` label, answering it, or
+-- nil when the key is not `&node` or the label is malformed
+local function skippedAmpersand(r: Reader, key: string): any
 	local graph = r.graph
 	if graph == nil or key ~= "&node" then
-		return false
+		return nil
 	end
-	local label = scanLabel(r)
-	if label == nil then
-		return false
-	end
-	if graph[label] == nil then
-		graph[label] = { open = false, node = nil, t = nil }
-	end
-	return true
+	return scanLabel(r)
 end
 
+-- a skipped OBJECT may still be a pointer's, and the label rules hold in it as
+-- they do for a placed pointer (§16.7): `{"&node": N}` alone REFERS, so N must
+-- be defined earlier in the text and closed; `&node` opening an object with
+-- fields DEFINES, so N must be new to the whole text, and it stays open until
+-- the skipped object closes. A defined label has no node, so a later reference
+-- reads null.
 local function skipContainer(r: Reader, close: number, depth: number): boolean
 	if depth > MAX_DEPTH then
 		r.bad = true
@@ -1898,6 +1904,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	end
 	r.pos += 1
 	local first = true
+	local defined: any = nil
 	-- a skipped object's keys are held to the layer's rule too: a repeated
 	-- key refuses in every object of the text (§16.2, §16.12)
 	local keys: { [string]: boolean }? = nil
@@ -1905,6 +1912,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 		local c = peek(r)
 		if c == close then
 			r.pos += 1
+			if defined ~= nil then
+				defined.open = false
+			end
 			return true
 		end
 		if c == 0 then
@@ -1931,21 +1941,39 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				keys[key] = true
 			end
 			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
-				if not first or not skippedAmpersand(r, key) then
+				if not first then
 					r.bad = true
 					return false
 				end
+				local label = skippedAmpersand(r, key)
+				if label == nil then
+					r.bad = true
+					return false
+				end
+				local graph = r.graph :: any
 				first = false
 				c = peek(r)
 				if c == 44 then
 					r.pos += 1
-					resumed = true
-				elseif c == close then
+					c = peek(r)
+					if c ~= close then
+						if graph[label] ~= nil then
+							r.bad = true -- a label defined twice
+							return false
+						end
+						defined = { open = true, node = nil, t = nil }
+						graph[label] = defined
+						resumed = true
+					end
+				end
+				if not resumed then
+					local entry = graph[label]
+					if c ~= close or entry == nil or entry.open then
+						r.bad = true -- a reference to a label not defined and closed
+						return false
+					end
 					r.pos += 1
 					return true
-				else
-					r.bad = true
-					return false
 				end
 			end
 		end
@@ -1959,6 +1987,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				r.pos += 1
 			elseif c == close then
 				r.pos += 1
+				if defined ~= nil then
+					defined.open = false
+				end
 				return true
 			else
 				r.bad = true
@@ -2255,9 +2286,14 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 	end
 	local entry = graph[label]
 	c = peek(r)
+	-- the label is a member like any other: a comma or the object's close
+	-- follows it, never the next key (§16.2)
 	if c == 44 then
 		r.pos += 1
 		c = peek(r)
+	elseif c ~= 125 then
+		r.bad = true
+		return false
 	end
 	local bare = c == 125
 	if bare ~= (entry ~= nil) then
@@ -2525,6 +2561,10 @@ local function placeWide(r: Reader, fd: any, holder: any, key: any, token: strin
 end
 
 local function readUnion(r: Reader, t: string, holder: any, key: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -2555,13 +2595,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 	end
 	if arm == nil then
 		r.report.unknown += 1
-		if not skipValue(r, depth + 1) then
+		if not skipValue(r, depth + 2) then
 			return false
 		end
 	elseif arm.s == "void" then
 		if valueShape(r) ~= "z" then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2574,13 +2614,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		-- a BODY arm: the declared type's object
 		if valueShape(r) ~= "o" then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
 			local bd = St.lookup(arm.t)
 			local payload = bd.new()
-			if not readTable(r, bd, payload, depth + 1) then
+			if not readTable(r, bd, payload, depth + 2) then
 				return false
 			end
 			u[arm.slot] = payload
@@ -2596,7 +2636,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 			u.Type = arm.tag
 		elseif not shapeMatches(shape(arm), s) then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2620,6 +2660,10 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 end
 
 local function readFlags(r: Reader, names: { string }, holder: any, key: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -2638,7 +2682,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		end
 		if c ~= 34 then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2766,7 +2810,7 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 	end
 	if s == "int" and fd.kw > 4 and valueShape(r) ~= "s" then
 		r.report.kindChanged += 1
-		return skipValue(r, depth)
+		return skipValue(r, depth + 1)
 	end
 	if s == "int" and fd.kw > 4 and valueShape(r) == "s" then
 		-- A WIDE INTEGER READS AS A STRING (§16.2): the string holds
@@ -2818,6 +2862,10 @@ local function readBase64Into(r: Reader, b: buffer, bound: number): (boolean, nu
 end
 
 local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -2872,7 +2920,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		local s = valueShape(r)
 		if placed >= bound then
 			r.report.outOfRange += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif isPointerShape(e.s) and s == "z" then
@@ -2883,7 +2931,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			placed += 1
 		elseif not shapeMatches(want, s) then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -2930,6 +2978,10 @@ end
 -- bytes fit it: the first element past the total is dropped, counted outOfRange
 -- once, and every later element skipped, an element past [..N] still counted.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -2978,12 +3030,12 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			if seen > bound then
 				r.report.outOfRange += 1
 			end
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed >= bound then
 			r.report.outOfRange += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif tl.opt and s == "z" then
@@ -2993,7 +3045,7 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			placed += 1
 		elseif s ~= "s" then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -3056,6 +3108,10 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 end
 
 local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -3133,12 +3189,12 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		end
 		if at < 0 then
 			r.report.unknown += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif not shapeMatches(want, valueShape(r)) then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif bytesElem then
@@ -3182,6 +3238,10 @@ local function keyId(v: any): any
 end
 
 local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -3257,17 +3317,17 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			else
 				r.report.kindChanged += 1
 			end
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed == "mismatch" then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif kd.s == "str" and #name > kd.bound then
 			r.report.outOfRange += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -3278,7 +3338,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 					resetField(ed, vd, entry)
 				end
 			else
-				value = readField(r, ed, vd, entry, depth)
+				value = readField(r, ed, vd, entry, depth + 1)
 				if value and vd.present ~= nil then
 					entry[vd.present] = true
 				end
@@ -3490,7 +3550,7 @@ readTable = function(r: Reader, d: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		if not readField(r, d, d.fields[1], rec, depth) then
+		if not readField(r, d, d.fields[1], rec, depth - 1) then
 			nameZero(r, d.name, d.fields[1])
 			return false
 		end

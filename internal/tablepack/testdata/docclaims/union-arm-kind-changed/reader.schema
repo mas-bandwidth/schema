@@ -1,0 +1,13 @@
+package claims
+
+union Cargo
+{
+    count float32
+    label string(8)
+}
+
+table Hold
+{
+    name  string(16)
+    cargo Cargo
+}

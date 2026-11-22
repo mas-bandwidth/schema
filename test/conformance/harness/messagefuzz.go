@@ -469,12 +469,12 @@ func runAndCompareMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, 
 		return false, fmt.Errorf("message-fuzz: %s (%s.%s): leg did not answer: %w\n%s", label, r.unit, r.root, err, leg.stderr.String())
 	}
 	legAccepted := rep.accepted()
-	if legAccepted != ans.accepted {
+	if why := messageVerdict(rep, ans); why != "" {
 		saveFailedMessageFrame(failedPath, frame)
 		ann, batch, _ := unpackMessageFuzzFrame(frame)
 		return false, fmt.Errorf(
-			"message-fuzz DIVERGENCE on %s (%s.%s): verdict differs\n  leg:    accepted=%v loaded=%v malformed=%v refused=%v report=%s\n  oracle: accepted=%v report=%s\n  announce (%d B): %x\n  batch    (%d B): %x",
-			label, r.unit, r.root,
+			"message-fuzz DIVERGENCE on %s (%s.%s): %s\n  leg:    accepted=%v loaded=%v malformed=%v refused=%v report=%s\n  oracle: accepted=%v report=%s\n  announce (%d B): %x\n  batch    (%d B): %x",
+			label, r.unit, r.root, why,
 			legAccepted, rep.loaded, rep.report.Malformed, rep.report.Refused, rep.report.String(),
 			ans.accepted, ans.report.String(),
 			len(ann), truncateHex(ann, 96), len(batch), truncateHex(batch, 96),
@@ -495,6 +495,23 @@ func runAndCompareMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, 
 		}
 	}
 	return ans.accepted, nil
+}
+
+// messageVerdict compares a leg's verdict on one message batch with the
+// oracle's, on the file form's rule (wireVerdict): the acceptance first, and
+// where the oracle refuses, the leg's report must NAME a refusal — refused or
+// malformed, whichever and for whatever reason. A leg that answers no value
+// and no refusal discarded the batch without saying so, and that is no
+// refusal (review F-114: a historical save whose field kind changed). It
+// answers "" when the verdicts agree, else what differs.
+func messageVerdict(rep legReply, ans oracleAnswer) string {
+	if rep.accepted() != ans.accepted {
+		return "verdict differs"
+	}
+	if !ans.accepted && !rep.report.Refused && !rep.report.Malformed {
+		return "the oracle refuses the batch; the leg's report does not name the refusal"
+	}
+	return ""
 }
 
 func truncateHex(b []byte, limit int) []byte {

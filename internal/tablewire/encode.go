@@ -548,12 +548,12 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u32(float32Stored(f, cell.F))
+		w.u32(math.Float32bits(float32(tabletext.StoredFloat(f, cell.F))))
 	case ir.TableKindF64:
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u64(math.Float64bits(cell.F))
+		w.u64(math.Float64bits(tabletext.StoredFloat(f, cell.F)))
 	case ir.TableKindTable:
 		body, err := encodeBody(e, subInstance(e, f, cell))
 		if err != nil {
@@ -803,19 +803,6 @@ func elides(e *encoder, fv *tabletext.Field, empty bool) bool {
 // enum-keyed slot elisions here, and the message encoder's through
 // cellIsDefaultIn. A compressed float keeps ==, because its -0 IS +0 by §3.3's
 // compressed-float rule.
-// float32Stored is the four bytes a float32 field stores for v. A COMPRESSED
-// FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3): the writer stores the +0 bits
-// for it in every form, so a -0 that rides (under a non-zero default, as an
-// array element, or in a fixed record) is never 0x80000000. A plain float's
-// -0 is stored bit-exact.
-func float32Stored(f *ir.Field, v float64) uint32 {
-	x := float32(v)
-	if f.HasFloatRange && x == 0 {
-		return 0
-	}
-	return math.Float32bits(x)
-}
-
 func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	if f.Type.Pointer {
 		return cell.Node == nil // null is a pointer slot's only default (§2.1)

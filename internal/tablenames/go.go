@@ -98,6 +98,7 @@ func init() {
 		Name{Name: "tableMessageIntegritySum", What: "the announced message bit codec (docs/SPEC-TABLES.md §2.14, §3.3)"},
 		Name{Name: "tableMessageBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageCount", What: "the announced message bit codec"},
+		Name{Name: "tableMessageOverMax", What: "a count past the announced max (docs/SPEC-TABLES.md §3.3)"},
 		Name{Name: "tableMessageEntries", What: "the announced message bit codec"},
 		Name{Name: "tableMessageEntryKeys", What: "complete announced-entry byte matching"},
 		Name{Name: "tableMessageOwnSlot", What: "complete announced-entry byte matching"},

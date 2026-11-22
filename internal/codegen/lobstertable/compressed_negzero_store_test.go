@@ -12,7 +12,7 @@ import (
 )
 
 // A COMPRESSED FLOAT HOLDING -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3;
-// the rulings file's fixed-compressed-negzero; Go's tablewire float32Stored):
+// the rulings file's fixed-compressed-negzero; Go's tabletext.StoredFloat):
 // every writer stores the +0 bits for it, so a -0 that rides — under a
 // non-zero default, as an array element, in a fixed record — never writes
 // 0x80000000. A plain float's -0 is stored bit-exact.

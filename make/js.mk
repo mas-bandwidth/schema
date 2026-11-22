@@ -62,6 +62,12 @@ packet-defaults-js-negative-control: packet-defaults-js
 
 test-js: packet-defaults-js packet-defaults-js-negative-control packet-end-js packet-end-js-negative-control
 
+.PHONY: js-binding-names
+js-binding-names: bin/schema
+	NODE="$(NODE)" python3 test/js/binding-names/run.py -v
+
+test-js: js-binding-names
+
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
 # the stream parameter), so the serialize.js sibling checkout is a test-leg
@@ -129,6 +135,7 @@ build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnes
 	./bin/schema generate --lang js --out build/tables-generated-js/varevo1 test/tables/varevo/VarEvo1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/varevo2 test/tables/varevo/VarEvo2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/varevo3 test/tables/varevo/VarEvo3.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/prior test/tables/prior/PriorNarrow.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/cooktorture test/tables/cooktorture/CookTorture.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the

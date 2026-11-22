@@ -82,9 +82,10 @@ export class TableVariableReport {
   // A form byte the read does not carry is unknown_form whichever
   // form-specific name the reason holds; then integrity_mismatch, a
   // non-finite float, any damage as wire_damaged, a missing required field, a
-  // storage cap by its own name, a blob named from two slots, out_of_range, and
-  // kind_mismatch, in that order. unknown, widened, retained and repeated
-  // alone never refuse. No string is built: the answer is a frozen member.
+  // storage cap by its own name, a blob named from two slots, out_of_range,
+  // kind_mismatch, and a repeated JSON key (damage, as every other malformed
+  // text is: wire_damaged), in that order. unknown, widened and retained alone
+  // never refuse. No string is built: the answer is a frozen member.
   err() {
     const reason = this.reason;
     if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
@@ -98,6 +99,9 @@ export class TableVariableReport {
     if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
     if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
     if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    // A REPEATED KEY REFUSES (docs/SPEC-TABLES.md §16.2; docs/plans/strict-only.md
+    // decision 5): the read hands back null, and err() must say why.
+    if (this.repeated > 0) { return TableRefuseReason.WireDamaged; }
     return null;
   }
 }
@@ -105,7 +109,7 @@ export class TableVariableReport {
 // THE STRICT READ'S REASONS (docs/SPEC-TABLES.md §6.5, the refusal-names
 // table): each member's value is the enum's own value name, so a reason
 // compares by identity and spells itself with no lookup.
-export const TableRefuseReason = Object.freeze({
+export const TableRefuseReason = globalThis.Object.freeze({
   UnknownForm: "unknown_form",
   IntegrityMismatch: "integrity_mismatch",
   NonFiniteFloat: "non_finite_float",
@@ -125,7 +129,7 @@ export const TableRefuseReason = Object.freeze({
 // answers -1 rather than growing. mark and rollback are how a writer decides
 // ELISION without spending an entry (internal/tablewire ids.go).
 class TableVariableIds {
-  constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  constructor(retain) { this.list = []; this.index = new globalThis.Map(); this.retain = retain || null; }
   ref(id, retained) {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
@@ -151,15 +155,15 @@ class TableVariableWriter {
   u8(v) { this.b.push(v & 0xff); }
   u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
   leb(v) {
-    v = Number(v);
-    while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
+    v = globalThis.Number(v);
+    while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = globalThis.Math.floor(v / 128); }
     this.b.push(v & 0x7f);
   }
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
   i32(v) { this.u32(v | 0); }
-  u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
-  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  u64(v) { for (let i = 0; i < 8; i++) { this.b.push(globalThis.Number(v & 0xffn)); v = v >> 8n; } }
+  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(globalThis.Number(v & 0xffn)); v = v >> 8n; } }
   f32(v) {
     const d = TableVariableScratch;
     d.setFloat32(0, v, true);
@@ -170,7 +174,7 @@ class TableVariableWriter {
     d.setFloat64(0, v, true);
     for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
   }
-  toArray() { return new Uint8Array(this.b); }
+  toArray() { return new globalThis.Uint8Array(this.b); }
 }
 
 // THE READER: a cursor over the wire, everything little-endian (§3).
@@ -189,7 +193,7 @@ class TableVariableReader {
       if (this.at >= this.end) { this.bad = true; this.at = start; return 0; }
       const x = this.b[this.at++];
       if (i === 9 && x > 1) { this.bad = true; this.at = start; return 0; }
-      r += (x & 0x7f) * Math.pow(2, s);
+      r += (x & 0x7f) * globalThis.Math.pow(2, s);
       if ((x & 0x80) === 0) {
         if (i > 0 && x === 0) { this.bad = true; this.at = start; return 0; }
         return r;
@@ -210,18 +214,18 @@ class TableVariableReader {
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
   u64() {
     let v = 0n;
-    for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    for (let i = 0; i < 8; i++) { v |= globalThis.BigInt(this.b[this.at + i]) << globalThis.BigInt(8 * i); }
     this.at += 8;
     return v;
   }
-  i64() { return BigInt.asIntN(64, this.u64()); }
+  i64() { return globalThis.BigInt.asIntN(64, this.u64()); }
   u128() {
     let v = 0n;
-    for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    for (let i = 0; i < 16; i++) { v |= globalThis.BigInt(this.b[this.at + i]) << globalThis.BigInt(8 * i); }
     this.at += 16;
     return v;
   }
-  i128() { return BigInt.asIntN(128, this.u128()); }
+  i128() { return globalThis.BigInt.asIntN(128, this.u128()); }
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -250,7 +254,7 @@ function TableVariableUtf8Decode(bytes) {
   for (let i = 0; i < bytes.length;) {
     const b0 = bytes[i];
     if (b0 === 0) { return { s, ok: false }; }
-    if (b0 < 0x80) { s += String.fromCharCode(b0); i++; continue; }
+    if (b0 < 0x80) { s += globalThis.String.fromCharCode(b0); i++; continue; }
     let need, cp;
     if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
     else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
@@ -264,7 +268,7 @@ function TableVariableUtf8Decode(bytes) {
     }
     const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
     if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return { s, ok: false }; }
-    s += String.fromCodePoint(cp);
+    s += globalThis.String.fromCodePoint(cp);
     i += 1 + need;
   }
   return { s, ok: true };
@@ -360,7 +364,7 @@ function TableVariableJsonString(s) {
       const lo = s.charCodeAt(i + 1);
       if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
     }
-    if (c === 0 || (c >= 0xd800 && c <= 0xdfff)) { throw new RangeError("TableVariableNotText"); }
+    if (c === 0 || (c >= 0xd800 && c <= 0xdfff)) { throw new globalThis.RangeError("TableVariableNotText"); }
     switch (c) {
       case 0x22: out += '\\"'; break;
       case 0x5c: out += '\\\\'; break;
@@ -376,7 +380,7 @@ function TableVariableJsonString(s) {
   }
   return out + '"';
 }
-export const TableRetainKnown = Object.freeze([0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,]);
+export const TableRetainKnown = globalThis.Object.freeze([0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,]);
 
 
 // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
@@ -407,7 +411,7 @@ export class TableVariableRetain {
 }
 
 function tableRetainU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0; }
-function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= BigInt(b[at + i]) << BigInt(8 * i); } return v; }
+function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= globalThis.BigInt(b[at + i]) << globalThis.BigInt(8 * i); } return v; }
 function tableRetainWidth(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -793,7 +797,7 @@ function TableVariableRetainCountLost(retain, report) {
 // THE CODEC WALK (docs/SPEC-TABLES.md §3, §3.1), driven by TableVariableCodecs
 // ---------------------------------------------------------------------------
 
-const TableVariableScratch = new DataView(new ArrayBuffer(8));
+const TableVariableScratch = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the finite rule of
 // 2026-10-27, the packet wire's rule): every writer refuses a NaN or an
@@ -806,14 +810,14 @@ const TableVariableScratch = new DataView(new ArrayBuffer(8));
 // stay finite at float32 too, so a double past the float32 range is refused
 // rather than written as an infinity.
 function TableVariableFiniteFloat(f32, v) {
-  return f32 ? Number.isFinite(Math.fround(v)) : Number.isFinite(v);
+  return f32 ? globalThis.Number.isFinite(globalThis.Math.fround(v)) : globalThis.Number.isFinite(v);
 }
 
 // TableVariableSameFloat is ELISION'S compare (§3, the 10-15 rule): the bit
 // patterns, so a -0 under a +0 default rides. For two finite values Object.is
 // is exactly the bit compare, at float32 once both are rounded to it.
 function TableVariableSameFloat(f32, a, b) {
-  return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);
+  return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);
 }
 
 // TableVariableSameFloatField is the compare for one float descriptor: a
@@ -822,7 +826,7 @@ function TableVariableSameFloat(f32, a, b) {
 // the bit compare above.
 function TableVariableSameFloatField(d, a, b) {
   if (d.lo === null) { return TableVariableSameFloat(d.f32, a, b); }
-  return d.f32 ? Math.fround(a) === Math.fround(b) : a === b;
+  return d.f32 ? globalThis.Math.fround(a) === globalThis.Math.fround(b) : a === b;
 }
 
 // the write that meets a non-finite float refuses the save, and names the
@@ -883,26 +887,26 @@ function TableVariableTextValid(value, bound) {
   return bytes.length <= (bound >= 0 ? bound : 0xffffffff) && decoded.ok && decoded.s === value;
 }
 function TableVariableBlobValid(fd, val) {
-  if (fd.s === "sblob") { return (typeof val === "string" || val instanceof String) && TableVariableTextValid(String(val), -1); }
-  return val instanceof Uint8Array;
+  if (fd.s === "sblob") { return (typeof val === "string" || val instanceof globalThis.String) && TableVariableTextValid(globalThis.String(val), -1); }
+  return val instanceof globalThis.Uint8Array;
 }
 function TableVariableIntegerValid(d, x) {
-  if (d.big ? typeof x !== "bigint" : typeof x !== "number" || !Number.isInteger(x)) { return false; }
+  if (d.big ? typeof x !== "bigint" : typeof x !== "number" || !globalThis.Number.isInteger(x)) { return false; }
   if (d.lo !== null && (x < d.lo || x > d.hi)) { return false; }
   if (d.bits > 0 && d.bits < 64 && x > d.bmax) { return false; }
   if (d.dlo !== undefined) { return x >= d.dlo && x <= d.dhi; }
-  const hi = d.big ? (1n << BigInt(d.kw * 8)) - 1n : (2 ** (d.kw * 8)) - 1;
+  const hi = d.big ? (1n << globalThis.BigInt(d.kw * 8)) - 1n : (2 ** (d.kw * 8)) - 1;
   return x >= (d.big ? 0n : 0) && x <= hi;
 }
 function TableVariableArrayValid(fd, val) {
-  if (!Array.isArray(val)) { return false; }
+  if (!globalThis.Array.isArray(val)) { return false; }
   if (fd.fixed) { return val.length === fd.bound; }
   if (fd.list) { return true; }
   return val.length >= (fd.min || 0) && val.length <= fd.bound;
 }
 function TableVariableFloatValid(d, v) {
   if (d.lo === null) { return true; }
-  const x = d.f32 ? Math.fround(v) : v;
+  const x = d.f32 ? globalThis.Math.fround(v) : v;
   return x >= d.lo && x <= d.hi;
 }
 function TableVariableUnboundedTextValid(value) { return TableVariableTextValid(value, -1); }
@@ -923,10 +927,10 @@ function TableVariableSameBytes(a, b) {
 // table reference its codec, once, when the module loads.
 function TableVariableLink(codecs, unions) {
   TableVariableLinkUnions(codecs, unions);
-  for (const name of Object.keys(codecs)) {
+  for (const name of globalThis.Object.keys(codecs)) {
     const c = codecs[name];
-    c.byId = new Map();
-    c.byKey = new Map();
+    c.byId = new globalThis.Map();
+    c.byKey = new globalThis.Map();
     c.required = c.fields.filter(fd => fd.req);
     for (const fd of c.fields) {
       if (fd.tl) { fd.field = c.name + "." + fd.n; }
@@ -936,9 +940,9 @@ function TableVariableLink(codecs, unions) {
       TableVariableLinkDesc(fd, codecs, unions);
     }
   }
-  for (const name of Object.keys(codecs)) {
+  for (const name of globalThis.Object.keys(codecs)) {
     const p = codecs[name].place;
-    p.byType = new Map();
+    p.byType = new globalThis.Map();
     for (const t of p.tables) { p.byType.set(codecs[t].typeId, codecs[t]); }
   }
 }
@@ -950,13 +954,13 @@ function TableVariableLink(codecs, unions) {
 // object and its values are frozen; its entries are written by the link alone.
 // A function (a codec's make) and a typed array are left as they are.
 function TableVariableFreeze(x) {
-  if (x === null || typeof x !== "object" || ArrayBuffer.isView(x) || Object.isFrozen(x)) { return x; }
-  Object.freeze(x);
-  if (x instanceof Map) {
+  if (x === null || typeof x !== "object" || globalThis.ArrayBuffer.isView(x) || globalThis.Object.isFrozen(x)) { return x; }
+  globalThis.Object.freeze(x);
+  if (x instanceof globalThis.Map) {
     for (const v of x.values()) { TableVariableFreeze(v); }
     return x;
   }
-  for (const k of Object.keys(x)) { TableVariableFreeze(x[k]); }
+  for (const k of globalThis.Object.keys(x)) { TableVariableFreeze(x[k]); }
   return x;
 }
 
@@ -967,7 +971,7 @@ function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
   if (fd.g !== undefined) {
-    for (const [k, want] of fd.g) { if (Boolean(v[k]) !== want) { return false; } }
+    for (const [k, want] of fd.g) { if (globalThis.Boolean(v[k]) !== want) { return false; } }
   }
   return true;
 }
@@ -985,7 +989,7 @@ function TableVariableGuardHolds(fd, v) {
 // BY-VALUE closure of one node is walked by recursion (TableVariableEdges),
 // and that nesting is the schema's, never the data's.
 class TableVariableNodes {
-  constructor() { this.list = []; this.index = new Map(); this.slots = new Map(); }
+  constructor() { this.list = []; this.index = new globalThis.Map(); this.slots = new globalThis.Map(); }
   slot(holder, name) { return this.slots.get(holder).get(name); }
 }
 
@@ -993,7 +997,7 @@ class TableVariableNodes {
 // which node it belongs to by the object's own identity, so the same record
 // rides back into that node's body when the value is saved. The ordinal is
 // reader-private: nothing on the wire reads it, and the root's path has none.
-const TableVariableRetainNodeIds = new WeakMap();
+const TableVariableRetainNodeIds = new globalThis.WeakMap();
 let TableVariableRetainNextNodeId = 1;
 // the ROOT's path is the one node step that names no record, so a discard in
 // the root body cannot reach a record retained inside a node.
@@ -1029,7 +1033,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       TableVariableEdges(fd.c, val, out, everyGuard);
       break;
     case "map":
-      if (!(val instanceof Map)) { out.push({ invalid: true }); return; }
+      if (!(val instanceof globalThis.Map)) { out.push({ invalid: true }); return; }
       if (everyGuard) {
         const e = fd.c.make();
         for (const [k, mv] of val) { e.key = k; e.value = mv; TableVariableEdges(fd.c, e, out, true); }
@@ -1065,7 +1069,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
 function TableVariableNumber(c, root, refuseShared, why) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
-  const open = new Set([root]);
+  const open = new globalThis.Set([root]);
   const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
   while (stack.length > 0) {
     const top = stack[stack.length - 1];
@@ -1093,7 +1097,7 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
   const typeId = fd.s === "sblob" ? TableStringBlobId : TableBytesBlobId;
   if (fd.s === "sblob" && typeof val === "string") {
     let m = nodes.slots.get(holder);
-    if (m === undefined) { m = new Map(); nodes.slots.set(holder, m); }
+    if (m === undefined) { m = new globalThis.Map(); nodes.slots.set(holder, m); }
     if (!m.has(fd.n)) {
       nodes.list.push({ typeId, body: TableVariableUtf8Encode(val) });
       m.set(fd.n, nodes.list.length + 1);
@@ -1102,7 +1106,7 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
   }
   // a blob OBJECT already numbered is one blob a second slot names: shared
   if (nodes.index.has(val)) { return false; }
-  nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
+  nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(globalThis.String(val)) : val });
   nodes.index.set(val, nodes.list.length + 1);
   return true;
 }
@@ -1117,7 +1121,7 @@ function TableVariableWriteInt(w, width, v) {
     case 2: w.u16(v); break;
     case 4: w.u32(v); break;
     case 16: w.u128(v); break;
-    default: w.u64(BigInt.asUintN(64, v));
+    default: w.u64(globalThis.BigInt.asUintN(64, v));
   }
 }
 
@@ -1192,7 +1196,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "bytes":
-      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
+      if (!(val instanceof globalThis.Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       if (!TableVariableSameBytes(val, fd.def)) {
         // bytes ride as an array of u8 (§2.5): the body is the element kind,
         // the count and the bytes, and L is that body's length — the count's
@@ -1335,7 +1339,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // blob two slots name, blob_shared (§2.5): every writer refuses it.
 function TableVariableSave(c, v, retain, why) {
   const outer = TableVariableEntryCache, outerWhy = TableVariableSaveWhy;
-  TableVariableEntryCache = new Map();
+  TableVariableEntryCache = new globalThis.Map();
   TableVariableSaveWhy = why === undefined ? null : why;
   try {
     return TableVariableSaveWalk(c, v, retain, why);
@@ -1389,7 +1393,7 @@ function TableVariableSaveWalk(c, v, retain, why) {
   }
   w.u8(0);
   for (const id of ids.list) { w.u64(id); }
-  w.u64(BigInt(ids.list.length));
+  w.u64(globalThis.BigInt(ids.list.length));
   if (c.integrity) { w.u32(c.integrity.sum(w.b, w.len)); }
   return w.toArray();
 }
@@ -1412,13 +1416,13 @@ function TableVariableOpen(bytes, report) {
     return null;
   }
   if (bytes.length < 9) { report.damaged = true; return null; }
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const dv = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.damaged = true; return null; }
-  const end = bytes.length - 8 - Number(count) * 8;
+  if (count > TableVariableEntryBound || count > globalThis.BigInt(globalThis.Math.floor((bytes.length - 9) / 8))) { report.damaged = true; return null; }
+  const end = bytes.length - 8 - globalThis.Number(count) * 8;
   const table = [];
-  const seen = new Set();
-  for (let i = 0; i < Number(count); i++) {
+  const seen = new globalThis.Set();
+  for (let i = 0; i < globalThis.Number(count); i++) {
     const id = dv.getBigUint64(end + i * 8, true);
     if (seen.has(id)) { report.damaged = true; return null; }
     seen.add(id);
@@ -1463,7 +1467,7 @@ function TableVariableFirstUseOk(table, st) {
   if (table.length === 0) { return true; }
   const seq = st.rootIntro.slice();
   for (const rec of st.recIntro) { for (const ref of rec) { seq.push(ref); } }
-  const used = new Array(table.length + 1);
+  const used = new globalThis.Array(table.length + 1);
   let next = 1;
   for (const ref of seq) {
     if (ref < 1 || ref > table.length) { return false; }
@@ -1507,11 +1511,11 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
-  const st = { missingBefore, good: raw !== null, nodes: [], nodeTypes: [], unknownBlobNamed: new Set(), reached: new Set(), graphFrom: [], graphTo: [], owner: 0, root: v, rootCodec: c, pending: [], maps: [], report: report, unionAtField: false, rootIntro: [], recIntro: [] };
+  const st = { missingBefore, good: raw !== null, nodes: [], nodeTypes: [], unknownBlobNamed: new globalThis.Set(), reached: new globalThis.Set(), graphFrom: [], graphTo: [], owner: 0, root: v, rootCodec: c, pending: [], maps: [], report: report, unionAtField: false, rootIntro: [], recIntro: [] };
   st.intro = st.rootIntro;
   if (raw !== null) {
     for (let i = 0; i < raw.length; i++) { st.recIntro.push([raw[i].tref]); }
-    const place = c.variable ? c.place : { str: false, bytes: false, byType: new Map() };
+    const place = c.variable ? c.place : { str: false, bytes: false, byType: new globalThis.Map() };
     const unplaced = [];
     for (let recordIndex = 0; recordIndex < raw.length; recordIndex++) {
       const rec = raw[recordIndex];
@@ -1525,7 +1529,7 @@ function TableVariableLoad(c, bytes, report, retain) {
         continue;
       }
       if (rec.tid === TableBytesBlobId && place.bytes) {
-        st.nodes.push({ kind: "b", blob: Uint8Array.from(rec.body), named: false });
+        st.nodes.push({ kind: "b", blob: globalThis.Uint8Array.from(rec.body), named: false });
         continue;
       }
       const nc = place.byType.get(rec.tid);
@@ -1624,7 +1628,7 @@ function TableVariableStrictMark(report) {
 // resolves nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
-  const strings = new Map();
+  const strings = new globalThis.Map();
   for (const [holder, key, index, d, owner] of st.pending) {
     let value = null, str = null;
     if (st.good) { TableVariableNoteBlobReference(index, st); }
@@ -1674,7 +1678,7 @@ function TableVariableResolve(st, report) {
     holder[key] = value;
     if (d.s === "sblob") {
       let m = strings.get(holder);
-      if (m === undefined) { m = new Map(); strings.set(holder, m); }
+      if (m === undefined) { m = new globalThis.Map(); strings.set(holder, m); }
       if (str === null) { m.delete(key); } else { m.set(key, str); }
     }
   }
@@ -1682,7 +1686,7 @@ function TableVariableResolve(st, report) {
   for (const [holder, m] of strings) {
     for (const [key, n] of m) {
       if (n.refs > 1) {
-        if (n.shared === null) { n.shared = new String(n.blob); }
+        if (n.shared === null) { n.shared = new globalThis.String(n.blob); }
         holder[key] = n.shared;
       } else {
         holder[key] = n.blob;
@@ -1703,7 +1707,7 @@ function TableVariableResolve(st, report) {
   // table record (stored slots under false guards included), so an overwritten
   // field occurrence on the wire leaves no stale edge.
   if (st.good && !report.damaged) {
-    const nodeAt = new Map([[st.root, 0]]);
+    const nodeAt = new globalThis.Map([[st.root, 0]]);
     for (let i = 0; i < st.nodes.length; i++) {
       const n = st.nodes[i];
       if (n !== null && n.kind === "t") { nodeAt.set(n.v, i + 1); }
@@ -1741,15 +1745,15 @@ function TableVariableResolve(st, report) {
 function TableVariableCyclic(count, from, to) {
   if (from.length === 0) { return false; }
   // the edges grouped by the vertex they leave, counted then placed
-  const first = new Int32Array(count + 1);
+  const first = new globalThis.Int32Array(count + 1);
   for (let i = 0; i < from.length; i++) { first[from[i] + 1]++; }
   for (let k = 0; k < count; k++) { first[k + 1] += first[k]; }
   const fill = first.slice(0, count);
-  const edges = new Int32Array(from.length);
+  const edges = new globalThis.Int32Array(from.length);
   for (let i = 0; i < from.length; i++) { edges[fill[from[i]]++] = to[i]; }
-  const mark = new Uint8Array(count); // 0 unvisited, 1 open, 2 closed
-  const stack = new Int32Array(count);
-  const next = new Int32Array(count);
+  const mark = new globalThis.Uint8Array(count); // 0 unvisited, 1 open, 2 closed
+  const stack = new globalThis.Int32Array(count);
+  const next = new globalThis.Int32Array(count);
   for (let start = 0; start < count; start++) {
     if (mark[start] !== 0) { continue; }
     let depth = 0;
@@ -1790,7 +1794,7 @@ function TableVariableNoteIndex(idx, st) {
     st.graphTo.push(0);
     return true;
   }
-  if (!Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
+  if (!globalThis.Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
   if (st.reached !== undefined) { st.reached.add(idx - 2); }
   st.graphFrom.push(st.owner);
   st.graphTo.push(idx - 1);
@@ -1802,7 +1806,7 @@ function TableVariableNoteIndex(idx, st) {
 // cannot place. Keep unknown records null for evolution, but still count every
 // kind-17 slot that names the same blob (§3.1).
 function TableVariableNoteBlobReference(idx, st) {
-  if (!Number.isSafeInteger(idx) || idx < 2 || idx - 2 >= st.nodeTypes.length) { return; }
+  if (!globalThis.Number.isSafeInteger(idx) || idx < 2 || idx - 2 >= st.nodeTypes.length) { return; }
   const tid = st.nodeTypes[idx - 2];
   if (tid !== TableStringBlobId && tid !== TableBytesBlobId) { return; }
   const n = st.nodes[idx - 2];
@@ -1915,7 +1919,7 @@ function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
 }
 
 function TableVariableNoteCount(count, report) {
-  if (!Number.isSafeInteger(count) || count > 0x7fffffff) {
+  if (!globalThis.Number.isSafeInteger(count) || count > 0x7fffffff) {
     report.refused = 1;
     report.reason = "count_over_extent_cap";
     return false;
@@ -2011,7 +2015,7 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
 }
 
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
-  const seen = c.required.length === 0 ? null : new Set();
+  const seen = c.required.length === 0 ? null : new globalThis.Set();
   const missingBefore = report.missingRequired;
   // A BODY READ REPLACES WHAT AN EARLIER PASS RETAINED HERE (§6.6): the
   // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
@@ -2114,7 +2118,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
 function TableVariableRequiredValue(d, value) {
   if (!d.req || (d.s !== "int" && d.s !== "float")) { return true; }
   // a float32 is held at float32, as the writer holds it
-  const x = d.s === "float" && d.f32 ? Math.fround(value) : value;
+  const x = d.s === "float" && d.f32 ? globalThis.Math.fround(value) : value;
   return d.lo === null || (x >= d.lo && x <= d.hi);
 }
 
@@ -2160,8 +2164,8 @@ function TableVariableScalar(r, d, kind, report) {
       s.setUint32(0, b, true);
       let v = s.getFloat32(0, true);
       if (d.f32 && d.lo !== null) {
-        if (v < d.lo) { v = Math.fround(d.lo); report.oor++; }
-        else if (v > d.hi) { v = Math.fround(d.hi); report.oor++; }
+        if (v < d.lo) { v = globalThis.Math.fround(d.lo); report.oor++; }
+        else if (v > d.hi) { v = globalThis.Math.fround(d.hi); report.oor++; }
         // A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, ruling
         // fixed-compressed-negzero), uncounted
         else if (v === 0) { v = 0; }
@@ -2186,7 +2190,7 @@ function TableVariableScalar(r, d, kind, report) {
     case 19: case 29: x = r.u128(); break;
     default: report.damaged = true; return undefined;
   }
-  if (d.big && typeof x !== "bigint") { x = BigInt(x); }
+  if (d.big && typeof x !== "bigint") { x = globalThis.BigInt(x); }
   if (d.lo !== null) {
     if (x < d.lo) { x = d.lo; report.oor++; }
     else if (x > d.hi) { x = d.hi; report.oor++; }
@@ -2359,7 +2363,7 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     // the span from the cursor to the body's end, empty rather than negative
     // when the count's own spelling ran past it (decode.go subTo)
     const subStart = r.at;
-    const subEnd = Math.max(r.at, end);
+    const subEnd = globalThis.Math.max(r.at, end);
     const sub = new TableVariableReader(r.b, subStart, subEnd);
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     let filled = true;
@@ -2369,11 +2373,11 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
         if (sub.at >= sub.end) { report.damaged = true; filled = false; break; }
         out.push(sub.u8());
       }
-      const packed = new Uint8Array(out);
+      const packed = new globalThis.Uint8Array(out);
       v[fd.n] = packed;
     } else if (fd.fixed) {
-      if (!Array.isArray(v[fd.n]) || v[fd.n].length !== fd.bound) {
-        v[fd.n] = Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
+      if (!globalThis.Array.isArray(v[fd.n]) || v[fd.n].length !== fd.bound) {
+        v[fd.n] = globalThis.Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
       }
       const out = v[fd.n];
       for (let i = 0; i < keep; i++) {
@@ -2569,8 +2573,8 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
   if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
   if (fd.list) {
     if (n > 0x7fffffff) { return -1; }
-    const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
-    if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
+    const floor = ek === 13 ? 2 : ek === 17 ? 1 : globalThis.Math.max(1, tableRetainWidth(ek));
+    if (n > globalThis.Math.floor((sub.end - sub.at) / floor)) { return -1; }
     at = TableVariableRound(at, fd.eal);
     at += n * fd.esz;
   }
@@ -2594,7 +2598,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
   if (sub.bad) { return at; }
   if (ek !== 13) { return at; }
   if (n > 0x7fffffff) { return -1; }
-  if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
+  if (n > globalThis.Math.floor((sub.end - sub.at) / 2)) { return -1; }
   at = TableVariableRound(at, fd.eal);
   at += n * fd.esz;
   for (let i = 0; i < n && sub.at < sub.end; i++) {
@@ -2671,7 +2675,7 @@ function TableVariableTextListLength(record) {
   return record.value === null ? 0 : TableVariableUtf8Encode(record.value).length;
 }
 function TableVariableTextListValid(fd, values) {
-  if (!Array.isArray(values) || (!fd.list && values.length > fd.bound) || values.length > 0x7fffffff) { return false; }
+  if (!globalThis.Array.isArray(values) || (!fd.list && values.length > fd.bound) || values.length > 0x7fffffff) { return false; }
   const vf = fd.e.c.fields[0];
   let total = 0;
   for (const record of values) {
@@ -2750,7 +2754,7 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
 let TableVariableEntryCache = null;
 
 function TableVariableBytesCompare(x, y) {
-  const n = Math.min(x.length, y.length);
+  const n = globalThis.Math.min(x.length, y.length);
   for (let i = 0; i < n; i++) { if (x[i] !== y[i]) { return x[i] < y[i] ? -1 : 1; } }
   return x.length === y.length ? 0 : (x.length < y.length ? -1 : 1);
 }
@@ -2801,17 +2805,17 @@ function TableVariableLinkDesc(d, codecs, unions) {
   if (d.un !== undefined) { d.u = unions[d.un]; }
   if (d.e !== undefined) { TableVariableLinkDesc(d.e, codecs, unions); }
   if (d.slots !== undefined) {
-    d.slotById = new Map();
-    d.slotByName = new Map();
+    d.slotById = new globalThis.Map();
+    d.slotByName = new globalThis.Map();
     d.slots.forEach((s, i) => { if (s !== null) { d.slotById.set(s[1], i); d.slotByName.set(s[0], i); } });
   }
 }
 
 function TableVariableLinkUnions(codecs, unions) {
-  for (const name of Object.keys(unions)) {
+  for (const name of globalThis.Object.keys(unions)) {
     const u = unions[name];
-    u.byId = new Map();
-    u.byName = new Map();
+    u.byId = new globalThis.Map();
+    u.byName = new globalThis.Map();
     for (const arm of u.arms) {
       u.byId.set(arm.id, arm);
       u.byName.set(arm.name, arm);
@@ -2826,10 +2830,10 @@ function TableVariableLinkUnions(codecs, unions) {
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": case "str": case "enum": return fd.def;
-    case "bytes": return Uint8Array.from(fd.def);
-    case "arr": return fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
+    case "bytes": return globalThis.Uint8Array.from(fd.def);
+    case "arr": return fd.fixed ? globalThis.Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
     case "tab": return fd.c.make();
-    case "map": return new Map();
+    case "map": return new globalThis.Map();
     case "keyed": return fd.slots.map(() => TableVariableElemDefault(fd.e));
   }
   return null;
@@ -2902,7 +2906,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "bytes": {
-      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
+      if (!(val instanceof globalThis.Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       TableVariableHeader(w, ids, fd, 14);
       const body = new TableVariableWriter();
       body.u8(6);
@@ -2953,7 +2957,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 // order, each entry ALWAYS riding (identity is the key); only a non-optional
 // empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (!(val instanceof Map)) { return false; }
+  if (!(val instanceof globalThis.Map)) { return false; }
   if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
@@ -3057,7 +3061,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       w.raw(TableVariableUtf8Encode(x));
       return true;
     case "bytes":
-      if (!(x instanceof Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
+      if (!(x instanceof globalThis.Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
       w.u8(6); w.leb(x.length); w.raw(x);
       return true;
     case "enum": {
@@ -3164,10 +3168,10 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
-    const m = new Map();
+    const m = new globalThis.Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
-    const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
+    const sub = new TableVariableReader(r.b, r.at, globalThis.Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false, kindBad = false;
     for (let i = 0; i < count; i++) {
@@ -3226,7 +3230,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
   // count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
   if (!TableVariableKeyedElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
-  const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
+  const sub = new TableVariableReader(r.b, r.at, globalThis.Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
@@ -3443,24 +3447,24 @@ function TableVariableBase64Text(data) {
 function TableVariableExactDigits(a) {
   // a finite, positive double as m * 2^e, then its exact decimal digits D with
   // the decimal exponent of D's first digit
-  const view = new DataView(new ArrayBuffer(8));
+  const view = new globalThis.DataView(new globalThis.ArrayBuffer(8));
   view.setFloat64(0, a);
   const bits = view.getBigUint64(0);
-  const biased = Number((bits >> 52n) & 0x7FFn);
+  const biased = globalThis.Number((bits >> 52n) & 0x7FFn);
   let m = bits & 0xFFFFFFFFFFFFFn;
   let e = -1074;
   if (biased !== 0) { m |= 1n << 52n; e = biased - 1075; }
   if (e >= 0) {
-    const d = (m << BigInt(e)).toString();
+    const d = (m << globalThis.BigInt(e)).toString();
     return { d, exp: d.length - 1 };
   }
-  const d = (m * 5n ** BigInt(-e)).toString();
+  const d = (m * 5n ** globalThis.BigInt(-e)).toString();
   return { d, exp: d.length - 1 + e };
 }
 
 function TableVariableFormatG(v, prec) {
-  const neg = v < 0 || Object.is(v, -0);
-  const a = Math.abs(v);
+  const neg = v < 0 || globalThis.Object.is(v, -0);
+  const a = globalThis.Math.abs(v);
   let keep, exp;
   if (a === 0) {
     keep = "0".repeat(prec);
@@ -3478,7 +3482,7 @@ function TableVariableFormatG(v, prec) {
         up = (keep.charCodeAt(prec - 1) - 48) % 2 === 1;
       }
       if (up) {
-        keep = (BigInt(keep) + 1n).toString();
+        keep = (globalThis.BigInt(keep) + 1n).toString();
         if (keep.length > prec) { keep = keep.slice(0, prec); exp++; }
       }
     }
@@ -3487,8 +3491,8 @@ function TableVariableFormatG(v, prec) {
   if (exp < -4 || exp >= prec) {
     let m = keep[0];
     if (prec > 1) { m = (m + "." + keep.slice(1)).replace(/0+$/, "").replace(/\.$/, ""); }
-    const e = Math.abs(exp);
-    s = m + "e" + (exp < 0 ? "-" : "+") + (e < 10 ? "0" + e : String(e));
+    const e = globalThis.Math.abs(exp);
+    s = m + "e" + (exp < 0 ? "-" : "+") + (e < 10 ? "0" + e : globalThis.String(e));
   } else {
     if (exp >= 0) {
       s = keep.slice(0, exp + 1);
@@ -3508,12 +3512,12 @@ function TableVariableFormatG(v, prec) {
 // the double lands ON a float32 rounding midpoint, so a tie is broken by the
 // exact decimal, compared with the double in integer arithmetic.
 function TableVariableF32OfToken(tok, x) {
-  const f = Math.fround(x);
-  if (f === x || Number.isNaN(x)) { return f; }
-  const b = new DataView(new ArrayBuffer(8));
+  const f = globalThis.Math.fround(x);
+  if (f === x || globalThis.Number.isNaN(x)) { return f; }
+  const b = new globalThis.DataView(new globalThis.ArrayBuffer(8));
   const step = (v, up) => {
-    if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
-    if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+    if (v === globalThis.Infinity) { return up ? globalThis.Infinity : 3.4028234663852886e38; }
+    if (v === -globalThis.Infinity) { return up ? -3.4028234663852886e38 : -globalThis.Infinity; }
     if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
     b.setFloat32(0, v, true);
     const u = b.getUint32(0, true);
@@ -3521,23 +3525,23 @@ function TableVariableF32OfToken(tok, x) {
     return b.getFloat32(0, true);
   };
   const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
-  const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
+  const at = (v) => (v === globalThis.Infinity ? 2 ** 128 : v === -globalThis.Infinity ? -(2 ** 128) : v);
   if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
   // the tie: the sign of (token - x), both exact rationals
   const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
   if (m === null) { return f; }
-  const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
-  if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
-  let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+  const e10 = globalThis.Number(m[4] ?? "0") - (m[3] ?? "").length;
+  if (!globalThis.Number.isFinite(e10) || globalThis.Math.abs(e10) > 100000) { return f; }
+  let left = globalThis.BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
   b.setFloat64(0, x, true);
   const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
   const ex = (hiw >>> 20) & 0x7ff;
-  let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+  let mant = (globalThis.BigInt(hiw & 0xfffff) << 32n) | globalThis.BigInt(low);
   let e2 = ex === 0 ? -1074 : ex - 1075;
   if (ex !== 0) { mant |= 1n << 52n; }
   let right = x < 0 ? -mant : mant;
-  if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
-  if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+  if (e10 >= 0) { left *= 10n ** globalThis.BigInt(e10); } else { right *= 10n ** globalThis.BigInt(-e10); }
+  if (e2 >= 0) { right <<= globalThis.BigInt(e2); } else { left <<= globalThis.BigInt(-e2); }
   if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
   return left > right ? hi : lo;
 }
@@ -3545,14 +3549,14 @@ function TableVariableF32OfToken(tok, x) {
 // the SHORTEST precision that reads back as the same value at the field's own
 // width; a non-finite value has no JSON spelling and the writer refuses (null)
 function TableVariableFloatText(v, single) {
-  if (!Number.isFinite(v)) { return null; }
+  if (!globalThis.Number.isFinite(v)) { return null; }
   const f32OfToken = (tok, x) => {
-    const f = Math.fround(x);
-    if (f === x || Number.isNaN(x)) { return f; }
-    const b = new DataView(new ArrayBuffer(8));
+    const f = globalThis.Math.fround(x);
+    if (f === x || globalThis.Number.isNaN(x)) { return f; }
+    const b = new globalThis.DataView(new globalThis.ArrayBuffer(8));
     const step = (val, up) => {
-      if (val === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
-      if (val === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+      if (val === globalThis.Infinity) { return up ? globalThis.Infinity : 3.4028234663852886e38; }
+      if (val === -globalThis.Infinity) { return up ? -3.4028234663852886e38 : -globalThis.Infinity; }
       if (val === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
       b.setFloat32(0, val, true);
       const u = b.getUint32(0, true);
@@ -3560,22 +3564,22 @@ function TableVariableFloatText(v, single) {
       return b.getFloat32(0, true);
     };
     const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
-    const at = (val) => (val === Infinity ? 2 ** 128 : val === -Infinity ? -(2 ** 128) : val);
+    const at = (val) => (val === globalThis.Infinity ? 2 ** 128 : val === -globalThis.Infinity ? -(2 ** 128) : val);
     if (at(lo) + at(hi) !== 2 * x) { return f; }
     const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
     if (m === null) { return f; }
-    const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
-    if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
-    let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+    const e10 = globalThis.Number(m[4] ?? "0") - (m[3] ?? "").length;
+    if (!globalThis.Number.isFinite(e10) || globalThis.Math.abs(e10) > 100000) { return f; }
+    let left = globalThis.BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
     b.setFloat64(0, x, true);
     const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
     const ex = (hiw >>> 20) & 0x7ff;
-    let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+    let mant = (globalThis.BigInt(hiw & 0xfffff) << 32n) | globalThis.BigInt(low);
     let e2 = ex === 0 ? -1074 : ex - 1075;
     if (ex !== 0) { mant |= 1n << 52n; }
     let right = x < 0 ? -mant : mant;
-    if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
-    if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+    if (e10 >= 0) { left *= 10n ** globalThis.BigInt(e10); } else { right *= 10n ** globalThis.BigInt(-e10); }
+    if (e2 >= 0) { right <<= globalThis.BigInt(e2); } else { left <<= globalThis.BigInt(-e2); }
     if (left === right) { return f; }
     return left > right ? hi : lo;
   };
@@ -3583,7 +3587,7 @@ function TableVariableFloatText(v, single) {
   for (let digits = low; ; digits++) {
     const text = TableVariableFormatG(v, digits);
     if (digits >= high) { return text; }
-    const back = Number(text);
+    const back = globalThis.Number(text);
     if (single ? f32OfToken(text, back) === v : back === v) { return text; }
   }
 }
@@ -3595,7 +3599,7 @@ function TableVariableFloatText(v, single) {
 // numbering, the walk holds its own stack: a chain longer than the depth cap is
 // counted here and refused by the write (null), never a thrown stack overflow.
 function TableVariableTextCount(c, root, g) {
-  const open = new Set([root]);
+  const open = new globalThis.Set([root]);
   const stack = [{ v: root, edges: TableVariableEdges(c, root, []), i: 0 }];
   while (stack.length > 0) {
     const top = stack[stack.length - 1];
@@ -3618,11 +3622,11 @@ function TableVariableTextCount(c, root, g) {
 
 function TableVariableToJson(c, v) {
   const outer = TableVariableEntryCache;
-  TableVariableEntryCache = new Map();
+  TableVariableEntryCache = new globalThis.Map();
   try {
     return TableVariableToJsonWalk(c, v);
   } catch (e) {
-    if (e instanceof RangeError && e.message === "TableVariableNotText") { return null; }
+    if (e instanceof globalThis.RangeError && e.message === "TableVariableNotText") { return null; }
     throw e;
   } finally {
     TableVariableEntryCache = outer;
@@ -3630,7 +3634,7 @@ function TableVariableToJson(c, v) {
 }
 
 function TableVariableToJsonWalk(c, v) {
-  const g = { count: new Map(), labels: new Map(), next: 0, blobs: new Map() };
+  const g = { count: new globalThis.Map(), labels: new globalThis.Map(), next: 0, blobs: new globalThis.Map() };
   if (!TableVariableTextCount(c, v, g)) { return null; }
   const out = [];
   if (!TableVariableJsonValue(c, v, 0, g, out)) { return null; }
@@ -3698,10 +3702,10 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       // a blob's text is a string, which has no first key to carry "&node": a
       // blob two slots name has no spelling, and the writer refuses (§16.7)
       if (typeof val === "object" && (g.blobs.get(val) || 0) > 1) { return false; }
-      out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
+      out.push(fd.s === "sblob" ? TableVariableJsonString(globalThis.String(val)) : TableVariableBase64Text(val));
       return true;
     case "str": if (!TableVariableTextValid(val, fd.ub ? -1 : fd.bound)) { return false; } out.push(TableVariableJsonString(val)); return true;
-    case "bytes": if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; } out.push(TableVariableBase64Text(val)); return true;
+    case "bytes": if (!(val instanceof globalThis.Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; } out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
@@ -3728,14 +3732,14 @@ function TableVariableJsonField(fd, val, depth, g, out) {
 // val * 2^-F is an exact F-place decimal (rem * 5^F in F digits), with
 // trailing fraction zeros past the first dropped
 function TableVariableFormatFixed(val, frac) {
-  let v = BigInt(val);
+  let v = globalThis.BigInt(val);
   let neg = false;
   if (v < 0n) { neg = true; v = -v; }
-  const whole = v >> BigInt(frac);
-  const rem = v & ((1n << BigInt(frac)) - 1n);
-  let out = (neg ? "-" : "") + String(whole) + ".";
+  const whole = v >> globalThis.BigInt(frac);
+  const rem = v & ((1n << globalThis.BigInt(frac)) - 1n);
+  let out = (neg ? "-" : "") + globalThis.String(whole) + ".";
   if (rem === 0n) { return out + "0"; }
-  const scaled = (rem * (5n ** BigInt(frac))).toString().padStart(frac, "0").replace(/0+$/, "");
+  const scaled = (rem * (5n ** globalThis.BigInt(frac))).toString().padStart(frac, "0").replace(/0+$/, "");
   return out + scaled;
 }
 
@@ -3750,13 +3754,13 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
-      const bits = BigInt(val);
+      const bits = globalThis.BigInt(val);
       if (bits === 0n) { out.push("[]"); return true; }
       out.push("[");
       const ind = "\n" + "  ".repeat(depth + 1);
       let first = true;
-      for (let bit = 0; (bits >> BigInt(bit)) > 0n; bit++) {
-        if (((bits >> BigInt(bit)) & 1n) === 0n) { continue; }
+      for (let bit = 0; (bits >> globalThis.BigInt(bit)) > 0n; bit++) {
+        if (((bits >> globalThis.BigInt(bit)) & 1n) === 0n) { continue; }
         if (bit >= d.vs.length) { return false; }
         if (!first) { out.push(","); }
         first = false;
@@ -3788,7 +3792,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
         return true;
       }
       // a kind wider than 32 bits is a STRING of decimal digits (§16.2, W10)
-      out.push(d.big ? TableVariableJsonString(String(val)) : String(val));
+      out.push(d.big ? TableVariableJsonString(globalThis.String(val)) : globalThis.String(val));
       return true;
   }
   return false;
@@ -3800,25 +3804,25 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
 function TableVariableTimestampParse(text) {
   const m = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$/.exec(text);
   if (m === null || m[0].length !== text.length) { return null; }
-  const y = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
-  const hour = Number(m[4]), minute = Number(m[5]), second = Number(m[6]);
+  const y = globalThis.Number(m[1]), month = globalThis.Number(m[2]), day = globalThis.Number(m[3]);
+  const hour = globalThis.Number(m[4]), minute = globalThis.Number(m[5]), second = globalThis.Number(m[6]);
   const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) { return null; }
   const zone = m[8];
   let offset = 0;
   if (zone.length > 1) {
-    const zh = Number(zone.slice(1, 3)), zm = Number(zone.slice(4, 6));
+    const zh = globalThis.Number(zone.slice(1, 3)), zm = globalThis.Number(zone.slice(4, 6));
     if (zh > 23 || zm > 59) { return null; }
     offset = (zh * 3600 + zm * 60) * (zone[0] === "-" ? -1 : 1);
   }
-  const year = y - (month <= 2 ? 1 : 0), era = Math.floor(year / 400);
+  const year = y - (month <= 2 ? 1 : 0), era = globalThis.Math.floor(year / 400);
   const yearOfEra = year - era * 400, monthOfYear = month + (month > 2 ? -3 : 9);
-  const dayOfYear = Math.floor((153 * monthOfYear + 2) / 5) + day - 1;
-  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  const dayOfYear = globalThis.Math.floor((153 * monthOfYear + 2) / 5) + day - 1;
+  const dayOfEra = yearOfEra * 365 + globalThis.Math.floor(yearOfEra / 4) - globalThis.Math.floor(yearOfEra / 100) + dayOfYear;
   const seconds = (era * 146097 + dayOfEra - 719468) * 86400 + hour * 3600 + minute * 60 + second - offset;
   const fraction = (m[7] || "").slice(0, 9).padEnd(9, "0");
-  const nanos = BigInt(seconds) * 1000000000n + BigInt(fraction);
+  const nanos = globalThis.BigInt(seconds) * 1000000000n + globalThis.BigInt(fraction);
   return nanos < -9223372036854775808n || nanos > 9223372036854775807n ? null : nanos;
 }
 
@@ -3826,7 +3830,7 @@ function TableVariableTimestampText(nanos) {
   if (typeof nanos !== "bigint" || nanos < -9223372036854775808n || nanos > 9223372036854775807n) { return null; }
   let seconds = nanos / 1000000000n, fraction = nanos % 1000000000n;
   if (fraction < 0n) { seconds--; fraction += 1000000000n; }
-  const head = new Date(Number(seconds) * 1000).toISOString().slice(0, 19);
+  const head = new globalThis.Date(globalThis.Number(seconds) * 1000).toISOString().slice(0, 19);
   const tail = fraction === 0n ? "" : "." + fraction.toString().padStart(9, "0").replace(/0+$/, "");
   return head + tail + "Z";
 }
@@ -3883,7 +3887,7 @@ class TableVariableTextIn {
     const s = this.t.substr(this.p, 4);
     if (!/^[0-9a-fA-F]{4}$/.test(s)) { return -1; }
     this.p += 4;
-    return parseInt(s, 16);
+    return globalThis.parseInt(s, 16);
   }
   str() {
     if (this.peek() !== "\"") { this.bad = true; return null; }
@@ -3919,7 +3923,7 @@ class TableVariableTextIn {
             // A SURROGATE HALF THAT NEVER FOUND ITS PARTNER REFUSES (§16.3,
             // docs/plans/strict-only.md decision 9): string_lone_surrogate
             if (code >= 0xd800 && code <= 0xdfff) { this.bad = true; return null; }
-            out += String.fromCodePoint(code);
+            out += globalThis.String.fromCodePoint(code);
             break;
           }
           default: this.bad = true; return null;
@@ -3986,7 +3990,7 @@ class TableVariableTextIn {
     if (this.p >= t.length || t[this.p] < "1" || t[this.p] > "9") { this.bad = true; return null; }
     let v = 0n;
     while (this.p < t.length && t[this.p] >= "0" && t[this.p] <= "9") {
-      v = v * 10n + BigInt(t.charCodeAt(this.p) - 48);
+      v = v * 10n + globalThis.BigInt(t.charCodeAt(this.p) - 48);
       if (v > 0xffffffffffffffffn) { this.bad = true; return null; }
       this.p++;
     }
@@ -4028,7 +4032,7 @@ class TableVariableTextIn {
     };
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
-    const keys = close === "}" ? new Set() : null;
+    const keys = close === "}" ? new globalThis.Set() : null;
     for (;;) {
       let ch = this.peek();
       if (ch === close) { return closed(); }
@@ -4077,8 +4081,8 @@ class TableVariableTextIn {
 // nothing above U+10FFFF — before a byte reaches the text walk. A caller's
 // error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
 function TableVariableFromJsonBytes(c, bytes, report) {
-  if (!(bytes instanceof Uint8Array)) {
-    throw new TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+  if (!(bytes instanceof globalThis.Uint8Array)) {
+    throw new globalThis.TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
   }
   const decoded = TableVariableUtf8Decode(bytes);
   if (!decoded.ok) {
@@ -4105,7 +4109,7 @@ function TableVariableFromJson(c, text, report) {
   // the label graph exists for a VARIABLE root only (§2.2, §16.7): a fixed
   // root has no pointer, so an "&node" in a value it skips is a key like any
   // other and the value is skipped whole
-  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new Map() : null, report);
+  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new globalThis.Map() : null, report);
   if (ok) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
@@ -4146,11 +4150,12 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 }
 
 // keys are field keys: an unknown one is skipped and counted, a repeated one is
-// last-wins and counted, null puts a pointer back at null, and a value of the
-// wrong JSON shape is skipped and counted, never coerced (§16.2)
+// counted and refuses the whole read (the strict mark), null puts a pointer back
+// at null, and a value of the wrong JSON shape is counted and refuses the read
+// too, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
-  const seen = new Set();
-  const seenKeys = new Set();
+  const seen = new globalThis.Set();
+  const seenKeys = new globalThis.Set();
   for (;;) {
     let key;
     if (firstKey !== null) {
@@ -4249,7 +4254,7 @@ function TableVariableBase64Read(inp, bound, report) {
     }
   }
   if (oor) { report.oor++; }
-  return { bad: false, bytes: new Uint8Array(out) };
+  return { bad: false, bytes: new globalThis.Uint8Array(out) };
 }
 
 function TableVariableStoredText(s, inp, report) {
@@ -4323,7 +4328,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
   inp.p++;
   const e = fd.e;
-  const out = fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
+  const out = fd.fixed ? globalThis.Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
@@ -4367,7 +4372,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   let ch = inp.peek();
-  if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
+  if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new globalThis.Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
   const k = inp.name();
   if (k === null) { return false; }
@@ -4433,7 +4438,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       let mask = 0n;
       for (;;) {
         let ch = inp.peek();
-        if (ch === "]") { inp.p++; holder[key] = d.big ? mask : Number(mask); return true; }
+        if (ch === "]") { inp.p++; holder[key] = d.big ? mask : globalThis.Number(mask); return true; }
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
           report.mismatch++;
@@ -4444,14 +4449,14 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           const bit = d.vs.indexOf(s);
           if (bit >= 0) {
             // A FLAGS NAME TWICE IN ONE ARRAY is a repeated key (§16.2)
-            const flag = 1n << BigInt(bit);
+            const flag = 1n << globalThis.BigInt(bit);
             if ((mask & flag) !== 0n) { inp.bad = true; return false; }
             mask |= flag;
           } else { report.unknown++; }
         }
         ch = inp.peek();
         if (ch === ",") { inp.p++; continue; }
-        if (ch === "]") { inp.p++; holder[key] = d.big ? mask : Number(mask); return true; }
+        if (ch === "]") { inp.p++; holder[key] = d.big ? mask : globalThis.Number(mask); return true; }
         inp.bad = true;
         return false;
       }
@@ -4468,9 +4473,9 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
     case "float": {
       const n = inp.number();
       if (n === null) { inp.bad = true; return false; }
-      let x = Number(n.tok);
+      let x = globalThis.Number(n.tok);
       // a magnitude the format cannot hold is the wrong shape for the kind
-      if (!Number.isFinite(x)) { report.mismatch++; return true; }
+      if (!globalThis.Number.isFinite(x)) { report.mismatch++; return true; }
       if (d.f32) {
         // ONE correctly-rounded conversion at the field's own width
         // (internal/tabletext read.go placeFloat, strconv.ParseFloat(tok, 32);
@@ -4480,7 +4485,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
         x = TableVariableF32OfToken(n.tok, x);
-        if (!Number.isFinite(x)) { report.mismatch++; return true; }
+        if (!globalThis.Number.isFinite(x)) { report.mismatch++; return true; }
       }
       // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS (SPEC §4.6) after the
       // one rounding, so the text "0.1" every writer emits for 0.1f reads
@@ -4562,11 +4567,11 @@ function TableVariableTextWide(d, tok, holder, key, report) {
       // 2^F. It is the answer the remainder test below gives, without the
       // document-sized BigInt and divisor (js.md Q2).
       if (-scale > d.frac) { report.mismatch++; return false; }
-      raw = BigInt(digits) << BigInt(d.frac);
+      raw = globalThis.BigInt(digits) << globalThis.BigInt(d.frac);
       if (scale >= 0) {
-        raw *= 10n ** BigInt(scale);
+        raw *= 10n ** globalThis.BigInt(scale);
       } else {
-        const den = 10n ** BigInt(-scale);
+        const den = 10n ** globalThis.BigInt(-scale);
         if (raw % den !== 0n) { report.mismatch++; return false; }
         raw /= den;
       }
@@ -4580,7 +4585,7 @@ function TableVariableTextWide(d, tok, holder, key, report) {
   // the storage landing: every fixed field declares a range inside its width,
   // so this binds only a wide kind declaring none, whose domain is the 128 above
   if (raw < d.dlo || raw > d.dhi) { report.oor++; return false; }
-  holder[key] = d.big ? raw : Number(raw);
+  holder[key] = d.big ? raw : globalThis.Number(raw);
   return true;
 }
 
@@ -4593,11 +4598,11 @@ function TableVariableTextWide(d, tok, holder, key, report) {
 function TableVariableTextIntegerToken(d, tok, holder, key, report) {
   let t = tok, neg = false;
   if (t[0] === "-") { neg = true; t = t.slice(1); }
-  let x = BigInt(t);
+  let x = globalThis.BigInt(t);
   if (neg) { x = -x; }
   if (d.tlo !== null && (x < d.tlo || x > d.thi)) { report.oor++; return false; }
   if (x < d.dlo || x > d.dhi) { report.oor++; return false; }
-  holder[key] = d.big ? x : Number(x);
+  holder[key] = d.big ? x : globalThis.Number(x);
   return true;
 }
 
@@ -4620,7 +4625,7 @@ function TableVariableTextInt(d, inp, holder, key, report) {
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
-  if (!(val instanceof Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
+  if (!(val instanceof globalThis.Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
@@ -4629,7 +4634,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   for (let i = 0; i < ents.length; i++) {
     if (!TableVariableJsonField(kd, ents[i].key, depth + 1, g, [])) { return false; }
     if (i > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
+    out.push(ind + TableVariableJsonString(globalThis.String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
   }
   out.push("\n" + "  ".repeat(depth) + "}");
@@ -4683,10 +4688,10 @@ function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
   if (m === null) { return { status: "damaged" }; }
   if (!TableVariableIntegerToken(s)) { return { status: "mismatch" }; }
-  const digits = BigInt(m[2]);
+  const digits = globalThis.BigInt(m[2]);
   const x = m[1] === "-" ? -digits : digits;
   if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
-  return { status: "ok", key: kd.big ? x : Number(x) };
+  return { status: "ok", key: kd.big ? x : globalThis.Number(x) };
 }
 
 // Map values retain an entry even when its non-null value has the wrong
@@ -4715,9 +4720,9 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   // (linear work in the entry count): a string key is equal exactly when its
   // UTF-8 is, and an integer key (Number or BigInt) by value, which is Map's
   // own key equality
-  const at = new Map();
+  const at = new globalThis.Map();
   const mapField = inp.field;
-  v[fd.n] = new Map();
+  v[fd.n] = new globalThis.Map();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; break; }
@@ -4738,7 +4743,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       report.mismatch++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      // KEYS NEVER CLAMP: the count refuses the whole read (§2.8, the strict mark)
       report.oor++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
@@ -4765,7 +4770,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   inp.p++;
   const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
   v[fd.n] = arr;
-  const seen = new Set();
+  const seen = new globalThis.Set();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; return true; }
@@ -5031,12 +5036,12 @@ export class BenchMixed {
     this.world_time = 0n;
     this.frame_tick = 0n;
     this.server_time = 0;
-    this.entities = Array.from({ length: 1 }, () => new MixedEntity());
+    this.entities = globalThis.Array.from({ length: 1 }, () => new MixedEntity());
     this.stats = [];
     this.game_event = null;
-    this.loadout = Array.from({ length: 4 }, () => 0);
+    this.loadout = globalThis.Array.from({ length: 4 }, () => 0);
     this.player_name = "";
-    this.payload = new Uint8Array([]);
+    this.payload = new globalThis.Uint8Array([]);
     this.aim_x = 0;
     this.aim_y = 0;
     this.aim_z = 0;
@@ -5171,7 +5176,7 @@ const TableVariableCodecs = {
       { n: "game_event", key: "game_event", id: 0x2e35dc5321aa5790n, o: 11, k: 15, s: "union", js: "o", un: "MixedEvent" },
       { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
       { n: "player_name", key: "player_name", id: 0x13a62f542cf8e86en, o: 13, k: 12, s: "str", js: "s", bound: 15, def: "" },
-      { n: "payload", key: "payload", id: 0xcfb8a9d063b5e9e5n, o: 14, k: 14, s: "bytes", js: "s", list: false, bound: 16, ek: 6, def: new Uint8Array([]) },
+      { n: "payload", key: "payload", id: 0xcfb8a9d063b5e9e5n, o: 14, k: 14, s: "bytes", js: "s", list: false, bound: 16, ek: 6, def: new globalThis.Uint8Array([]) },
       { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_x", def: 0 },
       { n: "aim_y", key: "aim_y", id: 0xdbaf7ae5e2429516n, o: 16, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_y", def: 0 },
       { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_z", def: 0 },
@@ -5200,7 +5205,7 @@ const TableVariableCodecs = {
     place: { tables: [], str: false, bytes: false },
   },
 };
-const TableVariableDeclaredTypes = new Set([0x85df369cdca746b3n]);
+const TableVariableDeclaredTypes = new globalThis.Set([0x85df369cdca746b3n]);
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 TableVariableFreeze(TableVariableCodecs);
 TableVariableFreeze(TableVariableUnions);
@@ -5307,7 +5312,7 @@ export const TableCookWrite = (() => {
   function fit(v, width, signed) {
     let b;
     if (typeof v === "bigint") { b = v; }
-    else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
+    else if (typeof v === "number" && globalThis.Number.isInteger(v)) { b = globalThis.BigInt(v); }
     else { return null; }
     if (width === 16) {
       if (signed) {
@@ -5321,7 +5326,7 @@ export const TableCookWrite = (() => {
       } else if (b < 0n || b > 0xffffffffffffffffn) { return null; }
       return b;
     }
-    const n = Number(b);
+    const n = globalThis.Number(b);
     let lo = 0, hi = 255;
     if (width === 2) { hi = 65535; }
     else if (width === 4) { hi = 4294967295; }
@@ -5340,8 +5345,8 @@ export const TableCookWrite = (() => {
     if (bits === null) { return false; }
     if (view === null) { return true; }
     if (width === 16) {
-      const lo = BigInt.asUintN(64, bits);
-      const hi = BigInt.asUintN(64, bits >> 64n);
+      const lo = globalThis.BigInt.asUintN(64, bits);
+      const hi = globalThis.BigInt.asUintN(64, bits >> 64n);
       view.setBigUint64(at, le ? lo : hi, le);
       view.setBigUint64(at + 8, le ? hi : lo, le);
       return true;
@@ -5351,7 +5356,7 @@ export const TableCookWrite = (() => {
       else { view.setBigUint64(at, bits, le); }
       return true;
     }
-    const n = Number(bits);
+    const n = globalThis.Number(bits);
     if (width === 1) { if (signed) { view.setInt8(at, n); } else { view.setUint8(at, n); } }
     else if (width === 2) { if (signed) { view.setInt16(at, n, le); } else { view.setUint16(at, n, le); } }
     else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
@@ -5394,18 +5399,18 @@ export const TableCookWrite = (() => {
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (!Number.isFinite(Math.fround(value))) { return refuseFloat(ctx); }
+        if (!globalThis.Number.isFinite(globalThis.Math.fround(value))) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
-        if (!Number.isFinite(value)) { return refuseFloat(ctx); }
+        if (!globalThis.Number.isFinite(value)) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":
         return putWidth(view, at, fd.w, value, fd.sg === 1, le);
       case "enum":
-        if (!Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
@@ -5434,10 +5439,10 @@ export const TableCookWrite = (() => {
     let count;
     if (fd.countFrom === "bound") { count = fd.bound; }
     else if (fd.countFrom === "len") {
-      if (!Array.isArray(arr)) { return false; }
+      if (!globalThis.Array.isArray(arr)) { return false; }
       count = arr.length;
     } else { count = parent[fd.n + "Count"]; }
-    if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (!globalThis.Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
     // a counted array's slots past the live count are DEAD BYTES and stay the
     // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
@@ -5466,7 +5471,7 @@ export const TableCookWrite = (() => {
     }
     if (value === null || typeof value !== "object") { return false; }
     const tag = value.type;
-    if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
+    if (!globalThis.Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
     if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
     if (tag === 0) { return true; }
     const arm = fd.arm[tag - 1];
@@ -5481,7 +5486,7 @@ export const TableCookWrite = (() => {
     }
     if (ctx === null || ctx.entries[idx - 1] === undefined) { return false; }
     if (view !== null) {
-      const delta = 64n + BigInt(ctx.entries[idx - 1].offset) - BigInt(at);
+      const delta = 64n + globalThis.BigInt(ctx.entries[idx - 1].offset) - globalThis.BigInt(at);
       view.setBigInt64(at, delta, le);
     }
     return true;
@@ -5511,23 +5516,23 @@ export const TableCookWrite = (() => {
       n = bytes.length;
     } else if (fd.k === "vbytes") {
       bytes = parent[fd.n];
-      if (!(bytes instanceof Uint8Array)) { return false; }
+      if (!(bytes instanceof globalThis.Uint8Array)) { return false; }
       n = bytes.length;
     } else {
     bytes = parent[fd.n];
     n = parent[fd.n + "Length"];
-    if (!(bytes instanceof Uint8Array)) { return false; }
+    if (!(bytes instanceof globalThis.Uint8Array)) { return false; }
     }
-    if (!Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }
+    if (!globalThis.Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }
     if (view !== null && n > 0) {
-      const src = bytes instanceof Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);
-      new Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);
+      const src = bytes instanceof globalThis.Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);
+      new globalThis.Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);
     }
     return putWidth(view, base + fd.lenAt, 4, n, true, le);
   }
   function alignUp(n, a) {
     if (a <= 1) { return n; }
-    return Math.floor((n + a - 1) / a) * a;
+    return globalThis.Math.floor((n + a - 1) / a) * a;
   }
   // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6;
   // docs/PORTING.md M19; the layout tla/NodeExtent.tla models and
@@ -5561,9 +5566,9 @@ export const TableCookWrite = (() => {
         const blob = base + cur.at;
         cur.at += alignUp(9 + bytes.length, 8);
         if (view !== null) {
-          view.setBigInt64(at, BigInt(blob - at), le);
+          view.setBigInt64(at, globalThis.BigInt(blob - at), le);
           view.setUint32(blob, bytes.length, le);
-          new Uint8Array(view.buffer, view.byteOffset + blob + 8, bytes.length).set(bytes);
+          new globalThis.Uint8Array(view.buffer, view.byteOffset + blob + 8, bytes.length).set(bytes);
         }
         return true;
       }
@@ -5577,7 +5582,7 @@ export const TableCookWrite = (() => {
         if (e.k === "rec" && !layouts[e.t].ext) { return true; }
         // a slot past a counted array's live elements holds the
         // value-initialized element, which holds no list and no map
-        const n = fd.countFrom === "len" ? (Array.isArray(v) ? v.length : 0) : fd.bound;
+        const n = fd.countFrom === "len" ? (globalThis.Array.isArray(v) ? v.length : 0) : fd.bound;
         for (let i = 0; i < n; i++) {
           if (!carveValue(view, at + i * fd.stride, base, cur, e, v[i], le, ctx)) { return false; }
         }
@@ -5605,10 +5610,10 @@ export const TableCookWrite = (() => {
   // same entry objects.
   function holderElements(fd, v) {
     if (fd.k === "map") {
-      if (!(v instanceof Map)) { return null; }
+      if (!(v instanceof globalThis.Map)) { return null; }
       return TableVariableMapEntries({ c: layouts[fd.t], ks: fd.ks === 1 }, v);
     }
-    return Array.isArray(v) ? v : null;
+    return globalThis.Array.isArray(v) ? v : null;
   }
   function carveHolder(view, slot, base, cur, fd, v, le, ctx) {
     const elems = holderElements(fd, v);
@@ -5618,7 +5623,7 @@ export const TableCookWrite = (() => {
     const array = base + cur.at;
     cur.at += n * fd.size;
     if (view !== null) {
-      view.setBigInt64(slot, n > 0 ? BigInt(array - slot) : 0n, le);
+      view.setBigInt64(slot, n > 0 ? globalThis.BigInt(array - slot) : 0n, le);
       view.setInt32(slot + 8, n, le);
     }
     if (fd.k === "map") {
@@ -5643,7 +5648,7 @@ export const TableCookWrite = (() => {
   // measure or write so every walk sees one sorted entry object per map
   function withEntries(f) {
     const outer = TableVariableEntryCache;
-    TableVariableEntryCache = new Map();
+    TableVariableEntryCache = new globalThis.Map();
     try { return f(); } finally { TableVariableEntryCache = outer; }
   }
   function blobSize(entry) {
@@ -5716,24 +5721,24 @@ export const TableCookWrite = (() => {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);
     if (reg.reason !== null) { return false; }
-    if (!(buffer instanceof Uint8Array) || buffer.byteLength < reg.total) { return false; }
+    if (!(buffer instanceof globalThis.Uint8Array) || buffer.byteLength < reg.total) { return false; }
     buffer.fill(0, 0, reg.total);
-    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const view = new globalThis.DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     const le = order === 1;
     put64(view, 0, 0x4b4f4f434d484353n, le);
     put64(view, 8, build, le);
-    put64(view, 16, BigInt(order), le);
-    put64(view, 24, BigInt(reg.data), le);
-    put64(view, 32, BigInt(reg.entries.length * 16), le);
-    put64(view, 40, BigInt(reg.align), le);
+    put64(view, 16, globalThis.BigInt(order), le);
+    put64(view, 24, globalThis.BigInt(reg.data), le);
+    put64(view, 32, globalThis.BigInt(reg.entries.length * 16), le);
+    put64(view, 40, globalThis.BigInt(reg.align), le);
     for (let i = 0; i < reg.entries.length; i++) {
       const e = reg.entries[i];
       const at = 64 + e.offset;
       if (e.blob) {
         view.setUint32(at, e.len, le);
         if (e.len > 0) {
-          const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
-          new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
+          const src = e.body instanceof globalThis.Uint8Array ? e.body : globalThis.Uint8Array.from(e.body);
+          new globalThis.Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
         }
       } else {
         if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
@@ -5743,7 +5748,7 @@ export const TableCookWrite = (() => {
     const dir = 64 + reg.data;
     for (let i = 0; i < reg.entries.length; i++) {
       const e = reg.entries[i];
-      put64(view, dir + i * 16, BigInt(e.offset), le);
+      put64(view, dir + i * 16, globalThis.BigInt(e.offset), le);
       put64(view, dir + i * 16 + 8, e.typeId, le);
     }
     return true;
@@ -5796,13 +5801,13 @@ export function FixedTableFromJsonBytes(bytes, report) {
 export function FixedTableLoadMeasure(bytes) {
   if (bytes.length < 9) { return 1392; }
   if (bytes[0] !== TableVariableForm) { return 1392; }
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const dv = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return 1392; }
-  const first = bytes.length - 8 - Number(count) * 8;
+  if (count > TableVariableEntryBound || count > globalThis.BigInt(globalThis.Math.floor((bytes.length - 9) / 8))) { return 1392; }
+  const first = bytes.length - 8 - globalThis.Number(count) * 8;
   const ids = [];
-  const seen = new Set();
-  for (let i = 0; i < Number(count); i++) {
+  const seen = new globalThis.Set();
+  for (let i = 0; i < globalThis.Number(count); i++) {
     const id = dv.getBigUint64(first + i * 8, true);
     if (seen.has(id)) { return 1392; }
     seen.add(id);

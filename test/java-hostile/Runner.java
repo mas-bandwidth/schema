@@ -7,6 +7,14 @@
 // a disagreement no FIX-CARD names (or a FIX-CARD whose case has gone green).
 //
 // usage: java -cp <classes> Runner <corpus-dir> <known-findings.tsv> [packet-dir]
+//        java -cp <classes> Runner --scorer <scorer-outcomes.tsv>
+//
+// A refusal conforms on its verdict alone (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the port gives
+// it is printed on a FAIL line as its diagnostic and never compared. --scorer
+// grades the shared scorer outcome cases
+// (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+// expected and agrees the corpus run uses.
 //
 // A carrier maps to the port's public reader (each unit is its own package,
 // so the reader is resolved by name from the manifest's schema and table):
@@ -133,6 +141,58 @@ public final class Runner {
 
     private static boolean accepted(String verdict) {
         return verdict.startsWith("accept ");
+    }
+
+    private static boolean refused(String answer) {
+        return answer.equals("refuse") || answer.startsWith("refuse ");
+    }
+
+    // The manifest's answer for a case.
+    private static String expected(String verdict, String reason, String digest) {
+        return verdict.equals("accept") ? accept(digest) : refuse(reason);
+    }
+
+    // Whether a port's answer conforms to the manifest's: a refusal on its
+    // verdict alone (refusal-verdict-only), an accept on its digest. A throw,
+    // a stack overflow or a budget overrun is never a refusal.
+    private static boolean agrees(String got, String want) {
+        if (refused(got) && refused(want)) {
+            return true;
+        }
+        return got.equals(want);
+    }
+
+    // Each row of the shared scorer fixture: the expected verdict, reference
+    // diagnostic and accepted SHA-256 make the manifest's answer; the worker
+    // reply makes the port's (a refusal with the name it gives or none, an
+    // accept of the text body's digest, or a worker that exits). agrees must
+    // pass exactly the rows whose scorer exit is 0.
+    private static int scorer(Path path) throws IOException, NoSuchAlgorithmException {
+        List<String[]> rows = rows(path, 7);
+        int wrong = 0;
+        for (String[] f : rows) {
+            String reply = f[4];
+            String got;
+            if (reply.equals("refuse") || reply.startsWith("refuse ")) {
+                got = reply;
+            } else if (reply.equals("accept text")) {
+                got = accept(sha256((f[5].equals("-") ? "" : f[5]).getBytes(StandardCharsets.UTF_8)));
+            } else if (reply.equals("exit")) {
+                got = "threw: the worker exited with status 3";
+            } else {
+                System.err.println(path + ": " + f[0] + ": unknown worker reply " + reply);
+                return 2;
+            }
+            boolean pass = agrees(got, expected(f[1], f[2], f[3]));
+            if (pass != f[6].equals("0")) {
+                System.out.println("SCORER " + f[0] + ": graded " + (pass ? "pass" : "fail")
+                        + ", the fixture says scorer exit " + f[6]);
+                wrong++;
+            }
+        }
+        System.out.println("java scorer outcomes: " + rows.size() + " cases, " + (rows.size() - wrong)
+                + " graded as the fixture says, " + wrong + " wrong");
+        return wrong == 0 && !rows.isEmpty() ? 0 : 1;
     }
 
     private static String sha256(byte[] text) throws NoSuchAlgorithmException {
@@ -749,6 +809,13 @@ public final class Runner {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
+        if (args.length == 2 && args[0].equals("--scorer")) {
+            try {
+                System.exit(scorer(Path.of(args[1])));
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
+        }
         if (args.length != 2 && args.length != 3) {
             System.err.println("usage: Runner <corpus-dir> <known-findings.tsv> [packet-dir]");
             System.exit(2);
@@ -781,10 +848,10 @@ public final class Runner {
             String carrier = f[1];
             seen.add(name);
             byte[] payload = Files.readAllBytes(corpus.resolve(f[4]));
-            String expected = f[6].equals("accept") ? accept(f[8]) : refuse(f[7]);
+            String expected = expected(f[6], f[7], f[8]);
             String got = isolated(packetDir, name, carrier, f[2], f[3], payload, budgetMs);
             String[] finding = findings.get(name);
-            if (got.equals(expected)) {
+            if (agrees(got, expected)) {
                 if (finding != null) {
                     System.out.println("STALE " + name + ": FIX-CARD " + finding[1] + " no longer reproduces");
                     stale.add(name);

@@ -4,8 +4,9 @@ package ci
 // (docs/HOSTILE-CORPUS.md; schema-shared-hostile-corpus). The corpus is one
 // committed manifest plus one raw input per case; its verdicts are the Go
 // engine's. This runner decodes each input with the port's generated Lua
-// reader and compares the verdict, the named refusal and (on an accept) the
-// SHA-256 of the canonical decoded text against the manifest.
+// reader and compares the verdict and (on an accept) the SHA-256 of the
+// canonical decoded text against the manifest; a refusal's name is the port's
+// diagnostic and never compared (docs/rulings.json refusal-verdict-only).
 //
 // The corpus directory is the contract, so this file parses it with a line
 // reader and asks the generated module only: no Go engine call stands in for
@@ -27,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
@@ -50,10 +52,15 @@ const (
 		"package probe\n\n" +
 		"table Root\n{\n    entries map[int32]int32\n}\n"
 
-	// luaHostilePlantFrom is the wire reader's form gate; the planted reader
-	// bug lets the byte past the carried forms (0xff) into the body walk.
-	luaHostilePlantFrom = "  if bytes:byte(1) ~= 1 then\n    report.refused = 1\n"
-	luaHostilePlantTo   = "  if bytes:byte(1) ~= 1 and bytes:byte(1) ~= 0xff then\n    report.refused = 1\n"
+	// luaHostilePlantFile and luaHostilePlantFrom are the fixed-form reader's
+	// form gate (the wire the corpus accepts, wire-valid, is form 3); the
+	// planted reader bug refuses the form it carries, so that accept is
+	// refused. The plant changes a verdict: a refusal conforms on its verdict
+	// alone (refusal-verdict-only), so a plant that only renamed a refusal
+	// would leave the corpus green.
+	luaHostilePlantFile = "fixed.lua"
+	luaHostilePlantFrom = "  if form ~= formByte then\n    if form == 1 then error(\"previous_form\", 0) end\n"
+	luaHostilePlantTo   = "  if true then -- PLANTED: the form gate refuses the form it carries\n    if form == 1 then error(\"previous_form\", 0) end\n"
 )
 
 // luaHostileCase is one manifest row.
@@ -128,6 +135,7 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 	t.Helper()
 	seen := map[string]bool{}
 	var units []luaHostileUnit
+	planted := 0
 	for _, c := range cases {
 		if seen[c.Schema] {
 			continue
@@ -167,11 +175,13 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			entry.unavailable = err.Error()
 		} else {
 			if plant && !packet {
-				rt := string(files["load.lua"])
-				if !strings.Contains(rt, luaHostilePlantFrom) {
-					t.Fatalf("the emitted load.lua does not carry the planted pattern %q", luaHostilePlantFrom)
+				if rt, ok := files[luaHostilePlantFile]; ok {
+					if !strings.Contains(string(rt), luaHostilePlantFrom) {
+						t.Fatalf("the emitted %s does not carry the planted pattern %q", luaHostilePlantFile, luaHostilePlantFrom)
+					}
+					files[luaHostilePlantFile] = []byte(strings.ReplaceAll(string(rt), luaHostilePlantFrom, luaHostilePlantTo))
+					planted++
 				}
-				files["load.lua"] = []byte(strings.ReplaceAll(rt, luaHostilePlantFrom, luaHostilePlantTo))
 			}
 			for name, data := range files {
 				if strings.Contains(name, "/") {
@@ -183,6 +193,9 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			}
 		}
 		units = append(units, entry)
+	}
+	if plant && planted == 0 {
+		t.Fatalf("no emitted table unit carries %s, so the planted reader bug went nowhere", luaHostilePlantFile)
 	}
 	var index strings.Builder
 	for _, unit := range units {
@@ -336,11 +349,14 @@ local function caseResult(c)
     if r.damaged or values == nil or values[1] == nil then return "refuse", "damaged", nil end
     value = values[1]
   else
-    return "refuse", "unknown_carrier", nil
+    -- not a refusal: the runner has no binding for the carrier
+    return "error", "unknown_carrier", nil
   end
 
   local canonical = J.ToJson(T, c[4], value)
-  if canonical == nil then return "refuse", "damaged", nil end
+  -- the text writer refused the value the read accepted: an error, never a
+  -- refusal (a refusal conforms on its verdict alone)
+  if canonical == nil then return "error", "to_json_refused", nil end
   -- J.ToJson ends the document with the form's newline; the engine's
   -- canonical text (tabletext.Model.Write) is the same text without it.
   if canonical:sub(-1) == "\n" then canonical = canonical:sub(1, -2) end
@@ -350,7 +366,9 @@ end
 for raw in io.lines(manifestPath) do
   if raw ~= "" and raw:sub(1, 1) ~= "#" then
     local c = fields(raw)
-    local verdict, reason, canonical = "refuse", "reader_error", nil
+    -- a raise out of the case is an error, never a refusal (a refusal
+    -- conforms on its verdict alone, so it must not be one)
+    local verdict, reason, canonical = "error", "reader_error", nil
     local ok, v, r, text = pcall(caseResult, c)
     if ok then verdict, reason, canonical = v, r, text end
     if canonical ~= nil then
@@ -429,6 +447,31 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	return out
 }
 
+// luaHostileGrade grades one answer against its case and returns "" when it
+// conforms, else the disagreement. A refusal conforms on its verdict alone,
+// whatever reason either side names (docs/rulings.json refusal-verdict-only,
+// SPEC-TABLES §6.5 and §13.10); an accept on its decoded value's digest; no
+// answer never conforms. verdictOK reports the verdict alone.
+func luaHostileGrade(c luaHostileCase, a luaHostileAnswer, answered bool) (why string, verdictOK bool) {
+	if !answered {
+		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason), false
+	}
+	verdictOK = a.verdict == c.Verdict && (c.Verdict == luaHostileRefuse || a.reason == c.Reason)
+	if !verdictOK {
+		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason), false
+	}
+	if c.Verdict == luaHostileAccept && c.Digest != luaHostileNoReason {
+		if a.text == nil {
+			return fmt.Sprintf("%s: want digest %s, got no text", c.Name, c.Digest), true
+		}
+		sum := sha256.Sum256(a.text)
+		if got := hex.EncodeToString(sum[:]); got != c.Digest {
+			return fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, got), true
+		}
+	}
+	return "", true
+}
+
 // luaHostileCompare returns every disagreement with the manifest unless it is
 // a carried finding at its recorded verdict; carried rows that no longer
 // disagree are drift.
@@ -439,23 +482,12 @@ func luaHostileCompare(t *testing.T, cases []luaHostileCase, answers map[string]
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
+		why, _ := luaHostileGrade(c, a, ok)
 		if !ok {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason))
+			bad = append(bad, why)
 			continue
 		}
-		verdictOK := a.verdict == c.Verdict && a.reason == c.Reason
-		digestOK := true
-		gotDigest := ""
-		if c.Verdict == luaHostileAccept && c.Digest != luaHostileNoReason && a.verdict == luaHostileAccept {
-			if a.text == nil {
-				digestOK = false
-			} else {
-				sum := sha256.Sum256(a.text)
-				gotDigest = hex.EncodeToString(sum[:])
-				digestOK = gotDigest == c.Digest
-			}
-		}
-		if verdictOK && digestOK {
+		if why == "" {
 			if _, isCarried := carried[c.Name]; isCarried {
 				bad = append(bad, fmt.Sprintf("%s now matches the manifest; drop it from the carried list", c.Name))
 			}
@@ -463,15 +495,11 @@ func luaHostileCompare(t *testing.T, cases []luaHostileCase, answers map[string]
 		}
 		want, exists := carried[c.Name]
 		if !exists {
-			if !verdictOK {
-				bad = append(bad, fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason))
-			} else {
-				bad = append(bad, fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, gotDigest))
-			}
+			bad = append(bad, why)
 			continue
 		}
 		seenCarried[c.Name] = true
-		if a.verdict != want.verdict || a.reason != want.reason {
+		if a.verdict != want.verdict || (a.verdict != luaHostileRefuse && a.reason != want.reason) {
 			bad = append(bad, fmt.Sprintf("%s: carried as %s/%s (%s), now %s/%s", c.Name, want.verdict, want.reason, want.fix, a.verdict, a.reason))
 		}
 	}
@@ -483,8 +511,36 @@ func luaHostileCompare(t *testing.T, cases []luaHostileCase, answers map[string]
 	return bad
 }
 
+// TestSchemaLuaHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through luaHostileGrade, the comparison
+// the corpus run uses: a refusal with another reason or none passes; a changed
+// verdict either way, a different accepted value or no answer fails. It runs
+// no Lua.
+func TestSchemaLuaHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := luaHostileCase{Name: o.Name, Carrier: "text", Verdict: o.Verdict, Reason: o.Reason, Digest: o.Digest}
+		var a luaHostileAnswer
+		answered := true
+		if name, refused := o.Refused(); refused {
+			a = luaHostileAnswer{verdict: luaHostileRefuse, reason: name}
+		} else if text, accepted := o.Accepted(); accepted {
+			a = luaHostileAnswer{verdict: luaHostileAccept, reason: luaHostileNoReason, text: text}
+		} else {
+			answered = false
+		}
+		if why, _ := luaHostileGrade(c, a, answered); (why == "") != o.Pass {
+			t.Errorf("%s: graded %q, the fixture says pass=%t", o.Name, why, o.Pass)
+		}
+	}
+}
+
 // TestSchemaLuaRunsHostileCorpus is the unit-tier gate: every corpus input
-// reaches the manifest's verdict, reason and decoded-value digest, or is a
+// reaches the manifest's verdict and decoded-value digest, or is a
 // carried finding whose fix card and actual verdict are pinned here.
 func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
@@ -508,7 +564,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 }
 
 // TestSchemaLuaHostileCorpusPlantedReader plants a wire-reader bug in a
-// scratch copy of the generated reader (the form gate admits 0xff) and
+// scratch copy of the generated reader (the fixed form gate refuses form 3) and
 // requires the corpus comparison to go red: red with the plant in, green with
 // it out. The red line is kept in the failure message.
 func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
@@ -524,7 +580,7 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	planted := luaHostileRun(t, root, corpusDir, cases, true)
 	bad := luaHostileCompare(t, cases, planted)
 	if len(bad) == 0 {
-		t.Fatalf("the planted reader bug (the form gate admits 0xff) was not observed: the corpus stayed green")
+		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: the corpus stayed green")
 	}
 	t.Logf("the planted reader bug is red: %s", bad[0])
 }

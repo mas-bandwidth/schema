@@ -73,7 +73,7 @@ export const SpinRate = 1.5;
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const Weapon = Object.freeze({
+export const Weapon = globalThis.Object.freeze({
   None: 0,
   Laser: 1,
   Missile: 2,
@@ -310,7 +310,7 @@ export function WriteProbeBits(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
+  if (!globalThis.Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return false;
   }
   NUMBER_SCRATCH.value = value.sensor;
@@ -320,7 +320,7 @@ export function WriteProbeBits(stream, value) {
   if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -343,7 +343,7 @@ export function ReadProbeBits(stream, value, nested) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, 0n, 4294967295n)) {
     return false;
   }
-  value.sensor = Number(BIGINT_SCRATCH.value);
+  value.sensor = globalThis.Number(BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -372,7 +372,7 @@ export class ProbeSample {
     // untaken side (SPEC §5)
     this.idleTicks = 0;
 
-    this.samples = new Array(8).fill(0);
+    this.samples = new globalThis.Array(8).fill(0);
     this.samplesCount = 1;
   }
 }
@@ -416,8 +416,8 @@ export function WriteProbeSample(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.orientation);
-    if (!Number.isFinite(x) || x < -180.0 || x > 180.0) {
+    const x = globalThis.Math.fround(value.orientation);
+    if (!globalThis.Number.isFinite(x) || x < -180.0 || x > 180.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -425,7 +425,7 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
   }
-  if (!Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.rawDelta >>> 0;
@@ -435,12 +435,12 @@ export function WriteProbeSample(stream, value) {
   if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.bigDelta);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.bigDelta);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (value.active) {
-    if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
+    if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
       return false;
     }
     NUMBER_SCRATCH.value = value.weapon;
@@ -452,7 +452,7 @@ export function WriteProbeSample(stream, value) {
       return false;
     }
     if (value.hasTarget) {
-      if (!Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
         return false;
       }
       NUMBER_SCRATCH.value = value.targetId;
@@ -461,7 +461,7 @@ export function WriteProbeSample(stream, value) {
       }
     }
   } else {
-    if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
       return false;
     }
     NUMBER_SCRATCH.value = value.idleTicks;
@@ -469,7 +469,7 @@ export function WriteProbeSample(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = ((value.samplesCount >>> 0) - (1 >>> 0)) >>> 0;
@@ -477,7 +477,7 @@ export function WriteProbeSample(stream, value) {
     return false;
   }
   for (let i = 0; i < value.samplesCount; i++) {
-    if (!Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 65535) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 65535) { // a bare integer must fit its width
       return false;
     }
     NUMBER_SCRATCH.value = value.samples[i];
@@ -504,7 +504,7 @@ export function ReadProbeSample(stream, value, nested) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.bigDelta = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.bigDelta = globalThis.BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (value.active) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
       return false;
@@ -568,7 +568,7 @@ export function ZeroProbeRing(value) {
 }
 
 export function WriteProbeRing(stream, value) {
-  if (!Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.radius;
@@ -612,14 +612,14 @@ export function ZeroProbeSlab(value) {
 }
 
 export function WriteProbeSlab(stream, value) {
-  if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
+  if (!globalThis.Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.width;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  if (!Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.height;
@@ -642,7 +642,7 @@ export function ReadProbeSlab(stream, value, nested) {
 }
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const ProbeShapeType = Object.freeze({
+export const ProbeShapeType = globalThis.Object.freeze({
   None: 0,
   Ring: 1,
   Slab: 2,
@@ -689,7 +689,7 @@ export function ZeroProbeShape(value) {
 }
 
 export function WriteProbeShape(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -733,7 +733,7 @@ export class ProbeCollider {
     this.armor = 0;
     this.shape = new ProbeShape();
     this.backup = new ProbeShape();
-    this.extras = Array.from({ length: 2 }, () => new ProbeShape());
+    this.extras = globalThis.Array.from({ length: 2 }, () => new ProbeShape());
     this.extrasCount = 0;
   }
 }
@@ -767,7 +767,7 @@ export function ZeroProbeCollider(value) {
 }
 
 export function WriteProbeCollider(stream, value) {
-  if (!Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.armor;
@@ -780,7 +780,7 @@ export function WriteProbeCollider(stream, value) {
   if (!WriteProbeShape(stream, value.backup)) {
     return false;
   }
-  if (!Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.extrasCount;
@@ -844,14 +844,14 @@ export function ZeroProbeConfig(value) {
 }
 
 export function WriteProbeConfig(stream, value) {
-  if (!Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.retries >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.preferred;
@@ -876,7 +876,7 @@ export function ReadProbeConfig(stream, value, nested) {
 // type ProbeArray
 export class ProbeArray {
   constructor() {
-    this.samples = Array.from({ length: 2 }, () => new ProbeSample());
+    this.samples = globalThis.Array.from({ length: 2 }, () => new ProbeSample());
     this.config = new ProbeConfig();
   }
 }
@@ -990,28 +990,28 @@ export function ZeroTest(value) {
 }
 
 export function WriteTest(stream, value) {
-  if (!Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.testA;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
+  if (!globalThis.Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.testB;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
+  if (!globalThis.Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.testC;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
+  if (!globalThis.Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.testD;
@@ -1044,7 +1044,7 @@ export function ReadTest(stream, value, nested) {
 // type Block
 export class Block {
   constructor() {
-    this.data = new Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+    this.data = new globalThis.Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
     this.dataLength = 0;
   }
 }
@@ -1067,7 +1067,7 @@ export function ZeroBlock(value) {
 }
 
 export function WriteBlock(stream, value) {
-  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.dataLength;
@@ -1094,7 +1094,7 @@ export function ReadBlock(stream, value, nested) {
 // type Chat
 export class Chat {
   constructor() {
-    this.text = new Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+    this.text = new globalThis.Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
     this.textLength = 0;
   }
 }
@@ -1117,7 +1117,7 @@ export function ZeroChat(value) {
 }
 
 export function WriteChat(stream, value) {
-  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.textLength;
@@ -1180,11 +1180,11 @@ export function WriteProbeReport(stream, value) {
     return false;
   }
   {
-    const flagsValue = BigInt.asUintN(64, value.flags);
+    const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
       return false;
     }
-    NUMBER_SCRATCH.value = Number(flagsValue);
+    NUMBER_SCRATCH.value = globalThis.Number(flagsValue);
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
     }
@@ -1202,7 +1202,7 @@ export function ReadProbeReport(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.flags = BigInt(NUMBER_SCRATCH.value);
+  value.flags = globalThis.BigInt(NUMBER_SCRATCH.value);
   if (!ReadTest(stream, value.echo, true)) {
     return false;
   }
@@ -1219,7 +1219,7 @@ export class TestData {
     this.e = 0;
     this.f = 0;
     this.g = false;
-    this.items = new Array(16).fill(0); // wire [0, 255]
+    this.items = new globalThis.Array(16).fill(0); // wire [0, 255]
     this.itemsCount = 0;
     this.floatValue = 0;
     this.compressedFloatValue = 0; // compressed float [0.0, 10.0] @ 0.01
@@ -1232,8 +1232,8 @@ export class TestData {
     this.uint64Value = 0n;
     this.int64Full = 0n;
     this.int64Range = 0n; // wire [-1000000000000, 1000000000000]
-    this.fixedBytes = new Uint8Array(17);
-    this.text = new Uint8Array(255); // string(255): max length, used length beside it (SPEC §4.7)
+    this.fixedBytes = new globalThis.Uint8Array(17);
+    this.text = new globalThis.Uint8Array(255); // string(255): max length, used length beside it (SPEC §4.7)
     this.textLength = 0;
   }
 }
@@ -1298,21 +1298,21 @@ export function ZeroTestData(value) {
 }
 
 export function WriteTestData(stream, value) {
-  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.a >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.b >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.c >>> 0) - (-100 >>> 0)) >>> 0;
@@ -1344,7 +1344,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -1352,7 +1352,7 @@ export function WriteTestData(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 255) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 255) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -1360,7 +1360,7 @@ export function WriteTestData(stream, value) {
       return false;
     }
   }
-  if (typeof value.floatValue !== "number" || !Number.isFinite(Math.fround(value.floatValue))) {
+  if (typeof value.floatValue !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.floatValue))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.floatValue;
@@ -1368,8 +1368,8 @@ export function WriteTestData(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.compressedFloatValue);
-    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
+    const x = globalThis.Math.fround(value.compressedFloatValue);
+    if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -1377,42 +1377,42 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
-  if (typeof value.doubleValue !== "number" || !Number.isFinite(value.doubleValue)) {
+  if (typeof value.doubleValue !== "number" || !globalThis.Number.isFinite(value.doubleValue)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.doubleValue;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.int8Value & 0xff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.int16Value & 0xffff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.uint8Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.uint16Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.uint32Value;
@@ -1429,14 +1429,14 @@ export function WriteTestData(stream, value) {
   if (typeof value.int64Full !== "bigint" || value.int64Full < -9223372036854775808n || value.int64Full > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Full);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.int64Full);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (typeof value.int64Range !== "bigint" || value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Range - -1000000000000n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.int64Range - -1000000000000n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 41)) {
     return false;
   }
@@ -1446,7 +1446,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBytes(value.fixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
-  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.textLength;
@@ -1540,7 +1540,7 @@ export function ReadTestData(stream, value, nested) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.int64Full = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.int64Full = globalThis.BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeInt64(BIGINT_SCRATCH, -1000000000000n, 1000000000000n)) {
     return false;
   }
@@ -1591,8 +1591,8 @@ export function ZeroCompressedProbe(value) {
 
 export function WriteCompressedProbe(stream, value) {
   {
-    const x = Math.fround(value.boundary);
-    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
+    const x = globalThis.Math.fround(value.boundary);
+    if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -1601,8 +1601,8 @@ export function WriteCompressedProbe(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.offset);
-    if (!Number.isFinite(x) || x < -5.0 || x > 5.0) {
+    const x = globalThis.Math.fround(value.offset);
+    if (!globalThis.Number.isFinite(x) || x < -5.0 || x > 5.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }

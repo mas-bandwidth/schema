@@ -496,6 +496,46 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
 
 
 
+// surface_message_prior: a PRIOR WRITER's batch read under today's
+// declarations (testdata/conformance/tables/FORMAT.md, `message-prior`), handed
+// on its own keywords, prior-connection and prior-message. A row may owe a
+// refusal, so the answer is what the read returned: the batch re-saved, or the
+// line `<case> refused <reason>` (the glue's -3, a refused LoadMessages), which
+// the driver writes as <case>.refused and the harness never compares
+// (docs/rulings.json refusal-verdict-only).
+fn surface_message_prior(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 6 || f[0] != "prior-message" { continue; }
+        var conn: i64 = -1;
+        for i in lines.len {
+            let c = words(lines[i]);
+            if c.len >= 5 && c[0] == "prior-connection" && c[1] == f[2] && c[2] == unit { conn = i; }
+        }
+        if conn < 0 { continue; }
+        let c = words(lines[conn]);
+        var ann: u8[>..] = [];
+        load_file(c[4], ann);
+        var wire: u8[>..] = [];
+        load_file(f[5], wire);
+        var out: u8[>..] = [];
+        let n = conformance_message(f[3], ann, wire, out);
+        if n == -1 {
+            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+            continue;
+        }
+        if n == -3 {
+            write_stdout(str(f[1], " refused load_messages\n"));
+            continue;
+        }
+        if n < 0 {
+            write_stderr(str("driver: ", f[1], " does not round-trip (", n, ")\n"));
+            exit(1);
+        }
+        answer(f[1], out);
+    }
+}
+
 fn wref_loaded_hex(s: const u8[:], out: u8[>..]&) -> bool {
     if (s.len % 2) != 0 { return false; }
     var i: i64 = 0;
@@ -532,6 +572,67 @@ fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
     return schema_rt::fixed_f64_bits(n as f64);
 }
 
+// wref_loaded_digits answers the decimal magnitude of s with its sign and
+// leading zeros taken off, or "" when s is not a decimal integer.
+fn wref_loaded_digits(s: const u8[:]) -> const u8[:] {
+    var i: i64 = 0;
+    if s.len > 0 && (s[0] == '-' || s[0] == '+') { i = 1; }
+    if i >= s.len { return ""; }
+    var k: i64 = i;
+    while k < s.len {
+        if s[k] < '0' || s[k] > '9' { return ""; }
+        k += 1;
+    }
+    while i < s.len - 1 && s[i] == '0' { i += 1; }
+    return s[i..s.len];
+}
+
+// wref_loaded_at_most says whether decimal magnitude a is at most b.
+fn wref_loaded_at_most(a: const u8[:], b: const u8[:]) -> bool {
+    if a.len != b.len { return a.len < b.len; }
+    var i: i64 = 0;
+    while i < a.len {
+        if a[i] != b[i] { return a[i] < b[i]; }
+        i += 1;
+    }
+    return true;
+}
+
+// wref_loaded_past_i64 says whether decimal token s is a positive integer
+// past int64, which parse_int cannot hold.
+fn wref_loaded_past_i64(s: const u8[:]) -> bool {
+    let m = wref_loaded_digits(s);
+    return m.len > 0 && s[0] != '-' && !wref_loaded_at_most(m, "9223372036854775807");
+}
+
+// THE ONE CHECKED CONVERSION every int, ordinal and tag a row names goes
+// through: 1 stored, 2 unrepresentable, 0 not an integer. The token is held to
+// the widest integer any declared kind has, int64 below and uint64 above, and
+// carried whole in the value's 128-bit lanes for the writer to hold to the
+// field's own range. parse_int keeps an i64, so a token past it wrapped into
+// a lawful value (18446744073709551616 into ordinal 0) and the row answered
+// `wrote` for a value it never wrote.
+fn wref_loaded_int(vals: schema_rt::LoadVal[>..]&, s: i64, text: const u8[:]) -> i64 {
+    let m = wref_loaded_digits(text);
+    if m.len == 0 { return 0; }
+    let neg = text[0] == '-' && m != "0";
+    if neg {
+        if !wref_loaded_at_most(m, "9223372036854775808") { return 2; }
+    } else if !wref_loaded_at_most(m, "18446744073709551615") { return 2; }
+    if neg || wref_loaded_at_most(m, "9223372036854775807") {
+        let n, ok = parse_int(text);
+        if !ok { return 0; }
+        let hi: u64 = if n < 0 { 0xffffffffffffffff } else { 0 };
+        vals[s].bits = schema_rt::Int128 { lo: n as! u64, hi: hi };
+        return 1;
+    }
+    // past int64 and inside uint64: no prefix of m overflows a u64
+    var acc: u64 = 0;
+    for c in m { acc = acc * 10 + ((c - '0') as u64); }
+    vals[s].bits = schema_rt::Int128 { lo: acc, hi: 0 };
+    return 1;
+}
+
 fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: schema_rt::FieldDesc, kind: const u8[:], text: const u8[:]) -> i64 {
     vals[s].state = schema_rt::ValPresent;
     if kind == "float" {
@@ -539,13 +640,10 @@ fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: s
         return 1;
     }
     if kind == "int" || kind == "ordinal" || kind == "tag" {
-        let n, ok = parse_int(text);
-        if !ok { return 0; }
-        let hi: u64 = if n < 0 { 0xffffffffffffffff } else { 0 };
-        vals[s].bits = schema_rt::Int128 { lo: n as! u64, hi: hi };
-        return 1;
+        return wref_loaded_int(vals, s, text);
     }
     if kind == "length" {
+        if wref_loaded_past_i64(text) { return 2; }
         let n, ok = parse_int(text);
         if !ok || n < 0 { return 2; }
         vals[s].off = data.len;
@@ -563,6 +661,7 @@ fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: s
         return 1;
     }
     if kind == "count" {
+        if wref_loaded_past_i64(text) { return 2; }
         let n, ok = parse_int(text);
         if !ok || n < 0 { return 2; }
         if n > vals[s].count {
@@ -747,7 +846,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
         return;
     }
     if argv.len != 4 {
@@ -762,6 +861,7 @@ fn main() {
     if argv[1] == "framing" { surface_framing(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
     if argv[1] == "message" { surface_message(lines, unit); return; }
+    if argv[1] == "message-prior" { surface_message_prior(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }

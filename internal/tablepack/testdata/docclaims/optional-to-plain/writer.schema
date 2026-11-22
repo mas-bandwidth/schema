@@ -1,0 +1,11 @@
+package claims
+
+table Gunner
+{
+    sensitivity float32 = 1.0
+}
+
+table Seat
+{
+    gunner ?Gunner
+}

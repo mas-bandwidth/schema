@@ -1,0 +1,15 @@
+package starlight
+
+const MaxPlayers   = 64
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359
+
+enum ShipType { Fighter, Freighter, Corvette }
+
+enum Pending { }
+
+enum Weapon
+{ Laser, Missile }
+
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }

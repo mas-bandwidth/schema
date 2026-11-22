@@ -254,7 +254,7 @@ func t05R30(t *testing.T) {
 		"r.refuseNonFinite(\"CfloatRangeWiden.aim\");",
 		"R30 a NaN or an infinity is refused by name before the bounds pass, never clamped (SPEC-TABLES §3.3)")
 	t05Has(t, files, "CfloatRangeWidenFixed.java",
-		"float q = Float.intBitsToFloat(fbits);",
+		"float q = java.lang.Float.intBitsToFloat(fbits);",
 		"R30 the reader lands the float32 whole before its bounds pass")
 	// THE READER'S OWN BOUNDS, at the widened range's min and max.
 	t05Has(t, files, "CfloatRangeWidenFixed.java",

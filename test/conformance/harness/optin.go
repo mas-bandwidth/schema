@@ -52,6 +52,11 @@ func ownName(f []string) []caseKey { return []caseKey{{f[0], f[1]}} }
 var derivedRows = map[string]derivedRow{
 	"unit":       {ref: refUnit, col: 1},
 	"connection": {ref: refUnit, col: 2},
+	// a prior-writer drift row (run.go, md.Prior) rides its own pair of
+	// keywords, its connection read as a connection is and its message
+	// scored on the message-prior surface (claims.go)
+	"prior-connection": {ref: refUnit, col: 2},
+	"prior-message":    {ref: refConn, col: 2, cases: func(f []string) []caseKey { return []caseKey{{"message-prior", f[1]}} }},
 	"instance": {ref: refUnit, col: 2, cases: func(f []string) []caseKey {
 		// a no-text instance has a wire case alone (§16.7, claims.go)
 		if len(f) > 5 && slices.Contains(f[5:], "no-text") {
@@ -117,7 +122,7 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 			continue
 		}
 		switch f[0] {
-		case "connection":
+		case "connection", "prior-connection":
 			conns[f[1]] = true
 		case "instance":
 			instances[f[1]] = true
@@ -165,7 +170,7 @@ func checkLegRows(kept string, cases notAsked) error {
 			continue
 		}
 		switch f[0] {
-		case "connection":
+		case "connection", "prior-connection":
 			conns[f[1]] = true
 		case "instance":
 			instances[f[1]] = true

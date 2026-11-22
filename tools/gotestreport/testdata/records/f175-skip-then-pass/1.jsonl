@@ -1,0 +1,14 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:10:43.531099602+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:10:43.532914734+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestRepeat"}
+{"Time":"2026-11-21T21:10:43.532924252+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestRepeat","Output":"=== RUN   TestRepeat\n"}
+{"Time":"2026-11-21T21:10:43.533105922+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestRepeat","Output":"    ledger_test.go:21: no cargo on PATH\n"}
+{"Time":"2026-11-21T21:10:43.533115821+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestRepeat","Output":"--- SKIP: TestRepeat (0.00s)\n"}
+{"Time":"2026-11-21T21:10:43.533118947+01:00","Action":"skip","Package":"example.org/ledgertest","Test":"TestRepeat","Elapsed":0}
+{"Time":"2026-11-21T21:10:43.533155906+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestRepeat"}
+{"Time":"2026-11-21T21:10:43.533160625+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestRepeat","Output":"=== RUN   TestRepeat\n"}
+{"Time":"2026-11-21T21:10:43.533193196+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestRepeat","Output":"--- PASS: TestRepeat (0.00s)\n"}
+{"Time":"2026-11-21T21:10:43.533248359+01:00","Action":"pass","Package":"example.org/ledgertest","Test":"TestRepeat","Elapsed":0}
+{"Time":"2026-11-21T21:10:43.533253629+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:10:43.533474834+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.002s\n"}
+{"Time":"2026-11-21T21:10:43.533507595+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.002}

@@ -9,6 +9,7 @@
 //
 //   dart run test/dart-hostile/runner.dart <corpus-dir> [known-findings.tsv]
 //   dart run test/dart-hostile/runner.dart --show <corpus-dir> <case>
+//   dart run test/dart-hostile/runner.dart --scorer <scorer-outcomes.tsv>
 //
 // The working directory is the repository root. The generated units are the
 // ones make/schema-dart-runs-hostile-corpus.mk writes under
@@ -38,7 +39,12 @@
 // read that throws or refuses is the corpus's `damaged`, unless its refusal is
 // one the manifest names (corpusReason): the verdict is the contract, and why a
 // read refused is per-language detail (docs/SPEC-TABLES.md §6.5), so every other
-// reason folds into `damaged`, as the C and C++ harnesses answer.
+// reason folds into `damaged`, as the C and C++ harnesses answer. The name is
+// printed on a FAIL line as the port's diagnostic and never compared: a refusal
+// conforms on its verdict alone (docs/rulings.json refusal-verdict-only, §6.5
+// and §13.10). --scorer grades the shared scorer outcome cases
+// (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+// wantAnswer and agrees the corpus run uses.
 //
 // A FIXED root's wire carrier dispatches on the form byte (SPEC-TABLES §3.4):
 // form 3 goes to <root>FixedLoad and its fixed value is digested through the
@@ -82,6 +88,53 @@ final class Answer {
 }
 
 const Answer _damaged = Answer('refuse', 'damaged');
+
+// The manifest's answer for a case.
+Answer wantAnswer(String verdict, String reason, String digest) =>
+    verdict == 'accept' ? Answer('accept', digest == '-' ? '-' : digest) : Answer('refuse', reason);
+
+// Whether a port's answer conforms to the manifest's: a refusal on its verdict
+// alone (docs/rulings.json refusal-verdict-only), an accept on its digest. An
+// error, a crash or a budget overrun is never a refusal.
+bool agrees(Answer got, Answer want) {
+  if (got.verdict == 'refuse' && want.verdict == 'refuse') return true;
+  return got.verdict == want.verdict && got.detail == want.detail;
+}
+
+// Each row of the shared scorer fixture: the expected verdict, reference
+// diagnostic and accepted SHA-256 make the manifest's answer; the worker reply
+// makes the port's (a refusal with the name it gives or none, an accept of the
+// text body's digest, or a worker that exits). agrees must pass exactly the
+// rows whose scorer exit is 0.
+int scorer(String path) {
+  final rows = _rows(path);
+  var wrong = 0;
+  for (final f in rows) {
+    if (f.length != 7) {
+      stderr.writeln('$path: row has ${f.length} fields, want 7: ${f.join('\t')}');
+      return 2;
+    }
+    final reply = f[4];
+    final Answer got;
+    if (reply == 'refuse' || reply.startsWith('refuse ')) {
+      got = Answer('refuse', reply.substring('refuse'.length).trimLeft());
+    } else if (reply == 'accept text') {
+      got = Answer('accept', sha256Hex(utf8.encode(f[5] == '-' ? '' : f[5])));
+    } else if (reply == 'exit') {
+      got = const Answer('error', 'the worker exited with status 3');
+    } else {
+      stderr.writeln('$path: ${f[0]}: unknown worker reply $reply');
+      return 2;
+    }
+    final pass = agrees(got, wantAnswer(f[1], f[2], f[3]));
+    if (pass != (f[6] == '0')) {
+      stdout.writeln('SCORER ${f[0]}: graded ${pass ? 'pass' : 'fail'}, the fixture says scorer exit ${f[6]}');
+      wrong++;
+    }
+  }
+  stdout.writeln('dart scorer outcomes: ${rows.length} cases, ${rows.length - wrong} graded as the fixture says, $wrong wrong');
+  return wrong == 0 && rows.isNotEmpty ? 0 : 1;
+}
 
 Answer _unbound(String what) => Answer('error', 'unbound: no $what reader bound');
 
@@ -636,9 +689,13 @@ Future<void> main(List<String> args) async {
     stderr.writeln('no case ${args[2]}');
     exit(2);
   }
+  if (args.length == 2 && args[0] == '--scorer') {
+    exit(scorer(args[1]));
+  }
   if (args.isEmpty || args.length > 2) {
     stderr.writeln('usage: runner.dart <corpus-dir> [known-findings.tsv]');
     stderr.writeln('       runner.dart --show <corpus-dir> <case>');
+    stderr.writeln('       runner.dart --scorer <scorer-outcomes.tsv>');
     exit(2);
   }
   // the hash is checked before it is trusted: the FIPS 180-2 "abc" vector
@@ -663,12 +720,11 @@ Future<void> main(List<String> args) async {
     final name = m[0], carrier = m[1], schema = m[2], table = m[3], input = m[4];
     final verdict = m[6], reason = m[7], digest = m[8];
     seen.add(name);
-    final want = verdict == 'accept' ? Answer('accept', digest == '-' ? '-' : digest) : Answer('refuse', reason);
+    final want = wantAnswer(verdict, reason, digest);
     final payload = File('$corpus/$input').readAsBytesSync();
     final got = await isolated(carrier, schema, table, payload, budget);
-    final agrees = got.verdict == want.verdict && got.detail == want.detail;
     final finding = findings[name];
-    if (agrees) {
+    if (agrees(got, want)) {
       if (finding != null) {
         stdout.writeln('STALE $name: FIX-CARD ${finding[1]} no longer reproduces');
         stale.add(name);

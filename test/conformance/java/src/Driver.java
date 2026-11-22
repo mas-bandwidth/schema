@@ -1017,12 +1017,29 @@ public final class Driver {
                 if (bad) {
                     spill(out, f[1], "refused\n");
                 } else {
-                    byte[] answer = withValue(codec, value, "read\n");
-                    if (answer == null) return failInt(f[1] + ": toJson refused the value");
-                    byte[] saved = writeBackWire(f[2], f[3], codec, value);
-                    if (saved == null) return failInt(f[1] + ": save refused the value");
-                    spill(out, f[1] + ".wire", saved);
-                    spill(out, f[1], answer);
+                    // THE READ ACCEPTED: that is the verdict, whatever the
+                    // writers make of the value afterwards. A writer that
+                    // refuses it (a tree past the depth cap the reader let
+                    // through) leaves its half out, and the harness fails the
+                    // case by name, by verdict or by the missing value or
+                    // wire; the surface goes on to the next case. A writer
+                    // that refuses by throwing (an assertion under -ea) is
+                    // caught HERE, so the read's verdict is never turned into
+                    // `refused` by the reader's catch below.
+                    byte[] answer;
+                    try {
+                        answer = withValue(codec, value, "read\n");
+                    } catch (java.lang.reflect.InvocationTargetException writer) {
+                        answer = null;
+                    }
+                    byte[] saved;
+                    try {
+                        saved = writeBackWire(f[2], f[3], codec, value);
+                    } catch (java.lang.reflect.InvocationTargetException writer) {
+                        saved = null;
+                    }
+                    if (saved != null) spill(out, f[1] + ".wire", saved);
+                    spill(out, f[1], answer != null ? answer : "read\n".getBytes(StandardCharsets.UTF_8));
                 }
             } catch (java.lang.reflect.InvocationTargetException thrown) {
                 // A hostile tree is allowed to be refused by breaking the read;
@@ -1485,7 +1502,9 @@ public final class Driver {
                 }
                 spill(out, name, answer + "\n");
             } catch (ReflectiveOperationException failure) {
-                return failInt(name + ": write-refusal codec failed: " + failure);
+                Throwable cause = failure;
+                while (cause.getCause() != null) cause = cause.getCause();
+                return failInt(name + ": write-refusal codec failed: " + cause);
             }
         }
         return 0;
@@ -1579,7 +1598,7 @@ public final class Driver {
         Object fieldValue = last.indexed ? writeRefusalElement(container, last.index) : container;
         switch (kind) {
             case "count":
-                writeRefusalCount(current, fieldValue, field.getName(), Integer.parseInt(text));
+                writeRefusalCount(current, field, fieldValue, Integer.parseInt(text));
                 return true;
             case "length":
                 writeRefusalLength(current, field, fieldValue, field.getName(), Integer.parseInt(text));
@@ -1700,21 +1719,25 @@ public final class Driver {
         }
     }
 
-    private static void writeRefusalCount(Object owner, Object fieldValue, String name, int count)
+    private static void writeRefusalCount(Object owner, java.lang.reflect.Field field, Object fieldValue, int count)
             throws ReflectiveOperationException {
+        String name = field.getName();
         java.lang.reflect.Field companion = writeRefusalFieldOrNull(owner.getClass(), name + "Count");
         if (companion != null) {
             companion.setInt(owner, count);
             return;
         }
         if (fieldValue instanceof java.util.List<?> list) {
-            writeRefusalResize(owner, name, list, count);
+            writeRefusalResize(list, field, count);
             return;
         }
         throw new NoSuchFieldException(name + " carries no count");
     }
 
-    private static void writeRefusalResize(Object owner, String name, java.util.List<?> list, int count)
+    // A list grows by copies of element 0, and an EMPTY list by its declared
+    // element's default (graph_tree's Scene.layers): a null element is not a
+    // value, and the writer dying on it answered neither verdict.
+    private static void writeRefusalResize(java.util.List<?> list, java.lang.reflect.Field field, int count)
             throws ReflectiveOperationException {
         @SuppressWarnings("unchecked")
         java.util.List<Object> raw = (java.util.List<Object>) list;
@@ -1722,47 +1745,26 @@ public final class Driver {
             raw.remove(raw.size() - 1);
         }
         while (raw.size() < count) {
-            // AN EMPTY LIST HAS NO ELEMENT TO REPEAT: the new one is the
-            // element type's own fresh value, never null (a writer is owed a
-            // value at every index it is told to write).
-            raw.add(raw.isEmpty() ? writeRefusalFreshElement(owner, name) : raw.get(0));
+            raw.add(raw.isEmpty() ? writeRefusalElementDefault(field) : raw.get(0));
         }
     }
 
-    private static Object writeRefusalFreshElement(Object owner, String name)
+    private static Object writeRefusalElementDefault(java.lang.reflect.Field field)
             throws ReflectiveOperationException {
-        java.lang.reflect.Field field = writeRefusalField(owner.getClass(), name);
-        if (!(field.getGenericType() instanceof java.lang.reflect.ParameterizedType listType)
-                || !(listType.getActualTypeArguments()[0] instanceof Class<?> element)) {
-            throw new NoSuchFieldException(name + " names no element type");
+        if (!(field.getGenericType() instanceof java.lang.reflect.ParameterizedType p)
+                || p.getActualTypeArguments().length != 1
+                || !(p.getActualTypeArguments()[0] instanceof Class<?> elem)) {
+            throw new NoSuchFieldException(field.getName() + " declares no element class");
         }
-        if (element == Boolean.class) {
-            return Boolean.FALSE;
-        }
-        if (element == Byte.class) {
-            return (byte) 0;
-        }
-        if (element == Short.class) {
-            return (short) 0;
-        }
-        if (element == Integer.class) {
-            return 0;
-        }
-        if (element == Long.class) {
-            return 0L;
-        }
-        if (element == Float.class) {
-            return 0f;
-        }
-        if (element == Double.class) {
-            return 0d;
-        }
-        if (element == String.class) {
-            return "";
-        }
-        java.lang.reflect.Constructor<?> fresh = element.getDeclaredConstructor();
-        fresh.setAccessible(true);
-        return fresh.newInstance();
+        if (elem == Integer.class) return 0;
+        if (elem == Long.class) return 0L;
+        if (elem == Short.class) return (short) 0;
+        if (elem == Byte.class) return (byte) 0;
+        if (elem == Float.class) return 0.0f;
+        if (elem == Double.class) return 0.0;
+        if (elem == Boolean.class) return false;
+        if (elem == String.class) return "";
+        return elem.getDeclaredConstructor().newInstance();
     }
 
     private static void writeRefusalLength(

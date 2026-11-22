@@ -9,10 +9,6 @@
 
 package bench;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-
 public final class BenchMixedVariable {
     private BenchMixedVariable() {}
 
@@ -26,11 +22,11 @@ public final class BenchMixedVariable {
         public long worldTime = 0L;
         public long frameTick = 0L;
         public int serverTime = 0x00000000;
-        public List<MixedEntityVariable.Value> entities = new ArrayList<>();
-        public List<MixedStatVariable.Value> stats = new ArrayList<>();
+        public java.util.List<MixedEntityVariable.Value> entities = new java.util.ArrayList<>();
+        public java.util.List<MixedStatVariable.Value> stats = new java.util.ArrayList<>();
         public MixedEventVariable.Value gameEvent = new MixedEventVariable.Value();
-        public List<Integer> loadout = new ArrayList<>();
-        public String playerName = "";
+        public java.util.List<java.lang.Integer> loadout = new java.util.ArrayList<>();
+        public java.lang.String playerName = "";
         public byte[] payload = new byte[] {};
         public float aimX = 0.0f;
         public float aimY = 0.0f;
@@ -82,7 +78,7 @@ public final class BenchMixedVariable {
     public static final long F_extra = 0xfd29ee12a979cb69L;
     public static final long F_idleTicks = 0x78101ac0aa8cbcfeL;
 
-    static Object createNode(long typeId) {
+    static java.lang.Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -117,7 +113,10 @@ public final class BenchMixedVariable {
     }
 
     static void decodeNodeBody(
-            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+            TableVariable.Reader r,
+            java.lang.Object val,
+            long typeId,
+            TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
             return;
@@ -162,7 +161,10 @@ public final class BenchMixedVariable {
     }
 
     static void writeNodeBody(
-            TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
+            TableVariable.Writer w,
+            TableVariable.NodeGraph graph,
+            java.lang.Object val,
+            long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val);
             return;
@@ -206,10 +208,10 @@ public final class BenchMixedVariable {
     }
 
     static void resolveNodePointers(
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
@@ -268,11 +270,11 @@ public final class BenchMixedVariable {
         g.push(v, GRAPH_KIND, -2, 0, null);
         while (g.workCount() > 0) {
             int at = g.workCount() - 1;
-            Object value = g.workValue(at);
+            java.lang.Object value = g.workValue(at);
             int kind = g.workKind(at);
             int field = g.workField(at);
             int index = g.workIndex(at);
-            Object close = g.workClose(at);
+            java.lang.Object close = g.workClose(at);
             g.pop();
             if (field == -1) {
                 g.setOpen(value, false);
@@ -462,7 +464,7 @@ public final class BenchMixedVariable {
         }
     }
 
-    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+    static boolean graphEnter(TableVariable.NodeGraph g, java.lang.Object v, int kind) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
@@ -491,7 +493,8 @@ public final class BenchMixedVariable {
         }
     }
 
-    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+    static boolean graphStep(
+            TableVariable.NodeGraph g, java.lang.Object v, int kind, int field, int index) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
@@ -748,9 +751,10 @@ public final class BenchMixedVariable {
                         }
                     }
                     if (!r.fail
-                            && (Long.compareUnsigned(v.nonce, 0L) < 0
-                                    || Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0)) {
-                        if (Long.compareUnsigned(v.nonce, 0L) < 0) {
+                            && (java.lang.Long.compareUnsigned(v.nonce, 0L) < 0
+                                    || java.lang.Long.compareUnsigned(v.nonce, 0xffffffffffffffffL)
+                                            > 0)) {
+                        if (java.lang.Long.compareUnsigned(v.nonce, 0L) < 0) {
                             v.nonce = 0L;
                         } else {
                             v.nonce = 0xffffffffffffffffL;
@@ -842,7 +846,8 @@ public final class BenchMixedVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && Long.compareUnsigned(v.frameTick, 0xffffffffffffL) > 0) {
+                    if (!r.fail
+                            && java.lang.Long.compareUnsigned(v.frameTick, 0xffffffffffffL) > 0) {
                         v.frameTick = 0xffffffffffffL;
                         report.refuse("out_of_range");
                     }
@@ -1009,7 +1014,12 @@ public final class BenchMixedVariable {
                                 }
                                 report.refuse("out_of_range");
                             }
-                            v.playerName = new String(r.buf, r.off, keep, StandardCharsets.UTF_8);
+                            v.playerName =
+                                    new java.lang.String(
+                                            r.buf,
+                                            r.off,
+                                            keep,
+                                            java.nio.charset.StandardCharsets.UTF_8);
                         }
                         r.off += n;
                     } else if (!r.fail) {
@@ -1041,7 +1051,7 @@ public final class BenchMixedVariable {
                             report.refuse("kind_mismatch");
                         } else {
                             long keep = n;
-                            if (Long.compareUnsigned(keep, 16L) > 0) {
+                            if (java.lang.Long.compareUnsigned(keep, 16L) > 0) {
                                 keep = 16L;
                                 report.refuse("out_of_range");
                             }
@@ -1066,9 +1076,9 @@ public final class BenchMixedVariable {
                         } else {
                             v.aimX =
                                     TableVariable.compressedF32(
-                                            Float.intBitsToFloat(fbits),
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(fbits),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             report,
                                             "BenchMixed.aim_x");
                         }
@@ -1089,9 +1099,9 @@ public final class BenchMixedVariable {
                         } else {
                             v.aimY =
                                     TableVariable.compressedF32(
-                                            Float.intBitsToFloat(fbits),
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(fbits),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             report,
                                             "BenchMixed.aim_y");
                         }
@@ -1112,9 +1122,9 @@ public final class BenchMixedVariable {
                         } else {
                             v.aimZ =
                                     TableVariable.compressedF32(
-                                            Float.intBitsToFloat(fbits),
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(fbits),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             report,
                                             "BenchMixed.aim_z");
                         }
@@ -1133,7 +1143,7 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.recoil");
                         } else {
-                            v.recoil = Float.intBitsToFloat(fbits);
+                            v.recoil = java.lang.Float.intBitsToFloat(fbits);
                         }
                     } else {
                         report.damaged = true;
@@ -1150,7 +1160,7 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.drift");
                         } else {
-                            v.drift = Double.longBitsToDouble(fbits);
+                            v.drift = java.lang.Double.longBitsToDouble(fbits);
                         }
                     } else {
                         report.damaged = true;
@@ -1162,7 +1172,7 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.drift");
                         } else {
-                            v.drift = (double) Float.intBitsToFloat(fbits);
+                            v.drift = (double) java.lang.Float.intBitsToFloat(fbits);
                         }
                         report.widened++;
                     } else {
@@ -1380,7 +1390,7 @@ public final class BenchMixedVariable {
     public static void resolveNodes(
             Value v,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (nt.bad) {
@@ -1534,24 +1544,35 @@ public final class BenchMixedVariable {
         if (v.aimX != 0.0f) {
             w.putLeb(w.ref(F_aimX));
             w.put8(10);
-            w.putF32In(v.aimX, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
+            w.putF32In(
+                    v.aimX,
+                    java.lang.Float.intBitsToFloat(0xbf800000),
+                    java.lang.Float.intBitsToFloat(0x3f800000));
         }
         if (v.aimY != 0.0f) {
             w.putLeb(w.ref(F_aimY));
             w.put8(10);
-            w.putF32In(v.aimY, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
+            w.putF32In(
+                    v.aimY,
+                    java.lang.Float.intBitsToFloat(0xbf800000),
+                    java.lang.Float.intBitsToFloat(0x3f800000));
         }
         if (v.aimZ != 0.0f) {
             w.putLeb(w.ref(F_aimZ));
             w.put8(10);
-            w.putF32In(v.aimZ, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
+            w.putF32In(
+                    v.aimZ,
+                    java.lang.Float.intBitsToFloat(0xbf800000),
+                    java.lang.Float.intBitsToFloat(0x3f800000));
         }
-        if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
+        if (java.lang.Float.floatToRawIntBits(v.recoil)
+                != java.lang.Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_recoil));
             w.put8(10);
             w.putF32(v.recoil);
         }
-        if (Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0d)) {
+        if (java.lang.Double.doubleToRawLongBits(v.drift)
+                != java.lang.Double.doubleToRawLongBits(0.0d)) {
             w.putLeb(w.ref(F_drift));
             w.put8(11);
             w.putF64(v.drift);
@@ -1602,7 +1623,7 @@ public final class BenchMixedVariable {
     static boolean checkWrite(Value v) {
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
-        for (Object o = walk.next(); o != null; o = walk.next()) {
+        for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
             if (o instanceof BenchBitsVariable.Value) {
                 assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
             }
@@ -1644,10 +1665,12 @@ public final class BenchMixedVariable {
         }
         assert (v.sequence & 0xffffffffL) <= 0xffffL : "BenchMixed.sequence";
         assert v.ackSequence >= 0 && v.ackSequence <= 65535 : "BenchMixed.ack_sequence";
-        assert Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0 : "BenchMixed.nonce";
+        assert java.lang.Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0
+                : "BenchMixed.nonce";
         assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L
                 : "BenchMixed.world_time";
-        assert Long.compareUnsigned(v.frameTick, 0xffffffffffffL) <= 0 : "BenchMixed.frame_tick";
+        assert java.lang.Long.compareUnsigned(v.frameTick, 0xffffffffffffL) <= 0
+                : "BenchMixed.frame_tick";
         assert java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("0"))
                                 >= 0
                         && java.math.BigInteger.valueOf(v.serverTime)
@@ -1665,7 +1688,7 @@ public final class BenchMixedVariable {
             assert MixedStatVariable.checkWrite(e, walk);
         }
         assert MixedEventVariable.checkWrite(v.gameEvent, walk);
-        for (int i = 0, n = Math.min(v.loadout.size(), 4); i < n; i++) {
+        for (int i = 0, n = java.lang.Math.min(v.loadout.size(), 4); i < n; i++) {
             int e = v.loadout.get(i);
             assert (e & 0xffffffffL) <= 0xffL : "BenchMixed.loadout";
         }
@@ -1682,10 +1705,10 @@ public final class BenchMixedVariable {
                                                         "1267650600228229401496703205376"))
                                 <= 0
                 : "BenchMixed.flux";
-        assert java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping))
+        assert java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.ping))
                                         .compareTo(new java.math.BigInteger("0"))
                                 >= 0
-                        && java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping))
+                        && java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.ping))
                                         .compareTo(new java.math.BigInteger("64000"))
                                 <= 0
                 : "BenchMixed.ping";
@@ -1718,12 +1741,12 @@ public final class BenchMixedVariable {
             int table = w.off;
             w.putLeb(nodes);
             for (int i = 0; i < nodes; i++) {
-                Object value = graph.nodeValue(i);
+                java.lang.Object value = graph.nodeValue(i);
                 long typeId = graph.nodeType(i);
                 w.putLeb(w.ref(typeId));
                 if (graph.nodeBlob(i)) {
-                    if (value instanceof String) {
-                        w.putUtf8((String) value);
+                    if (value instanceof java.lang.String) {
+                        w.putUtf8((java.lang.String) value);
                     } else {
                         byte[] bytes = (byte[]) value;
                         w.putLeb(bytes.length);
@@ -1764,7 +1787,9 @@ public final class BenchMixedVariable {
                         report.damaged = true;
                         rec.typeId = 0;
                     } else {
-                        rec.value = new String(rec.body, StandardCharsets.UTF_8);
+                        rec.value =
+                                new java.lang.String(
+                                        rec.body, java.nio.charset.StandardCharsets.UTF_8);
                         // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
                         report.unknown++;
                     }
@@ -2006,7 +2031,7 @@ public final class BenchMixedVariable {
         if (r.fail) {
             return at;
         }
-        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {
+        for (long i = 0; java.lang.Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {
             int end = r.bodyEnd();
             if (end < 0) {
                 return at;
@@ -2037,7 +2062,7 @@ public final class BenchMixedVariable {
         if (r.fail) {
             return at;
         }
-        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {
+        for (long i = 0; java.lang.Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {
             int end = r.bodyEnd();
             if (end < 0) {
                 return at;
@@ -2133,14 +2158,14 @@ public final class BenchMixedVariable {
             return null;
         }
         graph.setOpen(v, false);
-        StringBuilder b = new StringBuilder();
+        java.lang.StringBuilder b = new java.lang.StringBuilder();
         try {
             jsonFields(b, graph, v, 0);
         } catch (TableJson.Refused e) {
             return null;
         }
         b.append('\n');
-        return b.toString().getBytes(StandardCharsets.UTF_8);
+        return b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
@@ -2165,7 +2190,8 @@ public final class BenchMixedVariable {
         return v;
     }
 
-    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+    static void jsonFields(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -2173,7 +2199,11 @@ public final class BenchMixedVariable {
     }
 
     static boolean jsonFieldsBody(
-            StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
+            java.lang.StringBuilder b,
+            TableVariable.NodeGraph graph,
+            Value v,
+            int depth,
+            boolean first) {
         if (!first) {
             b.append(',');
         }
@@ -2181,10 +2211,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "sequence");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.sequence, 1L << 16) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.sequence, 1L << 16) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.sequence));
+        b.append(java.lang.Integer.toUnsignedString(v.sequence));
         if (!first) {
             b.append(',');
         }
@@ -2195,7 +2225,7 @@ public final class BenchMixedVariable {
         if ((long) v.ackSequence < 0 || (long) v.ackSequence > 65535) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.ackSequence));
+        b.append(java.lang.Integer.toString(v.ackSequence));
         if (!first) {
             b.append(',');
         }
@@ -2203,10 +2233,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "ack_bits");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.ackBits, 1L << 32) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.ackBits, 1L << 32) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.ackBits));
+        b.append(java.lang.Integer.toUnsignedString(v.ackBits));
         if (!first) {
             b.append(',');
         }
@@ -2215,7 +2245,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "session_id");
         b.append(": ");
         b.append('"');
-        b.append(Long.toUnsignedString(v.sessionId));
+        b.append(java.lang.Long.toUnsignedString(v.sessionId));
         b.append('"');
         if (!first) {
             b.append(',');
@@ -2224,7 +2254,7 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "client_id");
         b.append(": ");
-        b.append(Integer.toUnsignedString(v.clientId));
+        b.append(java.lang.Integer.toUnsignedString(v.clientId));
         if (!first) {
             b.append(',');
         }
@@ -2232,12 +2262,12 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "nonce");
         b.append(": ");
-        if (Long.compareUnsigned(v.nonce, 0L) < 0
-                || Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0) {
+        if (java.lang.Long.compareUnsigned(v.nonce, 0L) < 0
+                || java.lang.Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0) {
             throw new TableJson.Refused("out_of_range");
         }
         b.append('"');
-        b.append(Long.toUnsignedString(v.nonce));
+        b.append(java.lang.Long.toUnsignedString(v.nonce));
         b.append('"');
         if (!first) {
             b.append(',');
@@ -2250,7 +2280,7 @@ public final class BenchMixedVariable {
             throw new TableJson.Refused("out_of_range");
         }
         b.append('"');
-        b.append(Long.toString(v.worldTime));
+        b.append(java.lang.Long.toString(v.worldTime));
         b.append('"');
         if (!first) {
             b.append(',');
@@ -2259,11 +2289,11 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "frame_tick");
         b.append(": ");
-        if (Long.compareUnsigned(v.frameTick, 1L << 48) >= 0) {
+        if (java.lang.Long.compareUnsigned(v.frameTick, 1L << 48) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
         b.append('"');
-        b.append(Long.toUnsignedString(v.frameTick));
+        b.append(java.lang.Long.toUnsignedString(v.frameTick));
         b.append('"');
         if (!first) {
             b.append(',');
@@ -2343,7 +2373,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "loadout");
         b.append(": ");
         {
-            List<Integer> padded = new ArrayList<>();
+            java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 4; j++) padded.add(j < v.loadout.size() ? v.loadout.get(j) : 0);
             if (padded.size() > 4) {
                 throw new TableJson.Refused("count_over_bound");
@@ -2357,7 +2387,7 @@ public final class BenchMixedVariable {
                         b.append(',');
                     }
                     TableJson.indent(b, depth + 1);
-                    b.append(Integer.toUnsignedString(padded.get(i)));
+                    b.append(java.lang.Integer.toUnsignedString(padded.get(i)));
                 }
                 TableJson.indent(b, depth);
                 b.append(']');
@@ -2466,7 +2496,7 @@ public final class BenchMixedVariable {
         b.append(": ");
         b.append(
                 TableJson.wideText(
-                        java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)),
+                        java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.ping)),
                         new java.math.BigInteger("0"),
                         new java.math.BigInteger("64000"),
                         8,
@@ -2478,10 +2508,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "crc_hint");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.crcHint, 1L << 24) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.crcHint, 1L << 24) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.crcHint));
+        b.append(java.lang.Integer.toUnsignedString(v.crcHint));
         if (!first) {
             b.append(',');
         }
@@ -2500,7 +2530,7 @@ public final class BenchMixedVariable {
         if ((long) v.extra < 0 || (long) v.extra > 255) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.extra));
+        b.append(java.lang.Integer.toString(v.extra));
         if (!first) {
             b.append(',');
         }
@@ -2511,12 +2541,12 @@ public final class BenchMixedVariable {
         if ((long) v.idleTicks < 0 || (long) v.idleTicks > 15) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.idleTicks));
+        b.append(java.lang.Integer.toString(v.idleTicks));
         return first;
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -2529,7 +2559,7 @@ public final class BenchMixedVariable {
             jsonFields(b, graph, child, depth);
             return;
         }
-        Long label = graph.labels.get(child);
+        java.lang.Long label = graph.labels.get(child);
         if (label == null) {
             label = (long) (graph.labels.size() + 1);
             graph.labels.put(child, label);
@@ -2571,7 +2601,7 @@ public final class BenchMixedVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanName();
+        java.lang.String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -2640,7 +2670,7 @@ public final class BenchMixedVariable {
 
     static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {
         boolean[] seenField = new boolean[27];
-        java.util.Set<String> seenKey = new java.util.HashSet<>();
+        java.util.Set<java.lang.String> seenKey = new java.util.HashSet<>();
         while (true) {
             int c = in.peek();
             if (c == 0) {
@@ -2651,7 +2681,7 @@ public final class BenchMixedVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanName();
+            java.lang.String key = in.scanName();
             if (in.bad) {
                 return;
             }
@@ -2888,7 +2918,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() != 'n' || (repeated && in.peek() != 'n')) {
-                        v.entities = new ArrayList<>();
+                        v.entities = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
                         in.p++;
@@ -2952,7 +2982,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (repeated && in.peek() != 'n') {
-                        v.stats = new ArrayList<>();
+                        v.stats = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
                         in.p++;
@@ -3025,7 +3055,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (repeated && in.peek() != 'n') {
-                        v.loadout = new ArrayList<>();
+                        v.loadout = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
                         in.p++;
@@ -3098,7 +3128,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '"') {
-                        String text = in.scanString();
+                        java.lang.String text = in.scanString();
                         if (text != null) {
                             try {
                                 byte[] bytes = java.util.Base64.getDecoder().decode(text);
@@ -3107,11 +3137,11 @@ public final class BenchMixedVariable {
                                         .equals(text)) {
                                     in.rep.refuse("base64_not_canonical");
                                 } else {
-                                    int keep = Math.min(bytes.length, 16);
+                                    int keep = java.lang.Math.min(bytes.length, 16);
                                     v.payload = java.util.Arrays.copyOf(bytes, keep);
                                     if (bytes.length > keep) in.rep.refuse("out_of_range");
                                 }
-                            } catch (IllegalArgumentException invalid) {
+                            } catch (java.lang.IllegalArgumentException invalid) {
                                 in.rep.refuse("kind_mismatch");
                             }
                         }
@@ -3137,8 +3167,8 @@ public final class BenchMixedVariable {
                             v.aimX =
                                     TableVariable.compressedF32(
                                             placed,
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             in.rep,
                                             "aim_x");
                         }
@@ -3164,8 +3194,8 @@ public final class BenchMixedVariable {
                             v.aimY =
                                     TableVariable.compressedF32(
                                             placed,
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             in.rep,
                                             "aim_y");
                         }
@@ -3191,8 +3221,8 @@ public final class BenchMixedVariable {
                             v.aimZ =
                                     TableVariable.compressedF32(
                                             placed,
-                                            Float.intBitsToFloat(0xbf800000),
-                                            Float.intBitsToFloat(0x3f800000),
+                                            java.lang.Float.intBitsToFloat(0xbf800000),
+                                            java.lang.Float.intBitsToFloat(0x3f800000),
                                             in.rep,
                                             "aim_z");
                         }
@@ -3443,6 +3473,7 @@ public final class BenchMixedVariable {
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
         assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
+        v.entities.clear();
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }

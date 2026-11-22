@@ -5,10 +5,10 @@ require_relative '_cooks'
 
 def self.run(manifest, outdir)
   roots = {}
-  RubyConformance.entries(manifest, 'cook').each do |row|
+  RubyConformance.cases(manifest, 'cook') do |row|
     roots[row[1]] = [row[2], row[3]]
   end
-  RubyConformance.entries(manifest, 'forgery').each do |row|
+  RubyConformance.cases(manifest, 'forgery') do |row|
     name, kind, subject = row[1, 3]
     next unless kind == 'cook'
 

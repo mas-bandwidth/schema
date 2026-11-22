@@ -62,7 +62,7 @@ function validText(bytes, length) {
 // type W13
 export class W13 {
   constructor() {
-    this.items = new Array(12).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(12).fill(0); // wire [0, 8191]
     this.itemsCount = 0;
   }
 }
@@ -85,7 +85,7 @@ export function ZeroW13(value) {
 }
 
 export function WriteW13(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -93,7 +93,7 @@ export function WriteW13(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -121,7 +121,7 @@ export function ReadW13(stream, value, nested) {
 // type W17
 export class W17 {
   constructor() {
-    this.items = new Array(9).fill(0); // wire [0, 131071]
+    this.items = new globalThis.Array(9).fill(0); // wire [0, 131071]
     this.itemsCount = 0;
   }
 }
@@ -144,7 +144,7 @@ export function ZeroW17(value) {
 }
 
 export function WriteW17(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -152,7 +152,7 @@ export function WriteW17(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 131071) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 131071) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -180,7 +180,7 @@ export function ReadW17(stream, value, nested) {
 // type W26
 export class W26 {
   constructor() {
-    this.items = new Array(6).fill(0); // wire [0, 67108863]
+    this.items = new globalThis.Array(6).fill(0); // wire [0, 67108863]
     this.itemsCount = 0;
   }
 }
@@ -203,7 +203,7 @@ export function ZeroW26(value) {
 }
 
 export function WriteW26(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -211,7 +211,7 @@ export function WriteW26(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 67108863) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 67108863) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -239,7 +239,7 @@ export function ReadW26(stream, value, nested) {
 // type W1
 export class W1 {
   constructor() {
-    this.items = new Uint8Array(20); // wire [0, 1]
+    this.items = new globalThis.Uint8Array(20); // wire [0, 1]
     this.itemsCount = 0;
   }
 }
@@ -262,7 +262,7 @@ export function ZeroW1(value) {
 }
 
 export function WriteW1(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -270,7 +270,7 @@ export function WriteW1(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 1) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 1) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -298,7 +298,7 @@ export function ReadW1(stream, value, nested) {
 // type W52
 export class W52 {
   constructor() {
-    this.items = new Array(3).fill(0n); // wire [0, 4503599627370495]
+    this.items = new globalThis.Array(3).fill(0n); // wire [0, 4503599627370495]
     this.itemsCount = 0;
   }
 }
@@ -321,7 +321,7 @@ export function ZeroW52(value) {
 }
 
 export function WriteW52(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -332,7 +332,7 @@ export function WriteW52(stream, value) {
     if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 4503599627370495n) {
       return false;
     }
-    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
+    BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.items[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 52)) {
       return false;
     }
@@ -357,7 +357,7 @@ export function ReadW52(stream, value, nested) {
 // type W50
 export class W50 {
   constructor() {
-    this.items = new Array(3).fill(0n); // wire [0, 1125899906842623]
+    this.items = new globalThis.Array(3).fill(0n); // wire [0, 1125899906842623]
     this.itemsCount = 0;
   }
 }
@@ -380,7 +380,7 @@ export function ZeroW50(value) {
 }
 
 export function WriteW50(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -391,7 +391,7 @@ export function WriteW50(stream, value) {
     if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 1125899906842623n) {
       return false;
     }
-    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.items[i]);
+    BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.items[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 50)) {
       return false;
     }
@@ -416,7 +416,7 @@ export function ReadW50(stream, value, nested) {
 // type F13
 export class F13 {
   constructor() {
-    this.items = new Array(7).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(7).fill(0); // wire [0, 8191]
   }
 }
 
@@ -437,7 +437,7 @@ export function ZeroF13(value) {
 
 export function WriteF13(stream, value) {
   for (let i = 0; i < 7; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -516,7 +516,7 @@ export function ReadTri3(stream, value, nested) {
 // type ArrTri3
 export class ArrTri3 {
   constructor() {
-    this.items = Array.from({ length: 10 }, () => new Tri3());
+    this.items = globalThis.Array.from({ length: 10 }, () => new Tri3());
     this.itemsCount = 0;
   }
 }
@@ -544,7 +544,7 @@ export function ZeroArrTri3(value) {
 }
 
 export function WriteArrTri3(stream, value) {
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -630,7 +630,7 @@ export function ReadEleven(stream, value, nested) {
 // type ArrEleven
 export class ArrEleven {
   constructor() {
-    this.items = Array.from({ length: 9 }, () => new Eleven());
+    this.items = globalThis.Array.from({ length: 9 }, () => new Eleven());
   }
 }
 
@@ -735,7 +735,7 @@ export function ReadEmptyB(stream, value, nested) {
 }
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const EmptyUnionType = Object.freeze({
+export const EmptyUnionType = globalThis.Object.freeze({
   None: 0,
   A: 1,
   B: 2,
@@ -782,7 +782,7 @@ export function ZeroEmptyUnion(value) {
 }
 
 export function WriteEmptyUnion(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -888,9 +888,9 @@ export function ReadHoldsEmptyUnion(stream, value, nested) {
 export class Strs {
   constructor() {
     this.lead = 0;
-    this.s = new Uint8Array(8); // string(8): max length, used length beside it (SPEC §4.7)
+    this.s = new globalThis.Uint8Array(8); // string(8): max length, used length beside it (SPEC §4.7)
     this.sLength = 0;
-    this.b = new Uint8Array(8); // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
+    this.b = new globalThis.Uint8Array(8); // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
     this.bLength = 0;
     this.tail = 0;
   }
@@ -929,7 +929,7 @@ export function WriteStrs(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.sLength;
@@ -942,7 +942,7 @@ export function WriteStrs(stream, value) {
   if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
-  if (!Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.bLength;
@@ -995,7 +995,7 @@ export function ReadStrs(stream, value, nested) {
 export class ArrNested {
   constructor() {
     this.lead = 0;
-    this.items = Array.from({ length: 4 }, () => new Eleven());
+    this.items = globalThis.Array.from({ length: 4 }, () => new Eleven());
     this.itemsCount = 0;
     this.tail = 0;
   }
@@ -1035,7 +1035,7 @@ export function WriteArrNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
