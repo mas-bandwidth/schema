@@ -1755,6 +1755,11 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
 end
 
 local function read_array(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
+  -- the array is a container one level below the table holding it, counted toward the cap even when empty (FL-12)
+  if depth + 1 > MAX_DEPTH then
+    inp.bad = true
+    return false
+  end
   if peek(inp) ~= "[" then
     inp.bad = true
     return false
@@ -1989,7 +1994,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       if seen_keys[name] then dup_unknown = true end
       seen_keys[name] = true
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       if seen[slot] then report.repeatedKey = report.repeatedKey + 1 end
       seen[slot] = true
@@ -2055,7 +2060,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= "z" then
       report.kindChanged = report.kindChanged + 1

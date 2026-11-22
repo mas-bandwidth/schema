@@ -1250,6 +1250,8 @@ local function walk_text_bytes(T: any, e: any, x: any): number
 end
 
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
+  -- the array is a container one level below the table holding it, counted toward the cap even when empty (FL-12)
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -1446,7 +1448,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
       if seen_unknown[name] then inp.bad = true; return false end
       seen_unknown[name] = true
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph, true) then return false end
+      if not skip_value(inp, depth + 2, graph, true) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
@@ -1492,7 +1494,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph, true) then return nil end
+    if not skip_value(inp, depth + 2, graph, true) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= 'z' then
       report.kindMismatch = report.kindMismatch + 1
