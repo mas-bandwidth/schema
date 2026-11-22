@@ -2918,9 +2918,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         graphdemo_table_json_set_count( base, f, placed );
-        /* A UNION ARM'S COUNTED [A..B] HOLDS A (ruling R10): fewer elements
-           than A refuse the read as more than B do. array_min is the arm's
-           A, and 0 on every other field. */
+        /* A COUNTED [A..B] HOLDS A (ruling R10), as a plain field and in a
+           union arm: fewer elements than A refuse the read as more than B
+           do. array_min is the field's A, and 0 on every other field. */
         if ( f->counted && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }

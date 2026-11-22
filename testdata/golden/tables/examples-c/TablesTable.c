@@ -2918,9 +2918,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
-        /* A UNION ARM'S COUNTED [A..B] HOLDS A (ruling R10): fewer elements
-           than A refuse the read as more than B do. array_min is the arm's
-           A, and 0 on every other field. */
+        /* A COUNTED [A..B] HOLDS A (ruling R10), as a plain field and in a
+           union arm: fewer elements than A refuse the read as more than B
+           do. array_min is the field's A, and 0 on every other field. */
         if ( f->counted && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
@@ -3752,7 +3752,7 @@ static const tabledemo_table_field_info_t schema_tabledemo_min_arm_fix_fields_[]
 const tabledemo_table_type_info_t schema_tabledemo_min_arm_fix_info_ = { "MinArmFix", (uint32_t) sizeof( tabledemo_min_arm_fix_t ), 1, schema_tabledemo_min_arm_fix_fields_, schema_tabledemo_min_arm_fix_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_min_plain_fix_fields_[] = {
-    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, 0, (uint32_t) offsetof( tabledemo_min_plain_fix_t, few ), (uint32_t) sizeof( ( (tabledemo_min_plain_fix_t *) 0 )->few[0] ), (uint32_t) offsetof( tabledemo_min_plain_fix_t, few_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, 2, (uint32_t) offsetof( tabledemo_min_plain_fix_t, few ), (uint32_t) sizeof( ( (tabledemo_min_plain_fix_t *) 0 )->few[0] ), (uint32_t) offsetof( tabledemo_min_plain_fix_t, few_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_min_plain_fix_info_ = { "MinPlainFix", (uint32_t) sizeof( tabledemo_min_plain_fix_t ), 1, schema_tabledemo_min_plain_fix_fields_, schema_tabledemo_min_plain_fix_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

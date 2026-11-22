@@ -352,7 +352,10 @@ static int surface_framing( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        ok = ( codec->load_variable != NULL ? codec->load_variable : codec->load )( value, wire, (int64_t) bytes, &report ) && !report.refused;
+        /* a form-3 file at a fixed root (the counted-minimum rows) is read by
+           the root's own fixed load, so its verdict is the fixed form's rule
+           and never a vacuous previous_form refusal from the variable load */
+        ok = ( codec->load_variable != NULL && !( bytes > 0 && wire[0] == 3 ) ? codec->load_variable : codec->load )( value, wire, (int64_t) bytes, &report ) && !report.refused;
         free( wire );
         if ( !answer_read( out, f->field[1], codec, value, ok, !no_value ) ) { return 1; }
     }

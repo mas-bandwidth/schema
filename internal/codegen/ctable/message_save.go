@@ -107,7 +107,9 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.messageElement(f, e.Shape.Elem, e.Shape.Inner, expr+"[i]", ind+"  ")
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
-		if f.Array == ir.ArrayCounted {
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			g.writeCountBound(count, f, ind)
+		} else if f.Array == ir.ArrayCounted {
 			g.writeStorageBound(count, f.ArrayBound, ind)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
@@ -195,9 +197,6 @@ func (g *tableGen) emitMessageUnionSave(un *ir.Union) {
 					count = armValue("(*value)", v) + "_length"
 				}
 			}
-			if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
-				g.writeCountBound(count, v.F, "  ")
-			}
 			g.messageValue(v.F, e, armValue("(*value)", v), count, "  ")
 		}
 		g.pf("  break; }\n")
@@ -221,6 +220,12 @@ func (g *tableGen) messageFieldPresence(f *ir.Field, expr string) (string, strin
 		count = expr + "_count"
 		g.writeStorageBound(count, f.ArrayBound, " ")
 		condition = count + ">0"
+		if f.BornCount() > 0 && !f.Required && !f.Type.Optional {
+			// the birth value, A default elements, is elided like any
+			// default (docs/SPEC-TABLES.md §3.3(a), ruling R10); the reader
+			// runs this same predicate and refuses it stored
+			condition = g.countedBirthRides(f, expr, " ", true)
+		}
 	case f.Type.Optional:
 		condition = expr + "_present"
 	case f.KeyEnum != "":

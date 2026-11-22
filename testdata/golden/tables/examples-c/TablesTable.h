@@ -6030,6 +6030,7 @@ static SCHEMA_UNUSED void schema_tabledemo_root_config_reset_raw_( void * storag
 static SCHEMA_UNUSED void tabledemo_min_arm_fix_reset( tabledemo_min_arm_fix_t * value )
 {
     memset( &value->pick, 0, sizeof( value->pick ) );
+    value->pick.as.few.value_count = 2; /* the arm's birth count (ruling R10) */
     value->pick.type = 0;
 }
 
@@ -6038,7 +6039,7 @@ static SCHEMA_UNUSED void schema_tabledemo_min_arm_fix_reset_raw_( void * storag
 static SCHEMA_UNUSED void tabledemo_min_plain_fix_reset( tabledemo_min_plain_fix_t * value )
 {
     memset( value->few, 0, sizeof( value->few ) );
-    value->few_count = 0;
+    value->few_count = 2;
 }
 
 static SCHEMA_UNUSED void schema_tabledemo_min_plain_fix_reset_raw_( void * storage ) { tabledemo_min_plain_fix_reset( (tabledemo_min_plain_fix_t *) storage ); }
@@ -6154,7 +6155,6 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_message_save_(tabledemo_
  case TABLEDEMO_MIN_PICK_TYPE_FEW: {
   tabledemo_table_bit_put(w,28,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 2 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
-  schema_assert( 0 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)(*value).as.few.value_count-2,2);
   { int32_t i;
   for(i=0;i<(*value).as.few.value_count;i++) {
@@ -10328,7 +10328,7 @@ static SCHEMA_UNUSED int tabledemo_min_arm_fix_load_messages(tabledemo_min_arm_f
 }
 static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_wire_few_( tabledemo_table_writer_t * w, const tabledemo_min_plain_fix_t * value )
 {
-    schema_assert( 0 <= value->few_count && value->few_count <= 4 );
+    schema_assert( 2 <= value->few_count && value->few_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 8 ); tabledemo_table_writer_leb( w, (uint64_t) value->few_count );
     for ( i = 0; i < value->few_count; i++ )
@@ -10342,8 +10342,13 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body( tabledemo_table_writ
 {
     (void) value;
     { /* few */
-        schema_assert( 0 <= value->few_count && value->few_count <= 4 );
-        if ( value->few_count > 0 )
+        schema_assert( 2 <= value->few_count && value->few_count <= 4 );
+        int rides = value->few_count != 2; int32_t born_i;
+        for ( born_i = 0; !rides && born_i < 2; born_i++ )
+        {
+            rides = !( value->few[born_i] == 0 );
+        }
+        if ( rides )
         {
             tabledemo_table_writer_header_at( w, 136, 0xdcc67d18feea8c19ull, 14 );
             if ( w->buffer == NULL )
@@ -10365,6 +10370,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body( tabledemo_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_write_admits_( const tabledemo_min_plain_fix_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_measure( const tabledemo_min_plain_fix_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -10463,6 +10469,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_body( tabledemo_table_read
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
+                if ( value->few_count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                 break;
             }
             case UINT64_MAX:
@@ -10501,9 +10508,15 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_message_body(tabledemo_tab
  (void)value;
  { /* few */
  schema_assert( 0 <= value->few_count && value->few_count <= 4 );
- if(value->few_count>0) {
+ int rides = value->few_count != 2;
+ int32_t born_i;
+ for ( born_i = 0; !rides && born_i < 2; born_i++ )
+ {
+     rides = !( value->few[born_i] == 0 );
+ }
+ if(rides) {
   tabledemo_table_bit_put(w,28,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  schema_assert( 0 <= value->few_count && value->few_count <= 4 );
+  schema_assert( 2 <= value->few_count && value->few_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->few_count-2,2);
   { int32_t i;
   for(i=0;i<value->few_count;i++) {
@@ -10526,7 +10539,11 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_measure_messages(const tabl
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_min_plain_fix_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_min_plain_fix_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_min_plain_fix_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10543,7 +10560,11 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_save_messages(const tablede
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_min_plain_fix_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_min_plain_fix_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_min_plain_fix_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10594,12 +10615,19 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_message_body(tabledemo_tab
   }if(walk<n && !tabledemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->few_count=(int32_t)kept;
  }
+ if(value->few_count<2)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
  tabledemo_table_bit_writer_t default_writer=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->few_count && value->few_count <= 4 );
- if(!(value->few_count>0))goto damaged;
+ int rides = value->few_count != 2;
+ int32_t born_i;
+ for ( born_i = 0; !rides && born_i < 2; born_i++ )
+ {
+     rides = !( value->few[born_i] == 0 );
+ }
+ if(!(rides))goto damaged;
  }
  break;
  }
@@ -11774,7 +11802,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
     {
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
-            schema_assert( value->pick.as.few.value_count >= 0 && value->pick.as.few.value_count <= 4 ); /* the declared count is the bound (§3.4) */
+            schema_assert( value->pick.as.few.value_count >= 2 && value->pick.as.few.value_count <= 4 ); /* the declared [A..B] is the bound (§3.4) */
             tabledemo_table_fixed_put32( b + 1, (uint32_t) value->pick.as.few.value_count );
             {
                 int64_t i;
@@ -11799,7 +11827,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_plain_fix_fixed_write_body_( uint8_t * b, const tabledemo_min_plain_fix_t * value )
 {
     (void) b; (void) value;
-    schema_assert( value->few_count >= 0 && value->few_count <= 4 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->few_count >= 2 && value->few_count <= 4 ); /* the declared [A..B] is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->few_count );
     {
         int64_t i;
@@ -12011,9 +12039,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
             if ( value->pick.as.few.value_count < 2 ) { (*out_of_range)++; }
+            {
+                int64_t i;
+                for ( i = 0; i < (int64_t) value->pick.as.few.value_count; ++i )
+                {
+                }
+            }
             break;
         }
         default: break;
+    }
+}
+
+/* MinPlainFix's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_plain_fix_fixed_clamp_body_( tabledemo_min_plain_fix_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->few_count < 2 ) { (*out_of_range)++; }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->few_count; ++i )
+        {
+        }
     }
 }
 
@@ -12131,9 +12178,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
             if ( value->pick.as.few.value_count < 2 ) { (*out_of_range)++; }
+            {
+                int64_t i;
+                for ( i = 0; i < ( value->pick.as.few.value_count >= 0 && value->pick.as.few.value_count <= 4 ? (int64_t) value->pick.as.few.value_count : 0 ); ++i )
+                {
+                }
+            }
             break;
         }
         default: break;
+    }
+}
+
+/* MinPlainFix's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_plain_fix_fixed_write_check_body_( const tabledemo_min_plain_fix_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->few_count < 2 ) { (*out_of_range)++; }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->few_count >= 0 && value->few_count <= 4 ? (int64_t) value->few_count : 0 ); ++i )
+        {
+        }
     }
 }
 
@@ -15751,6 +15817,38 @@ static SCHEMA_UNUSED int64_t tabledemo_min_arm_fix_fixed_load( tabledemo_min_arm
     return count;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MinPlainFix holds is
+   one its declaration admits. Every writer of MinPlainFix asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_write_admits_( const tabledemo_min_plain_fix_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_min_plain_fix_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_fixed_clamp_( tabledemo_min_plain_fix_t * value, tabledemo_table_report_t * report )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_min_plain_fix_fixed_clamp_body_( value, &out_of_range, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `damaged`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+    return 0;
+}
+
 /* ---- MinPlainFix, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -15852,6 +15950,10 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_fixed_save( const tabledemo
        the header and layout are never written with no record behind them, and
        an empty batch is the programmer's error, held as a debug assert (§5.1). */
     schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_min_plain_fix_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_min_plain_fix_fixed_hash );
@@ -15990,6 +16092,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_fixed_load( tabledemo_min_p
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_widened = report->widened;
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -16054,6 +16157,17 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_fixed_load( tabledemo_min_p
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_min_plain_fix_reset( values + j ); } return -1; }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_min_plain_fix_fixed_clamp_( values + k, report ) != 0 )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { tabledemo_min_plain_fix_reset( values + j ); }
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -18997,7 +19111,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_wire_few__retain( tabled
 {
     (void)retention;
 
-    schema_assert( 0 <= value->few_count && value->few_count <= 4 );
+    schema_assert( 2 <= value->few_count && value->few_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 8 );
     tabledemo_table_writer_leb( w, (uint64_t) value->few_count );
@@ -19016,8 +19130,14 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body_retain( tabledemo_tab
     tabledemo_table_retain_walk_t body_keep=retention;
     { /* few */
     retention=tabledemo_table_retain_step(body_keep,0,0);
-        schema_assert( 0 <= value->few_count && value->few_count <= 4 );
-        if ( value->few_count > 0 )
+        schema_assert( 2 <= value->few_count && value->few_count <= 4 );
+        int rides = value->few_count != 2;
+        int32_t born_i;
+        for ( born_i = 0; !rides && born_i < 2; born_i++ )
+        {
+            rides = !( value->few[born_i] == 0 );
+        }
+        if ( rides )
         {
             tabledemo_table_retain_writer_id( w, 0xdcc67d18feea8c19ull , retention);
             tabledemo_table_writer_put8( w, 14 );
@@ -19166,6 +19286,8 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_body_retain( tabledemo_tab
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         }
                     }
+                }
+                if ( value->few_count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
                 }
                 break;
             }
@@ -20056,6 +20178,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_body_pack_(struct tabled
 {
     const tabledemo_min_plain_fix_t * value=(const tabledemo_min_plain_fix_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
+    schema_assert( 2 <= value->few_count && value->few_count <= 4 );
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->few_count && cook_i1<4;cook_i1++) {
         tabledemo_table_cook_put(at+0+cook_i1*4,(uint64_t)value->few[cook_i1],4,order);
     } }

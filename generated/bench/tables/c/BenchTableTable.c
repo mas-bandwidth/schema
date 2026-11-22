@@ -2918,9 +2918,9 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         benchtable_table_json_set_count( base, f, placed );
-        /* A UNION ARM'S COUNTED [A..B] HOLDS A (ruling R10): fewer elements
-           than A refuse the read as more than B do. array_min is the arm's
-           A, and 0 on every other field. */
+        /* A COUNTED [A..B] HOLDS A (ruling R10), as a plain field and in a
+           union arm: fewer elements than A refuse the read as more than B
+           do. array_min is the field's A, and 0 on every other field. */
         if ( f->counted && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
@@ -3220,7 +3220,7 @@ static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_
     { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, world_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, &schema_benchtable_table_mixed_world_time_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, &schema_benchtable_table_mixed_frame_tick_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, server_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, 0, (uint32_t) offsetof( benchtable_table_mixed_t, entities ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, 1, (uint32_t) offsetof( benchtable_table_mixed_t, entities ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, 0, (uint32_t) offsetof( benchtable_table_mixed_t, stats ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, game_event ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 0, 4, 0, (uint32_t) offsetof( benchtable_table_mixed_t, loadout ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },

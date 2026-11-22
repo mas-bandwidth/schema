@@ -279,7 +279,12 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4), exactly as the reference does it.
-		g.fixedWriteBound(fmt.Sprintf("%s%s_count", val, f.Name), f.ArrayBound, "count", ind)
+		if f.ArrayMin > 0 {
+			// a counted [A..B] is written holding A (ruling R10)
+			g.pf("%sschema_assert( %s%s_count >= %d && %s%s_count <= %d ); /* the declared [A..B] is the bound (§3.4) */\n", ind, val, f.Name, f.ArrayMin, val, f.Name, f.ArrayBound)
+		} else {
+			g.fixedWriteBound(fmt.Sprintf("%s%s_count", val, f.Name), f.ArrayBound, "count", ind)
+		}
 		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_count );\n", ind, buf, base, val, f.Name)
 		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s%s_count", val, f.Name), buf, val+f.Name, indent)
 	case f.Type.Kind == ir.TString:
@@ -1276,14 +1281,15 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("    return 0;\n}\n\n")
 }
 
-// cArmMin is whether a union arm's payload is a counted [A..B] with A above
-// zero, which the bounds pass holds to A (ruling R10).
+// cArmMin is whether a field or a union arm's payload is a counted [A..B]
+// with A above zero, which the bounds pass holds to A (ruling R10).
 func cArmMin(f *ir.Field) bool {
 	return f.Array == ir.ArrayCounted && f.ArrayMin > 0
 }
 
-// cFixedClampNeeded is ir.TableFixedClampNeeded and one bound more: a union
-// arm's counted [A..B] with A above zero, at any depth, is held to A by the
+// cFixedClampNeeded is ir.TableFixedClampNeeded and one bound more: a
+// counted [A..B] with A above zero, a field or a union arm at any depth, is
+// held to A by the
 // bounds pass (ruling R10), because the runtime's count op clamps only to
 // [0, B]. It is C's own predicate so the other ports' emitted text is not
 // moved.
@@ -1313,7 +1319,7 @@ func cFixedClampNeededField(f *ir.Field) bool {
 }
 
 func cFixedClampNeededFieldSeen(f *ir.Field, seen map[string]bool) bool {
-	if ir.TableFixedClampNeededField(f) {
+	if cArmMin(f) || ir.TableFixedClampNeededField(f) {
 		return true
 	}
 	if f.Type.Kind != ir.TNamed {
@@ -1373,6 +1379,14 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
+		if cArmMin(f) {
+			// A COUNTED [A..B] HOLDS A (docs/SPEC-TABLES.md §3.4, ruling
+			// R10), a field or an arm: the runtime's count op holds [0, B],
+			// so a count below A is out of range here, over the storage the
+			// copy landed, for either plan. In the write check it is the same
+			// rule, asserted.
+			g.pf("%sif ( %s%s_count < %d ) { (*out_of_range)++; }\n", strings.Repeat(" ", indent), val, f.Name, f.ArrayMin)
+		}
 		count := fmt.Sprintf("(int64_t) %s%s_count", val, f.Name)
 		if g.fixedWriteCheck {
 			// the walk stays inside the array; the count's own bound is the
@@ -1415,13 +1429,6 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 		arm.Name = "value"
 	} else {
 		arm.Name = v.Name
-	}
-	if cArmMin(&arm) {
-		// A COUNTED [A..B] HOLDS A IN AN ARM (docs/SPEC-TABLES.md §3.4,
-		// ruling R10): the runtime's count op holds [0, B], so a count below
-		// A is out of range here, over the storage the copy landed, for
-		// either plan. In the write check it is the same rule, asserted.
-		g.pf("%sif ( %s%s_count < %d ) { (*out_of_range)++; }\n", strings.Repeat(" ", indent), val, arm.Name, arm.ArrayMin)
 	}
 	if cFixedClampNeededField(&arm) {
 		g.emitFixedClampPayload(&arm, val, indent)

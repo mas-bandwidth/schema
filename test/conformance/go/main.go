@@ -350,8 +350,12 @@ func surfaceFraming(lines []line, out string) error {
 		}
 		value := c.fresh()
 		var rep report
+		// a fixed root's framing battery is form-1 files read by the variable
+		// load; a form-3 file there (the counted-minimum rows) is read by the
+		// root's own fixed load, so its verdict is the fixed form's rule and
+		// never a vacuous previous_form refusal
 		read := c.load
-		if c.variableLoad != nil {
+		if c.variableLoad != nil && (len(wire) == 0 || wire[0] != 3) {
 			read = c.variableLoad
 		}
 		ok := read(value, wire, &rep)

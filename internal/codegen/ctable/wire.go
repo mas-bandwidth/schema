@@ -783,6 +783,49 @@ func (g *tableGen) writeCountBound(count string, f *ir.Field, ind string) {
 	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, count, count, f.ArrayBound)
 }
 
+// writeCountBoundPresent is a plain counted field's write check: [A..B] when
+// A is above zero (ruling R10), the storage bound otherwise. An optional
+// field's count is checked only while it is present, the one state its
+// writer stores.
+func (g *tableGen) writeCountBoundPresent(expr string, f *ir.Field, ind string) {
+	if f.ArrayMin <= 0 {
+		g.writeStorageBound(expr+"_count", f.ArrayBound, ind)
+		return
+	}
+	if f.Type.Optional {
+		g.pf("%sschema_assert( !%s_present || ( %d <= %s_count && %s_count <= %d ) );\n", ind, expr, f.ArrayMin, expr, expr, f.ArrayBound)
+		return
+	}
+	g.writeCountBound(expr+"_count", f, ind)
+}
+
+// countedBirthRides is the elision test of a counted [A..B] with A above
+// zero (docs/SPEC-TABLES.md §3.3(a), §3.4, ruling R10): its birth value, A
+// default elements, is the field's default and is elided like any default,
+// as the Go oracle's emitCountedBirthRides does. It answers the C condition
+// that says the field rides. message picks the message form's default probe
+// for a table element; the wire form's otherwise.
+func (g *tableGen) countedBirthRides(f *ir.Field, expr, ind string, message bool) string {
+	born := f.BornCount()
+	g.pf("%sint rides = %s_count != %d; int32_t born_i;\n", ind, expr, born)
+	g.pf("%sfor ( born_i = 0; !rides && born_i < %d; born_i++ )\n%s{\n", ind, born, ind)
+	elem := expr + "[born_i]"
+	switch {
+	case ir.TableWireScalarKind(f) == tkTable && message:
+		g.pf("%s    TableBitWriter probe=*w; probe.buffer=NULL; probe.capacity=INT64_MAX; probe.bits=0; probe.check_default=1;\n", ind)
+		g.pf("%s    if ( !%s( &probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_message_body"), elem)
+		g.pf("%s    rides = probe.bits > kTableMessageRefBitsHere;\n", ind)
+	case ir.TableWireScalarKind(f) == tkTable:
+		g.pf("%s    TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;\n", ind)
+		g.pf("%s    if ( !%s( &default_probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_body"), elem)
+		g.pf("%s    table_writer_rewind( &default_probe );\n%s    rides = default_probe.offset > 1;\n", ind, ind)
+	default:
+		g.pf("%s    rides = !( %s );\n", ind, g.wireDefaultEquals(f, elem))
+	}
+	g.pf("%s}\n", ind)
+	return "rides"
+}
+
 // unitHasWriteBound reports a unit whose writers carry a debug-only write
 // check — the fixed form's bounds and value checks, or a storage bound
 // of the variable or message form — so its header takes <assert.h> and
@@ -866,7 +909,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
 		g.writeStorageBound(expr+"_length", f.Type.Size, "    ")
 	} else if f.Array == ir.ArrayCounted {
-		g.writeStorageBound(expr+"_count", f.ArrayBound, "    ")
+		g.writeCountBoundPresent(expr, f, "    ")
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -1040,8 +1083,11 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.writeStorageBound(expr+"_length", f.Type.Size, "        ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
-			g.writeStorageBound(expr+"_count", f.ArrayBound, "        ")
+			g.writeCountBoundPresent(expr, f, "        ")
 			condition = expr + "_count > 0"
+			if f.BornCount() > 0 {
+				condition = g.countedBirthRides(f, expr, "        ", false)
+			}
 		case f.KeyEnum != "":
 			if f.Required {
 				condition = "1"

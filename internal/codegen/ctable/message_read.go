@@ -466,6 +466,11 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 			count = "value->" + f.Name + "_length"
 		}
 		g.messageReadValue(f, dst, count, "entry", " ")
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below A refuses (ruling R10): the announced shape is the
+			// WRITER's, and its minimum need not be ours
+			g.pf(" if(%s<%d)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", count, f.ArrayMin)
+		}
 		if !f.Required && !f.Type.Optional {
 			// Quantization can project a lawful non-default writer value to the
 			// reader's default. Such payloads provide no default-value proof.

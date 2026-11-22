@@ -317,7 +317,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		} else {
 			g.pf("    memset(value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    value->%s_count=0;\n", f.Name)
+				g.pf("    value->%s_count=%d;\n", f.Name, f.BornCount())
 			}
 		}
 		return
@@ -339,7 +339,9 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
-		g.pf("    value->%s_count = 0;\n", f.Name)
+		// a counted [A..B] is born holding A default elements (docs/SPEC-TABLES.md
+		// §3.4, ruling R10), so a fresh value is one a writer may save
+		g.pf("    value->%s_count = %d;\n", f.Name, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne("value->"+f.Name, typ, f)
 	default:
@@ -375,6 +377,16 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		g.pf("    memset( &%s, 0, sizeof( %s ) );\n", expr, expr)
 		for _, v := range un.Variants {
 			g.emitTableResetArm(expr, v)
+		}
+		// SELECTING A COUNTED [A..B] ARM ESTABLISHES IT AT COUNT A
+		// (docs/SPEC-TABLES.md §4.6, ruling R10), as the Go oracle's arm
+		// default does: the count is stated after every arm's reset, since
+		// the arms share their storage, so a reset value whose tag is then
+		// set to the arm holds A default elements, a value a writer saves.
+		for _, v := range un.Variants {
+			if !v.Void() && v.F != nil && v.F.Array == ir.ArrayCounted && v.F.BornCount() > 0 {
+				g.pf("    %s_count = %d; /* the arm's birth count (ruling R10) */\n", armValue(expr, v), v.F.BornCount())
+			}
 		}
 		g.pf("    %s.type = 0;\n", expr)
 		return
@@ -977,12 +989,9 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	// a union ARM's counted [A..B] A, which the text read holds as the wire
-	// does (ruling R10); 0 on a plain field, whose minimum C does not yet hold
-	arrayMin := int64(0)
-	if g.armDescriptor && f.Array == ir.ArrayCounted {
-		arrayMin = f.ArrayMin
-	}
+	// a counted [A..B]'s A, which the text read holds as the wire does
+	// (ruling R10), on a plain field and in a union arm alike
+	arrayMin := f.BornCount()
 	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound, arrayMin,

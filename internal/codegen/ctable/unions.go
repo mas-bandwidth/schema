@@ -306,9 +306,7 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 		if armCompanioned(v) {
 			member += ".value"
 		}
-		g.armDescriptor = true
 		g.emitFieldDescriptorAt(st, &f, "", member)
-		g.armDescriptor = false
 		g.pf("};\n")
 	}
 }

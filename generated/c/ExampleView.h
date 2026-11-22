@@ -1043,7 +1043,7 @@ static SCHEMA_UNUSED void example_probe_sample_reset( example_probe_sample_t * v
     value->target_id = 0;
     value->idle_ticks = 0;
     memset( value->samples, 0, sizeof( value->samples ) );
-    value->samples_count = 0;
+    value->samples_count = 1;
 }
 
 static SCHEMA_UNUSED void schema_example_probe_sample_reset_raw_( void * storage ) { example_probe_sample_reset( (example_probe_sample_t *) storage ); }

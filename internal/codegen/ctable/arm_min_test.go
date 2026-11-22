@@ -1,9 +1,11 @@
 package ctable
 
-// TestCCountedMinimumHoldsInAnArm holds ruling R10 on the C leg: a counted
-// [A..B] holds A wherever it sits, a union arm included (docs/SPEC-TABLES.md
-// §3.4; the shared rows are json-hostile arm-min-fix-* and framing
-// armmin_fix_count_*).
+// TestCCountedMinimumHolds holds ruling R10 on the C leg: a counted [A..B]
+// holds A wherever it sits, as a plain field and in a union arm
+// (docs/SPEC-TABLES.md §3.4; the shared rows are json-hostile arm-min-fix-*
+// and plain-min-*, and framing armmin_fix_count_* and plainmin_fix_count_*).
+// Each case runs once for the arm and once for the plain field: the probe
+// reaches the field through the SHAPE macros the case puts in front of it.
 //
 // THE READ SIDE, in every form: a probe built with NDEBUG (so the debug-only
 // write asserts are gone) writes a count of 1 and of 0 through each writer and
@@ -44,22 +46,45 @@ union MinPick { few [..4]uint32
 fixed table Holder { pick MinPick }
 `
 
+// the arm's SHAPE: how the probe reaches the counted array
+const cArmMinShape = `#define PREP( v ) ( (v)->pick.type = MIN_PICK_TYPE_FEW )
+#define COUNT( v ) ( (v)->pick.as.few.value_count )
+#define ELEM( v ) ( (v)->pick.as.few.value )
+#define TEXT "{\"pick\":{\"few\":%s}}"
+`
+
+// the same counted [A..B] as a plain field, and its [..4] writer
+const cPlainMinSchema = `package plainmin
+fixed table Holder { few [2..4]uint32 }
+`
+
+const cPlainMinLooseSchema = `package plainmin
+fixed table Holder { few [..4]uint32 }
+`
+
+const cPlainMinShape = `#define PREP( v ) ( (void) (v) )
+#define COUNT( v ) ( (v)->few_count )
+#define ELEM( v ) ( (v)->few )
+#define TEXT "{\"few\":%s}"
+`
+
 const cArmMinProbe = `#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "HEADER"
+SHAPE
 
-static uint8_t buf[1 << 16];
+static uint8_t buf[1 << 16], again[1 << 16];
 static TableFixedEntry plan[4096];
 
-/* a Holder whose arm holds the count under test */
+/* a Holder whose counted array holds the count under test */
 static void make( Holder * v, int32_t n )
 {
     holder_reset( v );
-    v->pick.type = MIN_PICK_TYPE_FEW;
-    v->pick.as.few.value_count = n;
-    v->pick.as.few.value[0] = 7;
-    v->pick.as.few.value[1] = 9;
+    PREP( v );
+    COUNT( v ) = n;
+    ELEM( v )[0] = 7;
+    ELEM( v )[1] = 9;
 }
 
 static int64_t spill( const char * path, const uint8_t * data, int64_t size )
@@ -112,7 +137,7 @@ int main( int argc, char ** argv )
             {
                 char text[128];
                 const char * list = n == 0 ? "[]" : n == 1 ? "[7]" : "[7,9]";
-                snprintf( text, sizeof( text ), "{\"pick\":{\"few\":%s}}", list );
+                snprintf( text, sizeof( text ), TEXT, list );
                 memset( &r, 0, sizeof( r ) );
                 got = holder_from_json( &back[0], text, (int64_t) strlen( text ), &r ) && !r.refused;
                 if ( got != want ) { printf( "json count %d: read=%d\n", (int) n, got ); bad++; }
@@ -158,6 +183,28 @@ int main( int argc, char ** argv )
         return 0;
     }
 
+    /* A FRESH VALUE IS LAWFUL: reset leaves the field born, A default
+       elements, and every writer saves it in a debug build; the wire and
+       fixed forms read it back born. */
+    if ( strcmp( argv[1], "fresh" ) == 0 )
+    {
+        TableReport ignored;
+        holder_reset( &v );
+        memset( &ignored, 0, sizeof( ignored ) );
+        size = holder_save( &v, buf, sizeof( buf ) );
+        memset( &r, 0, sizeof( r ) );
+        if ( size <= 0 || !holder_load( &back[0], buf, size, &r ) || r.refused || holder_save( &back[0], again, sizeof( again ) ) != size || memcmp( again, buf, (size_t) size ) != 0 ) { printf( "wire: a fresh value did not round-trip\n" ); bad++; }
+        size = holder_fixed_save( &v, 1, buf, sizeof( buf ) );
+        memset( &r, 0, sizeof( r ) );
+        if ( size <= 0 || holder_fixed_load( back, 4, buf, size, plan, 4096, NULL, &r ) != 1 || r.refused ) { printf( "fixed: a fresh value did not round-trip\n" ); bad++; }
+        if ( holder_save_messages( &v, 1, buf, sizeof( buf ), &ignored ) <= 0 ) { printf( "message: a fresh value did not save\n" ); bad++; }
+        if ( !holder_cook( &v, buf, sizeof( buf ), (TableByteOrder) 0 ) ) { printf( "cook: a fresh value did not save\n" ); bad++; }
+        if ( holder_to_json( &v, (char *) buf, sizeof( buf ) ) < 0 ) { printf( "json: a fresh value did not save\n" ); bad++; }
+        if ( bad ) { return 1; }
+        printf( "a fresh value saves in every form\n" );
+        return 0;
+    }
+
     /* THE WRITE SIDE: one writer per process, handed a count below A. */
     if ( strcmp( argv[1], "write" ) == 0 && argc == 3 )
     {
@@ -186,8 +233,9 @@ int main( int argc, char ** argv )
 `
 
 // cArmMinBuild generates src's C, compiles the probe beside it with the given
-// extra flags, and returns the program's path.
-func cArmMinBuild(t *testing.T, src, name string, flags ...string) string {
+// extra flags, and returns the program's path. shape is the SHAPE block, and
+// probe the program (cArmMinProbe when empty).
+func cArmMinBuild(t *testing.T, src, shape, probe, name string, flags ...string) string {
 	t.Helper()
 	cc := os.Getenv("CC")
 	if cc == "" {
@@ -223,7 +271,11 @@ func cArmMinBuild(t *testing.T, src, name string, flags ...string) string {
 	if header == "" {
 		t.Fatal("no Table.h was generated")
 	}
-	probe := strings.Replace(cArmMinProbe, "HEADER", header, 1)
+	if probe == "" {
+		probe = cArmMinProbe
+	}
+	probe = strings.Replace(probe, "HEADER", header, 1)
+	probe = strings.Replace(probe, "SHAPE", shape, 1)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -240,18 +292,30 @@ func cArmMinBuild(t *testing.T, src, name string, flags ...string) string {
 	return out
 }
 
-func TestCCountedMinimumHoldsInAnArm(t *testing.T) {
+func TestCCountedMinimumHolds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C probes")
+	for _, c := range []struct{ name, schema, loose, shape string }{
+		{"arm", cArmMinSchema, cArmMinLooseSchema, cArmMinShape},
+		{"plain", cPlainMinSchema, cPlainMinLooseSchema, cPlainMinShape},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			cCountedMinimumHolds(t, c.schema, c.loose, c.shape)
+		})
+	}
+}
+
+func cCountedMinimumHolds(t *testing.T, schema, looseSchema, shape string) {
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 
-	release := cArmMinBuild(t, cArmMinSchema, "release", "-DNDEBUG")
+	release := cArmMinBuild(t, schema, shape, "", "release", "-DNDEBUG")
 	if out, err := testproc.CommandContext(t, ctx, release, "read").CombinedOutput(); err != nil {
 		t.Fatalf("a read accepted a count below the minimum: %v\n%s", err, out)
 	}
 
-	loose := cArmMinBuild(t, cArmMinLooseSchema, "loose", "-DNDEBUG")
+	loose := cArmMinBuild(t, looseSchema, shape, "", "loose", "-DNDEBUG")
 	work := t.TempDir()
 	announce := filepath.Join(work, "loose.announce")
 	messages := filepath.Join(work, "loose.messages")
@@ -262,14 +326,17 @@ func TestCCountedMinimumHoldsInAnArm(t *testing.T) {
 		t.Fatalf("message: %v\n%s", err, out)
 	}
 
-	debug := cArmMinBuild(t, cArmMinSchema, "debug")
+	debug := cArmMinBuild(t, schema, shape, "", "debug")
+	if out, err := testproc.CommandContext(t, ctx, debug, "fresh").CombinedOutput(); err != nil {
+		t.Errorf("a fresh value is not lawful: %v\n%s", err, out)
+	}
 	for _, writer := range []string{"wire", "fixed", "message", "cook"} {
 		out, err := testproc.CommandContext(t, ctx, debug, "write", writer).CombinedOutput()
 		if err == nil || strings.Contains(string(out), "SAVED") {
-			t.Errorf("the %s writer produced an arm count below the minimum: %v\n%s", writer, err, out)
+			t.Errorf("the %s writer produced a count below the minimum: %v\n%s", writer, err, out)
 		}
 	}
 	if out, err := testproc.CommandContext(t, ctx, debug, "write", "json").CombinedOutput(); err != nil {
-		t.Errorf("the text writer did not refuse an arm count below the minimum: %v\n%s", err, out)
+		t.Errorf("the text writer did not refuse a count below the minimum: %v\n%s", err, out)
 	}
 }

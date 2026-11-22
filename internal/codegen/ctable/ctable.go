@@ -174,10 +174,7 @@ type tableGen struct {
 	// CHECK (docs/SPEC.md §5.1) rather than the read-side clamp: the same
 	// closed list of value bounds, over const storage a caller filled.
 	fixedWriteCheck bool
-	// armDescriptor is set while a union arm's field descriptor is emitted:
-	// its array_min column carries the arm's counted minimum (ruling R10).
-	armDescriptor bool
-	includes      map[string]bool // referenced files -> #include "<base>Table.h"
+	includes        map[string]bool // referenced files -> #include "<base>Table.h"
 }
 
 func (g *tableGen) canProbe(st *ir.Struct) bool {
@@ -202,7 +199,9 @@ func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
 			if ir.TableWireScalarKind(f) != tkTable {
 				continue
 			}
-			if f.KeyEnum != "" || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
+			// a counted [A..B] of table elements with A above zero probes
+			// each born element: its birth value is elided (ruling R10)
+			if f.KeyEnum != "" || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) || (f.Array == ir.ArrayCounted && f.BornCount() > 0) {
 				probed[f.Type.Name] = true
 			}
 		}

@@ -603,6 +603,15 @@ func framingVariableUnit(m *Manifest, key, root string) (*ir.Unit, error) {
 	return unit, nil
 }
 
+// framingFixedFile says a framing vector is a form-3 file. At a fixed root
+// such a file is read by the root's own fixed load, never the variable one:
+// the variable load refuses it as previous_form whatever its body holds, so
+// a row pinning a fixed-form rule (the counted-minimum rows, ruling R10)
+// would pass for any count.
+func framingFixedFile(wire []byte) bool {
+	return len(wire) > 0 && wire[0] == 3
+}
+
 // framingValues reads every framing vector with the oracle and writes the
 // value each readable row owes. A refused row owes none, so a value left at
 // its old path is pruned rather than re-pinned (layer 3's read-then-write).
@@ -618,8 +627,12 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		if err != nil {
 			return err
 		}
+		wire, err := os.ReadFile(fc.Wire)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
 		var fixed *ir.Struct
-		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared && !framingFixedFile(wire) {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
 				variable[key], err = framingVariableUnit(u.m, fc.Unit, fc.Root)
@@ -629,10 +642,6 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 			}
 			unit = variable[key]
 			fixed = unit.Tables[fc.Root]
-		}
-		wire, err := os.ReadFile(fc.Wire)
-		if err != nil {
-			return fmt.Errorf("%s: %w", fc.Name, err)
 		}
 		root := unit.Tables[fc.Root]
 		if root == nil {

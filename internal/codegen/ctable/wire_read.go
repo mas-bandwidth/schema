@@ -273,6 +273,12 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 
 func (g *tableGen) wireReadFieldAt(f *ir.Field, kind int, dst string) {
 	g.wireReadFieldPayload(f, kind, dst, "")
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// A COUNTED [A..B] HOLDS A (docs/SPEC-TABLES.md §3.4, ruling R10): a
+		// stored count below A refuses the read as one past B does. An
+		// absent field keeps the A default elements reset gave it.
+		g.pf("                if ( %s_count < %d ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", dst, f.ArrayMin)
+	}
 }
 func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded string) {
 	ind := "                "
