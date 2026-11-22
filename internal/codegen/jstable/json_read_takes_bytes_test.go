@@ -3,12 +3,13 @@ package jstable
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Every JSON read is handed BYTES and validates UTF-8 itself
@@ -115,7 +116,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "readbytes.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "readbytes.mjs")
+	cmd := testproc.Command(t, node, "readbytes.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

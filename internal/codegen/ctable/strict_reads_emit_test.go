@@ -34,7 +34,7 @@ func TestCStrictReadsEmitted(t *testing.T) {
 		{"a zero-width ranged run is arithmetic (C-1)", message, "elem.value_bits==0)return 1;"},
 		{"a skipped ranged value is held to its kind (C-2)", message, "static SCHEMA_UNUSED int table_message_ranged_holds("},
 		{"a field id is seen once by id, not by slot (C-3)", message, "if(!table_message_seen_once(seen,r->vocabulary,entry))goto damaged;"},
-		{"a slot carries the id's first slot (C-3)", message, "uint16_t first_slot;"},
+		{"a slot carries the id's first slot (C-3)", message, "uint16_t id_slot;"},
 		{"an unknown field is skipped as a field, arm 0 refused", message, "if(!table_message_skip_field(r,entry))goto damaged;"},
 		{"bytes(N) adds the announced Min", message, " n+=(uint64_t)"},
 		{"a named count past the announced Max is damage", message, " if(n>(uint64_t)"},

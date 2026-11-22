@@ -668,78 +668,78 @@ end
 
 -- type ArmsAgree (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmsAgree(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
-    if math.type(v.A) ~= "integer" then return false end
+    if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 2047 then return false end
     if not stream:serializeBits({ value = v.A }, 11) then return false end -- the declared bit width
   else
-    if math.type(v.B) ~= "integer" then return false end
+    if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 2047 then return false end
     if not stream:serializeBits({ value = v.B }, 11) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type ArmsDisagree (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmsDisagree(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
-    if math.type(v.A) ~= "integer" then return false end
+    if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 2047 then return false end
     if not stream:serializeBits({ value = v.A }, 11) then return false end -- the declared bit width
   else
-    if math.type(v.B) ~= "integer" then return false end
+    if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 7 then return false end
     if not stream:serializeBits({ value = v.B }, 3) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type ArmEmpty (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmEmpty(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
-    if math.type(v.A) ~= "integer" then return false end
+    if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 524287 then return false end
     if not stream:serializeBits({ value = v.A }, 19) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type ArmsNested (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmsNested(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 7 then return false end
   if not stream:serializeBits({ value = v.Lead }, 3) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Outer }) then return false end -- SPEC §4.3
   if v.Outer then
     if not stream:serializeBool({ value = v.Inner }) then return false end -- SPEC §4.3
     if v.Inner then
-      if math.type(v.X) ~= "integer" then return false end
+      if math.type(v.X) ~= "integer" or v.X < 0 or v.X > 536870911 then return false end
       if not stream:serializeBits({ value = v.X }, 29) then return false end -- the declared bit width
     else
-      if math.type(v.Y) ~= "integer" then return false end
+      if math.type(v.Y) ~= "integer" or v.Y < 0 or v.Y > 31 then return false end
       if not stream:serializeBits({ value = v.Y }, 5) then return false end -- the declared bit width
     end
   else
-    if math.type(v.Z) ~= "integer" then return false end
+    if math.type(v.Z) ~= "integer" or v.Z < 0 or v.Z > 8191 then return false end
     if not stream:serializeBits({ value = v.Z }, 13) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 63 then return false end
   if not stream:serializeBits({ value = v.Tail }, 6) then return false end -- the declared bit width
   return true
 end
 
 -- type ArmAlign (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmAlign(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
@@ -750,17 +750,17 @@ function _M.WriteArmAlign(stream, v)
     -- align, then the used bytes (SPEC §4.7)
     if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
   else
-    if math.type(v.B) ~= "integer" then return false end
+    if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 1023 then return false end
     if not stream:serializeBits({ value = v.B }, 10) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type ArmArray (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArmArray(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
@@ -772,24 +772,24 @@ function _M.WriteArmArray(stream, v)
       if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
     end
   else
-    if math.type(v.B) ~= "integer" then return false end
+    if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 511 then return false end
     if not stream:serializeBits({ value = v.B }, 9) then return false end -- the declared bit width
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type Narrow (SPEC §6.1: the wire order is the declared order)
 function _M.WriteNarrow(stream, v)
-  if math.type(v.N) ~= "integer" then return false end
+  if math.type(v.N) ~= "integer" or v.N < 0 or v.N > 7 then return false end
   if not stream:serializeBits({ value = v.N }, 3) then return false end -- the declared bit width
   return true
 end
 
 -- type Wide (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWide(stream, v)
-  if math.type(v.W) ~= "integer" then return false end
+  if math.type(v.W) ~= "integer" or v.W < 0 or v.W > 137438953471 then return false end
   if not stream:serializeBits64({ value = v.W }, 37) then return false end -- the declared bit width
   return true
 end
@@ -809,17 +809,17 @@ end
 
 -- type HoldsUneven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteHoldsUneven(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not _M.WriteUneven(stream, v.U) then return false end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 2047 then return false end
   if not stream:serializeBits({ value = v.Tail }, 11) then return false end -- the declared bit width
   return true
 end
 
 -- type ArrUneven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrUneven(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
@@ -827,14 +827,14 @@ function _M.WriteArrUneven(stream, v)
   for _i = 1, v.ItemsCount do
     if not _M.WriteUneven(stream, v.Items[_i]) then return false end
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 7 then return false end
   if not stream:serializeBits({ value = v.Tail }, 3) then return false end -- the declared bit width
   return true
 end
 
 -- type RegainAfterAlign (SPEC §6.1: the wire order is the declared order)
 function _M.WriteRegainAfterAlign(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
@@ -849,13 +849,13 @@ function _M.WriteRegainAfterAlign(stream, v)
   if not stream:serializeBits({ value = #v.S }, 3) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
-  if math.type(v.P) ~= "integer" then return false end
+  if math.type(v.P) ~= "integer" or v.P < 0 or v.P > 4294967295 then return false end
   if not stream:serializeBits({ value = v.P }, 32) then return false end -- the declared bit width
-  if math.type(v.Q) ~= "integer" then return false end
+  if math.type(v.Q) ~= "integer" or v.Q < 0 or v.Q > 536870911 then return false end
   if not stream:serializeBits({ value = v.Q }, 29) then return false end -- the declared bit width
-  if math.type(v.R) ~= "integer" then return false end
+  if math.type(v.R) ~= "integer" or v.R < 0 or v.R > 524287 then return false end
   if not stream:serializeBits({ value = v.R }, 19) then return false end -- the declared bit width
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 15 then return false end
   if not stream:serializeBits({ value = v.Tail }, 4) then return false end -- the declared bit width
   return true
 end

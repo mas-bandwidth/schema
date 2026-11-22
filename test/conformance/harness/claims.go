@@ -49,6 +49,24 @@ type caseInfo struct {
 type claimSet struct {
 	cases   map[string]map[string]caseInfo // surface -> expectation name -> info
 	carried map[string]map[string]bool     // lang -> construct -> carried
+	// ticks is the roadmap's ✅ cells (ticked.go): a case whose row is ticked
+	// for a leg is owed by it, whatever the carries registry says.
+	ticks tickSet
+}
+
+// owes answers whether lang owes one case of one surface — the carries
+// registry claims it, or its roadmap row is ticked for lang — and why.
+func (c *claimSet) owes(lang, surface, name string) (bool, string) {
+	if claimed, uses := c.claims(lang, surface, name); claimed {
+		return true, fmt.Sprintf("CLAIMED and answered ABSENT — the case's unit uses %s, which the %s target registers as carried "+
+			"(compiler/carries_%s.go), so the leg owes the answer (test/conformance/README.md, \"The nightly\")",
+			strings.Join(uses, ", "), lang, lang)
+	}
+	if row, ticked := c.ticks.tickedRow(lang, surface, c.cases[surface][name].class); ticked {
+		return true, fmt.Sprintf("TICKED and answered ABSENT — ROADMAP.md ticks %s for %s, so the leg owes the answer "+
+			"(test/conformance/README.md, \"The nightly\"; the rows each surface reads are caseRows in ticked.go)", row, lang)
+	}
+	return false, ""
 }
 
 // claims answers whether lang claims one case of one surface, and the
@@ -70,23 +88,34 @@ func (c *claimSet) claims(lang, surface, name string) (bool, []string) {
 	return true, info.uses
 }
 
-// enforce turns every CLAIMED case lang answered ABSENT into a failure. It
-// reads the outcomes scoreAnswer recorded, so it runs only over a surface the
-// leg ran: a surface left out of `list` or exited 2 on is a missing surface,
-// which the coverage table names, and not a claim about one case.
+// enforce turns every case lang OWES and answered ABSENT into a failure: one
+// the carries registry claims, or one whose roadmap row is ticked for lang
+// (ticked.go). Over a surface the leg ran it reads the outcomes scoreAnswer
+// recorded. Over a surface the leg left out of `list` or exited 2 on, a
+// claimed case is still only a missing surface, which the coverage table
+// names; a TICKED one is a failure, since the tick says the leg runs it.
 func (c *claimSet) enforce(lang, surface string, want []expectation, r *result) {
 	if lang == referenceLang {
 		return // the reference may not be absent at all (run.go), claim or none
+	}
+	if r.absent {
+		for _, e := range want {
+			if row, ticked := c.ticks.tickedRow(lang, surface, c.cases[surface][e.name].class); ticked {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"%s: TICKED and the surface answered ABSENT — ROADMAP.md ticks %s for %s, so the leg owes the answer "+
+						"(test/conformance/README.md, \"The nightly\"; the rows each surface reads are caseRows in ticked.go)",
+					e.name, row, lang))
+				r.mark(e.name, outcomeClaimedAbsent)
+			}
+		}
+		return
 	}
 	for _, e := range want {
 		if r.outcome[e.name] != outcomeAbsent {
 			continue
 		}
-		if claimed, uses := c.claims(lang, surface, e.name); claimed {
-			r.failures = append(r.failures, fmt.Sprintf(
-				"%s: CLAIMED and answered ABSENT — the case's unit uses %s, which the %s target registers as carried "+
-					"(compiler/carries_%s.go), so the leg owes the answer (test/conformance/README.md, \"The nightly\")",
-				e.name, strings.Join(uses, ", "), lang, lang))
+		if owed, why := c.owes(lang, surface, e.name); owed {
+			r.failures = append(r.failures, e.name+": "+why)
 			r.mark(e.name, outcomeClaimedAbsent)
 		}
 	}
@@ -119,6 +148,12 @@ func buildClaims(m *Manifest, langs []string) (*claimSet, error) {
 		set.carried[lang] = map[string]bool{}
 		for _, construct := range constructs {
 			set.carried[lang][construct] = true
+		}
+	}
+	if len(langs) > 0 {
+		set.ticks, err = readTicks(roadmapTablePath, roadmapDataPath)
+		if err != nil {
+			return nil, fmt.Errorf("the ticked-cell rule: %w", err)
 		}
 	}
 	return set, nil
@@ -440,7 +475,7 @@ func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 //
 //	14/16              answered 14 of 16, the other 2 failed
 //	12/16 +4nc         answered 12, said ABSENT for 4 it does not claim
-//	12/16 !2           answered 12, said ABSENT for 2 it CLAIMS (red)
+//	12/16 !2           answered 12, said ABSENT for 2 it OWES (red)
 //	absent             the leg does not run the surface
 //
 // A failure count rides as `x<N>`. Glenn, 2026-10-25: a case a port does not
@@ -448,7 +483,7 @@ func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) error {
 	b := &strings.Builder{}
 	b.WriteString("# Cross-language conformance — coverage\n\n")
-	b.WriteString("Cells: `answered/cases`, then `xN` failed, `!N` claimed by the carries registry and answered ABSENT (red), " +
+	b.WriteString("Cells: `answered/cases`, then `xN` failed, `!N` owed (claimed by the carries registry, or its row ticked in ROADMAP.md) and answered ABSENT (red), " +
 		"`+Nnc` ABSENT and not claimed (not yet carried; not red), `+Nr` the row's named writer refusal. " +
 		"`absent`: the leg does not run that surface. Policy: test/conformance/README.md, \"The nightly\".\n\n")
 	for _, dir := range []struct{ key, title string }{
@@ -524,6 +559,9 @@ func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) 
 
 func coverageCell(r coverageRow) string {
 	if r.SurfaceAbsent {
+		if r.AbsentClaimed > 0 {
+			return fmt.Sprintf("absent !%d", r.AbsentClaimed) // ticked, so red
+		}
 		return "absent"
 	}
 	cell := fmt.Sprintf("%d/%d", r.Answered, r.Cases)

@@ -63,6 +63,7 @@ export const fixedRoots = [
   ["vocabdemo", "Wide09", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9Table.js"],
+  ["shapes", "FixedBounds", "shapes/ShapesTable.js"],
 ];
 
 export function isFixedRoot(unit, root) {

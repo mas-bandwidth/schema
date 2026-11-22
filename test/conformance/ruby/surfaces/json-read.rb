@@ -8,7 +8,7 @@ def self.run(manifest, outdir)
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     text = RubyConformance.read_utf8_raw("testdata/conformance/tables/json/#{case_name}.json")

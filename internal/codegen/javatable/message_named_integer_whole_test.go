@@ -2,6 +2,8 @@ package javatable
 
 import (
 	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,41 +24,24 @@ import (
 //     reference 0 is refused, as the reference read refuses it; a lawful arm
 //     there is skipped and counted unknown.
 //
-// The lawful twin of every case reads.
-const javaNamedIntegerReader = `package probe
-
-fixed table Msg
-{
-    a uint8
-    b uint16
-    c uint64
-    d int64
-}
-`
-
-// The writer under another build: ranges whose offset bits can spell a value
-// past the announced kind (a, b over [250, 255]; c over [2^64 - 6, 2^64 - 1];
-// d over [2^63 - 6, 2^63 - 1], each in three bits), and a union field u the
-// reader does not declare.
-const javaNamedIntegerWriter = `package probe
-
-union U
-{
-    pid  uint32 | min = 0, max = 1000
-    note uint8
-}
-
-fixed table Msg
-{
-    a uint8 = 250 | min = 250, max = 255
-    b uint8 = 250 | min = 250, max = 255
-    c uint64 = 18446744073709551610 | min = 18446744073709551610, max = 18446744073709551615
-    d int64 = 9223372036854775802 | min = 9223372036854775802, max = 9223372036854775807
-    u U
-}
-`
+// The lawful twin of every case reads. The reader, the writer under another
+// build (ranges whose offset bits can spell a value past the announced kind,
+// and a union field u the reader does not declare) and one row per batch are
+// the committed corpus
+// testdata/message-named-integer/{reader.schema,writer.schema,cases.tsv}
+// (F-203).
+const javaNamedIntegerDir = "testdata/message-named-integer"
 
 type javaNamedIntegerCase struct{ name, batch, want string }
+
+// javaNamedIntegerCovers is what the committed rows must hold between them:
+// each rule's refusals beside their lawful twins.
+var javaNamedIntegerCovers = []string{
+	"a-lawful-255", "a-256-past-uint8", "a-257-past-uint8",
+	"b-lawful-255-widened", "b-257-past-announced-uint8",
+	"c-lawful-max", "c-past-uint64-not-wrapped", "d-lawful-max", "d-past-int64-not-wrapped",
+	"u-arm-pid", "u-arm-zero-at-field", "twin-fields",
+}
 
 func javaNamedIntegerCases(t *testing.T, writer *ir.Unit) []javaNamedIntegerCase {
 	t.Helper()
@@ -75,7 +60,13 @@ func javaNamedIntegerCases(t *testing.T, writer *ir.Unit) []javaNamedIntegerCase
 	for _, f := range writer.Tables["Msg"].Fields {
 		field[f.Name] = f
 	}
-	entry := func(name string) ir.TableVocabularyEntry { return ir.TableFieldEntry(field[name]) }
+	entry := func(name string) ir.TableVocabularyEntry {
+		f, ok := field[name]
+		if !ok {
+			t.Fatalf("the writer's Msg has no field %s", name)
+		}
+		return ir.TableFieldEntry(f)
+	}
 	un := field["u"].Type.Ref.(*ir.Union)
 	arm := func(name string) ir.TableVocabularyEntry {
 		for _, v := range un.Variants {
@@ -93,53 +84,59 @@ func javaNamedIntegerCases(t *testing.T, writer *ir.Unit) []javaNamedIntegerCase
 		}
 		return int(b)
 	}
-	batch := func(fill ...func(w *repeatedFieldBits)) string {
+	number := func(id, s string) uint64 {
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		return n
+	}
+	// put writes one field of a batch as the corpus spells it: name:offset,
+	// u:arm:value, or u:0 for arm reference 0.
+	put := func(id, spelled string, w *repeatedFieldBits) {
+		parts := strings.Split(spelled, ":")
+		switch {
+		case len(parts) == 2 && parts[0] == "u" && parts[1] == "0":
+			w.put(slot(entry("u")), refBits)
+			w.put(0, refBits)
+		case len(parts) == 3 && parts[0] == "u":
+			e := arm(parts[1])
+			w.put(slot(entry("u")), refBits)
+			w.put(slot(e), refBits)
+			w.put(number(id, parts[2]), valueBits(e))
+		case len(parts) == 2:
+			e := entry(parts[0])
+			w.put(slot(e), refBits)
+			w.put(number(id, parts[1]), valueBits(e))
+		default:
+			t.Fatalf("%s: field %q is not name:offset, u:arm:value or u:0", id, spelled)
+		}
+	}
+	var out []javaNamedIntegerCase
+	for _, r := range corpusRows(t, filepath.Join(javaNamedIntegerDir, "cases.tsv"), 3) {
 		w := &repeatedFieldBits{}
-		for _, f := range fill {
-			f(w)
+		for f := range strings.FieldsSeq(r[1]) {
+			put(r[0], f, w)
 		}
 		w.put(0, refBits) // the body's terminator
-		return hexOf(w.wire())
+		out = append(out, javaNamedIntegerCase{r[0], hexOf(w.wire()), r[2]})
 	}
-	ranged := func(name string, offset uint64) func(w *repeatedFieldBits) {
-		return func(w *repeatedFieldBits) {
-			e := entry(name)
-			w.put(slot(e), refBits)
-			w.put(offset, valueBits(e))
+	inCorpus := map[string]bool{}
+	for _, c := range out {
+		inCorpus[c.name] = true
+	}
+	for _, name := range javaNamedIntegerCovers {
+		if !inCorpus[name] {
+			t.Errorf("%s/cases.tsv has no %s row", javaNamedIntegerDir, name)
 		}
 	}
-	unionField := func(armName string, value uint64) func(w *repeatedFieldBits) {
-		return func(w *repeatedFieldBits) {
-			w.put(slot(entry("u")), refBits)
-			if armName == "" {
-				w.put(0, refBits)
-				return
-			}
-			e := arm(armName)
-			w.put(slot(e), refBits)
-			w.put(value, valueBits(e))
-		}
-	}
-	return []javaNamedIntegerCase{
-		{"a-lawful-255", batch(ranged("a", 5)), "a=255"},
-		{"a-256-past-uint8", batch(ranged("a", 6)), "refused"},
-		{"a-257-past-uint8", batch(ranged("a", 7)), "refused"},
-		{"b-lawful-255-widened", batch(ranged("b", 5)), "b=255"},
-		{"b-257-past-announced-uint8", batch(ranged("b", 7)), "refused"},
-		{"c-lawful-max", batch(ranged("c", 5)), "c=18446744073709551615"},
-		{"c-past-uint64-not-wrapped", batch(ranged("c", 7)), "refused"},
-		{"d-lawful-max", batch(ranged("d", 5)), "d=9223372036854775807"},
-		{"d-past-int64-not-wrapped", batch(ranged("d", 7)), "refused"},
-		{"u-arm-pid", batch(unionField("pid", 5)), "unknown=1"},
-		{"u-arm-zero-at-field", batch(unionField("", 0)), "refused"},
-		{"twin-fields", batch(ranged("a", 0), ranged("b", 1)), "a=250 b=251"},
-	}
+	return out
 }
 
 func TestJavaMessageNamedIntegerHeldWholeAndUnionFieldArmZero(t *testing.T) {
 	t.Parallel()
-	reader := unitFrom(t, javaNamedIntegerReader)
-	writer := unitFrom(t, javaNamedIntegerWriter)
+	reader := unitFrom(t, corpusSchema(t, javaNamedIntegerDir, "reader.schema"))
+	writer := unitFrom(t, corpusSchema(t, javaNamedIntegerDir, "writer.schema"))
 	files, err := Generate(reader)
 	if err != nil {
 		t.Fatal(err)

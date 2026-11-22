@@ -740,7 +740,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			switch {
 			case !present:
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s removed", tokenNoun(bt.Key), bt.Value)})
-			case lv != bt.Value:
+			case lv != bt.Value && (bt.Key != "default" || !d.sameDefaultVariant(bf, lf, bt.Value, lv)):
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
 			}
 		case RuleShrink, RuleRaise:
@@ -748,12 +748,14 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			// A KEYED ARRAY'S BOUND IS ITS KEY ENUM'S SIZE, and its slots ride
-			// under variant name ids (docs/SPEC-TABLES.md §3.2): an unknown key is
-			// skipped and counted `unknown`, so there is no bounded prefix and
-			// nothing is clamped. The enum walk already reports each variant
-			// that went, correctly and by name — this row would say the wrong
-			// thing and say it a second time.
-			if shape, _ := bf.Get("array"); shape == "keyed" {
+			// under variant name ids (docs/SPEC-TABLES.md §3.2), so there is no
+			// bounded prefix. The enum walk already reports each variant that
+			// went, correctly and by name — the bound row would say the wrong
+			// thing and say it a second time. ONLY the bound is exempt: the
+			// ELEMENT's range and capacity are an ordinary value's, and a
+			// reader refuses a stored element past them (§4), so they are
+			// judged below as on any other field.
+			if shape, _ := bf.Get("array"); shape == "keyed" && bt.Key == "bound" {
 				continue
 			}
 			if !tightened(d.policy[bt.Key], bt.Key, bt.Value, lv) {
@@ -1098,6 +1100,42 @@ func findUnion(u *Unit, name string) *Union {
 	return nil
 }
 
+// sameDefaultVariant reports whether two spellings of an enum field's default
+// name ONE variant. A table enum value rides as its variant's wire id, the
+// hash of the `was` name after a rename (docs/SPEC-TABLES.md §5), so a default
+// variant renamed under `was` means what it meant: each side's spelling is
+// resolved in its own unit's enum, and the two ids compared. A spelling either
+// side cannot resolve is no match, and the edit is judged as written.
+func (d *differ) sameDefaultVariant(bf, lf Field, was, now string) bool {
+	be, ok := bf.Get("enum")
+	if !ok {
+		return false
+	}
+	le, ok := lf.Get("enum")
+	if !ok {
+		return false
+	}
+	bid, ok := variantId(findEnum(d.base, be), was)
+	if !ok {
+		return false
+	}
+	lid, ok := variantId(findEnum(d.live, le), now)
+	return ok && bid == lid
+}
+
+// variantId is the wire id of the variant an enum declares under name.
+func variantId(e *Enum, name string) (uint64, bool) {
+	if e == nil {
+		return 0, false
+	}
+	for _, v := range e.Variants {
+		if v.Name == name {
+			return v.Id, true
+		}
+	}
+	return 0, false
+}
+
 func findEnum(u *Unit, name string) *Enum {
 	for i := range u.Enums {
 		if u.Enums[i].Name == name {
@@ -1288,9 +1326,11 @@ func retirements(base, live *Unit, date string) []Retired {
 	return out
 }
 
-// tightenNote says what a reader does when one of the extents tightens: the
-// read is strict, so a stored value past the new extent refuses the whole
-// load (docs/SPEC-TABLES.md §4, §6.5), and the reason names which extent.
+// tightenNote says what the STRICT reader does with a file written before one
+// of the extents tightened: it refuses the whole load, naming the reason
+// (docs/SPEC-TABLES.md §4). It recovers nothing — no clamp, no kept prefix, no
+// truncation, no skipped entry — and TestTighteningWarningsDescribeTheStrictRead
+// pins each sentence against a real read of a saved file.
 func tightenNote(key string) string {
 	switch key {
 	case "bound":

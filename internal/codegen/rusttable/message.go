@@ -135,6 +135,12 @@ pub struct TableMessageEntry {
     pub kind: u8,
     pub shape: TableMessageShape,
     pub element: TableMessageShape,
+    /// THE ID'S ORDINAL among the vocabulary's distinct ids, counted from 1 in
+    /// announcement order and set once when the announcement is accepted: two
+    /// slots announcing one id at two shapes share it, so a body's seen set is
+    /// keyed by id (§3.3). Zero for an entry a caller built by hand, which
+    /// stands for its own slot.
+    pub first: u32,
 }
 
 // ---- the resolved vocabulary ------------------------------------------------
@@ -177,6 +183,24 @@ impl<'a> TableVocabulary<'a> {
             return None;
         }
         Some(&self.entries[reference as usize - 1])
+    }
+
+    /// THE SEEN KEY of a reference (§3.3): the entry's id ordinal, set once at
+    /// announce. An entry built by hand carries no ordinal and stands for the
+    /// first slot announcing its id, found by a scan of the slots before it,
+    /// so two slots naming one id share a key either way.
+    pub fn seen_key(&self, reference: u64) -> u64 {
+        let Some(e) = self.entry(reference) else {
+            return reference;
+        };
+        if e.first != 0 {
+            return e.first as u64;
+        }
+        let before = reference as usize - 1;
+        match self.entries[..before].iter().position(|x| x.id == e.id) {
+            Some(i) => i as u64 + 1,
+            None => reference,
+        }
     }
 
     /// THE ID a NAME reference spells (§3.3): an enum's variant or a keyed
@@ -481,6 +505,21 @@ fn announce_read_once(
             return false;
         }
         *slot = entry;
+    }
+    // EACH ID's ORDINAL, once per connection (§3.3): a body's repeat test
+    // is then one bit per id, whichever slot names it. The scan is quadratic
+    // in the entry count, once per announcement, as the triple test above is.
+    let mut ordinals = 0u32;
+    for i in 0..count {
+        let (before, rest) = vocabulary.entries.split_at_mut(i);
+        let id = rest[0].id;
+        rest[0].first = match before.iter().find(|e| e.id == id) {
+            Some(e) => e.first,
+            None => {
+                ordinals += 1;
+                ordinals
+            }
+        };
     }
     vocabulary.count = count;
     vocabulary.ref_bits = bits_required(count);
@@ -1281,6 +1320,18 @@ impl TableReport {
         if self.non_finite_float.is_empty() {
             self.non_finite_float = field;
         }
+    }
+
+    /// Names a value read outside its declared range, a bits(N) value past
+    /// its width (§3.3). The read stops as on damage, and the message batch
+    /// refuses BY NAME as out_of_range. THE FIRST REFUSAL WINS, as in the Go
+    /// reference: a range miss after damage this read already met stays
+    /// damage, and the first name recorded is the one kept.
+    pub fn out_of_range(&mut self, field: &'static str) {
+        if self.oor_field.is_empty() && !self.damaged {
+            self.oor_field = field;
+        }
+        self.damaged = true;
     }
 
     /// Names a RETAINED UNKNOWN float of a float kind whose bits are a NaN or

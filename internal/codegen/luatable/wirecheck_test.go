@@ -27,8 +27,8 @@ import (
 // luaWireCheckCall is the strict load's one call of the check, and
 // luaWireCheckOff the same line with the check switched off.
 const (
-	luaWireCheckCall = "    reason = wire_check(state, bytes, blen)\n"
-	luaWireCheckOff  = "    reason = nil\n"
+	luaWireCheckCall = "    local reason = wire_check(state, bytes, blen)\n"
+	luaWireCheckOff  = "    local reason = nil\n"
 )
 
 // withoutWireCheck switches the strict load's wire-alone check off, for a

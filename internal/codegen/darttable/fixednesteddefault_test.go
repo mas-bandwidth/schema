@@ -30,6 +30,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedNestedDefaultCheckIsTyped(t *testing.T) {
@@ -162,7 +164,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "nested_default_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "--enable-asserts", "nested_default_probe.dart")
+	cmd := testproc.Command(t, bin, "--enable-asserts", "nested_default_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -256,7 +258,7 @@ func TestBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestBytes$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestBytes$", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

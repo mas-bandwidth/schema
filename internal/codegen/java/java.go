@@ -1159,6 +1159,9 @@ func (g *gen) intEval(e ast.Expr) (*big.Int, bool) {
 				return nil, false
 			}
 			v.Rem(x, y) // Java % is the truncated remainder, schema's own
+			if !fitsInt32(new(big.Int).Quo(x, y)) {
+				return nil, false // MIN % -1: keep the int domain exact, as / does
+			}
 		default:
 			return nil, false
 		}

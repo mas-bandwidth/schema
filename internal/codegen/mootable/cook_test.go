@@ -3,7 +3,6 @@ package mootable_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // valueDump is the canonical moo value dump the cook probes compare: every
@@ -152,7 +153,7 @@ func cookgen(t *testing.T) string {
 			return
 		}
 		cookgenOnce.path = filepath.Join(dir, "cookgen")
-		cmd := exec.Command("go", "build", "-o", cookgenOnce.path, "./test/cookgen")
+		cmd := testproc.Command(t, "go", "build", "-o", cookgenOnce.path, "./test/cookgen")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			cookgenOnce.err = fmt.Errorf("building cookgen: %w\n%s", err, out)
@@ -180,7 +181,7 @@ func cookFixture(t *testing.T, caseName, rootName string) []byte {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), caseName+".cook")
 	args := append([]string{"--bytes", "4096", "--root", rootName, "--out", out}, cookShape[caseName]...)
-	cmd := exec.Command(cookgen(t), args...)
+	cmd := testproc.Command(t, cookgen(t), args...)
 	cmd.Dir = root
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cookgen %s: %v\n%s", caseName, err, b)

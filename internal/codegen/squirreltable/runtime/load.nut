@@ -1354,6 +1354,11 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     // key's slot, so it is never oor (docs/SPEC-TABLES.md §2.4)
     keep = fd.bound;
     report.oor = report.oor + 1;
+  } else if (fd.counted && count < fd.min) {
+    // a count below the declared Min is off the count's own range: the read
+    // refuses it as it does the count past Max (docs/SPEC.md §5.1 row 3;
+    // tablewire decode.go arrayBody)
+    report.oor = report.oor + 1;
   }
   if (fd.shape == "bytes") {
     local out = blob(0);

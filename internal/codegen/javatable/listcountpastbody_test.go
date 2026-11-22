@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaFixListCountPastBodyInMapValue pins the wire-fuzzer cause J14: a
@@ -108,7 +109,7 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
 	sources = append(sources, driver)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -123,7 +124,7 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
 				t.Fatalf("%s: mutant sha256 = %s, want %s", tc.name, got, tc.sha)
 			}
 		}
-		out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", tc.wireHex).CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", classes, "Driver", tc.wireHex).CombinedOutput()
 		if err != nil {
 			t.Fatalf("%s: java: %v\n%s", tc.name, err, out)
 		}

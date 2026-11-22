@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestTruncatedFieldPayloadElixir(t *testing.T) {
@@ -158,13 +159,13 @@ func runCompleteFilesProbe(t *testing.T, files map[string][]byte, probe string) 
 	}
 	elixir := elixirBinary(t)
 	args := append([]string{strict, filepath.Join(filepath.Dir(elixir), "elixirc"), "--warnings-as-errors", "-o", ebin}, names...)
-	cmd := exec.Command("sh", args...)
+	cmd := testproc.Command(t, "sh", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if out, e := cmd.CombinedOutput(); e != nil || strings.Contains(string(out), "warning:") {
 		t.Fatalf("generated pinned unit must compile without warnings: %v\n%s", e, out)
 	}
-	cmd = exec.Command(elixir, "-pa", ebin, "-e", probe)
+	cmd = testproc.Command(t, elixir, "-pa", ebin, "-e", probe)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	raw, e := cmd.CombinedOutput()

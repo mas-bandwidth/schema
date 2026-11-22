@@ -25,6 +25,7 @@ func TestLuaCookRead(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
+	wireRefused := manifestWireRefusalRows(t, manifest)
 	for _, row := range manifestRows(t, manifest, "instance") {
 		t.Run(row.caseName, func(t *testing.T) {
 			t.Parallel()
@@ -51,7 +52,9 @@ func TestLuaCookRead(t *testing.T) {
 			inst := m.New(root)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
-				if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+				if wireRefused[row.caseName] || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+					// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
+					// strict read refuses it, so the tool writes no cook to read
 					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 				}
 				t.Fatalf("decode %s: %v", row.caseName, err)

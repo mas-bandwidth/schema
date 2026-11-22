@@ -524,7 +524,7 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 		// slots' STORAGE on the wire, which for an array of a type with
 		// declared defaults is the element's default image and not zero — a
 		// value nobody wrote, riding as if somebody had.
-		g.fixedWriteBound(f.Name+"_count", f.ArrayBound, "count", ind)
+		g.fixedWriteBound(f.Name+"_count", f.ArrayMin, f.ArrayBound, "count", ind)
 		g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_count as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 		g.emitFixedWriteSlots(f, base+ir.TableFixedCountBytes,
 			fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound), indent)
@@ -542,7 +542,7 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 // with two different values would not compare equal on the second write.
 func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 	ind := strings.Repeat(" ", indent)
-	g.fixedWriteBound(f.Name+"_length", f.Type.Size, "length", ind)
+	g.fixedWriteBound(f.Name+"_length", 0, f.Type.Size, "length", ind)
 	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 	g.pf("%s{\n", ind)
 	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
@@ -560,10 +560,11 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 // catches the caller's own bug at the call site, and it is never the thing that
 // keeps the wire safe. The store beside it CLAMPS rather than trusting the
 // number, because a Rust slice out of range is a panic and not a memcpy past
-// the end.
-func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
+// the end. A counted array's floor is its declared Min (docs/SPEC.md §5.1
+// row 3).
+func (g *gen) fixedWriteBound(member string, min, bound int64, what, ind string) {
 	g.pf("%sdebug_assert!(\n", ind)
-	g.pf("%s    value.%s >= 0 && value.%s <= %d,\n", ind, member, member, bound)
+	g.pf("%s    value.%s >= %d && value.%s <= %d,\n", ind, member, min, member, bound)
 	g.pf("%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", ind, what)
 	g.pf("%s);\n", ind)
 }
@@ -574,6 +575,10 @@ func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
 // an enum ordinal past the enum's top wire value. It is emitted before the
 // store, so a debug build refuses the value at the call site.
 func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind string) {
+	if a := rustFloatRangeAssert(f, expr, ind); a != "" {
+		g.pf("%s", a)
+		return
+	}
 	if f.Type.Kind == ir.TNamed {
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
@@ -655,9 +660,9 @@ func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) 
 	case ir.TBool:
 		g.pf("%sb[at] = u8::from(%s);\n", ind, expr)
 	case ir.TFloat32:
-		g.pf("%sb[at..at + 4].copy_from_slice(&%s.to_le_bytes());\n", ind, expr)
+		g.pf("%sb[at..at + 4].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
 	case ir.TFloat64:
-		g.pf("%sb[at..at + 8].copy_from_slice(&%s.to_le_bytes());\n", ind, expr)
+		g.pf("%sb[at..at + 8].copy_from_slice(&%s.to_le_bytes());\n", ind, rustFloatStored(f, expr))
 	default:
 		raw := fixedRawUint(width)
 		if _, wide := fixedWide128(f); wide {
@@ -772,15 +777,15 @@ func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedScatterSlots(f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.emitFixedScatterCount(f.Name+"_count", base, f.ArrayBound)
+		g.emitFixedScatterCount(f.Name+"_count", base, f.ArrayMin, f.ArrayBound)
 		g.emitFixedScatterCountedSlots(f, base+ir.TableFixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
-		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
+		g.emitFixedScatterCount(f.Name+"_length", base, 0, f.Type.Size)
 		g.pf("    value.%s = [0u8; %d];\n", f.Name, f.Type.Size+1)
 		g.pf("    value.%s[..%d].copy_from_slice(&b[%d..%d]);\n", f.Name, f.Type.Size, base+4, base+4+f.Type.Size)
 		g.pf("    value.%s[value.%s_length as usize] = 0; // the used length terminates the buffer\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
-		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
+		g.emitFixedScatterCount(f.Name+"_length", base, 0, f.Type.Size)
 		g.pf("    value.%s.copy_from_slice(&b[%d..%d]);\n", f.Name, base+4, base+4+f.Type.Size)
 	default:
 		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "value."+f.Name, 4)
@@ -790,11 +795,13 @@ func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 // emitFixedScatterCount is §3.4's `count` op inline: read it, clamp it to THIS
 // reader's own bound, and count one held if it fired on live data. A slot past
 // its parent's count is slack, whose bytes are unspecified on read and never a
-// refusal (§3.4).
-func (g *gen) emitFixedScatterCount(member string, at, bound int64) {
+// refusal (§3.4). A counted array's floor is its declared Min, so a count
+// below it is held, and a held count refuses the load out_of_range
+// (docs/SPEC.md §4.2, §5.1 row 3).
+func (g *gen) emitFixedScatterCount(member string, at, min, bound int64) {
 	g.pf("    {\n")
 	g.pf("        let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
-	g.pf("        let held = raw.clamp(0, %d);\n", bound)
+	g.pf("        let held = raw.clamp(%d, %d);\n", min, bound)
 	g.pf("        if held != raw && report.slack == 0 {\n            report.held += 1;\n        }\n")
 	g.pf("        value.%s = held;\n", member)
 	g.pf("    }\n")
@@ -1214,8 +1221,8 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		elem := ir.TableFixedElementBytes(f)
-		g.pf("%sdebug_assert!(\n%s    %s.value_count >= 0 && %s.value_count <= %d,\n%s    \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
-			ind, ind, armExpr, armExpr, f.ArrayBound, ind, ind)
+		g.pf("%sdebug_assert!(\n%s    %s.value_count >= %d && %s.value_count <= %d,\n%s    \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
+			ind, ind, armExpr, f.ArrayMin, armExpr, f.ArrayBound, ind, ind)
 		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_count as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
 		g.pf("%sfor i in 0..%s.value_count.clamp(0, %d) as usize {\n", ind, armExpr, f.ArrayBound)
 		g.emitFixedWriteElementAt(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), armExpr+".value[i]", indent+4)
@@ -1331,7 +1338,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		elem := ir.TableFixedElementBytes(f)
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
-		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.ArrayBound)
+		g.pf("%s    let held = raw.clamp(%d, %d);\n", ind, f.ArrayMin, f.ArrayBound)
 		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {

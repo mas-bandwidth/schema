@@ -3,12 +3,13 @@ package jstable
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestKeyedArrayAccessorsJavaScript holds docs/PORTING.md M5 on every
@@ -71,7 +72,7 @@ func TestKeyedArrayAccessorsJavaScript(t *testing.T) {
 		if err := os.WriteFile(script, []byte(keyedDriver), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, script)
+		cmd := testproc.Command(t, node, script)
 		cmd.Dir = dir
 		out, _ := cmd.CombinedOutput()
 		return string(out)

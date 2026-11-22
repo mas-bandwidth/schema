@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func generateJavaUnitFiles(t *testing.T, dir string) map[string][]byte {
@@ -274,7 +275,7 @@ public final class BlobSharedStrictDriver {
 		return err
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		return fmt.Errorf("javac: %w\n%s", err, out)
 	}
 	wire, err := filepath.Abs(filepath.Join(repo, "testdata", "wire", "tables", "blob_shared.bin"))
@@ -285,7 +286,7 @@ public final class BlobSharedStrictDriver {
 	if err != nil {
 		return err
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "BlobSharedStrictDriver", wire, swire).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "BlobSharedStrictDriver", wire, swire).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("java: %w\n%s", err, out)
 	}

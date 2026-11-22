@@ -555,6 +555,7 @@ _M.FixedProbeMaxBytes = 24
 -- WriteFixedProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteFixedProbe(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Angle) ~= "number" or v.Angle % 1 ~= 0 or v.Angle < -11796480 or v.Angle > 11796480 then return false end
   BITS.value = v.Angle + 11796480
   if not stream:serializeBits(BITS, 25) then return false end -- the Q format's raw offset (SPEC §4.3)
@@ -567,6 +568,7 @@ function _M.WriteFixedProbe(stream: any, v: any): boolean
   if type(v.Ticks) ~= "number" or v.Ticks % 1 ~= 0 or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   BITS.value = v.Ticks
   if not stream:serializeBits(BITS, 20) then return false end -- the Q format's raw offset (SPEC §4.3)
+  if type(v.Samples) ~= "table" then return false end
   for _i = 1, 2 do
     if type(v.Samples[_i]) ~= "number" or v.Samples[_i] % 1 ~= 0 or v.Samples[_i] < -524288 or v.Samples[_i] > 524288 then return false end
     BITS.value = v.Samples[_i] + 524288
@@ -583,6 +585,7 @@ _M.UnsignedProbeMaxBytes = 32
 -- WriteUnsignedProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteUnsignedProbe(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Angle) ~= "number" or v.Angle % 1 ~= 0 or v.Angle < 0 or v.Angle > 23592960 then return false end
   BITS.value = v.Angle
   if not stream:serializeBits(BITS, 25) then return false end -- the Q format's raw offset (SPEC §4.3)
@@ -595,6 +598,7 @@ function _M.WriteUnsignedProbe(stream: any, v: any): boolean
   if type(v.Ticks) ~= "number" or v.Ticks % 1 ~= 0 or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   BITS.value = v.Ticks
   if not stream:serializeBits(BITS, 20) then return false end -- the Q format's raw offset (SPEC §4.3)
+  if type(v.Samples) ~= "table" then return false end
   for _i = 1, 2 do
     if type(v.Samples[_i]) ~= "number" or v.Samples[_i] % 1 ~= 0 or v.Samples[_i] < 0 or v.Samples[_i] > 1048576 then return false end
     BITS.value = v.Samples[_i]
@@ -615,6 +619,7 @@ _M.WideProbeMaxBytes = 56
 -- WriteWideProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteWideProbe(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if not _Rt.isInt128(v.EntityId) then return false end
   WIDE.value = v.EntityId
   if not stream:serializeUint128(WIDE) then return false end -- uint128 raw (SPEC §4.3)
@@ -641,12 +646,16 @@ _M.LudicrousStateMaxBytes = 152
 -- WriteLudicrousState writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteLudicrousState(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Mode) ~= "number" or v.Mode % 1 ~= 0 or v.Mode < 0 or v.Mode > 3 then return false end -- headroom above the wire range cannot ride
   BITS.value = v.Mode
   if not stream:serializeBits(BITS, 2) then return false end -- the enum value
+  if type(v.Probe) ~= "table" then return false end
   if not _M.WriteFixedProbe(stream, v.Probe) then return false end
+  if type(v.Wide) ~= "table" then return false end
   if not _M.WriteWideProbe(stream, v.Wide) then return false end
   if type(v.KeysCount) ~= "number" or v.KeysCount % 1 ~= 0 or v.KeysCount < 0 or v.KeysCount > 4 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Keys) ~= "table" then return false end
   BITS.value = v.KeysCount
   if not stream:serializeBits(BITS, 3) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.KeysCount do
@@ -673,6 +682,7 @@ _M.DegenerateProbeMaxBytes = 8
 -- WriteDegenerateProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteDegenerateProbe(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.LockedFixed) ~= "number" or v.LockedFixed % 1 ~= 0 or v.LockedFixed < -196608 or v.LockedFixed > -196608 then return false end
   if type(v.LockedInt) ~= "number" or v.LockedInt % 1 ~= 0 or v.LockedInt < 7 or v.LockedInt > 7 then return false end
   if not _Rt.int128Within(v.LockedWide, _Rt.int128(0xfffff4c58c31d00ei, 0xffffffffffffffffi), _Rt.int128(0xfffff4c58c31d00ei, 0xffffffffffffffffi), false) then return false end
@@ -690,6 +700,7 @@ _M.FixedVecMaxBytes = 16
 -- WriteFixedVec writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteFixedVec(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if typeof(v.X) ~= "integer" or integer.lt(v.X, -6553600000i) or integer.gt(v.X, 6553600000i) then return false end
   BIG.value = integer.sub(v.X, -6553600000i)
   if not stream:serializeBits64(BIG, 34) then return false end -- the Q format's raw offset (SPEC §4.3)
@@ -710,6 +721,7 @@ _M.FixedQuatMaxBytes = 16
 -- WriteFixedQuat writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteFixedQuat(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.X) ~= "number" or v.X % 1 ~= 0 or v.X < -1073741824 or v.X > 1073741824 then return false end
   BITS.value = v.X + 1073741824
   if not stream:serializeBits(BITS, 32) then return false end -- the Q format's raw offset (SPEC §4.3)

@@ -28,9 +28,11 @@ import (
 	"math"
 	"math/big"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -159,10 +161,37 @@ func CheckNames(u *ir.Unit) error {
 			if keywords[name] {
 				return fmt.Errorf("lobster: %s.schema declares %s, a Lobster keyword; rename the declaration", f.Base, name)
 			}
+			if _, isConst := d.(*ir.Const); !isConst {
+				if file := runtimeGlobals()[name]; file != "" {
+					return fmt.Errorf("lobster: %s.schema declares %s, a name the vendored packet runtime declares globally in %s; the generated module would resolve its own type to the runtime's (an enum's conversion, a stream parameter's type), so rename the declaration", f.Base, name, file)
+				}
+			}
 		}
 	}
 	return nil
 }
+
+// globalDecl is a declaration at column zero of a runtime file.
+var globalDecl = regexp.MustCompile(`(?m)^(?:def|class|struct|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+
+// runtimeGlobals is every name the vendored packet runtime declares at
+// GLOBAL scope (the serialize_*.lobster files, which open no namespace),
+// mapped to the file that declares it. A generated module lives in the
+// unit's namespace, and Lobster resolves a call or a type spelled like one
+// of these to the global, so a type, enum, flags or union of that name is
+// refused (LOBSTER-2).
+var runtimeGlobals = sync.OnceValue(func() map[string]string {
+	out := map[string]string{}
+	for name, data := range Runtime() {
+		if regexp.MustCompile(`(?m)^namespace\s`).Match(data) {
+			continue
+		}
+		for _, m := range globalDecl.FindAllSubmatch(data, -1) {
+			out[string(m[1])] = name
+		}
+	}
+	return out
+})
 
 // CheckBases refuses a schema file whose module name would collide with a
 // runtime module emitted beside it. The comparison folds case, because the

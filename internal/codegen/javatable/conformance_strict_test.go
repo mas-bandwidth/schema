@@ -3,12 +3,13 @@ package javatable_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The Java conformance driver reads strict and writes back: an accepted
@@ -30,7 +31,7 @@ func javaConformanceBuild(t *testing.T, root string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", "build/conformance-harness", "build-conformance-java")
+	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-java")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
@@ -55,7 +56,7 @@ func javaDriverSurface(t *testing.T, root, surface, manifest string) string {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "test", "conformance", "java", "driver"), manifestPath, surface, outDir)
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "test", "conformance", "java", "driver"), manifestPath, surface, outDir)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
@@ -73,7 +74,7 @@ func TestJavaDriverSurfacesStrict(t *testing.T) {
 	// The whole matrix over the real corpus.
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "java", "--work", t.TempDir())
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "java", "--work", t.TempDir())
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()

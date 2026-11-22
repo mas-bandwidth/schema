@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // sceneLengthCases are form-1 wires whose lengths sit at the edge of moo's
@@ -105,7 +106,7 @@ func runSceneWireAt(t *testing.T, g *generatedUnit, interpreter string, wire []b
 	if err := os.WriteFile(filepath.Join(g.dir, "inputs.moo"), moorun.InputsModule(map[string][]byte{"wire": wire}), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(interpreter, "main.moo")
+	cmd := testproc.Command(t, interpreter, "main.moo")
 	cmd.Dir = g.dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

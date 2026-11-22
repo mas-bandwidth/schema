@@ -262,9 +262,11 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.tf("    public %s[] %s = new %s[%d];\n", typ, name, typ, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.tf("    public %s[] %s = new %s[%d]; // used count beside it; count in [0, %d]\n",
-			typ, name, typ, f.ArrayBound, f.ArrayBound)
-		g.tf("    public int %sCount;\n", name)
+		g.tf("    public %s[] %s = new %s[%d]; // used count beside it; count in [%d, %d]\n",
+			typ, name, typ, f.ArrayBound, f.ArrayMin, f.ArrayBound)
+		// BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array has no
+		// wire-legal count below A, so a fresh value carries A elements
+		g.tf("    public int %sCount%s;\n", name, bornCountInit(f))
 	default:
 		init := ""
 		if isClassRef(f.Type) {
@@ -462,6 +464,15 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
+// bornCountInit is a counted array's storage initializer: " = A" for a
+// [A..B] array born at A (ir.Field.BornCount), nothing for one born empty.
+func bornCountInit(f *ir.Field) string {
+	if n := f.BornCount(); n > 0 {
+		return fmt.Sprintf(" = %d", n)
+	}
+	return ""
+}
+
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
@@ -478,13 +489,13 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.pf("        TableReset(%s[i]);\n", g.keyedSlots("value.", f))
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
-			g.pf("    value.%sCount = 0;\n", name)
+			g.pf("    value.%sCount = %d;\n", name, f.BornCount())
 		}
 	case f.Array != ir.ArrayNone:
 		base := g.keyedSlots("value.", f)
 		g.pf("    Array.Clear(%s, 0, %s.Length);\n", base, base)
 		if f.Array == ir.ArrayCounted {
-			g.pf("    value.%sCount = 0;\n", name)
+			g.pf("    value.%sCount = %d;\n", name, f.BornCount())
 		}
 	default:
 		if isClassRef(f.Type) {

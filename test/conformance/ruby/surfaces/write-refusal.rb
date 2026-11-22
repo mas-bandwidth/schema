@@ -7,7 +7,7 @@ def self.run(manifest, outdir)
       pkg = RubyConformance.unit_package(unit)
       cls = RubyConformance.root_class(unit, root)
       if pkg.nil? || cls.nil? || !RubyConformance.supported?(pkg, cls)
-        RubyConformance.absent(outdir, case_name, 'unit not generated for ruby')
+        RubyConformance.no_codec(outdir, case_name)
         next
       end
       value = cls.load(RubyConformance.read_bytes(wire))

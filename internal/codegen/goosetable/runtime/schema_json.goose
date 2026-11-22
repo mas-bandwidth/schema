@@ -1207,11 +1207,10 @@ fn json_read_float(jr: JsonIn&, slot: f64&, f: const FieldDesc&) -> bool {
         return true;
     }
     if f.frange {
-        if v < f.flo {
-            v = f.flo;
-            jr.rep.oor += 1;
-        } else if v > f.fhi {
-            v = f.fhi;
+        // the range is held AT FLOAT32 for a float32 (SPEC.md §4.6,
+        // frange_holds); off it, the read counts oor and refuses
+        if !frange_holds(v, f) {
+            v = if v < f.flo { f.flo } else { f.fhi };
             jr.rep.oor += 1;
         } else if v == 0.0 {
             v = 0.0;
@@ -1231,11 +1230,10 @@ fn json_read_float(jr: JsonIn&, slot: f32&, f: const FieldDesc&) -> bool {
     }
     var v = x as f64;
     if f.frange {
-        if v < f.flo {
-            v = f.flo;
-            jr.rep.oor += 1;
-        } else if v > f.fhi {
-            v = f.fhi;
+        // the range is held AT FLOAT32 for a float32 (SPEC.md §4.6,
+        // frange_holds); off it, the read counts oor and refuses
+        if !frange_holds(v, f) {
+            v = if v < f.flo { f.flo } else { f.fhi };
             jr.rep.oor += 1;
         } else if v == 0.0 {
             v = 0.0;
@@ -1446,7 +1444,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
 // bound the excess is dropped and counted, a wrong-shaped element is
 // kind_mismatch and keeps its slot, and the count is the elements placed
 // (§16.2). F(jr, index, depth) reads one element.
-fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i64) -> bool {
+fn json_read_array<F>(jr: JsonIn&, count: i32&, least: i64, bound: i64, shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '[') { return false; }
     var placed: i64 = 0;
     loop {
@@ -1472,6 +1470,10 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
             break;
         }
     }
+    // a closed array shorter than its Min (least, 0 for a fixed array) is off
+    // the count's own range and refused as the count past Max is (SPEC.md
+    // §5.1 row 3; tabletext read.go)
+    if placed < least { jr.rep.oor += 1; }
     count = placed as! i32;
     return true;
 }
@@ -1822,8 +1824,30 @@ fn json_write_int<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
     return true;
 }
 
-fn json_write_float(out: u8[>..]&, v: f32) -> bool { return json_put_float(out, v, true); }
-fn json_write_float(out: u8[>..]&, v: f64) -> bool { return json_put_float(out, v, false); }
+// json_write_float writes one float, refusing (false) what its declaration
+// does not hold (docs/SPEC.md §5.1; Goose refuses in every build): a
+// compressed float off its range, held at float32 for a float32
+// (frange_holds); a compressed float's -0 is written as +0 (SPEC-TABLES
+// §3.3). json_put_float refuses a NaN or an infinity.
+fn json_write_float(out: u8[>..]&, v: f32, f: const FieldDesc&) -> bool {
+    var x = v;
+    if f.frange && json_finite(x) {
+        if !frange_holds(x, f) { return false; }
+        if x == 0.0 { x = 0.0; }
+    }
+    return json_put_float(out, x, true);
+}
+fn json_write_float(out: u8[>..]&, v: f64, f: const FieldDesc&) -> bool {
+    var x = v;
+    if f.frange && json_finite(x) {
+        if !frange_holds(x, f) { return false; }
+        if x == 0.0 { x = 0.0; }
+    }
+    return json_put_float(out, x, false);
+}
+
+// json_finite: a finite value (x - x is NaN for a NaN or an infinity)
+fn json_finite(x: f64) -> bool { x - x == 0.0 }
 
 fn json_write_str(out: u8[>..]&, s: const u8[:], length: i32) -> bool {
     if length < 0 || length > s.len { return false; }

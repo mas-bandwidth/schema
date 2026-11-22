@@ -10,7 +10,6 @@ package compiler
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type nonCanonicalRow struct {
@@ -197,7 +198,7 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := t.TempDir()
-		cmd := exec.Command("go", "run", "./test/non-canonical/gen",
+		cmd := testproc.Command(t, "go", "run", "./test/non-canonical/gen",
 			"-schema", filepath.Join(root, "test", "non-canonical", "NonCanonical.schema"),
 			"-out", out)
 		cmd.Dir = root

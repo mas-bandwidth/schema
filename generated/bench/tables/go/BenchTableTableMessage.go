@@ -14,6 +14,7 @@ package benchtable
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -234,7 +235,11 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // two words so every level below the binary bound has one: a level's mark
 // still stands when that level's open body began at or before the last naming,
 // and the levels whose bodies were opened since are dropped as the entry is
-// named again. Two slots announcing one id are one entry, the first.
+// named again. Two slots announcing one id are one entry, the first: the
+// entries are sorted in place by id and position (the position parked in
+// bodySeenAt, which every fresh entry holds at zero), each run of one id
+// points at its first, and a second sort by position puts them back, so the
+// work is n log n in the caller's storage and nothing is allocated.
 func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
@@ -243,13 +248,48 @@ func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	}
 }
 func tableMessageSeenFirst(v *TableVocabulary) {
-	for i := range v.Count {
-		for j := range i {
-			if v.Entries[j].ID == v.Entries[i].ID {
-				v.Entries[i].bodyFirst = uint64(j + 1)
-				break
+	s := v.Entries[:v.Count]
+	for i := range s {
+		s[i].bodySeenAt = uint64(i)
+		s[i].bodyFirst = 0
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.ID != b.ID {
+			if a.ID < b.ID {
+				return -1
 			}
+			return 1
 		}
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := 1; i < len(s); i++ {
+		if s[i].ID == s[i-1].ID {
+			first := s[i-1].bodyFirst
+			if first == 0 {
+				first = s[i-1].bodySeenAt + 1
+			}
+			s[i].bodyFirst = first
+		}
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := range s {
+		s[i].bodySeenAt = 0
 	}
 }
 func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
@@ -499,8 +539,24 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
 	nodeSeen := false
+	twice := func() bool {
+		s := v.Entries[:count]
+		slices.SortFunc(s, func(a, b TableMessageEntry) int {
+			return slices.Compare(words[a.Shape.Min:a.Shape.Max], words[b.Shape.Min:b.Shape.Max])
+		})
+		for i := 1; i < len(s); i++ {
+			if slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max], words[s[i].Shape.Min:s[i].Shape.Max]) {
+				return true
+			}
+		}
+		return false
+	}
 	for src.Offset < int64(len(words)) {
 		if count >= int64(len(v.Entries)) {
+			if twice() {
+				report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return tableMessageRefuse(report, "vocabulary_too_large")
 		}
 		began := src.Offset
@@ -512,26 +568,14 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.ID == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := range count {
-			o := v.Entries[i].Shape
-			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
-				same := true
-				for j := o.Min; j < o.Max; j++ {
-					if words[j] != words[began+j-o.Min] {
-						same = false
-						break
-					}
-				}
-				if same {
-					report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-			}
-		}
 		e.Shape.Min = began
 		e.Shape.Max = src.Offset
 		v.Entries[count] = e
 		count++
+	}
+	if twice() {
+		report.Refuse(TableRefuseWireDamaged, "")
+		return false
 	}
 	src.Offset = 0
 	for i := range count {
@@ -564,10 +608,14 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 // declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
 // its byte extent in Shape.Min and Shape.Max until the scan is over, and the
 // second pass in tableAnnounceRead resolves every entry in place, so no offset
-// into the announcement outlives the call. The scan is quadratic in the entry
-// count, and the entry count is bounded above at 4096, so it is at most eight
-// million compares on a path that runs ONCE a connection and never again. The
-// compare is spelled inline so the emitter claims no new runtime name.
+// into the announcement outlives the call. The duplicate test sorts the
+// parked extents in place by their bytes and compares neighbours (twice), so
+// it is n log n in the entry count, allocates nothing, and leaves the order to
+// the second pass, which rewrites every entry from the announcement. It runs
+// when the entries are all read, and also before vocabulary_too_large, so a
+// repeated entry read before the bound is crossed is damage, as it was when
+// each entry was compared on arrival. It is spelled inline so the emitter
+// claims no new runtime name.
 // tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
 // timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
@@ -1338,7 +1386,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.EntityID = uint32(v)
+						value.EntityID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.EntityID != 0) {
@@ -1397,7 +1445,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosX = int32(v)
+						value.PosX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosX != 0) {
@@ -1456,7 +1504,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosY = int32(v)
+						value.PosY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosY != 0) {
@@ -1515,7 +1563,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosZ = int32(v)
+						value.PosZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosZ != 0) {
@@ -1574,7 +1622,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Yaw = uint32(v)
+						value.Yaw = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Yaw != 0) {
@@ -1633,7 +1681,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Pitch = uint32(v)
+						value.Pitch = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Pitch != 0) {
@@ -1692,7 +1740,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelX = int32(v)
+						value.VelX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelX != 0) {
@@ -1751,7 +1799,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelY = int32(v)
+						value.VelY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelY != 0) {
@@ -1810,7 +1858,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelZ = int32(v)
+						value.VelZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelZ != 0) {
@@ -1869,7 +1917,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Health = int32(v)
+						value.Health = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Health != 0) {
@@ -2280,7 +2328,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.StatID = uint32(v)
+						value.StatID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.StatID != 0) {
@@ -2339,7 +2387,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Delta = int32(v)
+						value.Delta = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Delta != 0) {
@@ -2886,7 +2934,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					{
 						v := payload31.Unsigned(entry.Shape.Kind)
-						value.ProtocolMagic = uint16(v)
+						value.ProtocolMagic = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.ProtocolMagic != 0) {
@@ -2945,7 +2993,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Sequence = uint32(v)
+						value.Sequence = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Sequence != 0) {
@@ -3004,7 +3052,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckSequence = int32(v)
+						value.AckSequence = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.AckSequence != 0) {
@@ -3063,7 +3111,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckBits = uint32(v)
+						value.AckBits = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.AckBits != 0) {
@@ -3171,7 +3219,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					{
 						v := payload36.Unsigned(entry.Shape.Kind)
-						value.ClientID = uint32(v)
+						value.ClientID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.ClientID != 0) {
@@ -3718,7 +3766,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							}
 							{
 								v := payload43.Unsigned(element.Shape.Kind)
-								(*p) = uint8(v)
+								(*p) = uint8(v & 0xff)
 							}
 						}
 					}
@@ -3773,7 +3821,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 15 {
+					if n > 15 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TableMixed.player_name")
 						return false
 					}
@@ -4344,7 +4392,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.CrcHint = uint32(v)
+						value.CrcHint = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.CrcHint != 0) {
@@ -4455,7 +4503,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Extra = int32(v)
+						value.Extra = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Extra != 0) {
@@ -4514,7 +4562,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.IdleTicks = int32(v)
+						value.IdleTicks = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.IdleTicks != 0) {
@@ -4696,7 +4744,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TargetID = uint32(v)
+						value.TargetID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.TargetID != 0) {
@@ -4755,7 +4803,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Damage = int32(v)
+						value.Damage = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Damage != 0) {
@@ -4814,7 +4862,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.HitKind = int32(v)
+						value.HitKind = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.HitKind != 0) {
@@ -4988,7 +5036,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Channel = int32(v)
+						value.Channel = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Channel != 0) {
@@ -5047,7 +5095,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Speaker = uint32(v)
+						value.Speaker = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Speaker != 0) {
@@ -5169,7 +5217,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.ItemID = uint32(v)
+						value.ItemID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.ItemID != 0) {
@@ -5228,7 +5276,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Amount != 0) {

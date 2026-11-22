@@ -70,15 +70,17 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	files := map[string]string{
-		"internal/codegen/xtable/gated_test.go":      "package xtable\nfunc TestA(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n\texec.Command(\"cc\")\n}\n",
-		"internal/codegen/xtable/ungated_test.go":    "package xtable\nfunc TestB(t *testing.T) {\n\texec.Command(\"rustc\")\n}\n",
-		"internal/codegen/xtable/listed_test.go":     "package xtable\nfunc TestC(t *testing.T) {\n\texec.LookPath(\"node\")\n}\n",
-		"internal/codegen/xtable/nowgated_test.go":   "package xtable\nfunc TestD(t *testing.T) {\n\tslowtest.Gate(t, \"dart\")\n\texec.CommandContext(ctx, \"dart\")\n}\n",
-		"internal/codegen/xtable/plain_test.go":      "package xtable\nfunc TestE(t *testing.T) {}\n",
-		"internal/codegen/xtable/helpers_test.go":    "package xtable\nfunc toolchain(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n}\n",
-		"internal/codegen/xtable/indirect_test.go":   "package xtable\nfunc TestH(t *testing.T) {\n\ttoolchain(t)\n\texec.Command(\"cc\")\n}\n",
-		"internal/codegen/xtable/testdata/x_test.go": "package x\nfunc TestF(t *testing.T) {\n\texec.Command(\"cc\")\n}\n",
-		"compiler/deep/sub/ungated_nested_test.go":   "package sub\nfunc TestG(t *testing.T) {\n\tfindDotnet(t)\n}\n",
+		"internal/codegen/xtable/gated_test.go":            "package xtable\nfunc TestA(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n\texec.Command(\"cc\")\n}\n",
+		"internal/codegen/xtable/ungated_test.go":          "package xtable\nfunc TestB(t *testing.T) {\n\texec.Command(\"rustc\")\n}\n",
+		"internal/codegen/xtable/listed_test.go":           "package xtable\nfunc TestC(t *testing.T) {\n\texec.LookPath(\"node\")\n}\n",
+		"internal/codegen/xtable/nowgated_test.go":         "package xtable\nfunc TestD(t *testing.T) {\n\tslowtest.Gate(t, \"dart\")\n\texec.CommandContext(ctx, \"dart\")\n}\n",
+		"internal/codegen/xtable/plain_test.go":            "package xtable\nfunc TestE(t *testing.T) {}\n",
+		"internal/codegen/xtable/helpers_test.go":          "package xtable\nfunc toolchain(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n}\n",
+		"internal/codegen/xtable/indirect_test.go":         "package xtable\nfunc TestH(t *testing.T) {\n\ttoolchain(t)\n\texec.Command(\"cc\")\n}\n",
+		"internal/codegen/xtable/testdata/x_test.go":       "package x\nfunc TestF(t *testing.T) {\n\texec.Command(\"cc\")\n}\n",
+		"compiler/deep/sub/ungated_nested_test.go":         "package sub\nfunc TestG(t *testing.T) {\n\tfindDotnet(t)\n}\n",
+		"internal/codegen/xtable/testproc_gated_test.go":   "package xtable\nfunc TestI(t *testing.T) {\n\tslowtest.Gate(t, \"lua\")\n\ttestproc.Command(t, \"lua\")\n}\n",
+		"internal/codegen/xtable/testproc_ungated_test.go": "package xtable\nfunc TestJ(t *testing.T) {\n\ttestproc.CommandContext(t, ctx, \"lua\")\n}\n",
 	}
 	for rel, text := range files {
 		path := filepath.Join(root, filepath.FromSlash(rel))
@@ -93,8 +95,8 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.scanned != 6 {
-		t.Errorf("scanned %d toolchain sources, want 6 (plain, the gating helper and testdata/ excluded)", scan.scanned)
+	if scan.scanned != 8 {
+		t.Errorf("scanned %d toolchain sources, want 8 (plain, the gating helper and testdata/ excluded)", scan.scanned)
 	}
 	baseline := map[string]bool{
 		"internal/codegen/xtable/listed_test.go":   true,
@@ -102,7 +104,7 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 		"internal/codegen/xtable/deleted_test.go":  true,
 	}
 	fresh, stale := ratchetUngated(scan, baseline)
-	if want := []string{"compiler/deep/sub/ungated_nested_test.go", "internal/codegen/xtable/ungated_test.go"}; !slices.Equal(fresh, want) {
+	if want := []string{"compiler/deep/sub/ungated_nested_test.go", "internal/codegen/xtable/testproc_ungated_test.go", "internal/codegen/xtable/ungated_test.go"}; !slices.Equal(fresh, want) {
 		t.Errorf("ungated off the list = %v, want %v", fresh, want)
 	}
 	if want := []string{"internal/codegen/xtable/deleted_test.go", "internal/codegen/xtable/nowgated_test.go"}; !slices.Equal(stale, want) {
@@ -113,12 +115,15 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 var toolchainScopes = []string{"compiler", filepath.Join("internal", "codegen")}
 
 // toolchainMarkers is any text by which a test source reaches a program
-// outside the Go process: every exec entry point, and the dotnet finder that
-// wraps one.
+// outside the Go process: every exec entry point, the bounded test-child
+// helper (internal/testproc) that wraps exec for tests, and the dotnet finder
+// that wraps one.
 var toolchainMarkers = []string{
 	"exec.Command(",
 	"exec.CommandContext(",
 	"exec.LookPath(",
+	"testproc.Command(",
+	"testproc.CommandContext(",
 	"findDotnet",
 }
 

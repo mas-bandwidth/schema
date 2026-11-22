@@ -670,19 +670,20 @@ type TableMessageEntry struct {
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
-// setProbes counts the looks the key and skipped-id duplicate tests take, so a
-// test pins their work by a count and never a clock.
+// setProbes counts the looks the key and skipped-id duplicate tests take, and
+// announceProbes the compares that resolve two slots of one id to the first,
+// so a test pins their work by a count and never a clock.
 type TableVocabulary struct {
-	Entries            []TableMessageEntry
-	Count, RefBits     int64
-	BuildVersion       uint64
-	Announced, Refused bool
-	MaxBytes           int64
-	Strict             bool
-	bodyClock          uint64
-	setTop             int
-	setStarts          [320]uint64
-	setProbes          uint64
+	Entries                   []TableMessageEntry
+	Count, RefBits            int64
+	BuildVersion              uint64
+	Announced, Refused        bool
+	MaxBytes                  int64
+	Strict                    bool
+	bodyClock                 uint64
+	setTop                    int
+	setStarts                 [320]uint64
+	setProbes, announceProbes uint64
 }
 
 type TableMessageReader struct {
@@ -1919,7 +1920,11 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // two words so every level below the binary bound has one: a level's mark
 // still stands when that level's open body began at or before the last naming,
 // and the levels whose bodies were opened since are dropped as the entry is
-// named again. Two slots announcing one id are one entry, the first.
+// named again. Two slots announcing one id are one entry, the first: the
+// entries are sorted in place by id and position (the position parked in
+// bodySeenAt, which every fresh entry holds at zero), each run of one id
+// points at its first, and a second sort by position puts them back, so the
+// work is n log n in the caller's storage and nothing is allocated.
 func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
@@ -1929,13 +1934,48 @@ func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 }
 
 func TableMessageSeenFirst(v *TableVocabulary) {
-	for i := range v.Count {
-		for j := range i {
-			if v.Entries[j].ID == v.Entries[i].ID {
-				v.Entries[i].bodyFirst = uint64(j + 1)
-				break
+	s := v.Entries[:v.Count]
+	for i := range s {
+		s[i].bodySeenAt = uint64(i)
+		s[i].bodyFirst = 0
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.ID != b.ID {
+			if a.ID < b.ID {
+				return -1
 			}
+			return 1
 		}
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := 1; i < len(s); i++ {
+		if s[i].ID == s[i-1].ID {
+			first := s[i-1].bodyFirst
+			if first == 0 {
+				first = s[i-1].bodySeenAt + 1
+			}
+			s[i].bodyFirst = first
+		}
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := range s {
+		s[i].bodySeenAt = 0
 	}
 }
 
@@ -2077,10 +2117,14 @@ func TableMessageRefuse(r *TableReport, reason string) bool {
 // declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
 // its byte extent in Shape.Min and Shape.Max until the scan is over, and the
 // second pass in tableAnnounceRead resolves every entry in place, so no offset
-// into the announcement outlives the call. The scan is quadratic in the entry
-// count, and the entry count is bounded above at 4096, so it is at most eight
-// million compares on a path that runs ONCE a connection and never again. The
-// compare is spelled inline so the emitter claims no new runtime name.
+// into the announcement outlives the call. The duplicate test sorts the
+// parked extents in place by their bytes and compares neighbours (twice), so
+// it is n log n in the entry count, allocates nothing, and leaves the order to
+// the second pass, which rewrites every entry from the announcement. It runs
+// when the entries are all read, and also before vocabulary_too_large, so a
+// repeated entry read before the bound is crossed is damage, as it was when
+// each entry was compared on arrival. It is spelled inline so the emitter
+// claims no new runtime name.
 // tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
 // timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
@@ -2479,4 +2523,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x57286505453943e0
+const Version uint64 = 0x4e4feeb39a842c8a

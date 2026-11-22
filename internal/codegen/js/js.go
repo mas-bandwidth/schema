@@ -51,6 +51,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -891,6 +892,51 @@ func liveImports(syms []string, used map[string]bool) []string {
 // import the code names, which the lint's no-undef then names.
 func jsIdentifiers(body string) map[string]bool {
 	set := map[string]bool{}
+	scanJSIdentifiers(body, func(id string) bool {
+		set[id] = true
+		return true
+	})
+	return set
+}
+
+// countJSIdentifier is how many times body names id as an identifier token, by
+// jsIdentifiers' reading: a property after a member dot (value.sb), a comment
+// and a string literal do not count.
+func countJSIdentifier(body, id string) int {
+	if !strings.Contains(body, id) {
+		return 0
+	}
+	n := 0
+	scanJSIdentifiers(body, func(tok string) bool {
+		if tok == id {
+			n++
+		}
+		return true
+	})
+	return n
+}
+
+// namesJSIdentifier reports whether body names any of ids as an identifier
+// token, by jsIdentifiers' reading. It is how the flat emitter's cursor guards
+// recognise the generator's own locals (sb, wi, br) without mistaking a schema
+// field spelt the same for one: a field is only ever reached as a property.
+func namesJSIdentifier(body string, ids ...string) bool {
+	if !slices.ContainsFunc(ids, func(id string) bool { return strings.Contains(body, id) }) {
+		return false
+	}
+	hit := false
+	scanJSIdentifiers(body, func(tok string) bool {
+		hit = slices.Contains(ids, tok)
+		return !hit
+	})
+	return hit
+}
+
+// scanJSIdentifiers calls visit with each identifier token in body's code, in
+// order, until visit returns false. Comments and string literals are skipped,
+// and so is a property name after a member dot (value.x); a spread (...x) is a
+// binding and is visited.
+func scanJSIdentifiers(body string, visit func(string) bool) {
 	isWord := func(c byte, first bool) bool {
 		return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (!first && c >= '0' && c <= '9')
 	}
@@ -904,7 +950,7 @@ func jsIdentifiers(body string) map[string]bool {
 		case c == '/' && i+1 < len(body) && body[i+1] == '*':
 			end := strings.Index(body[i+2:], "*/")
 			if end < 0 {
-				return set
+				return
 			}
 			i += end + 4
 		case c == '"' || c == '\'' || c == '`':
@@ -926,7 +972,9 @@ func jsIdentifiers(body string) map[string]bool {
 			if start > 0 && body[start-1] == '.' && !strings.HasSuffix(body[:start], "...") {
 				continue
 			}
-			set[body[start:i]] = true
+			if !visit(body[start:i]) {
+				return
+			}
 		case c >= '0' && c <= '9':
 			for i < len(body) && isWord(body[i], false) {
 				i++
@@ -935,5 +983,4 @@ func jsIdentifiers(body string) map[string]bool {
 			i++
 		}
 	}
-	return set
 }
