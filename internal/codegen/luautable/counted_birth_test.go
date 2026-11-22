@@ -114,7 +114,8 @@ assert(M.AnnounceRead(vocab, T.TableMessageAnnouncement, {}), "announce")
 local function run(key, fixRoot, varRoot, text)
 	local rep = {}
 	local f = J.FromJson(fixRoot, buffer.fromstring(text), rep)
-	local msg = f and M.SaveMessages(vocab, fixRoot, { f }, {})
+	local ok, msg = pcall(function() return f and M.SaveMessages(vocab, fixRoot, { f }, {}) end)
+	if not ok then print(key .. " err " .. tostring(msg)); msg = nil end
 	print(key .. " msg " .. hex(msg))
 	local v = J.FromJson(varRoot, buffer.fromstring(text), {})
 	local out = v and S.save(T[varRoot .. "Descriptor"], v)
