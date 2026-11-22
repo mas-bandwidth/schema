@@ -188,3 +188,18 @@ func TestQualifyLeavesFeatureTestMacros(t *testing.T) {
 		t.Errorf("feature-test macros must pass through unqualified:\n%s", got)
 	}
 }
+
+// TestQualifyQualifiesAFeatureMacroAHeaderDeclares: the exemption is for the
+// .c file's own feature-test macro, never for a schema's declaration.
+func TestQualifyQualifiesAFeatureMacroAHeaderDeclares(t *testing.T) {
+	out, err := Qualify(map[string][]byte{
+		"Types.h": []byte("#define _POSIX_C_SOURCE 1\n"),
+		"View.c":  []byte("#include \"Types.h\"\nint f( void ) { return _POSIX_C_SOURCE; }\n"),
+	}, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(out["View.c"]); strings.Contains(got, " _POSIX_C_SOURCE;") {
+		t.Errorf("a header-declared _POSIX_C_SOURCE must be qualified:\n%s", got)
+	}
+}
