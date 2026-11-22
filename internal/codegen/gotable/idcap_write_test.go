@@ -17,7 +17,7 @@ import (
 // then written and the strict read of it answers wire_damaged.
 func TestGoWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	runGeneratedTables(t, tablewire.IdCapSchema(), `package idcap
+	runGenerated(t, tablewire.IdCapSchema(), `package idcap
 
 import "testing"
 
