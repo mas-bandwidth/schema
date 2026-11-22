@@ -1,14 +1,25 @@
 -- The Lua 5.4 driver of the packet value-defaults fixture
 -- (test/packet-defaults/README.md).
-local dir = assert(arg[1], "usage: lua main.lua <generated dir> <goldens dir>")
-local goldens = assert(arg[2], "usage: lua main.lua <generated dir> <goldens dir>")
+--
+-- usage: lua main.lua <generated dir> <goldens dir> <golden .bin file>...
+-- The trailing arguments are the goldens directory's own listing of *.bin
+-- (the make recipe passes it). A golden on disk that no pin below reads, a
+-- pinned golden that is not listed, and an empty listing each fail the run.
+-- The last stdout line is "packet defaults Lua: ran N, failed 0", N the
+-- checks that ran (tools/mustrun reads it); the first failed check raises.
+local usage = "usage: lua main.lua <generated dir> <goldens dir> <golden .bin file>..."
+local dir = assert(arg[1], usage)
+local goldens = assert(arg[2], usage)
 package.path = dir .. "/?.lua;" .. dir .. "/plain/?.lua;" .. package.path
 
 local serialize = require("serialize")
 local d = require("Defaults")
 local p = require("Plain")
 
+local ran = 0
+local pinned = {}
 local function check(ok, what)
+  ran = ran + 1
   if not ok then
     error("FAILED: " .. what, 2)
   end
@@ -52,6 +63,7 @@ local function checkRead(name, bytes, bits, initial, want)
 end
 
 local function pin(typeName, pinName, value, initial, want)
+  pinned[pinName .. ".bin"] = true
   local bytes = readFile(goldens .. "/" .. pinName .. ".bin")
   local bits = tonumber((readFile(goldens .. "/" .. pinName .. ".bits"):gsub("%s+", "")))
   local gotBytes, gotBits = write(d, typeName, value)
@@ -211,4 +223,15 @@ for _ = 1, 2 do
   want.Conditional.Value = zero()
   checkRead("Choice", offBytes, offBits, output, want)
 end
+local listed = {}
+for i = 3, #arg do
+  listed[arg[i]] = true
+  check(pinned[arg[i]], "golden " .. arg[i] .. " is in the directory and no pin reads it")
+end
+check(next(listed) ~= nil, "the goldens directory listing is empty")
+for name in pairs(pinned) do
+  check(listed[name], "pinned golden " .. name .. " is not in the directory listing")
+end
+
 print("packet defaults Lua: constructors, Zero, eight C++ goldens and reused storage OK")
+print(string.format("packet defaults Lua: ran %d, failed 0", ran))

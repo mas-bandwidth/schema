@@ -3,9 +3,11 @@ local serialize = require("./serialize")
 local c = require("./CFloat")
 local inputs = require("./inputs") :: any
 local failed = 0
+local cases = 0
 for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
  local name, text, verdict, _, backText = string.match(line, "^(%S+)%s+(%S+)%s+(%S+)%s*(%S*)%s*(%S*)")
  if name and string.sub(name, 1, 1) ~= "#" then
+  cases += 1
   local n = if text == "NaN" or text == "+Inf" or text == "-Inf" or text == "3.4028235e+38" then 0 else tonumber(text) :: number
   local b = buffer.create(4)
   if text == "NaN" then buffer.writeu32(b, 0, 0x7fc00000) elseif text == "+Inf" then buffer.writeu32(b, 0, 0x7f800000) elseif text == "-Inf" then buffer.writeu32(b, 0, 0xff800000) elseif text == "3.4028235e+38" then buffer.writeu32(b, 0, 0x7f7fffff) else buffer.writef32(b, 0, n) end
@@ -31,5 +33,7 @@ for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
   end
  end
 end
-if failed > 0 then error(string.format("packet cfloat moo: %d failures", failed), 0) end
-print("packet cfloat moo: all cases passed")
+-- The count tools/mustrun reads. An empty case list is a failure (it used to
+-- print "all cases passed" and exit 0).
+print(string.format("packet cfloat moo: ran %d, failed %d", cases, failed))
+if failed > 0 or cases == 0 then error(string.format("packet cfloat moo: %d failures over %d cases", failed, cases), 0) end

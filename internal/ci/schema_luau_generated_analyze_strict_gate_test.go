@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
@@ -83,7 +85,7 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 		units = append(units, []string{dir})
 	}
 	units = append(units, luauCorpusFiles...)
-	tables, err := filepath.Glob(filepath.Join(root, "test", "tables", "*.schema"))
+	tables, err := provesran.Glob(filepath.Join(root, "test", "tables", "*.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	var modules, runtimes []string
 	seenRuntime := map[string]bool{}
 	for _, dir := range dirs {
-		generated, err := filepath.Glob(filepath.Join(dir, "*.luau"))
+		generated, err := provesran.Glob(filepath.Join(dir, "*.luau"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -326,7 +328,7 @@ func luauAnalyzerFinding(analyze, dir string, files []string) string {
 // luauGateVerdict is the gate's whole verdict over one generated directory:
 // the directive refusals of every file, then the analyzer's findings.
 func luauGateVerdict(analyze, dir string) string {
-	files, err := filepath.Glob(filepath.Join(dir, "*.luau"))
+	files, err := provesran.Glob(filepath.Join(dir, "*.luau"))
 	if err != nil {
 		return err.Error()
 	}

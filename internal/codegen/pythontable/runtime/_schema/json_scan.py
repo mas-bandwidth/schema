@@ -174,8 +174,14 @@ class _Scanner:
         return result
 
 
-def parse(text: str, max_key: int | None = 255) -> Any:
-    """Scan one complete text, refusing malformed syntax without coercion."""
+def parse(text: str | bytes | bytearray | memoryview, max_key: int | None = 255) -> Any:
+    """Scan one complete text (or its UTF-8 bytes), refusing malformed syntax without coercion."""
+    if isinstance(text, (bytes, bytearray, memoryview)):
+        # the bytes entry (SPEC-TABLES 16.3): validated as UTF-8 like a text entry
+        try:
+            text = bytes(text).decode("utf-8")
+        except UnicodeDecodeError:
+            raise Refused("invalid_utf8") from None
     if type(text) is not str:
         raise Refused("kind_mismatch")
     try:

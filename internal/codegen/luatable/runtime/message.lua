@@ -444,7 +444,23 @@ local function elem_rides(T, d, v)
       end
       return false
     end
+    -- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §22.2,
+    -- internal/tablewire messageElides): `[2..4]T` stays off the wire at
+    -- exactly two elements that each stay off it (a table by its body), and
+    -- rides at any other count; zero is refused by the write contract first.
+    if not d.list and (d.min or 0) > 0 then
+      if #v ~= d.min then return true end
+      for i = 1, d.min do
+        if elem_rides(T, d.elem, v[i]) then return true end
+      end
+      return false
+    end
     return #v > 0
+  elseif s == "wide" then
+    -- an int128/uint128 element (or a fixed-point one past 64 bits) is at its
+    -- zero when both halves are (docs/PORT-LUA.md, 64-BIT AND 128-BIT
+    -- INTEGERS); without this it fell through to "rides" (F-167)
+    return type(v) ~= "table" or v.lo ~= 0 or v.hi ~= 0
   elseif s == "union" then
     return v.tag ~= nil and v.tag ~= 0
   elseif s == "enum" then
@@ -1591,7 +1607,12 @@ end
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
 -- receiver's entry capacity. Zero or nil takes the conforming defaults.
-function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
+-- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
+-- before the first announcement, one whose build version is not the unit's
+-- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
+-- peer's build version and names both versions in report.remote and
+-- report.own; unset, the read tolerates the difference as the wire does.
+function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1
@@ -1679,7 +1700,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local n, np = read_leb(buf, pos)
       if n == nil or math.ult(lim - np + 1, n) then return nil end
       local s = buf:sub(np, np + n - 1)
-      if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+      if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
       return np + n
     elseif k == 31 then
       local n, np = read_leb(buf, pos)
@@ -1752,7 +1773,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local aEnd = anp + n - 1
       if ak == 12 then
         local s = buf:sub(anp, aEnd)
-        if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+        if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
         return aEnd + 1
       elseif ak == 31 then
         return aEnd + 1
@@ -1816,6 +1837,15 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
     return false
   end
   if seenVersion ~= 1 or seenVocabulary ~= 1 then return damage() end
+  if vocab.strict and version ~= T.BuildVersion then
+    vocab.buildVersion = version
+    report.refused = 1
+    report.reason = "build_version_mismatch"
+    report.remote = version
+    report.own = T.BuildVersion
+    vocab.refused = true
+    return false
+  end
   local entries, tooLarge = vocabulary_entries(vocabulary, maxEntries)
   if entries == nil then
     if tooLarge then return too_large(version) end
@@ -1960,7 +1990,9 @@ end
 function M.saveMessages(T, root, vocab, values)
   message_root(T, root)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return nil end
-  if not vocab.announced then return nil end
+  -- a send uses the unit's own vocabulary (T.MessageVocabulary), as Go's
+  -- EncodeMessages does, so an unannounced receiver vocabulary is no reason to
+  -- refuse: measureMessages never asked for it either
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return nil, refused end
   local W = new_writer(false)

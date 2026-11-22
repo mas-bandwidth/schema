@@ -156,7 +156,11 @@ func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, sabotage b
 // Every existing reason-pin wire remains covered after reason comparison retires.
 func TestLobsterLoadRefusalPins(t *testing.T) {
 	t.Parallel()
-	for schema, pins := range lobsterPinRows(t) {
+	allLobsterPinRows := lobsterPinRows(t)
+	if len(allLobsterPinRows) == 0 {
+		t.Fatal("lobsterPinRows(t) is empty: the loop below would check nothing")
+	}
+	for schema, pins := range allLobsterPinRows {
 		t.Run(schema, func(t *testing.T) {
 			t.Parallel()
 			faults, _ := lobsterPinFaults(t, schema, pins, false)
@@ -170,7 +174,11 @@ func TestLobsterLoadRefusalPins(t *testing.T) {
 // Returning a default value on refusal must fail the unchanged value/verdict oracle.
 func TestLobsterLoadRefusalPinsNegativeControl(t *testing.T) {
 	t.Parallel()
-	for schema, pins := range lobsterPinRows(t) {
+	allLobsterPinRows := lobsterPinRows(t)
+	if len(allLobsterPinRows) == 0 {
+		t.Fatal("lobsterPinRows(t) is empty: the loop below would check nothing")
+	}
+	for schema, pins := range allLobsterPinRows {
 		t.Run(schema, func(t *testing.T) {
 			t.Parallel()
 			faults, refused := lobsterPinFaults(t, schema, pins, true)

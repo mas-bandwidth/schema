@@ -29,6 +29,7 @@ LOBSTER_HOSTILE_PACKET := internal_ci_hostilecorpus_corpus_packet_hostile_schema
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
 schema-lobster-runs-hostile-corpus: lobster-dist-present
+	go test -count=1 -run '^TestScorerOutcomes$$' ./test/conformance/lobster/hostile
 	go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)
 	sh make/checks/hostile-carry-controls.sh lobster findings-lobster $(LOBSTER_HOSTILE_BUILD)-carry 'go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD) --no-generate --absent-schemas "" --corpus "$$CARRY_CORPUS" --findings "$$CARRY_FINDINGS"'
 

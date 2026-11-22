@@ -61,9 +61,15 @@ $(JAVA_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh mak
 	done
 	@touch $@
 
+# The registered count: the runner prints `java-hostile: ran N, failed M`,
+# where N is every case the port answered (a SKIP is not run), and
+# build/mustrun holds N to this number, so a manifest that loses cases or a case
+# that starts skipping is red. A commit that adds a hostile case changes it.
+JAVA_HOSTILE_CASES ?= 192
 .PHONY: schema-java-runs-hostile-corpus
-schema-java-runs-hostile-corpus: $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
-	$(call hostile_ledgered,java,$(JAVA_HOSTILE_BUILD)/run.log,$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" "$(JAVA_HOSTILE_BUILD)/packet",$(JAVA_HOSTILE_CORPUS))
+schema-java-runs-hostile-corpus: build/mustrun $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
+	$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
+	$(call hostile_ledgered,java,$(JAVA_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-java-runs-hostile-corpus -count $(JAVA_HOSTILE_CASES) -- $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" "$(JAVA_HOSTILE_BUILD)/packet",$(JAVA_HOSTILE_CORPUS))
 	sh make/checks/hostile-carry-controls.sh java findings $(JAVA_HOSTILE_BUILD)/carry '$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$$CARRY_CORPUS" "$$CARRY_FINDINGS" "$(JAVA_HOSTILE_BUILD)/packet"'
 
 # The port's normal unit target runs the corpus: this file is included after

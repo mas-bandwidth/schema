@@ -101,6 +101,14 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
+        // settleDamage names framing damage on the report, as Go does: a
+        // damaged read answers reason wire_damaged unless a refusal named one.
+        public void settleDamage() {
+            if (damaged && reason == null) {
+                reason = "wire_damaged";
+            }
+        }
+
         public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;
@@ -448,13 +456,16 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                if (!growable || entries.length >= 65536) {
+                // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader
+                // refuses more than 4096 entries, so the writer refuses to grow
+                // past it and never writes a file its readers refuse.
+                if (!growable || entries.length >= 4096) {
                     overflow = true;
                     return 0;
                 }
                 entries =
                         java.util.Arrays.copyOf(
-                                entries, java.lang.Math.min(65536, entries.length * 2));
+                                entries, java.lang.Math.min(4096, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -710,7 +721,7 @@ public final class TableVariable {
             if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF64(v);
+            putF64(v == 0.0 ? 0.0 : v);
         }
 
         public void putLeb(long v) {

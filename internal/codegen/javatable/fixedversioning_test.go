@@ -287,8 +287,8 @@ func corpusDir(t *testing.T) string {
 		dir = filepath.Join("..", "..", "..", "build", "fixedform-corpus")
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not there: run `make tables-fixedform-corpus`", dir)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and %s is not there: run `make tables-fixedform-corpus`", dir)
 		}
 		t.Skipf("no fixed-form corpus at %s: run `make tables-fixedform-corpus`", dir)
 	}

@@ -268,11 +268,21 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 			return expr + "_length > 0"
 		}
 		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !isStructRef(f.Type) && !isUnionRef(f.Type) && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes:
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !f.Required && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes:
 		// A [Min..N]T ARRAY AT ITS BIRTH ELIDES (internal/tablewire
-		// messageElides): Min elements, each at its default.
-		e := msgElement(f)
-		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, m.rides(e, expr+"[i]", dexpr+"[i]", ind))
+		// messageElides): Min elements, each at its default — a table
+		// element by a body that is its terminator alone, a union by None.
+		var live string
+		switch {
+		case isStructRef(f.Type):
+			// a body the save refuses is live: the write that follows says so
+			live = fmt.Sprintf("{ let mut probe = TableBitWriter::measure(); !%s_save_message_body(&mut probe, &%s[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }", ir.RustSnake(f.Type.Name), expr)
+		case isUnionRef(f.Type):
+			live = expr + "[i].tag() != 0"
+		default:
+			live = m.rides(msgElement(f), expr+"[i]", dexpr+"[i]", ind)
+		}
+		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, live)
 	case f.Array == ir.ArrayCounted:
 		return m.countedRides(f, expr, dexpr, ind)
 	case f.Array == ir.ArrayFixed:
@@ -1029,8 +1039,8 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 /// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
 /// the count is zero, malformed is set, and every body of the batch goes back
 /// to its declared defaults, bytes after the pad included; "M ABOVE THE
-/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
+/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", nothing decoded and
+/// a count of 0, as every refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 ///
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
@@ -1047,7 +1057,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
         return (0, false);
     };
     if count > values.len() {
-        return (count, report.refuse(TableReason::BatchTooLarge));
+        return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {

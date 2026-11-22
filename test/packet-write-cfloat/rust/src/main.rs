@@ -14,11 +14,17 @@ fn value(text: &str) -> f32 {
 fn main() {
     let cases = std::env::args().nth(1).expect("shared cases path");
     std::panic::set_hook(Box::new(|_| {}));
-    for line in std::fs::read_to_string(cases).expect("read cases").lines() {
+    let mut ran = 0u32;
+    for line in std::fs::read_to_string(&cases).expect("read cases").lines() {
         let fields: Vec<_> = line.split_whitespace().collect();
-        if fields.len() < 3 || fields[0].starts_with('#') {
+        if fields.is_empty() || fields[0].starts_with('#') {
             continue;
         }
+        if fields.len() < 3 {
+            eprintln!("FAILED: malformed case line {line:?}");
+            std::process::exit(1);
+        }
+        ran += 1;
         let name = fields[0];
         let input = value(fields[1]);
         let wanted = fields[2];
@@ -72,5 +78,13 @@ fn main() {
             std::process::exit(1);
         }
     }
-    println!("packet write compressed float Rust: OK");
+    // the count line build/mustrun holds to the registered count: a case file
+    // that lost its rows runs nothing and is red (every failure above exits)
+    if ran == 0 {
+        eprintln!("FAILED: no cases in {cases}");
+    }
+    println!("packet write compressed float Rust: ran {ran}, failed {}", u32::from(ran == 0));
+    if ran == 0 {
+        std::process::exit(1);
+    }
 }

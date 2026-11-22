@@ -259,7 +259,7 @@ func (g *fixedGen) unionsIn(closure []*ir.Struct) []*ir.Union {
 func (g *fixedGen) structModule(st *ir.Struct) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# table %s — the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)\n", st.Name)
-	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, st.Name)
+	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, elixir.ModuleName(st.Name))
 	fields := make([]string, 0, len(st.Fields))
 	for _, f := range st.Fields {
 		if f.Type.Optional {
@@ -484,7 +484,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
-			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, r.Name, name, r.StorageBits)
+			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, elixir.ModuleName(r.Name), name, r.StorageBits)
 		case *ir.Flags:
 			return fmt.Sprintf("%s::little-unsigned-64", name)
 		}
@@ -494,9 +494,20 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		return fmt.Sprintf("if(%s, do: 1, else: 0)::unsigned-8", name)
 	case ir.TFloat32:
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
-		// this form is not optimized for bandwidth (§3.4).
+		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
+		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
+		// plain float's -0 is carried bit-exact. ITS DECLARED RANGE IS THE
+		// WRITER'S CONTRACT, held on the way out like a ranged integer's and
+		// HELD AT FLOAT32 (§3.3): cf32_bits narrows the value, tests it against
+		// the float32 ends the range attribute carries, and raises past them.
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.cf32_bits(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
+		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.cf64_bits(%s, %s)::little-unsigned-64", name, g.rangeAttr(f))
+		}
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
 	// AN INTEGER LEAF IS HELD TO ITS RANGE ON THE WAY OUT. The reference spends
@@ -546,7 +557,8 @@ func (g *fixedGen) rangeAttr(f *ir.Field) string {
 	return fmt.Sprintf("@r_%s_%s", g.owner, ir.RustSnake(f.Name))
 }
 
-// emitRangeAttrs defines every ranged leaf's bounds for the declarations this
+// emitRangeAttrs defines every ranged leaf's bounds (a ranged integer's or a
+// compressed float's) for the declarations this
 // module carries, and for every declaration a nested INLINED type brings with
 // it, under the OWNER whose body spells the segment.
 func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
@@ -561,7 +573,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 				return
 			}
 		}
-		if !f.HasIntRange {
+		if !f.HasIntRange && !f.HasFloatRange {
 			return
 		}
 		g.owner = owner
@@ -571,6 +583,11 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 		}
 		seen[name] = true
 		lo, hi := fixedRangeOf(f)
+		if flo, fhi, ok := fixedFloatRangeOf(f); ok {
+			// A COMPRESSED FLOAT'S BOUNDS are its float32 ends, the float32
+			// nearest each declared bound (§3.3, THE RANGE IS HELD AT FLOAT32).
+			lo, hi = flo, fhi
+		}
 		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
 		// the pair breaks where the formatter breaks it: the second bound
 		// aligned under the first, inside the brace that opened the tuple.
@@ -584,7 +601,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 	// spells a bound under the union's own name.
 	for _, u := range unions {
 		for _, v := range u.Variants {
-			if v.F != nil && v.F.HasIntRange {
+			if v.F != nil && (v.F.HasIntRange || v.F.HasFloatRange) {
 				one(ir.RustSnake(u.Name), v.F)
 			}
 		}
@@ -1020,7 +1037,7 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 			n := len(r.Variants)
 			return leafDec{
 				spec: fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
-				wrap: call("elem", call(g.ns+"."+r.Name+".from_int",
+				wrap: call("elem", call(g.ns+"."+elixir.ModuleName(r.Name)+".from_int",
 					rawf("if(%s <= %d, do: %s, else: 0)", name, n, name)), raw("1")),
 				count: rawf("R.past(c, %s, %d)", name, n),
 			}
@@ -1087,7 +1104,7 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 }
 
 func (g *fixedGen) structNodeOf(st *ir.Struct, r rseg) node {
-	return structNode{mod: g.ns + "." + st.Name, keys: r.keys, vals: r.vals}
+	return structNode{mod: g.ns + "." + elixir.ModuleName(st.Name), keys: r.keys, vals: r.vals}
 }
 
 // ---------------------------------------------------------------------------

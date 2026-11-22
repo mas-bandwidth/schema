@@ -66,7 +66,7 @@ let kind_rows: const Row[3] = [
 		t.Fatalf("assembled:\n%s\nwant:\n%s", got, want)
 	}
 	again, err := assembleRegistry([]byte("namespace schema_rt;\n"), frags)
-	if err != nil || !bytes.Equal(again, got) {
+	if err != nil || string(again) != want {
 		t.Fatal("assembly is not deterministic")
 	}
 }

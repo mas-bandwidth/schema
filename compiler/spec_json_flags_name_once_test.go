@@ -112,6 +112,9 @@ func TestSpecJsonFlagsNameOnce(t *testing.T) {
 			t.Errorf("MANIFEST.tsv names %s: %v", row.text, err)
 		}
 	}
+	if len(texts) == 0 {
+		t.Fatal("texts is empty: the loop below would check nothing")
+	}
 	for _, text := range texts {
 		if !named[filepath.Base(text)] {
 			t.Errorf("%s is not named by MANIFEST.tsv", text)

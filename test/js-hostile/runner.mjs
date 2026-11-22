@@ -47,8 +47,12 @@
 // non-finite float) is that reason, cut at its first ": " (the port appends the
 // field, `non_finite_float: ShipEntry.health`); every other refusal, damage, or
 // a read that hands back no value is the corpus's `damaged`, as the C and C++
-// runners answer it (test/cpp-hostile/hostile.hpp). Why else a read refused is
-// per-language diagnostic detail and is never compared (§6.5).
+// runners answer it (test/cpp-hostile/hostile.hpp). That name is printed on a
+// FAIL line as the port's diagnostic and is never compared: a refusal conforms
+// on its verdict alone (docs/rulings.json refusal-verdict-only, SPEC-TABLES §6.5
+// and §13.10). `runner.mjs scorer <scorer-outcomes.tsv>` grades the shared
+// scorer outcome cases (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv)
+// through the same agrees(), before the corpus runs.
 //
 // A FIXED ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a wire input whose
 // form byte is 3 is read through <T>FixedLoad, as the C and C++ runners pick
@@ -646,6 +650,52 @@ function show(a) {
   return `${a.verdict} ${a.detail}`;
 }
 
+// agrees reports whether a port's answer conforms to the manifest's. A refusal
+// conforms on its verdict alone (docs/rulings.json refusal-verdict-only): the
+// reason either side names is diagnostic detail. An accept conforms on the
+// digest of its decoded value; an error, a hang or a crash is never a refusal.
+function agrees(got, w) {
+  if (got.verdict === "refuse" && w.verdict === "refuse") {
+    return true;
+  }
+  return got.verdict === w.verdict && got.detail === w.detail;
+}
+
+// `scorer <scorer-outcomes.tsv>` grades each shared scorer outcome case: the
+// expected verdict, reference diagnostic and accepted SHA-256 make the
+// manifest's answer, the worker reply makes the port's (a refusal with the
+// name it gives or none, an accept of the text body's digest, or an exit), and
+// agrees() must pass exactly the rows whose scorer exit is 0.
+function scorer(path) {
+  let wrong = 0;
+  const cases = rows(path);
+  for (const f of cases) {
+    if (f.length !== 7) {
+      console.error(`${path}: row has ${f.length} fields, want 7: ${f.join("\t")}`);
+      process.exit(2);
+    }
+    const [name, verdict, reason, digest, reply, body, exit] = f;
+    let got;
+    if (reply === "refuse" || reply.startsWith("refuse ")) {
+      got = { verdict: "refuse", detail: reply.slice("refuse ".length) };
+    } else if (reply === "accept text") {
+      got = { verdict: "accept", detail: sha256Hex(Buffer.from(body === "-" ? "" : body)) };
+    } else if (reply === "exit") {
+      got = { verdict: "error", detail: "the worker exited with status 3" };
+    } else {
+      console.error(`${path}: ${name}: unknown worker reply ${reply}`);
+      process.exit(2);
+    }
+    const pass = agrees(got, want({ verdict, reason, digest }));
+    if (pass !== (exit === "0")) {
+      console.log(`SCORER ${name}: graded ${pass ? "pass" : "fail"}, the fixture says scorer exit ${exit}`);
+      wrong++;
+    }
+  }
+  console.log(`js scorer outcomes: ${cases.length} cases, ${cases.length - wrong} graded as the fixture says, ${wrong} wrong`);
+  process.exit(wrong === 0 && cases.length > 0 ? 0 : 1);
+}
+
 async function run(corpus, genDir, serializeJs, findingsPath) {
   if (sha256Hex(Buffer.from("abc")) !== "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
     console.error("the runner's SHA-256 fails its own known-answer test");
@@ -703,9 +753,8 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     }
     ranRows.push(row.id);
     const w = want(row);
-    const agrees = got.verdict === w.verdict && got.detail === w.detail;
     const finding = findings.get(row.id);
-    if (agrees) {
+    if (agrees(got, w)) {
       if (finding !== undefined) {
         console.log(`STALE ${row.id}: FIX-CARD ${finding[1]} no longer reproduces`);
         stale.push(row.id);
@@ -736,7 +785,13 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     console.log(`hostile-ledger ran ${id}`);
   }
   console.log("hostile-ledger end");
-  process.exit(bad.length > 0 || stale.length > 0 || unbound.length > 0 ? 1 : 0);
+  // One unit per manifest row that reached a reader. tools/mustrun holds the
+  // count to the one the recipe registers for the committed corpus, so an
+  // emptied or shortened manifest is red; a row no JavaScript reader carries
+  // is a failure here, never a quiet skip.
+  const failed = bad.length + stale.length + unbound.length + skipped.length;
+  console.log(`ran ${live.length}, failed ${failed}`);
+  process.exit(failed > 0 || live.length === 0 ? 1 : 0);
 }
 
 // `show <row>` runs one row on this thread and prints the port's canonical
@@ -765,9 +820,13 @@ async function main(args) {
   if (args[0] === "show" && args.length === 5) {
     return showRow(args[1], args[2], args[3], args[4]);
   }
+  if (args[0] === "scorer" && args.length === 2) {
+    return scorer(args[1]);
+  }
   console.error("usage: runner.mjs generate <corpus-dir> <generated-dir> <schema-binary>");
   console.error("       runner.mjs run <corpus-dir> <generated-dir> <serialize.js-dir> [known-findings.tsv]");
   console.error("       runner.mjs show <corpus-dir> <generated-dir> <serialize.js-dir> <row>");
+  console.error("       runner.mjs scorer <scorer-outcomes.tsv>");
   process.exit(2);
 }
 

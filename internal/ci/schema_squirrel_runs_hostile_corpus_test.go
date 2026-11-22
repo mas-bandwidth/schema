@@ -8,8 +8,9 @@
 // module: the text carrier through FromJson/ToJson, the wire carrier through
 // ReadStrict, the announcement carriers through AnnounceRead, and the message
 // carriers through LoadMessages. An accept must carry the manifest's decoded
-// value digest (SHA-256 of the canonical text); a refuse must name the
-// manifest's reason. A disagreement is a finding, not a reason to edit the
+// value digest (SHA-256 of the canonical text); a refuse conforms on its
+// verdict alone, the reason the port names being its diagnostic
+// (docs/rulings.json refusal-verdict-only). A disagreement is a finding, not a reason to edit the
 // corpus (docs/HOSTILE-CORPUS.md).
 //
 // THE SLOW GATE. The two tests that run the pinned interpreter
@@ -227,15 +228,17 @@ func squirrelHostileKey(schema string) string {
 	return strings.NewReplacer("/", "_", ".", "_").Replace(schema)
 }
 
+// squirrelHostileFindings grades one answer against its case. A refusal
+// conforms on its verdict alone, whatever reason either side names
+// (docs/rulings.json refusal-verdict-only, SPEC-TABLES §6.5 and §13.10); an
+// accept on its decoded value's digest; an error is never a refusal.
 func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 	if got.verdict != c.verdict {
 		return []string{fmt.Sprintf("%s: verdict %q, manifest %q", c.name, got.verdict, c.verdict)}
 	}
 	switch c.verdict {
 	case "refuse":
-		if got.reason != c.reason {
-			return []string{fmt.Sprintf("%s: refusal %q, manifest %q", c.name, got.reason, c.reason)}
-		}
+		// the reason the port names is its diagnostic, never compared
 	case "accept":
 		if c.digest == "-" {
 			return nil
@@ -255,6 +258,30 @@ func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 		return []string{fmt.Sprintf("%s: manifest verdict %q is neither accept nor refuse", c.name, c.verdict)}
 	}
 	return nil
+}
+
+// TestSquirrelHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through squirrelHostileFindings: a
+// refusal with another reason or none passes; a changed verdict either way, a
+// different accepted value or an error fails. It runs no Squirrel.
+func TestSquirrelHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := hostileCase{name: o.Name, carrier: "text", verdict: o.Verdict, reason: o.Reason, digest: o.Digest}
+		got := hostileResult{verdict: "error", reason: "the worker exited with status 3"}
+		if name, refused := o.Refused(); refused {
+			got = hostileResult{verdict: "refuse", reason: name}
+		} else if text, accepted := o.Accepted(); accepted {
+			got = hostileResult{verdict: "accept", reason: "-", text: text}
+		}
+		if f := squirrelHostileFindings(c, got); (len(f) == 0) != o.Pass {
+			t.Errorf("%s: graded %v, the fixture says pass=%t", o.Name, f, o.Pass)
+		}
+	}
 }
 
 // TestSquirrelRunsHostileCorpus is the port's runner: every input of the
@@ -452,13 +479,15 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 }
 
 // squirrelHostilePlantFrom and squirrelHostilePlantTo are the planted reader
-// bug: the generated strict wire reader names a newer form `wire_damaged`
-// instead of `newer_form`. The plant is applied to the scratch copy of the
-// generated runtime only, never to the embedded source.
+// bug: the generated <Root>FixedLoad's form gate refuses the form it carries,
+// so the fixed wire the corpus accepts (wire-valid, form 3) is refused. The
+// plant changes a verdict: a refusal conforms on its verdict alone
+// (docs/rulings.json refusal-verdict-only), so a plant that only renamed a
+// refusal would leave the corpus green. The plant is applied to the scratch
+// copy of the generated module only, never to the generator.
 const (
-	squirrelHostilePlantFile = "schema_table_refusal.nut"
-	squirrelHostilePlantFrom = `report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";`
-	squirrelHostilePlantTo   = `report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "wire_damaged";`
+	squirrelHostilePlantFrom = `if (b[0] != 3) { _M.FixedReason = "newer_form"; return -1; }`
+	squirrelHostilePlantTo   = `if (true) { _M.FixedReason = "newer_form"; return -1; } // PLANTED: the form gate refuses the form it carries`
 )
 
 // TestSquirrelRunsHostileCorpusPlant is the planted-bad-pattern control: the
@@ -470,22 +499,22 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	planted := 0
 	_, mismatchNames, findingLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
-		src, ok := files[squirrelHostilePlantFile]
-		if !ok || !strings.Contains(string(src), squirrelHostilePlantFrom) {
-			return
+		for name, src := range files {
+			if strings.Contains(string(src), squirrelHostilePlantFrom) {
+				files[name] = []byte(strings.ReplaceAll(string(src), squirrelHostilePlantFrom, squirrelHostilePlantTo))
+				planted++
+			}
 		}
-		files[squirrelHostilePlantFile] = []byte(strings.Replace(string(src), squirrelHostilePlantFrom, squirrelHostilePlantTo, 1))
-		planted++
 	})
 	if planted == 0 {
-		t.Fatalf("the plant did not land: %s carries no %q", squirrelHostilePlantFile, squirrelHostilePlantFrom)
+		t.Fatalf("the plant did not land: no generated file carries %q", squirrelHostilePlantFrom)
 	}
 	drift := squirrelHostileMismatchSetDrift(mismatchNames, squirrelExpectedHostileMismatchNames())
 	if len(drift) == 0 {
-		t.Fatal("a generated reader that names a newer form wire_damaged was NOT caught by the corpus run")
+		t.Fatal("a generated reader whose form gate refuses the fixed form was NOT caught by the corpus run")
 	}
 	for _, f := range findingLines {
-		if strings.Contains(f, "newer_form") && !strings.Contains(f, "announce-newer-form") {
+		if strings.Contains(f, `manifest "accept"`) {
 			t.Logf("plant caught: %s", f)
 		}
 	}
@@ -635,7 +664,9 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     return;
   }
   local text = J.ToJson(T, root, v);
-  if (text == null) { emit(name, "refuse", "damaged", null); return; }
+  // the text writer refused the value the read accepted: an error, never a
+  // refusal (a refusal conforms on its verdict alone)
+  if (text == null) { emit(name, "error", "ToJson refused the decoded value", null); return; }
   emit(name, "accept", "-", text);
 };
 `

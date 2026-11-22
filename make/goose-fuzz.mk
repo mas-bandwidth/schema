@@ -144,6 +144,7 @@ GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 .PHONY: schema-goose-runs-hostile-corpus
 schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@sh make/goose-hostile.sh --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),-absent-carriers test/goose-hostile/absent-carriers.tsv -skips test/goose-hostile/absent-cases.tsv)
 
 # ITS CONTROL: the non-finite refusal taken out of the generated load

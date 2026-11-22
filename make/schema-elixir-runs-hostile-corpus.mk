@@ -58,9 +58,15 @@ $(ELIXIR_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh m
 	fi
 	@touch $@
 
+# The registered count: the cases of the committed corpus manifest. The
+# runner prints "ran N, failed M" and tools/mustrun holds N to this number,
+# so a manifest that loses cases is red. A commit that adds a hostile case
+# changes it.
+ELIXIR_HOSTILE_CASES ?= 192
 .PHONY: schema-elixir-runs-hostile-corpus
-schema-elixir-runs-hostile-corpus: $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
-	$(call hostile_ledgered,elixir,$(ELIXIR_HOSTILE_BUILD)/run.log,SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet",$(ELIXIR_HOSTILE_CORPUS))
+schema-elixir-runs-hostile-corpus: build/mustrun $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
+	$(ELIXIR) test/elixir-hostile/runner.exs --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
+	$(call hostile_ledgered,elixir,$(ELIXIR_HOSTILE_BUILD)/run.log,SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) $(MUSTRUN) -name schema-elixir-runs-hostile-corpus -count $(ELIXIR_HOSTILE_CASES) -- $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet",$(ELIXIR_HOSTILE_CORPUS))
 	sh make/checks/hostile-carry-controls.sh elixir findings $(ELIXIR_HOSTILE_BUILD)/carry 'SCHEMA_ELIXIR_HOSTILE_FINDINGS="$$CARRY_FINDINGS" $(ELIXIR) test/elixir-hostile/runner.exs "$$CARRY_CORPUS" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet"'
 
 # The port's normal unit target runs the corpus: this file is included after

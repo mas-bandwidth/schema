@@ -113,7 +113,11 @@ func TestPythonFixedProofUnionsOptionals(t *testing.T) {
 		fixedproof.RunEvolutionRows(t, "../../..", runner, "optional-values", "union-guards")
 	})
 	t.Run("types", func(t *testing.T) {
-		for _, tc := range fixedproof.Cases() {
+		allCases := fixedproof.Cases()
+		if len(allCases) == 0 {
+			t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+		}
+		for _, tc := range allCases {
 			if _, ok := pythonFixedSetups[tc.ID]; !ok {
 				continue
 			}

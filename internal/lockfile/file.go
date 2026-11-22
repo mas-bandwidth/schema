@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -176,7 +177,7 @@ func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 		return "", false, readErr
 	}
 
-	if err := os.WriteFile(path, []byte(live.Text()), 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(live.Text()), 0o644); err != nil {
 		return "", false, err
 	}
 	return path, true, nil

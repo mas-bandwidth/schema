@@ -41,9 +41,15 @@ $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/
 	$(DOTNET) build test/unity-hostile/unityhostile.csproj $(UNITY_HOSTILE_DOTNET_FLAGS) -o $(UNITY_HOSTILE_BUILD)/bin
 	@touch $@
 
+# The registered count: the runner prints `unity-hostile: ran N, failed M`,
+# where N is every case the port answered (a SKIP is not run), and
+# build/mustrun holds N to this number, so a manifest that loses cases or a case
+# that starts skipping is red. A commit that adds a hostile case changes it.
+UNITY_HOSTILE_CASES ?= 192
 .PHONY: schema-unity-runs-hostile-corpus
-schema-unity-runs-hostile-corpus: $(UNITY_HOSTILE_BUILD)/bin/.stamp
-	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)",$(UNITY_HOSTILE_CORPUS))
+schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
+	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
+	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)",$(UNITY_HOSTILE_CORPUS))
 	sh make/checks/hostile-carry-controls.sh unity findings $(UNITY_HOSTILE_BUILD)/carry '$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
 
 # The port's normal unit target runs the corpus: this file is included after

@@ -78,20 +78,32 @@ func TestEmitFormatTargetChecksRawOutput(t *testing.T) {
 		}
 	}
 
-	var pending []string
-	found := false
-	for _, line := range lines {
+	pending, found := emitFormatPending(string(src))
+	if !found {
+		t.Fatal("make/elixir.mk sets no ELIXIR_EMIT_FORMAT_PENDING")
+	}
+	for _, problem := range pendingProblems(pending, emittedNames(t)) {
+		t.Error(problem)
+	}
+}
+
+// emitFormatPending reads ELIXIR_EMIT_FORMAT_PENDING from a make file's text:
+// the names it holds, and whether it is set at all. An empty list is a valid
+// state, and the shipped one: every emitted file is held (F-059).
+func emitFormatPending(src string) (pending []string, found bool) {
+	for line := range strings.SplitSeq(src, "\n") {
 		if name, value, ok := strings.Cut(line, ":="); ok && strings.TrimSpace(name) == "ELIXIR_EMIT_FORMAT_PENDING" {
 			pending = strings.Fields(value)
 			found = true
 		}
 	}
-	if !found {
-		t.Fatal("make/elixir.mk sets no ELIXIR_EMIT_FORMAT_PENDING")
-	}
+	return pending, found
+}
 
-	// the files the backend writes for a one-table variable unit: the
-	// variable form and its runtime are exactly the pending pair's home
+// emittedNames are the files the backend writes for a one-table variable unit:
+// the variable form and its runtime are exactly the pending pair's home.
+func emittedNames(t *testing.T) map[string]bool {
+	t.Helper()
 	written := map[string]bool{}
 	out, err := Generate(cardUnit(&ir.Field{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Width: 32}}))
 	if err != nil {
@@ -100,14 +112,54 @@ func TestEmitFormatTargetChecksRawOutput(t *testing.T) {
 	for name := range out {
 		written[name] = true
 	}
+	if len(written) == 0 {
+		t.Fatal("the Elixir table backend wrote no file for a one-table unit")
+	}
+	return written
+}
+
+// pendingProblems names each pending entry the backend does not write, and each
+// that is not the variable form's pair. No entry, no problem.
+func pendingProblems(pending []string, written map[string]bool) []string {
+	var problems []string
 	for _, p := range pending {
 		if !written[p] {
-			t.Errorf("ELIXIR_EMIT_FORMAT_PENDING names %s, which the Elixir table backend does not write", p)
+			problems = append(problems, "ELIXIR_EMIT_FORMAT_PENDING names "+p+", which the Elixir table backend does not write")
+		}
+		if p != "Table.ex" && p != "TableRuntime.ex" {
+			problems = append(problems, "ELIXIR_EMIT_FORMAT_PENDING names "+p+": only the variable form's Table.ex and TableRuntime.ex may wait for their own card")
 		}
 	}
-	for _, p := range pending {
-		if p != "Table.ex" && p != "TableRuntime.ex" {
-			t.Errorf("ELIXIR_EMIT_FORMAT_PENDING names %s: only the variable form's Table.ex and TableRuntime.ex may wait for their own card", p)
+	return problems
+}
+
+// TestEmitFormatPendingFixtures is F-059's regression test: the committed make
+// fragments under testdata/emitformat hold the pending list's three states. An
+// empty list is set and passes (a mechanical non-empty check once turned it
+// red); a misspelled entry is refused (the control); an unset list is not
+// found.
+func TestEmitFormatPendingFixtures(t *testing.T) {
+	t.Parallel()
+	written := emittedNames(t)
+	for _, c := range []struct {
+		file     string
+		found    bool
+		problems int
+	}{
+		{"pending-empty.mk", true, 0},
+		{"pending-misspelled.mk", true, 2},
+		{"pending-unset.mk", false, 0},
+	} {
+		src, err := os.ReadFile(filepath.Join("testdata", "emitformat", c.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pending, found := emitFormatPending(string(src))
+		if found != c.found {
+			t.Errorf("%s: found %v, want %v", c.file, found, c.found)
+		}
+		if got := pendingProblems(pending, written); len(got) != c.problems {
+			t.Errorf("%s: %d problems %q, want %d", c.file, len(got), got, c.problems)
 		}
 	}
 }

@@ -224,6 +224,23 @@ def surface_message(text:string):
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
                     assert n == length(out)
                     say(f[1], out)
+        // message-batch <case> <connection> <root> <wire>: load with room for
+        // every body and answer the count load_messages returned
+        // (docs/SPEC-TABLES.md §3.3; FORMAT.md, `message-batch`)
+        if length(f) >= 5 and f[0] == "message-batch":
+            var announcement = ""
+            var unit = ""
+            for(lines) other:
+                let c = words(other)
+                if length(c) >= 5 and c[0] == "connection" and c[1] == f[2]:
+                    unit = c[2]
+                    announcement = c[4]
+            if unit == unit_key:
+                let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
+                assert schema_rt.announce_read(v, fixture(announcement), schema_rt.LoadReport {})
+                let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[4]), schema_rt.LoadReport {}, 256)
+                assert length(recs) >= 0 and (ok or count == 0)  // both unused otherwise: the compiler warns on stdout, which is not an answer line
+                say(f[1], "count " + string(count) + "\n")
 
 // lines are the manifest's lines of one kind, whatever unit they name
 def lines(text:string, kind:string) -> [[string]]:

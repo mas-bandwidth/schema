@@ -440,8 +440,16 @@ end
 -- (docs/SPEC-TABLES.md §3.3: "The ANNOUNCEMENT READS walkLY, WITH EXACTLY
 -- TWO STRICT CHECKS"; a refusal is terminal and a second is
 -- `second_announcement`).
-function M.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096 }
+--
+-- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): `strict` is false when
+-- the vocabulary is made. Set before the first announcement, an announcement
+-- whose build version is not the reader's own (`ownVersion`, the unit's
+-- TableMessageBuildVersion handed to NewVocabulary) is refused
+-- `build_version_mismatch`, sets no vocabulary, keeps the peer's build version
+-- and names both versions in report.remote and report.own. A strict
+-- vocabulary made without its own version refuses every peer.
+function M.NewVocabulary(own: integer?): any
+	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096, strict = false, ownVersion = own }
 end
 
 local function refuse(report: any, why: string): boolean
@@ -525,6 +533,11 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	end
 	if r.at ~= start or ((report.unknown or 0) == 0 and nextRef - 1 ~= #ids) then report.malformed = true; return false end
 	if versions ~= 1 or vocabs ~= 1 then report.malformed = true; return false end
+	if v.strict and v.buildVersion ~= v.ownVersion then
+		report.remote = v.buildVersion
+		report.own = v.ownVersion
+		return refuse(report, "build_version_mismatch")
+	end
 	local w = { b = words, at = 0, e = buffer.len(words), bad = false }
 	local entries = {}
 	local seenRaw = {}
@@ -1788,8 +1801,8 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
-	if len < 1 then report.malformed = true; return -1, {} end
-	if buffer.readu8(data, 0) ~= 2 then return -1, refuse(report, "newer_form") end
+	if len < 1 then report.malformed = true; return 0, {} end
+	if buffer.readu8(data, 0) ~= 2 then return 0, refuse(report, "newer_form") end
 	-- THE INTEGRITY TRAILER IS CHECKED BEFORE ANY BODY IS DECODED
 	-- (docs/SPEC-TABLES.md §2.14, §3.3): the form byte is read first, then a
 	-- declaring root's batch must end in the CRC-32C of the bytes before it,
@@ -1800,23 +1813,23 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 		if body == nil then
 			report.malformed = true
 			report.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		data = body
 		len = buffer.len(data)
 	end
-	if not v.announced then return -1, refuse(report, "no_vocabulary") end
-	if len < 2 then report.malformed = true; return -1, {} end
+	if not v.announced then return 0, refuse(report, "no_vocabulary") end
+	if len < 2 then report.malformed = true; return 0, {} end
 	local count = buffer.readu8(data, 1) + 1
 	if count > capacity then
 		refuse(report, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	local got, bodies, malformed, dep, nonFinite = walkBodies(v, data, desc, count, false)
 	if nonFinite ~= nil then
 		-- the refusal outranks every verdict a body could reach after it
 		refuseNonFinite(report, nonFinite, true)
-		return -1, {}
+		return 0, {}
 	end
 	if malformed then
 		report.malformed = true
@@ -1833,7 +1846,7 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 				br.n = b.to
 				local tree, tok = transcodeBody(br, v, ov, desc.name, desc, report)
 				if not tok or tree == nil then
-					return got, {}
+					return 0, {}
 				end
 				transcoded[i] = { ownTree = tree, ownVocab = ov, from = b.from, to = b.to }
 			end
@@ -1856,19 +1869,20 @@ end
 -- LoadMessages is the PLAIN batch read, and it is STRICT (docs/SPEC-TABLES.md
 -- §6.5, Go's <T>LoadMessages over <T>loadMessagesWalk): a batch the
 -- walk read found damaged, or whose report counts a clamp or a kind that
--- moved, answers -1 with no body handed back and report.reason the one name
--- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name.
--- unknown and widened alone never refuse.
+-- moved, answers 0 with no body handed back and report.reason the one name
+-- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name:
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (§3.3). A delivered batch is never empty, so 0 says refused. unknown and
+-- widened alone never refuse.
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local rep: any = report or {}
 	local count, bodies = M.loadMessagesWalk(v, root, data, capacity, rep)
-	if count < 0 then return count, bodies end
-	-- a refusal the walk read already named answers as it did (batch_too_large
-	-- keeps the count the caller needs)
-	if rep.reason ~= nil and rep.reason ~= "" then return count, bodies end
-	if rep.malformed then rep.reason = "wire_damaged"; return -1, {} end
-	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return -1, {} end
-	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return -1, {} end
+	-- a refusal the walk read already named keeps its name (batch_too_large
+	-- included) and answers 0
+	if rep.reason ~= nil and rep.reason ~= "" then return 0, {} end
+	if rep.malformed then rep.reason = "wire_damaged"; return 0, {} end
+	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return 0, {} end
+	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return 0, {} end
 	return count, bodies
 end
 
@@ -2093,6 +2107,10 @@ local function mAtDefault(fd: any, val: any): boolean
 	if fd.s == "enum" then return val == (fd.def or 0) end
 	if fd.s == "float" then
 		local def = fd.def or 0.0
+		if fd.lo ~= nil then
+			if val == 0 then val = 0 end
+			if def == 0 then def = 0 end
+		end
 		if fd.f32 then
 			buffer.writef32(msgScratch, 0, val)
 			local a = buffer.readu32(msgScratch, 0)
@@ -2141,6 +2159,8 @@ end
 local function mEncodeScalar(c: any, owner: string, e: any, kind: number, shape: any, val: any, fname: string): boolean
 	local ok, why = mValidScalar(e, val)
 	if not ok then return mFail(c, why or "invalid_value", owner, fname) end
+	-- a ranged float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+	if (kind == 10 or kind == 11) and e.lo ~= nil and val == 0 then val = 0 end
 	if kind == 1 then
 		mPut(c.w, if val then 1 else 0, 1)
 		return true
@@ -2354,7 +2374,34 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 				elide = ((val.Type or 0) == 0)
 			elseif fd.s == "arr" then
 				if fd.array == "counted" then
-					elide = ((rec[fd.slot .. "Count"] or 0) == 0)
+					-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md
+					-- §22.2, tablewire messageElides): with a positive minimum
+					-- it elides at exactly that count of default elements (a
+					-- table element by a body that is its terminator alone);
+					-- the probe above has already refused a count off [min, max]
+					local n = rec[fd.slot .. "Count"] or 0
+					local born = fd.min or 0
+					if born == 0 then
+						elide = (n == 0)
+					elseif n == born then
+						local allDef = true
+						for i = 1, n do
+							local el = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
+							if fd.e.s == "tab" then
+								local ep = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+								if not mEncodeBody(ep, S.lookup(fd.e.t), el) then
+									c.reason, c.field = ep.reason, ep.field
+									return false
+								end
+								if ep.w.bits > c.refBits then allDef = false; break end
+							elseif fd.e.s == "union" then
+								if (el.Type or 0) ~= 0 then allDef = false; break end
+							elseif not mAtDefault(fd.e, el) then
+								allDef = false; break
+							end
+						end
+						elide = allDef
+					end
 				elseif fd.array == "keyed" then
 					elide = (probe.w.bits <= bitsReq(0, entry.shape.max))
 				elseif fd.array == "fixed" and fd.e.s ~= "tab" then

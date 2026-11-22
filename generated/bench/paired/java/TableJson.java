@@ -468,6 +468,9 @@ public final class TableJson {
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
         public final java.util.Map<java.lang.Long, LabelEntry> labels = new java.util.HashMap<>();
+        // graph: the root is a VARIABLE table, whose text carries the label
+        // construct (§16.7). A fixed root skips a value it does not place whole.
+        public boolean graph;
 
         final byte[] t;
         int p;
@@ -1074,10 +1077,15 @@ public final class TableJson {
             }
             p++; // the opening bracket
             java.util.Set<java.lang.String> seenKey = null;
+            boolean firstKey = true;
+            long definition = 0L; // the label this object defines, open until it closes
             while (true) {
                 int c = peek();
                 if (c == closing) {
                     p++;
+                    if (definition != 0L) {
+                        labels.get(definition).open = false;
+                    }
                     return;
                 }
                 if (c == 0) {
@@ -1104,28 +1112,61 @@ public final class TableJson {
                         return;
                     }
                     p++;
-                    // A DEFINITION IN A SKIPPED VALUE STILL TAKES ITS LABEL, with no
-                    // node, so a later reference reads null rather than refusing
-                    // (docs/SPEC-TABLES.md §16.7, §17.5; read.go's skippedAmpersand).
-                    if ("&node".equals(key)) {
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (docs/SPEC-TABLES.md
+                    // §16.7): a label alone must name a definition already closed;
+                    // fields after one must follow a label not yet defined, and the
+                    // definition is open until this object closes. A dropped
+                    // definition keeps its label, with no node, so a reference to
+                    // it reads null. What the reader does not place is the value,
+                    // never the label.
+                    boolean wasFirst = firstKey;
+                    firstKey = false;
+                    if (key.startsWith("&")) {
+                        if (!wasFirst || !"&node".equals(key)) {
+                            bad = true;
+                            return;
+                        }
                         long labelId = scanLabel();
                         if (bad) {
                             return;
                         }
-                        if (!labels.containsKey(labelId)) {
-                            labels.put(labelId, new LabelEntry(null, 0L, false));
+                        if (!graph) {
+                            // a unit with no pointer has no label table: the prefix
+                            // is still held to its grammar, and the value is
+                            // skipped whole
+                            c = peek();
+                            if (c == ',') {
+                                p++;
+                                continue;
+                            }
+                            if (c == closing) {
+                                p++;
+                                return;
+                            }
+                            bad = true;
+                            return;
                         }
+                        LabelEntry entry = labels.get(labelId);
                         c = peek();
                         if (c == ',') {
                             p++;
-                            continue;
+                            c = peek();
+                        } else if (c != closing) {
+                            bad = true;
+                            return;
                         }
-                        if (c == closing) {
+                        boolean bare = c == closing;
+                        if (bare != (entry != null) || (bare && entry.open)) {
+                            bad = true;
+                            return;
+                        }
+                        if (bare) {
                             p++;
                             return;
                         }
-                        bad = true;
-                        return;
+                        labels.put(labelId, new LabelEntry(null, 0L, true));
+                        definition = labelId;
+                        continue;
                     }
                 }
                 skipValue(depth + 1);
@@ -1139,6 +1180,9 @@ public final class TableJson {
                 }
                 if (c == closing) {
                     p++;
+                    if (definition != 0L) {
+                        labels.get(definition).open = false;
+                    }
                     return;
                 }
                 bad = true;

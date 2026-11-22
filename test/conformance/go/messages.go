@@ -33,6 +33,10 @@ type messageCodec struct {
 	// the byte length, or -1 refused. The write-refusal surface takes it after
 	// loading and mutating the row's value (docs/SPEC.md §5.1).
 	saveOne func(value any) int64
+	// batch answers one `message-batch` row (docs/SPEC-TABLES.md §3.3): load
+	// the wire with room for every body and answer the count the loader
+	// reported.
+	batch func(announcement, wire []byte) (int64, error)
 }
 
 func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T, *R) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
@@ -86,6 +90,20 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 		}
 		return out, rep, ok
 	},
+		batch: func(announcement, wire []byte) (int64, error) {
+			var r R
+			v := fresh()
+			if !announceRead(v, announcement, &r) {
+				return 0, fmt.Errorf("the announcement did not read")
+			}
+			storage := make([]T, 256)
+			for i := range storage {
+				reset(&storage[i])
+			}
+			var loaded R
+			count, _ := load(storage, v, wire, &loaded)
+			return count, nil
+		},
 		saveOne: func(value any) int64 {
 			v, ok := value.(*T)
 			if !ok {
@@ -121,6 +139,36 @@ func spillAbsentReason(dir, name, reason string) error {
 }
 func surfaceMessage(lines []line, out string) error {
 	for _, f := range lines {
+		if f[0] == "message-batch" {
+			// message-batch <case> <connection> <root> <wire>
+			var unit, path string
+			for _, c := range lines {
+				if c[0] == "connection" && c[1] == f[2] {
+					unit, path = c[2], c[4]
+					break
+				}
+			}
+			codec := findMessageCodec(unit, f[3])
+			if codec == nil {
+				return fmt.Errorf("%s: no message codec for %s.%s", f[1], unit, f[3])
+			}
+			announcement, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			wire, err := os.ReadFile(f[4])
+			if err != nil {
+				return err
+			}
+			count, err := codec.batch(announcement, wire)
+			if err != nil {
+				return fmt.Errorf("%s: %w", f[1], err)
+			}
+			if err := spill(out, f[1], fmt.Appendf(nil, "count %d\n", count)); err != nil {
+				return err
+			}
+			continue
+		}
 		if f[0] != "message" {
 			continue
 		}

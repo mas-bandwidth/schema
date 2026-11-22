@@ -114,7 +114,20 @@ public final class BenchMixedMessage {
         }
         {
             assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
-            if (v.entitiesCount > 0) {
+            boolean born_v_entities = v.entitiesCount == 1;
+            for (int bornAt_v_entities = 0;
+                    born_v_entities && bornAt_v_entities < 1;
+                    bornAt_v_entities++) {
+                TableMessage.Writer bornProbe_v_entities = new TableMessage.Writer(null, 0, true);
+                if (!MixedEntityMessage.saveMessageBody(
+                        bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                    return false;
+                }
+                if (bornProbe_v_entities.bits != 7L) {
+                    born_v_entities = false;
+                }
+            }
+            if (v.entitiesCount > 0 && !born_v_entities) {
                 w.put(10L, 7);
                 assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
                 w.put((long) (v.entitiesCount) - 1L, 3);
@@ -209,7 +222,7 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (java.lang.Float.floatToRawIntBits(v.aimX)
+            if (java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
                     != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(16L, 7);
                 if (!java.lang.Float.isFinite(v.aimX)) {
@@ -225,7 +238,7 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (java.lang.Float.floatToRawIntBits(v.aimY)
+            if (java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
                     != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(17L, 7);
                 if (!java.lang.Float.isFinite(v.aimY)) {
@@ -241,7 +254,7 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (java.lang.Float.floatToRawIntBits(v.aimZ)
+            if (java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
                     != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(18L, 7);
                 if (!java.lang.Float.isFinite(v.aimZ)) {
@@ -815,11 +828,25 @@ public final class BenchMixedMessage {
                     }
                 }
                 v.entitiesCount = (int) keep19;
+                boolean born_v_entities = v.entitiesCount == 1;
+                for (int bornAt_v_entities = 0;
+                        born_v_entities && bornAt_v_entities < 1;
+                        bornAt_v_entities++) {
+                    TableMessage.Writer bornProbe_v_entities =
+                            new TableMessage.Writer(null, 0, true);
+                    if (!MixedEntityMessage.saveMessageBody(
+                            bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                        return false;
+                    }
+                    if (bornProbe_v_entities.bits != 7L) {
+                        born_v_entities = false;
+                    }
+                }
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.entitiesCount > 0)) {
+                        && !(v.entitiesCount > 0 && !born_v_entities)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1261,7 +1288,7 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(java.lang.Float.floatToRawIntBits(v.aimX)
+                        && !(java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
                                 != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
@@ -1309,7 +1336,7 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(java.lang.Float.floatToRawIntBits(v.aimY)
+                        && !(java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
                                 != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
@@ -1357,7 +1384,7 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(java.lang.Float.floatToRawIntBits(v.aimZ)
+                        && !(java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
                                 != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;

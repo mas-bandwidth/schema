@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+# Not a shell script: the scan must not read it, though its text holds a
+# swallow the shell rules would name.
+print("./tool.sh || true")

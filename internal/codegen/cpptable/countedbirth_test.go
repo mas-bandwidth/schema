@@ -1,0 +1,232 @@
+// THE BIRTH VALUE OF A COUNTED ARRAY IN C++ (docs/SPEC-TABLES.md §22.2, the
+// [M..N]T row; findings F-115, F-118, F-121).
+//
+// A `few [2..4]int32` is born holding two zeros. The oracle is the Go engine
+// (internal/tablewire encodeArray's allBirth and messageElides): a fresh
+// value's message is 020000 and its variable file is ten bytes, because the
+// birth value elides; two elements with one live rides; and a count under the
+// declared minimum is the caller's error, which the debug build stops on
+// before anything is measured. The pinned matrix carries the same rows for
+// every element kind (test/verify-tablegen/pinned.go, pin:ci32:*).
+package cpptable
+
+import (
+	"errors"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
+
+const cppCountedBirthSchema = `package probe
+
+fixed table FixRoot
+{
+    few [2..4]int32
+}
+
+table VarRoot
+{
+    few [2..4]int32
+}
+
+fixed table OptRoot
+{
+    few ?[2..4]int32
+}
+`
+
+const cppCountedBirthProbe = `#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include "ProbeTable.h"
+using namespace probe;
+
+static int failures = 0;
+#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); failures++; } } while (0)
+
+static std::string hex( const uint8_t * p, int64_t n )
+{
+    static const char digits[] = "0123456789abcdef";
+    std::string s;
+    for ( int64_t i = 0; i < n; i++ ) { s += digits[p[i] >> 4]; s += digits[p[i] & 15]; }
+    return s;
+}
+
+static std::string message( const FixRoot & value )
+{
+    TableReport report;
+    uint8_t out[64];
+    const int64_t n = FixRootMeasureMessages( &value, 1, &report );
+    if ( n < 0 || n > (int64_t) sizeof( out ) || FixRootSaveMessages( &value, 1, out, n, &report ) != n ) { return "refused"; }
+    return hex( out, n );
+}
+
+static std::string variable( bool live )
+{
+    VarRootBuilder b;
+    if ( live ) { b.GetRoot()->few[1] = 7; }
+    if ( !b.Lock() ) { return "lock"; }
+    uint8_t out[64];
+    const int64_t n = VarRootMeasure( b.AsConst(), TableDefaultAllocator() );
+    if ( n < 0 || n > (int64_t) sizeof( out ) || VarRootSave( b.AsConst(), out, n, TableDefaultAllocator() ) != n ) { return "refused"; }
+    return hex( out, n );
+}
+
+// a batch of one record, read back at this build's own announcement, and
+// the written batch of a value, raw; one pair per root
+#define LOAD_SAVE( Root ) \
+static bool load( const uint8_t * p, int64_t n, Root & into ) \
+{ \
+    TableMessageEntry entries[kTableMessageEntriesHere]; \
+    TableVocabulary vocabulary( entries, kTableMessageEntriesHere ); \
+    if ( !AnnounceRead( vocabulary, kTableAnnounce, kTableAnnounceBytes, NULL ) ) { return false; } \
+    TableReport report; \
+    int64_t count = 1; \
+    return Root##LoadMessages( &into, &count, vocabulary, p, n, &report ) && count == 1; \
+} \
+static int64_t save( const Root & value, uint8_t * out, int64_t capacity ) \
+{ \
+    TableReport report; \
+    const int64_t n = Root##MeasureMessages( &value, 1, &report ); \
+    if ( n < 0 || n > capacity || Root##SaveMessages( &value, 1, out, n, &report ) != n ) { return -1; } \
+    return n; \
+}
+LOAD_SAVE( FixRoot )
+LOAD_SAVE( OptRoot )
+
+// a failed write check (assert) exits 3, so the test can tell it from a crash
+extern "C" void on_abort( int ) { std::_Exit( 3 ); }
+
+int main( int argc, char ** argv )
+{
+    std::signal( SIGABRT, on_abort );
+    FixRoot fixed;
+    if ( argc > 2 && std::strcmp( argv[1], "below" ) == 0 )
+    {
+        TableReport report;
+        fixed.few_count = std::atoi( argv[2] );
+        (void) FixRootMeasureMessages( &fixed, 1, &report );
+        return 0; // the write check did not stop a count under Min
+    }
+    // F-118: a fresh value, and a reset one, hold Min default elements
+    CHECK( fixed.few_count == 2 && fixed.few[0] == 0 && fixed.few[1] == 0 );
+    VarRoot fresh;
+    fresh.few_count = 4;
+    fresh.few[0] = 9;
+    VarRootReset( fresh );
+    CHECK( fresh.few_count == 2 && fresh.few[0] == 0 && fresh.few[1] == 0 );
+
+    // F-115: the birth value elides on the message form and the variable form
+    CHECK( message( fixed ) == "020000" );
+    CHECK( variable( false ) == "01000000000000000000" );
+
+    // count Min with one live element rides
+    fixed.few[1] = 7;
+    CHECK( message( fixed ) == "0200010000003800000000" );
+    // A STORED BIRTH VALUE IS REFUSED (§22.2, §3.3): this build's writer never
+    // spells it, so the live batch with its 7 cleared (byte 6, 0x38 -> 0x00) is
+    // a forged count-Min, all-default array; the live batch itself loads
+    {
+        uint8_t wire[64];
+        const int64_t n = save( fixed, wire, (int64_t) sizeof( wire ) );
+        CHECK( n == 11 && wire[6] == 0x38 );
+        FixRoot back;
+        CHECK( load( wire, n, back ) && back.few_count == 2 && back.few[1] == 7 );
+        wire[6] = 0x00;
+        FixRoot forged;
+        CHECK( !load( wire, n, forged ) );
+    }
+    // ONLY THE ELIDING FORM IS JUDGED (ir.Field.ElidesAtBirth): a present
+    // ?[M..N]T rides by presence, so one at its birth value is a lawful batch
+    // that reads back whole. (A required [M..N]T, the other form that never
+    // elides, has no message form: a fixed table refuses "| required", §2.3.)
+    {
+        OptRoot opt;
+        CHECK( !opt.few_present );
+        opt.few_present = true;
+        opt.few_count = 2;
+        opt.few[0] = 0;
+        opt.few[1] = 0;
+        uint8_t wire[64];
+        const int64_t n = save( opt, wire, (int64_t) sizeof( wire ) );
+        CHECK( n > 3 );
+        OptRoot back;
+        CHECK( n > 0 && load( wire, n, back ) && back.few_present && back.few_count == 2 && back.few[0] == 0 && back.few[1] == 0 );
+    }
+    CHECK( variable( true ) == "01010e0a0402000000000700000000198ceafe187dc6dc0100000000000000" );
+
+    // Min+1 default elements ride
+    fixed.few[1] = 0;
+    fixed.few_count = 3;
+    CHECK( message( fixed ) == "020003000000000000000000000000" );
+    return failures != 0;
+}
+`
+
+func TestCPPCountedArrayBirthValue(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler (c++)")
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	if _, err := exec.LookPath(cxx); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
+		}
+		t.Skipf("generated C++ execution requires %s: %v", cxx, err)
+	}
+	u := cppUnitFrom(t, cppCountedBirthSchema)
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	var sources []string
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasSuffix(name, ".cpp") {
+			sources = append(sources, filepath.Join(dir, name))
+		}
+	}
+	mainPath := filepath.Join(dir, "main.cpp")
+	if err := os.WriteFile(mainPath, []byte(cppCountedBirthProbe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "probe")
+	args := append([]string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-I", dir, mainPath}, sources...)
+	if out, err := testproc.Command(t, cxx, append(args, "-o", exe)...).CombinedOutput(); err != nil {
+		t.Fatalf("compile: %v\n%s", err, out)
+	}
+	if out, err := testproc.Command(t, exe).CombinedOutput(); err != nil {
+		t.Errorf("probe failed: %v\n%s", err, out)
+	}
+	// F-121: the message measure holds the count to [Min, N] before the
+	// elide test, so a count of zero or one stops the debug build
+	for _, count := range []string{"0", "1"} {
+		out, err := testproc.Command(t, exe, "below", count).CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+			t.Errorf("a count of %s under Min was measured: err=%v\n%s", count, err, out)
+		}
+	}
+}

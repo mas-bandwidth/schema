@@ -286,8 +286,8 @@ func TestAnnouncementStrictChecks(t *testing.T) {
 
 // "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `MeasureMessages` and
 // `SaveMessages` both refuse and return `-1`" and "M ABOVE THE CALLER'S CAPACITY
-// ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the returned count to
-// the wire's `M` before it returns the refusal." (docs/SPEC-TABLES.md §3.3).
+// ON THE READ SIDE IS A REFUSAL BY NAME ... A refused batch returns a count of
+// `0`" (docs/SPEC-TABLES.md §3.3).
 const msgBatchTooLargeProbe = `
 import "testing"
 

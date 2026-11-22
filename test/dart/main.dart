@@ -28,12 +28,17 @@ import '../../generated/dart/Joins.dart';
 import '../../generated/dart/Types.dart';
 import '../../generated/dart/Wire.dart';
 
-var failed = false;
+// every check() call is counted: the last line this program prints is
+// "ran N, failed M", which tools/mustrun holds against the count the recipe
+// registers, so a check that stops running is red.
+var ran = 0;
+var failed = 0;
 
 void check(bool ok, String what) {
+  ran++;
   if (!ok) {
     print('FAILED: $what');
-    failed = true;
+    failed++;
   }
 }
 
@@ -1889,9 +1894,8 @@ void main() {
     }
   }
 
-  if (failed) {
+  print('ran $ran, failed $failed');
+  if (failed != 0 || ran == 0) {
     exitCode = 1;
-    return;
   }
-  print('OK');
 }

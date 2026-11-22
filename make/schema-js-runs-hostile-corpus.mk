@@ -40,9 +40,15 @@ schema-js-hostile-generate: bin/schema
 # not two tiers twice. test/js-hostile/runner.mjs prints <case>@<tier>-<mode>.
 JS_HOSTILE_PACKET_ROWS := packet=runtime-development,runtime-production,flat-development,flat-production
 
+# The registered count: the rows the committed corpus manifest gives the
+# JavaScript readers. The runner prints "ran N, failed M" and tools/mustrun
+# holds N to this number, so a manifest that loses rows is red. A commit that
+# adds a hostile case changes it.
+JS_HOSTILE_ROWS ?= 216
 .PHONY: schema-js-runs-hostile-corpus
-schema-js-runs-hostile-corpus: schema-js-hostile-generate
-	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
+schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
+	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
+	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
 	sh make/checks/hostile-carry-controls.sh js findings $(JS_HOSTILE_BUILD)/carry '$(NODE) test/js-hostile/runner.mjs run "$$CARRY_CORPUS" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$$CARRY_FINDINGS"'
 
 test-js: schema-js-runs-hostile-corpus

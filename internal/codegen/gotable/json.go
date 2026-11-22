@@ -1079,19 +1079,18 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 			out.text("false")
 		}
 		return true
-	case 10:
-		// a float32's range is compared in float32, as the binary writers compare it
-		value := *(*float32)(storage)
-		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
-			return false
+	case 10, 11:
+		// a float32's range is compared in float32, as the binary writers compare it (widening to float64 is exact)
+		value, low, high := float64(*(*float32)(storage)), float64(float32(f.RangeMin)), float64(float32(f.RangeMax))
+		if f.Kind == 11 {
+			value, low, high = *(*float64)(storage), f.RangeMin, f.RangeMax
 		}
-		return tableJSONWriteFloat(out, float64(value), true)
-	case 11:
-		value := *(*float64)(storage)
-		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
+		if f.HasRange && (value < low || value > high) {
 			return false
+		} else if f.HasRange {
+			value += 0 // a compressed float's -0 is written as +0, and -0 + 0 is +0 (docs/SPEC-TABLES.md §3.3)
 		}
-		return tableJSONWriteFloat(out, value, false)
+		return tableJSONWriteFloat(out, value, f.Kind == 10)
 	case 2, 3, 4:
 		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
 		return true
@@ -1841,11 +1840,12 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 	var keyLen [64]int
 	keyCount := 0
 	var overflow map[string]struct{}
+	firstKey, amp, isNode, definition := true, false, false, uint64(0) // isNode: the first key is &node; definition: the label this object opens (§16.7)
 	for {
 		c := in.peek()
 		if c == closing {
 			in.pos++
-			return true
+			return in.closeSkippedLabel(definition)
 		}
 		if c == 0 {
 			in.bad = true
@@ -1875,6 +1875,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := keyArena[arenaLen : arenaLen+int(n)]
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && string(key) == "&node"
 				dup := false
 				for i := 0; i < keyCount; i++ {
 					if keyLen[i] != len(key) {
@@ -1916,6 +1917,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := string(buf[:n])
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && key == "&node"
 				if _, dup := overflow[key]; dup {
 					if in.report != nil {
 						in.report.Refuse(TableRefuseMalformed, "")
@@ -1930,6 +1932,29 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				return false
 			}
 			in.pos++
+			firstKey = false
+			if amp {
+				// §16.7 in a skipped value: a bare label names a closed definition, fields after one open it until this object closes
+				label, ok := uint64(0), isNode
+				if ok {
+					label, ok = tableJSONReadLabel(in) // it leaves ',' or '}' next
+				}
+				if ok && in.peek() == ',' {
+					in.pos++
+				}
+				if bare := in.peek() == '}'; ok && in.graph != nil {
+					entry, defined := in.graph.getLabel(label)
+					ok = bare == defined && !(bare && entry.open) && (bare || in.graph.setLabel(label, tableJSONLabel{open: true}))
+					if !bare {
+						definition = label
+					}
+				}
+				if !ok {
+					in.bad = true
+					return false
+				}
+				continue
+			}
 		}
 		if !in.skipValue(depth + 1) {
 			return false
@@ -1941,15 +1966,21 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		}
 		if c == closing {
 			in.pos++
-			return true
+			return in.closeSkippedLabel(definition)
 		}
 		in.bad = true
 		return false
 	}
 }
 
+// closeSkippedLabel closes the definition a skipped object opened, if any: the label stays, with no node, so a reference to it reads null.
+func (in *tableJSONIn) closeSkippedLabel(label uint64) bool {
+	ok := label == 0 || in.graph.setLabel(label, tableJSONLabel{})
+	in.bad = in.bad || !ok
+	return ok
+}
+
 func (in *tableJSONIn) skipValue(depth int32) bool {
- tableJSONDropLabel(in)
 	switch in.peek() {
 	case '{':
 		return in.skipContainer('}', depth)

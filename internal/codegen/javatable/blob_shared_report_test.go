@@ -163,8 +163,12 @@ public final class BlobSharedReportDriver {
                         checks++;
                         continue;
                     }
-                    if (report.unknown != 11 + history || report.widened != 13) {
-                        fail("history preserved " + why);
+                    // a plain load zeroes the report at its start (as Go's does); the retain
+                    // read keeps the caller's history
+                    int wantUnknown = retaining ? 11 + history : 0;
+                    int wantWidened = retaining ? 13 : 0;
+                    if (report.unknown != wantUnknown || report.widened != wantWidened) {
+                        fail("history " + (retaining ? "preserved " : "reset ") + why);
                     }
                     if (name.startsWith("distinct_")) {
                         if (v.a == null || v.b == null || v.c == null || v.d == null || v.c == v.d) {

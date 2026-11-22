@@ -110,6 +110,9 @@ fn %[1]s() {
 	if err != nil {
 		t.Fatalf("the dead-byte probe did not run: %v\n%s", err, out)
 	}
+	if len(ran) == 0 {
+		t.Fatal("ran is empty: the loop below would check nothing")
+	}
 	for _, fn := range ran {
 		versionAssert(t, string(out), fn)
 	}

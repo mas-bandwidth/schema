@@ -266,7 +266,11 @@ func testPythonCookWrite(t *testing.T) {
 	if out, err := pyrun.Analyze(t, dir, "cookcorpus/_schema"); err != nil {
 		t.Fatalf("mypy --strict over the runtime:\n%s", out)
 	}
-	for pin, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for pin, runner := range allCookPins {
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + cookWriteProbe)}))
 		if err := verifyCookWrite(u, out); err != nil {
 			t.Errorf("%s: %v", pin, err)

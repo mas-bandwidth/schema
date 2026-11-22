@@ -207,12 +207,12 @@ fn main() {
 	if err != nil {
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
 	}
+	if !strings.Contains(string(out), "NAME CAP PROBE DONE") {
+		t.Fatalf("the probe did not finish:\n%s", out)
+	}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "MISMATCH ") {
 			t.Errorf("%s", line)
 		}
-	}
-	if !strings.Contains(string(out), "NAME CAP PROBE DONE") {
-		t.Fatalf("the probe did not finish:\n%s", out)
 	}
 }

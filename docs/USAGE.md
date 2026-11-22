@@ -136,7 +136,10 @@ A default `generate --lang go` (no `--surface`) also removes stale surface
 files: any `.go` file in the output directory whose first line is the compiler's
 own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
 and that this run did not write. With `--surface` nothing is removed; only
-`.go` files the compiler itself generated are ever touched.
+`.go` files the compiler itself generated are ever touched. A file this run
+wrote is never removed, and every output lands under this run's spelling, on a
+case-insensitive volume too: renaming `Player.schema` to `player.schema` and
+regenerating leaves `player.go` and no `Player.go`, for every target's files.
 
 ---
 
@@ -1626,7 +1629,9 @@ element column, so one walk reaches the whole graph from either root. The wire's
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
 
 **Java carries the two table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Table>Block.java`
+and both table wires — the fixed form through `<Name>Fixed.java` and the
+variable form through `<Name>Variable.java`, with the message form in
+`<Name>Message.java` (SPEC-TABLES.md, ENTRY POINTS, PER LANGUAGE): a unit that declares tables grows `<Table>Block.java`
 and `<Table>Cook.java` per table beside its packet classes, `<Name>Row.java`
 for every blittable record in the closure, and the runtime types those need —
 one file per type (`TableBytes.java`, `TableBlockInfo.java`,
@@ -1636,11 +1641,9 @@ with which schema file sorts first, and a unit that declares no table emits not
 one of them. A block is pointed at and a cook is opened; neither parses a wire,
 both are read-only, and both refuse a forged image rather than throwing on it
 (`make tables-java-fuzz` is that oracle over mutated corpus images, with its
-planted control). There is no `<Base>Table.java`: the Java port of the table
-wire wrote the form that preceded the id-table wire, which the current
-specification does not describe, and it was removed rather than carried;
-schema#517 is the row that brings the id-table wire to Java, and ROADMAP.md
-marks the cells.
+planted control). There is no `<Base>Table.java`: the table wire is spelled per
+table, in the three classes above, and the runtime they share is
+`TableFixed.java`, `TableVariable.java` and `TableMessage.java`.
 
 **A block row and a cooked record have no Java type at all.** There is no struct
 to lay out, so `<Name>Row`'s generated accessors read each field at its offset
@@ -1898,6 +1901,14 @@ $ schema pack   --root LoginRequest --message --announce backend_conn.bin \
 $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
 ```
+
+The message and its announcement are one artifact in two files, so `pack`
+publishes both or neither: a run that fails leaves the earlier pair as it was.
+That holds when one run writes to an output at a time. One publisher per
+destination is the contract, as with any compiler: `schema` takes no lock, and
+two runs writing the same `--out` and `--announce` at once can leave one run's
+message beside the other's announcement. Give concurrent runs their own
+outputs, or run them one after the other.
 
 **And `schema unpack` handed the announcement ITSELF prints the vocabulary
 decoded**, one line an entry with its slot, its id, the name your closure gives
@@ -3179,7 +3190,11 @@ version, the byte order, the root, the node count and the two part sizes. And
 because the attribution is SEPARABLE, `--attribution <file>` writes the
 directory beside the cook instead of inside it: the cook then carries data
 alone for a build that ships no tooling, and `cook-check --attribution <file>`
-puts the two back together when you want to check one.
+puts the two back together when you want to check one. The cook and its
+attribution file publish together or not at all, under the same contract as
+`pack --announce`: it holds when one run writes to an output at a time, and
+two runs cooking to the same `--out` and `--attribution` at once can leave a
+mismatched pair.
 
 ### The build version: what a cooked asset is stored under
 

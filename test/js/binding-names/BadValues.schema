@@ -1,0 +1,5 @@
+package badvalues
+
+const undefined = 1
+const eval = 2
+const arguments = 3

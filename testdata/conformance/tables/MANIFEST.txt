@@ -686,6 +686,9 @@ json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/confo
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
+# R7: in a unit with no pointer a skipped value still refuses a stray & key or an &node not first
+json-hostile skipped-ampersand-stray-key             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-stray-key refused
+json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-node-not-first refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -853,6 +856,15 @@ json-hostile label-self-reference          graphdemo  Scene       testdata/confo
 json-hostile label-type-mismatch           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-type-mismatch refused
 json-hostile label-dropped-definition      graphdemo  Scene       testdata/conformance/tables/json-hostile/label-dropped-definition refused
 json-hostile label-in-unknown-key          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key read
+# R7 (2026-11-22): a label inside a value this reader SKIPS obeys the label rules (§16.7): a duplicate, a
+# reference before its definition and a reference to a definition still open all refuse.
+json-hostile skipped-label-defined-twice             graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice refused
+json-hostile skipped-label-defined-twice-nested      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice-nested refused
+json-hostile skipped-label-defined-after-placed      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-after-placed refused
+json-hostile skipped-label-forward-reference         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-forward-reference refused
+json-hostile skipped-label-undefined-reference       graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-undefined-reference refused
+json-hostile skipped-label-self-reference            graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-self-reference refused
+json-hostile skipped-label-reference-defined         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-reference-defined read
 json-hostile shared-node-by-label          graphdemo  Scene       testdata/conformance/tables/json-hostile/shared-node-by-label read
 
 # THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
@@ -986,6 +998,22 @@ message peer_a     backend_conn StorePurchase testdata/conformance/tables/wire/p
 message peer_b     vocab_conn   Wide00        testdata/conformance/tables/wire/peer_b.bin     testdata/wire/tables/peer_b_message.bin
 message vocab9_wide vocab9_conn Wide19 testdata/conformance/tables/wire/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
 message vocab9_low  vocab9_conn Wide00 testdata/conformance/tables/wire/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
+
+# THE COUNT A REFUSED BATCH RETURNS (docs/SPEC-TABLES.md §3.3, §6.5): "the
+# batch is accepted whole, every body delivered, or refused with a count of
+# `0`". Each row loads one two-body batch with room for every body and
+# answers the count the loader reported (FORMAT.md, `message-batch`). A
+# ranged value past its maximum in the second body, a batch that ends inside
+# its second body and a byte after the pad each refuse after a first body
+# that reads, and the count is 0; the lawful batch is the control and reports
+# 2. The rows assert the count only: never the storage after a refusal
+# ("nothing in the caller's storage is a value to use") and never the reason
+# (rulings.json, refusal-verdict-only). A caller's capacity is a resource
+# limit and is not a row here (§6.5): each leg's own tests carry it.
+message-batch batch_range_in_second backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json out-of-range   refused
+message-batch batch_cut_in_second   backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json cut            refused
+message-batch batch_byte_after_pad  backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json byte-after-pad refused
+message-batch batch_delivered       backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json whole          delivered
 
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every
@@ -1562,6 +1590,9 @@ instance varevo_v3_rollback           tblvarevo3 EvoDoc testdata/conformance/tab
 instance varevo_2hop_v3_origin        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_2hop_v3_origin.bin
 instance varevo_v3_default_containers tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin
 instance varevo1_msg                  tblvarevo1 EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin
+# A [N]T whose element is a table NEVER elides (docs/SPEC-TABLES.md §3: position is identity): a fresh value writes items and fixed_sub as all N elements, an all-default element as L = 1 and its terminator; one live element; and a read of bytes lacking the field leaves N default elements, written back the same way.
+instance fixed_array_rides_default tblvarevo1 EvoDoc testdata/conformance/tables/wire/fixed_array_rides_default.bin
+instance fixed_array_rides_live    tblvarevo1 EvoDoc testdata/conformance/tables/wire/fixed_array_rides_live.bin
 instance varevo3_msg                  tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin
 instance varevo3_msg_notice           tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin
 
@@ -1588,6 +1619,7 @@ report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/vare
 # Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
 framing varevo_cycle_root_via_unknown         tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_root_via_unknown.bin  refused -
 framing varevo_cycle_known_via_unknown        tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_known_via_unknown.bin refused -
+framing fixed_array_rides_absent tblvarevo1 EvoDoc testdata/wire/tables/framing/fixed_array_rides_absent.bin read testdata/conformance/tables/framing/evodoc_v1_default.json
 framing varevo_cycle_unknown_self             tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_unknown_self.bin      refused -
 framing varevo_cycle_two_unknowns             tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_two_unknowns.bin      refused -
 report  varevo_cycle_root_via_unknown_report  tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_root_via_unknown.bin
@@ -1621,6 +1653,7 @@ rewrite varevo_v2_as_v3                 tblvarevo3 EvoDoc testdata/conformance/t
 rewrite varevo_v3_compat_as_v1          tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
 rewrite varevo_rollback_as_v3           tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
 rewrite varevo_2hop_step2_v2_report     tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
+rewrite fixed_array_rides_absent tblvarevo1 EvoDoc testdata/wire/tables/framing/fixed_array_rides_absent.bin
 rewrite varevo_2hop_step3_v3_report     tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 rewrite varevo_default_containers_as_v3 tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
 rewrite varevo_kind31_escape            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin

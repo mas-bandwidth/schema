@@ -79,7 +79,9 @@ skip sibling ^the C# runtime checkout is not at
 # corpus: the C++ reference's fixed-form corpus (build/fixedform-corpus) is
 # not built. Provided by every lane that builds it first (make
 # tables-fixedform-corpus; SCHEMA_REQUIRE_CORPUS=1 turns the skip into a
-# failure there).
+# failure there). It is also a failure wherever CI is set and the slow half was
+# asked for (SCHEMA_SLOW=1; slowtest.CorpusRequired), so the skip survives only
+# on a developer's machine and in a default run.
 skip corpus (byte oracle|corpus|oracle) is (not built|absent)
 skip corpus ^no fixed-form corpus at
 skip corpus ^fixedform[- ]corpus (not built|unavailable)
@@ -118,7 +120,15 @@ skip platform ^platform has no kernel address-space ceiling$
 
 # root: the test proves nothing as root. Provided by a lane that does not run
 # as root.
-skip root ^root writes (through|into) a read-only directory
+skip root ^root writes (through|into) a read-only (directory|file)
+
+# volume:aliases: the test needs a volume that takes two spellings of a name
+# (a case fold, a Unicode normalization) for one entry, as APFS on macOS
+# does. Provided by no CI lane today: every Linux lane keeps the spellings
+# apart, so these tests run on macOS hosts only (the Studio, the macOS
+# benches). Their controls, which need the spellings kept apart, are
+# platform skips above and run on every Linux lane.
+skip volume:aliases ^this (volume|file system) keeps .+ apart, so 
 
 # helper: a helper-process entry point, run by the test that names it.
 # Provided by no lane: it skips whenever go test runs it directly.
@@ -148,4 +158,5 @@ skip unported ^UNPORTED
 # tool:other: a toolchain named only at run time ("<tool>: exec: ... not
 # found"). Last, so every named toolchain above is matched first.
 skip tool:other executable file not found
+skip tool:other ^(building a multi-byte-point locale requires localedef|the ps_AF locale source is not installed|localedef could not build the locale)
 skip tool:other ^(\S+ is not on PATH|no \S+ on PATH|none of .* is on PATH|\S+ unavailable)(: |$)

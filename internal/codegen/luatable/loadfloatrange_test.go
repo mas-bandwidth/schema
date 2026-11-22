@@ -179,6 +179,9 @@ func TestLuaLoadHoldsCompressedFloatRange(t *testing.T) {
 		}
 		got[line[:i+1+j]] = line[i+1+j+1:]
 	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if got[name] != want[name] {
 			t.Errorf("Load of %s: got %q, want %q", name, got[name], want[name])

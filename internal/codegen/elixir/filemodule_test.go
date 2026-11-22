@@ -173,6 +173,9 @@ func TestFileModuleStepsAsideByteIdenticalToBase(t *testing.T) {
 			t.Errorf("%s: generator output differs from the committed generated/elixir/%s (%d bytes generated, %d committed) — a rename leaked into a no-collision unit, or run: make generated/elixir/.stamp", e.Name(), e.Name(), len(got), len(want))
 		}
 	}
+	if len(out) == 0 {
+		t.Fatal("out is empty: the loop below would check nothing")
+	}
 	for name := range out {
 		if !committed[name] {
 			t.Errorf("generator emits %s, which is not committed under generated/elixir", name)

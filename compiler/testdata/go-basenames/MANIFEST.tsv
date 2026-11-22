@@ -1,0 +1,12 @@
+# schema	Go generation	linux/arm64 file class	windows/amd64 file class
+Player.schema	accept	go	go
+Player_test.schema	refuse	test	test
+Player_windows.schema	refuse	ignored	go
+Player_amd64.schema	refuse	ignored	go
+Player_linux_arm64.schema	refuse	go	ignored
+_Player.schema	refuse	ignored	ignored
+.Pilot.schema	refuse	ignored	ignored
+Player.v1_test.schema	refuse	test	test
+Player_linux.v1.schema	refuse	go	ignored
+Player_test.v1.schema	accept	go	go
+Ship_Windows.schema	accept	go	go
