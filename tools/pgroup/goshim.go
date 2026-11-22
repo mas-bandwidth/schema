@@ -29,6 +29,18 @@ package main
 // The log keeps its text: an invocation that did not ask for -json gets the
 // events' own output printed, which is what `go test -v` prints.
 //
+// EVERY GO TEST THE SHIM RUNS IS UNCACHED (2026-11-22). go test caches a
+// pass keyed on the files the test process itself opened and the environment
+// it read. A test that hands an input to a subprocess (a driver, a compiler, a
+// hook, an interpreter reading a pin or a corpus file) is not keyed on that
+// input, so a stale cached pass stands after the input changed: cc compiling
+// a broken serialize.c under TestPacketConstantDefaultWriters reported
+// "ok (cached)". The shim gives every `go test` that names no -count of its
+// own -count=1 (withCountOne), so no CI row is judged by a cached result.
+// The packages this matters for are every package whose tests reach os/exec,
+// which is most of the tree that reads test inputs at all; one central rule
+// leaves none of them to remember it.
+//
 // PGROUP_GO_TEST_SUMMARY is the same record for jobs whose make recipes grep
 // go test's own text (certify's `make test`, where -v-shaped output would
 // change what a `--- SKIP` or `--- PASS` grep sees): the output passes
@@ -268,6 +280,42 @@ func withJSON(args []string) []string {
 	return append(out, args[at+1+c:]...)
 }
 
+// hasCount reports whether the go test command line (before -args) names a
+// -count of its own, as -count=N or -count N.
+func hasCount(args []string) bool {
+	at := testArgs(args)
+	if at < 0 {
+		return false
+	}
+	from := min(at+1+leadingC(args, at), len(args))
+	for _, a := range args[from:] {
+		if a == "-args" || a == "--args" {
+			return false
+		}
+		name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if strings.HasPrefix(a, "-") && (name == "count" || name == "test.count") {
+			return true
+		}
+	}
+	return false
+}
+
+// withCountOne inserts -count=1 after `test` (after its -C dir) when the
+// command line names no -count: a cached pass is never a CI verdict.
+func withCountOne(args []string) []string {
+	if hasCount(args) {
+		return args
+	}
+	at := testArgs(args)
+	c := leadingC(args, at)
+	if at < 0 || at+1+c > len(args) {
+		return args
+	}
+	out := append([]string{}, args[:at+1+c]...)
+	out = append(out, "-count=1")
+	return append(out, args[at+1+c:]...)
+}
+
 // renderEvents copies a go test -json stream from r to the record, line by
 // line, and to w: as it came when the caller asked for -json, otherwise as
 // the text the events carry (what `go test -v` prints).
@@ -348,6 +396,9 @@ func goShim(args []string) int {
 		return 2
 	}
 	isTest := testArgs(args) >= 0
+	if isTest {
+		args = withCountOne(args)
+	}
 	named := namedTimeout(args)
 	if timeout != "" {
 		args = rewriteGoTest(args, timeout)
