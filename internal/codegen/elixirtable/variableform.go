@@ -5149,19 +5149,51 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # json_skip_value walks a value the reader drops (an unknown key, a kind
-  # mismatch, an element past its bound), so a label defined inside it is
-  # still defined and a later reference to it reads null, never malformed
-  # (docs/SPEC-TABLES.md §16.2, §16.7).
+  # mismatch, an element past its bound). The label rules apply there as
+  # everywhere (docs/SPEC-TABLES.md §16.2, §16.7): a label alone REFERS, and
+  # the text must have defined it and closed that definition; a label with
+  # fields DEFINES, must be new to the text, and stays open until the skipped
+  # object closes, so a later reference reads null and a second definition is
+  # malformed.
+  defp json_skip_value({:obj, [{"&node", label}]}) when is_integer(label) and label > 0 do
+    if Process.get(:elixir_json_variable, false) and
+         (not Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
+            Map.has_key?(Process.get(:elixir_json_open, %{}), label)) do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
+    :ok
+  end
+
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
-    if Process.get(:elixir_json_variable, false) do
-      defs = Process.get(:elixir_json_defs, %{})
-      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
+    variable = Process.get(:elixir_json_variable, false)
+
+    if variable do
+      if Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
+           Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
+        Process.put(:elixir_json_bad, true)
+        throw(:wire_damaged)
+      end
+
+      Process.put(:elixir_json_open, Map.put(Process.get(:elixir_json_open, %{}), label, true))
     end
 
     Enum.each(rest, fn {k, v} ->
       json_skip_key(k)
       json_skip_value(v)
     end)
+
+    if variable do
+      Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+      Process.put(
+        :elixir_json_defs,
+        Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+      )
+    end
+
+    :ok
   end
 
   defp json_skip_value({:obj, pairs}) do
