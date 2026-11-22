@@ -1215,6 +1215,37 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 			if n == 0 then
 				return true
 			end
+			-- A COUNTED ARRAY AT ITS BIRTH ELIDES (F-115, §22.2, tablewire
+			-- messageElides): exactly Min elements, each at its default (a
+			-- table element by its body being the terminator alone, probed
+			-- and truncated), is not written. Min with one live element
+			-- rides, and so does Min+1 defaults.
+			local born = fd.min or 0
+			if born > 0 and n == born then
+				local all = true
+				for i = 1, n do
+					local x = elemAt(val, i)
+					if fd.e.s == "tab" then
+						local at = w.n
+						if not encodeBody(c, S.lookup(fd.e.t), x) then
+							truncate(w, at)
+							return false
+						end
+						local empty = w.n - at == c.refBits
+						truncate(w, at)
+						if not empty then
+							all = false
+							break
+						end
+					elseif not elemDefault(fd.e, x) then
+						all = false
+						break
+					end
+				end
+				if all then
+					return true
+				end
+			end
 			wref(c, entry.slot)
 			return encodeArray(c, fd, entry, v, val, n)
 		end
