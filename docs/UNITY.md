@@ -74,6 +74,7 @@ C# 9 has no `[InlineArray]` (that is C# 12, and it is what `--lang cs` uses).
 The generator emits, once per unit in the file that carries the protocol id, one
 generic struct per capacity the unit uses:
 
+<!-- example: fragment -->
 ```csharp
 [Serializable]
 [StructLayout(LayoutKind.Sequential)]
@@ -138,6 +139,7 @@ selected arm from its construction form; the other arms are unspecified
 The family's API (SPEC §6.1, §6.3 C# row), on `public static partial class
 Schema` in `namespace <Package>`:
 
+<!-- example: fragment -->
 ```csharp
 public static bool WriteShipCreate(WriteStream stream, ref ShipCreate value);
 public static bool ReadShipCreate(ReadStream stream, ref ShipCreate value);
@@ -180,6 +182,7 @@ as unmanaged structs alongside their `<U>Type` tag enums.
 
 On `public static partial class Schema`:
 
+<!-- example: fragment -->
 ```csharp
 public const ulong <T>FixedHash = ...;
 public const int <T>FixedBodyBytes = ...;

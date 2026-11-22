@@ -452,6 +452,7 @@ The type surface's codec (`internal/codegen/goose/wire.go`, `write.go`,
 `runtime/SERIALIZE_PIN` (repository, tag, commit, one sha256 per file) by
 `TestGooseVendoredSerializeIsThePin`. Per type and union of a module:
 
+<!-- example: fragment -->
 ```goose
 let <T>MaxBits: i64; let <T>MaxBytes: i64
 fn Zero<T>(value: <T>&)                         // the §5 zero form, not the defaults

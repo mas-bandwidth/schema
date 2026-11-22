@@ -1,0 +1,10 @@
+package starlight
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    armor        int64 = 1       | min = 0, max = 10
+    ship_type    ShipType
+    shield       float32 = 50.0
+}

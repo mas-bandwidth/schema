@@ -26,8 +26,9 @@ tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
 guarded by the protocol id: same-or-refuse. Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
-belongs there. The table wire is the opposite contract: **any reader reads
-any data**, and the differences are reported, never fatal.
+belongs there. The table wire is the opposite contract: **a reader reads
+another build's data across every lawful edit**, and the differences are
+reported; what it cannot read whole it refuses whole, by name (§4).
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
@@ -1145,9 +1146,8 @@ moves, in either direction.
 **`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
 rides as a node index under its own kind `17` (§3.1), because a body that may
 be named twice cannot also sit inline at one of its names. So moving a field
-between a pointer and either of the other two is a REPORTED edit: §4's kind
-mismatch, counted, with the field taking its declared default and the rest of
-the body reading on. A shared kind would have made that edit silent — a stored
+between a pointer and either of the other two is a REFUSED edit: §4's kind
+mismatch, and the whole load refuses `kind_mismatch`. A shared kind would have made that edit silent — a stored
 index reading back as a plausible length — and the wire spends a kind rather
 than allow it.
 
@@ -1385,6 +1385,7 @@ enum is keyed.
   from. **The shift is never written at a call site**: the accessor is the
   only place it appears.
 
+<!-- example: fragment -->
   ```cpp
   fleet.ships[ ship_type ]   // runtime key: refuses None and past Max, reads slots[ key - 1 ]
   ```
@@ -1459,6 +1460,7 @@ enum is keyed.
   `1 .. E.Max` over storage `0 .. E.Max − 1` — yielding the KEY beside the
   ELEMENT:
 
+<!-- example: fragment -->
   ```cpp
   for ( auto [ ship_type, ship ] : fleet.ships )   // ship_type is the KEY, never an index
   {
@@ -2647,6 +2649,7 @@ red:
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 FleetBuilder builder;                                   // the arena, and the root
 Fleet * fleet = builder.GetRoot();
@@ -3278,6 +3281,7 @@ corpus row or instance that meets it, and the one instrument that goes red.
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 SaveBuilder builder;                                    // the arena, and the root
 Save * save = builder.GetRoot();
@@ -3878,8 +3882,8 @@ one: a field may still be named `timestamp`, and a declaration of that name
 still wins.
 
 **Its kind is its own and it widens into nothing.** On the variable wire a
-field respelled between `int64` and `timestamp` is a kind mismatch, skipped
-and counted in both directions (§4), and the widening family is closed to the
+field respelled between `int64` and `timestamp` is a kind mismatch, and the
+whole load refuses in both directions (§4); the widening family is closed to the
 pair: refused, by name, until it is ruled. What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
@@ -4800,7 +4804,7 @@ one document rather than two.
   | `30` enum | the VARIANT ID reference, `0` for `None` |
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the load, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
@@ -9609,6 +9613,7 @@ the same struct is §19's.
 
 Its whole surface is three free functions, name first:
 
+<!-- example: fragment -->
 ```cpp
 ChatMessage msg;
 int64_t size = ChatMessageMeasure( msg );          // exact wire bytes
@@ -9695,6 +9700,7 @@ A file-format-scale structure is not a struct you copy. It is built
 mutable, then locked const, and read through a region and a root pointer.
 The state machine is MONOTONIC — there is no unlock:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;                        // MUTABLE: an arena
 Scene * root = builder.GetRoot();
@@ -9791,6 +9797,7 @@ functions, no overloading and no templates, so the same surface is free
 functions under the root's own name, and the two things C++ distinguishes by
 TYPE are distinguished by a nullable member here:
 
+<!-- example: fragment -->
 ```c
 SceneBuilder builder;                       /* the mutable life */
 scene_builder_init( &builder );               /* the arena, and the root node */
@@ -10421,6 +10428,7 @@ load and save outcomes; `SaveRetain` requires a report.
 
 **THE SURFACE: the caller's buffer, threaded through three calls.**
 
+<!-- example: fragment -->
 ```cpp
 uint8_t storage[ 64 * 1024 ];              // the caller owns it and sizes it
 TableRetain::Id ids[ 64 * 1024 / 8 ];      // an id and its slot, an entry
@@ -10987,6 +10995,7 @@ and have it work.
 that can be memory mapped, endian-fixed and loaded quickly by a build at
 the exact version it was cooked to. That is cooking.
 
+<!-- example: fragment -->
 ```cpp
 const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
@@ -11309,6 +11318,7 @@ the wire, and keeps the flexibility that comes with it.
   spelling and not a description of one.** One free function per root, name
   first (§6.1), taking the caller's bytes and returning the root or `NULL`:
 
+<!-- example: fragment -->
   ```cpp
   const Scene * SceneOpen( const void * bytes, uint64_t length );
   ```
@@ -11347,6 +11357,7 @@ the wire, and keeps the flexibility that comes with it.
   pointer target and is the same call in a locked region and an opened cook,
   because they are the same encoding (§6.3):
 
+<!-- example: fragment -->
   ```cpp
   const Node * next = NodeAt( node->next );   // one add; NULL when the delta is zero
   ```
@@ -11405,6 +11416,7 @@ the wire, and keeps the flexibility that comes with it.
   form's accessors — and the type is `<Root>Cook`, a name §11's list has claimed
   on every closure member all along:
 
+<!-- example: fragment -->
   ```csharp
   if ( !SceneCook.Open( out SceneCook cook, pointer, length ) )
       return;                       // wrong build, corrupt, truncated, foreign order
@@ -11439,6 +11451,7 @@ the wire, and keeps the flexibility that comes with it.
   not its value, because a self-relative delta means nothing without the address
   it is relative to:
 
+<!-- example: fragment -->
   ```csharp
   ListNodeRow * next = ListNodeCook.At( &node->Next );   // one add; null when the delta is zero
   ```
@@ -12200,6 +12213,7 @@ language and a runtime in any other."*
 **THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`
 — a FIXED table's takes the value:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SettingsCookMeasure( const Settings & value );
 bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
@@ -12208,6 +12222,7 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
 **THE C SURFACE** uses pointers and explicit contexts, retaining the same
 measure/write contract:
 
+<!-- example: fragment -->
 ```c
 int64_t settings_cook_measure(const Settings * value);
 int settings_cook(const Settings * value, void * out, uint64_t capacity, TableByteOrder order);
@@ -12225,6 +12240,7 @@ names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 **THE GO SURFACE** is the claimed name-first triple, and it is held to the
 tool's bytes byte for byte as the C and C++ writers are:
 
+<!-- example: fragment -->
 ```go
 func SettingsCookMeasure(value *Settings) int64
 func SettingsCookMeasureReason(value *Settings) (int64, error)
@@ -12291,6 +12307,7 @@ and the surface takes the two forms the wire's own entries take (§6.2) — a
 region root, or a builder — never a value, because a pointered root is a region
 and a root pointer rather than a struct you copy:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SceneCookMeasure( const Scene * root, TableAllocator allocator = TableDefaultAllocator() );
 bool    SceneCook( const Scene * root, void * out, uint64_t capacity, TableByteOrder order,
@@ -12957,6 +12974,7 @@ in declaration-name order. Its native `TestLobsterUnitViewListing` compares ever
 table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
 registries remain follow-ons (§15).
 
+<!-- example: fragment -->
 ```cpp
 struct ViewConstant
 {
@@ -15858,6 +15876,7 @@ unit's mode — but paying for it is a build decision, not an include.
 
 For every FIXED-SIZE table in a unit's closure, name first, C++:
 
+<!-- example: fragment -->
 ```cpp
 TableReport report;
 ShipConfig ship;
@@ -15885,6 +15904,7 @@ includes the walk needs.
 
 The same three, in C#:
 
+<!-- example: fragment -->
 ```csharp
 TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
@@ -15914,6 +15934,7 @@ that never calls the form pays the assembly's share of one walker.
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
 
+<!-- example: fragment -->
 ```cpp
 SceneFromJson( builder, text, text_bytes, &report );
 ```
@@ -16728,6 +16749,7 @@ its text form reads through the BUILDER, and writes from the CONST root of a
 region — what `Lock` and `Load` both produce. The surface is §16.1's with the
 class's own forms in the first argument:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 TableReport report;
@@ -18571,6 +18593,7 @@ estate's usual shape — allocates `<Table>BlockMaxBytes + 63` bytes through it,
 and aligns the 64-byte base inside them, because a malloc guarantee is not a
 cache line's. `Destroy` releases through the same pair.
 
+<!-- example: fragment -->
 ```cpp
 struct TableBlockAllocator
 {
@@ -18613,6 +18636,7 @@ happens once and is never grown.
 **The LAYOUT is settled once per block, from the counts**, before any worker
 starts:
 
+<!-- example: fragment -->
 ```cpp
 RenderFrameBlockStorage storage;              // the allocation: max-sized, 64-aligned
 if ( !storage.Create( TableBlockDefaultAllocator() ) )
@@ -18647,6 +18671,7 @@ page says so here rather than leaving a caller to find it at sixty hertz.
 
 **Then the fill, and the fill is the requirement:**
 
+<!-- example: fragment -->
 ```cpp
 RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
@@ -18739,6 +18764,7 @@ declaration, the contract of §19.3 is asserted either way, and a consumer
 picks by what it is doing: reflection to walk anything, the struct to read
 one thing fast.
 
+<!-- example: fragment -->
 ```csharp
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;               // and the caller falls back, or reports
@@ -18755,6 +18781,7 @@ ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;   // contiguous: the pitch 
 spelling and Go's differs where §11 leaves it free to: the claimed verbs stay
 free functions, and the row accessors and per-array constants are members.
 
+<!-- example: fragment -->
 ```go
 var block blockdemo.RenderFrameBlock
 if !blockdemo.RenderFrameBlockOpen( &block, pointer, bytes ) {

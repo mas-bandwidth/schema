@@ -22,10 +22,12 @@ named in its section below.
 
 1. **From 3.0.0, data written by any build reads in any other build of the
    same major, in either direction, and never crashes.** A table wire from a
-   newer build reads in an older one and the other way round. Every
-   difference lands in the read report; none is fatal.
+   newer build reads in an older one and the other way round across every
+   lawful edit: an unknown field is skipped and counted, a widening is
+   counted, and an edit the reader cannot honour (a changed kind, a value
+   past a tightened bound) refuses the whole load by name and never crashes.
 2. **Nothing is misdecoded.** A value is read as what it was written as, or
-   it is skipped and counted. The edits the wire cannot report, the *silent
+   the load refuses by name. The edits the wire cannot report, the *silent
    class* (the bold cells in the table below), are refused at compile time by
    a committed baseline, so commit one before the first build whose data
    leaves the building; the one the repository could not refuse until the
@@ -1135,8 +1137,9 @@ still open.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.
-- **The baseline refuses `T`→`?T`.** A new optional writer can store a
-  present field at its defaults, which an old plain reader refuses (§4).
+- **`T`→`?T` passes the baseline.** A new optional writer stores a present
+  field at its defaults as a body, and an old plain reader reads that body
+  as the declared defaults (SPEC-TABLES.md §2.3, §4.1).
 - **A tightened range refuses every stored file holding a value past it.** A
   narrowing is a data edit; migrate or back the files up first. A committed
   baseline warns on it, from either end and on a range declared where the
