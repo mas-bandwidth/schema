@@ -168,6 +168,20 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 	@mkdir -p build
 	go build -o $@ ./tools/mustrun
 
+# test-run: run ONE go test selection and refuse it when nothing ran.
+#
+#   make test-run PKG=./internal/foo RUN='^TestBar$$'
+#
+# A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
+# and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
+# fails when no test ran, or none passed (all skipped). PKG and RUN are both
+# required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
+# not bare go test -run, in every brief, recipe and by hand.
+.PHONY: test-run
+test-run:
+	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
+	go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
+
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
 # newer mtime on that file makes bin/schema out of date. `make -q` asks
@@ -5342,7 +5356,9 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 # the maps, lists and widelist tables.
 CONFORMANCE_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-objs/%.o,$(CONFORMANCE_SOURCES))
 
-build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp
+# the serialize runtime is a sibling checkout read through -I: a header edited
+# there must rebuild the objects that include it
+build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
@@ -7212,6 +7228,57 @@ if test ! -e "$(4)"; then \
 fi
 endef
 
+# THE SIBLING GATE. A leg that compiles against a sibling runtime checkout
+# (../serialize, ../serialize.c, ../serialize.cs, ../serialize.go,
+# ../serialize.rs, ../serialize.js) used to fail in the middle of a compile
+# when `make deps` had not staged it: CS2001 source not found, a missing -I
+# path, a cargo path error, a Go module replace that points nowhere. Each of
+# those names a symptom and never the cause. Now every entry point that needs a
+# sibling stops at once, before any recipe runs, with ONE line naming the
+# command to run:
+#   - a goal that is test-<leg>, build/conformance-<leg>, build-conformance-<leg>
+#     or `conformance` (for every leg SCHEMA_SKIP_LEGS does not name) is
+#     checked when the Makefile is read, below. It is a parse-time check
+#     because the prerequisite order of a goal whose rules sit in several
+#     files is not ours to set. A goal beside `deps` is not checked (deps
+#     stages the siblings first), and `test-go` is not either: it lists deps;
+#   - make sibling-<leg> says the same for one leg, as a target;
+#   - each sibling's marker file has a rule that says the same line, so any
+#     other target that lists one as a prerequisite (
+#     serialize.h is named by most legs) fails with the cause and not with
+#     "No rule to make target";
+#   - test/conformance/harness refuses the same way for `run`.
+# `make deps` stages the default paths; a path named on the command line or in
+# the environment (SERIALIZE_C=... and the like) is checked where it points.
+# internal/ci/siblinggate_test.go holds the wiring.
+SERIALIZE_JS ?= ../serialize.js
+sibling_specs := cpp:SERIALIZE:serialize.h c:SERIALIZE_C:serialize.c cs:SERIALIZE_CS:src/Serialize.cs unity:SERIALIZE_CS:src/Serialize.cs go:SERIALIZE_GO:go.mod rust:SERIALIZE_RS:Cargo.toml js:SERIALIZE_JS:src/index.js
+sibling_leg    = $(word 1,$(subst :, ,$(1)))
+sibling_var    = $(word 2,$(subst :, ,$(1)))
+sibling_file   = $(word 3,$(subst :, ,$(1)))
+sibling_dir    = $($(call sibling_var,$(1)))
+sibling_line   = the $(call sibling_leg,$(1)) leg needs the sibling checkout $(call sibling_dir,$(1)) ($(call sibling_file,$(1)) is missing): run 'make deps'
+# a goal names the leg when it is the leg's test or conformance build, or the
+# aggregate conformance and the leg is run; test-go lists deps and so stages
+sibling_named  = $(or $(filter $(if $(filter go,$(1)),,test-$(1)) build/conformance-$(1) build-conformance-$(1),$(MAKECMDGOALS)),$(and $(filter conformance,$(MAKECMDGOALS)),$(if $(filter cpp,$(1)),yes,$(call unless_skipped,$(1),yes))))
+sibling_absent = $(if $(wildcard $(call sibling_dir,$(1))/$(call sibling_file,$(1))),,$(1))
+$(foreach s,$(sibling_specs),$(if $(filter deps,$(MAKECMDGOALS)),,$(if $(call sibling_named,$(call sibling_leg,$(s))),$(if $(call sibling_absent,$(s)),$(error $(call sibling_line,$(s)))))))
+define sibling_gate
+.PHONY: sibling-$(call sibling_leg,$(1))
+sibling-$(call sibling_leg,$(1)):
+	@test -f "$$($(call sibling_var,$(1)))/$(call sibling_file,$(1))" || { echo "make: $(call sibling_line,$(1))" >&2; exit 1; }
+endef
+$(foreach s,$(sibling_specs),$(eval $(call sibling_gate,$(s))))
+define sibling_marker_rule
+$(1)/$(2):
+	@echo "make: the sibling checkout $(1) is missing ($(2) not found): run 'make deps'" >&2; exit 1
+endef
+$(eval $(call sibling_marker_rule,$(SERIALIZE_C),serialize.c))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_C),serialize.h))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_CS),src/Serialize.cs))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_RS),Cargo.toml))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_JS),src/index.js))
+
 # DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
 # verifies the pinned tag's commit, and publishes it only after a placement
 # race check (internal/ci/serializefetch_test.go). Keeping it separate from
@@ -7263,8 +7330,14 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push, active only in agent clones:
+# it refuses a push whose author or committer is not rowan-claude). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push guards agent clones)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:

@@ -208,6 +208,20 @@ reads beside the worktree (path, clone URL, tag, commit), as data a tool can
 stage without running the build; `make deps` stages any that are missing at
 those pins and leaves a present one alone.
 
+**A missing sibling stops the run at once, in one line.** A fresh clone has no
+siblings until `make deps` stages them. A goal that needs one (`test-<leg>`,
+`build/conformance-<leg>`, `conformance`, and `make sibling-<leg>` on its own)
+stops when the Makefile is read, before any recipe runs, and says which leg
+needs which checkout and the command to run:
+
+```
+Makefile:7219: *** the cs leg needs the sibling checkout ../serialize.cs (src/Serialize.cs is missing): run 'make deps'.  Stop.
+```
+
+`conformance-harness run` refuses the same way for every leg it is about to
+run. Nothing else is needed after `make deps`: it is the whole setup for the
+sibling runtimes. A leg named in `SCHEMA_SKIP_LEGS` does not need its sibling.
+
 ## How to run the tests, and the rule that sets their shape
 
 The owner's rule, said twice in one day:
@@ -276,6 +290,28 @@ The per-leg make gates, measured on an M-series Studio:
 
 Any leg gate that grows past 60 s gets split the same way: two names for the
 loop, one combined name for CI.
+
+## Running one Go test: `make test-run`, never a bare `go test -run`
+
+`go test -run Typo ./pkg` matches no test, prints `ok ... [no tests to run]` and
+exits 0: a mistyped pattern (`-run Idcap` for `TestIDCap`) looks exactly like a
+pass. So does a run in which every test skipped itself (`SCHEMA_SLOW` unset).
+Run a selection through the wrapper, which refuses both:
+
+```
+make test-run PKG=./internal/foo RUN='^TestBar$'
+make test-run PKG=./internal/foo RUN='^TestBar$' EXTRA='-count=1 -race'
+go run ./tools/gotestrun [-each] -run '^TestBar$' ./internal/foo   # the same, by hand
+```
+
+`tools/gotestrun` runs `go test -json`, passes go test's text through, and exits
+non-zero (naming the reason) when go test failed, when no test ran, or when no
+test passed. `-each` additionally requires every named package to pass a test
+(for `./...` runs). It prints `gotestrun: ran N, passed P, skipped S, failed F`.
+Every brief, recipe and hand run that selects tests with `-run` uses it. The
+conformance harness has the same refusal for its own filters: see
+[test/conformance/README.md](../test/conformance/README.md), "A filter that
+selects nothing is red".
 
 ## The gates a change has to pass
 
@@ -634,6 +670,23 @@ posted on an issue rather than on a pull request, is still a valid signature,
 but a maintainer has to enter it in the ledger by hand. Comment `recheck` on a
 pull request to re-run the check once that is done. Any other open pull request
 of yours stays red until it is rechecked too.
+
+### Commit identity in agent clones
+
+An agent clone sets its identity once, right after cloning, and runs `make setup`
+(`make deps` runs it too):
+
+```bash
+git config user.name "Rowan Claude"
+git config user.email 305107455+rowan-claude@users.noreply.github.com
+make setup
+```
+
+`make setup` points `core.hooksPath` at the tracked `.githooks/`. Its `pre-push`
+hook acts only in a clone whose `user.email` is that rowan-claude address: there it
+refuses a push when any pushed commit has an author or committer other than
+rowan-claude, and prints the offending commits and the one-line fix. In every
+other clone the hook does nothing; the CAA check on GitHub covers those.
 
 ## License
 

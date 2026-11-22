@@ -438,7 +438,9 @@ tables-rust-versioning-t12: tables-fixedform-corpus
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedRoadmapRustT12FramingText'
 
-build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
+# the serialize.rs runtime is a sibling crate the generated crates depend on by
+# path: an edit there must rebuild the driver
+build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml $(wildcard $(SERIALIZE_RS)/src/*.rs)
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	@rm -f $@   # replace the inode: writing over a binary another process is

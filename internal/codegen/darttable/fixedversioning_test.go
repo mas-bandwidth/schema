@@ -422,8 +422,8 @@ func fixedCorpus(t *testing.T) string {
 		// read and says so; but `make tables-dart-versioning` builds the corpus
 		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
 		// missing file means the build did not do what the target says it did.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -442,8 +442,8 @@ func dartBinary(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dart); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Dart SDK is not at %s: %v", dart, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the Dart SDK is not at %s: %v", dart, err)
 		}
 		t.Skip("the Dart SDK is not unpacked in dist/: see make/dart.mk")
 	}

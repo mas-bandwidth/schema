@@ -969,7 +969,7 @@ func t18RequireJava(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+	if !slowtest.CorpusRequired() {
 		javaTools(t) // skips, naming the missing JDK, when there is none
 		return
 	}
@@ -990,7 +990,7 @@ func t18RequireJava(t *testing.T) {
 	if home := "/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"; ok(home+"/bin/javac", home+"/bin/java") {
 		return
 	}
-	t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no working javac and java are on PATH or named by JAVAC and JAVA")
+	t.Fatal("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no working javac and java are on PATH or named by JAVAC and JAVA")
 }
 
 // t18Compile generates an inline unit's fixed form and compiles it with the

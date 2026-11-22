@@ -231,8 +231,8 @@ func builtCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's corpus is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's corpus is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's corpus is not built: make tables-fixedform-corpus")
 	}
@@ -303,8 +303,8 @@ func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join("..", "..", "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the fixed-form corpus is not built in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the fixed-form corpus is not built in %s: %v", dir, err)
 		}
 		t.Skip("the fixed-form corpus is not built: make tables-fixedform-corpus")
 	}

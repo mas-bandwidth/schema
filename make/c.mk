@@ -264,7 +264,9 @@ C_CONFORMANCE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_SOU
 
 $(filter build/tables-generated-c/%,$(C_CONFORMANCE_SOURCES)): build/tables-generated-c/.stamp ;
 
-$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+# the serialize.c runtime is a sibling checkout the compiler reads through -I:
+# a header edited there must rebuild the objects that include it
+$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h) $(wildcard $(SERIALIZE_C)/*.h)
 	@mkdir -p $(@D)
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
 
