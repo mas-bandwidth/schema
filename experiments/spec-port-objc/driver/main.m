@@ -96,13 +96,16 @@ static NSArray<NSNumber *> *lineageOf(NSString *unitKey, NSString *root) {
     return out;
 }
 
+static BOOL gFramingReadsForm1;
 static SPTableVal *loadAny(NSData *wire, SPDecl *d, SPUnit *u) {
     // SPEC-GAP 11: SPEC-TABLES "The three wires" refuses form 1 at a declared
-    // fixed root (`previous_form`), but fifteen framing rows at the fixed root
-    // tblr1 Cfg hand a form-1 file and owe `read` and a form-3 write-back.
-    // Following the corpus: a fixed root reads a form-1 file by the form-1
-    // reader, and writes form 3.
-    if (d.fixed && wire.length && ((const uint8_t *)wire.bytes)[0] == 1) return SPLoadForm1(wire, d, u);
+    // fixed root (`previous_form`), and the report rows previous_form_* owe
+    // exactly that; but fifteen FRAMING rows at the same fixed root (tblr1
+    // Cfg) hand a form-1 file and owe `read` and a form-3 write-back
+    // (frame_empty_table beside previous_form_r1_cfg). The corpus contradicts
+    // itself across surfaces; following each row: the framing surface reads
+    // form 1 at a fixed root, every other read refuses it.
+    if (gFramingReadsForm1 && d.fixed && wire.length && ((const uint8_t *)wire.bytes)[0] == 1) return SPLoadForm1(wire, d, u);
     if (d.fixed) return SPLoadFixed(wire, d, [NSSet setWithArray:lineageOf(gUnitKey, d.name)]);
     return SPLoadVariable(wire, d, u);
 }
@@ -381,6 +384,7 @@ static int runSurface(NSString *surface) {
         return 0;
     }
     if ([surface isEqualToString:@"report"] || [surface isEqualToString:@"framing"]) {
+        gFramingReadsForm1 = [surface isEqualToString:@"framing"];
         for (NSArray *l in linesOf(surface)) {
             NSString *path = l[4];
             readAndWriteBack(l[1], ^NSData *(SPDecl *d, SPUnit *u) {
