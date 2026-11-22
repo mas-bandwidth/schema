@@ -161,7 +161,7 @@ func cppRuntimeNames() []Name {
 		{what: "the text form's JSON lexer: scanning, skipping and UTF-8 (§16.1)", names: []string{
 			"TableJsonEncodeUtf8", "TableJsonHex4", "TableJsonLiteral", "TableJsonPeek",
 			"TableJsonScanLabel", "TableJsonScanNumber", "TableJsonScanString", "TableJsonScanUnit",
-			"TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand",
+			"TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand", "TableJsonSkippedClose",
 			"TableJsonSpace", "TableJsonTokenDouble", "TableJsonUtf8", "TableJsonWalkNumber",
 		}},
 		{what: "the text form's JSON reader and writer walk (§16)", names: []string{
@@ -185,7 +185,7 @@ func cppRuntimeNames() []Name {
 			"TableJsonBase64Alphabet", "TableJsonBase64Value",
 		}},
 		{what: "the text form's map key and value access (§16.8)", names: []string{
-			"TableJsonMapKeyField", "TableJsonMapKeyIsString", "TableJsonMapKeySigned", "TableJsonMapKeyValue",
+			"TableJsonMapKeyField", "TableJsonMapKeyIsString", "TableJsonMapKeySigned", "TableJsonMapKeyValue", "TableJsonMapKeys", "TableJsonMapKeysAdd",
 			"TableJsonMapValueField",
 		}},
 		{what: "the text form's unbounded-array extent access (§16.8)", names: []string{
