@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -164,16 +165,63 @@ func checkTableNames(u *ir.Unit, surfaces Surfaces) error {
 	if err := ruby.CheckNames(u); err != nil {
 		return err
 	}
+	return checkTableOnlyNames(u, surfaces)
+}
+
+// CheckNamesAtCheck is the Ruby target's whole name check as schema check
+// runs it for every target (SPEC §4.6): the packet rules
+// (ruby.CheckNames) and, for a unit with tables, the table rules
+// under every surface a generate can select, textform included, so a name
+// that only one surface spells is refused before any generate.
+func CheckNamesAtCheck(u *ir.Unit) error {
+	if err := ruby.CheckNames(u); err != nil {
+		return err
+	}
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	all := gotable.DefaultSurfaces()
+	all.TextForm = true
+	return checkTableOnlyNames(u, all)
+}
+
+func checkTableOnlyNames(u *ir.Unit, surfaces Surfaces) error {
 	for _, f := range u.Files {
 		if reservedTableFiles[strings.ToLower(f.Base)] {
 			return fmt.Errorf("ruby: %s.schema uses the reserved runtime file name %s; rename the file", f.Base, f.Base)
+		}
+		// A packet declaration is a constant of the same unit module as the
+		// table runtime's, spelled as the Ruby leg maps it.
+		for _, d := range f.Decls {
+			what, rb := "", ""
+			switch d := d.(type) {
+			case *ir.Const:
+				what, rb = "const "+d.Name, ruby.ConstName(d.Name)
+			case *ir.Enum:
+				what, rb = "enum "+d.Name, ruby.ClassName(d.Name)
+			case *ir.Flags:
+				what, rb = "flags "+d.Name, ruby.ClassName(d.Name)
+			case *ir.Struct:
+				what, rb = "type "+d.Name, ruby.ClassName(d.Name)
+			case *ir.Union:
+				what, rb = "union "+d.Name, ruby.ClassName(d.Name)
+			}
+			if reservedTableConstants[rb] {
+				return fmt.Errorf("ruby: %s.schema: %s collides with the generated table runtime constant %s; rename it", f.Base, what, rb)
+			}
+			if surfaces.View && rb == "UnitView" {
+				return fmt.Errorf("ruby: %s.schema: %s spells UnitView in Ruby, which collides with the generated UnitView entry point; rename the declaration or omit the view surface", f.Base, what)
+			}
 		}
 		for _, t := range f.Tables {
 			if t.IsMapEntry() || t.IsTextListElem() {
 				continue
 			}
-			if reservedTableConstants[t.Name] {
-				return fmt.Errorf("ruby: %s.schema: table %s collides with the generated table runtime constant %s; rename the table", f.Base, t.Name, t.Name)
+			if rb := ruby.ClassName(t.Name); reservedTableConstants[rb] {
+				return fmt.Errorf("ruby: %s.schema: table %s collides with the generated table runtime constant %s; rename the table", f.Base, t.Name, rb)
+			}
+			if surfaces.View && t.Name != "UnitView" && ruby.ClassName(t.Name) == "UnitView" {
+				return fmt.Errorf("ruby: %s.schema: table %s spells UnitView in Ruby, which collides with the generated UnitView entry point; rename the declaration or omit the view surface", f.Base, t.Name)
 			}
 			for _, fld := range t.Fields {
 				if strings.HasPrefix(fld.Name, "__") {
@@ -197,8 +245,8 @@ func checkTableNames(u *ir.Unit, surfaces Surfaces) error {
 			}
 		}
 		for _, un := range f.TableUnions {
-			if reservedTableConstants[un.Name] {
-				return fmt.Errorf("ruby: %s.schema: union %s collides with the generated table runtime constant %s; rename the union", f.Base, un.Name, un.Name)
+			if rb := ruby.ClassName(un.Name); reservedTableConstants[rb] {
+				return fmt.Errorf("ruby: %s.schema: union %s collides with the generated table runtime constant %s; rename the union", f.Base, un.Name, rb)
 			}
 			for _, v := range un.Variants {
 				if v.Name == "type" {
@@ -289,14 +337,14 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 		if !reachedUnions[un.Name] {
 			continue
 		}
-		fmt.Fprintf(&b, "  class %s\n", un.Name)
+		fmt.Fprintf(&b, "  class %s\n", ruby.ClassName(un.Name))
 		b.WriteString("    class << self\n      attr_accessor :descriptor\n    end\n\n")
 		b.WriteString("    def _s_reset\n      _s_zero\n    end\n")
 		b.WriteString("  end\n")
 		emitUnionDescriptor(&b, u, un)
-		fmt.Fprintf(&b, "  SchemaTable.register_union(%s)\n", un.Name)
+		fmt.Fprintf(&b, "  SchemaTable.register_union(%s)\n", ruby.ClassName(un.Name))
 		if surfaces.Fixed {
-			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n", rbQuote(un.Name), un.Name)
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n", rbQuote(un.Name), ruby.ClassName(un.Name))
 		}
 		b.WriteString("\n")
 	}
@@ -305,7 +353,7 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 		if !closure[st.Name] {
 			continue
 		}
-		fmt.Fprintf(&b, "  class %s\n", st.Name)
+		fmt.Fprintf(&b, "  class %s\n", ruby.ClassName(st.Name))
 		b.WriteString("    class << self\n      attr_accessor :descriptor, :block_row\n    end\n\n")
 		b.WriteString("    def _s_reset\n")
 		for _, f := range st.Fields {
@@ -316,14 +364,14 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 		emitTableDescriptor(&b, u, st, true, surfaces)
 		emitValueBlockRow(&b, u, st)
 		if surfaces.Fixed {
-			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(st.Name), st.Name)
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(st.Name), ruby.ClassName(st.Name))
 		}
 	}
 
 	for _, un := range orderUnions(plan.unions) {
 		emitTableUnion(&b, u, un)
 		if surfaces.Fixed {
-			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(un.Name), un.Name)
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(un.Name), ruby.ClassName(un.Name))
 		}
 	}
 
@@ -341,7 +389,7 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 }
 
 func keyedClassName(tableName string, f *ir.Field) string {
-	return tableName + ir.GoExportName(f.Name) + "KeyedArray"
+	return ruby.ClassName(tableName) + ir.GoExportName(f.Name) + "KeyedArray"
 }
 
 func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field, surfaces Surfaces) {
@@ -365,7 +413,7 @@ func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field, surfaces 
 }
 
 func emitTableUnion(b *strings.Builder, u *ir.Unit, un *ir.Union) {
-	fmt.Fprintf(b, "  module %sType\n", un.Name)
+	fmt.Fprintf(b, "  module %sType\n", ruby.ClassName(un.Name))
 	b.WriteString("    None = 0\n")
 	for i, v := range un.Variants {
 		fmt.Fprintf(b, "    %s = %d\n", ir.GoExportName(v.Name), i+1)
@@ -378,7 +426,7 @@ func emitTableUnion(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 	b.WriteString(" }.freeze\n")
 	b.WriteString("  end\n\n")
 
-	fmt.Fprintf(b, "  class %s\n", un.Name)
+	fmt.Fprintf(b, "  class %s\n", ruby.ClassName(un.Name))
 	b.WriteString("    class << self\n      attr_accessor :descriptor\n    end\n\n")
 	syms := []string{":type"}
 	hasObjectID := false
@@ -399,11 +447,11 @@ func emitTableUnion(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 		}
 	}
 	b.WriteString("    end\n\n")
-	fmt.Fprintf(b, "    def ==(other)\n      other.instance_of?(%s) && SchemaTable.graph_eq(self, other)\n    end\n\n", un.Name)
+	fmt.Fprintf(b, "    def ==(other)\n      other.instance_of?(%s) && SchemaTable.graph_eq(self, other)\n    end\n\n", ruby.ClassName(un.Name))
 	b.WriteString("    def inspect\n      SchemaTable.graph_inspect(self)\n    end\n")
 	b.WriteString("  end\n")
 	emitUnionDescriptor(b, u, un)
-	fmt.Fprintf(b, "  SchemaTable.register_union(%s)\n\n", un.Name)
+	fmt.Fprintf(b, "  SchemaTable.register_union(%s)\n\n", ruby.ClassName(un.Name))
 }
 
 func emitAttrAccessor(b *strings.Builder, syms []string, hasObjectID bool) {
@@ -422,7 +470,8 @@ func emitAttrAccessor(b *strings.Builder, syms []string, hasObjectID bool) {
 
 func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks *ir.BlockUnit, surfaces Surfaces) {
 	name := st.Name
-	fmt.Fprintf(b, "  class %s\n", name)
+	cls := ruby.ClassName(name)
+	fmt.Fprintf(b, "  class %s\n", cls)
 	b.WriteString("    class << self\n")
 	if surfaces.Fixed && st.FixedDeclared {
 		b.WriteString("      attr_accessor :descriptor, :block, :block_row, :fixed_plan_max\n")
@@ -457,7 +506,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	}
 	b.WriteString("      self\n    end\n\n")
 
-	fmt.Fprintf(b, "    def ==(other)\n      other.instance_of?(%s) && SchemaTable.graph_eq(self, other)\n    end\n\n", name)
+	fmt.Fprintf(b, "    def ==(other)\n      other.instance_of?(%s) && SchemaTable.graph_eq(self, other)\n    end\n\n", cls)
 	b.WriteString("    def inspect\n      SchemaTable.graph_inspect(self)\n    end\n\n")
 
 	if surfaces.Fixed && fixedRootAdmitted(u, st) {
@@ -487,14 +536,14 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 		fmt.Fprintf(b, "    def measure\n      raise InvalidValue.new(%s, 'fixed_surface_not_selected')\n    end\n\n", rbQuote(name))
 	case st.FixedDeclared:
 		fmt.Fprintf(b, "    def self.load(data, report = nil)\n      ::%s._s_fixed_load(%s, data, 1, report, nil)[0]\n    end\n\n", mod, rbQuote(name))
-		fmt.Fprintf(b, "    def save\n      ::%s._s_fixed_save(%s, %s, [self])\n    end\n\n", mod, rbQuote(name), name)
+		fmt.Fprintf(b, "    def save\n      ::%s._s_fixed_save(%s, %s, [self])\n    end\n\n", mod, rbQuote(name), cls)
 		fmt.Fprintf(b, "    def measure\n      ::%s._s_fixed_measure(%s, 1)\n    end\n\n", mod, rbQuote(name))
 	default:
 		b.WriteString("    def self.load(data, report = nil)\n")
 		if st.Integrity == "crc32c" {
 			b.WriteString("      data = SchemaTable.open_crc(data)\n")
 		}
-		fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report)\n    end\n\n", name)
+		fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report)\n    end\n\n", cls)
 		b.WriteString("    def save\n")
 		if st.Integrity == "crc32c" {
 			b.WriteString("      SchemaTable.seal_crc(SchemaTable.save_table(self))\n")
@@ -519,7 +568,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 			if st.Integrity == "crc32c" {
 				b.WriteString("      data = SchemaTable.open_crc(data)\n")
 			}
-			fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report, retain)\n", name)
+			fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report, retain)\n", cls)
 			b.WriteString("    end\n\n")
 
 			b.WriteString("    def measure_retain(retain)\n")
@@ -558,12 +607,12 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 
 	if surfaceCarries(surfaces, st, "json") {
 		b.WriteString("    def self.from_json(text, report = nil)\n")
-		fmt.Fprintf(b, "      SchemaTable.from_json(%s, text, report)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.from_json(%s, text, report)\n", cls)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def to_json(*_args)\n      SchemaTable.to_json(self)\n    end\n\n")
 		if surfaces.TextForm {
 			b.WriteString("    def self.from_text_form(text, max_bytes: 0, max_tokens: 0, max_nodes: 0, max_allocation: 0, max_depth: 0)\n")
-			fmt.Fprintf(b, "      SchemaTable.read_text_form(%s, text, SchemaTable::TextLimits.new(bytes: max_bytes, tokens: max_tokens, nodes: max_nodes, allocation: max_allocation, depth: max_depth))\n", name)
+			fmt.Fprintf(b, "      SchemaTable.read_text_form(%s, text, SchemaTable::TextLimits.new(bytes: max_bytes, tokens: max_tokens, nodes: max_nodes, allocation: max_allocation, depth: max_depth))\n", cls)
 			b.WriteString("    end\n\n")
 			b.WriteString("    def self.read_text(text, max_bytes: 0, max_tokens: 0, max_nodes: 0, max_allocation: 0, max_depth: 0)\n")
 			b.WriteString("      from_text_form(text, max_bytes: max_bytes, max_tokens: max_tokens, max_nodes: max_nodes, max_allocation: max_allocation, max_depth: max_depth)\n")
@@ -576,22 +625,22 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 
 	if surfaceCarries(surfaces, st, "block") {
 		b.WriteString("    def self.block_open(data, build_version: nil, base_offset: 0)\n")
-		fmt.Fprintf(b, "      SchemaTable.block_open(%s, data, build_version: build_version, base_offset: base_offset)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.block_open(%s, data, build_version: build_version, base_offset: base_offset)\n", cls)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.block_begin(counts = nil)\n")
-		fmt.Fprintf(b, "      SchemaTable.block_begin(%s, counts)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.block_begin(%s, counts)\n", cls)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.block_max_bytes\n")
-		fmt.Fprintf(b, "      SchemaTable.block_max_bytes(%s)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.block_max_bytes(%s)\n", cls)
 		b.WriteString("    end\n\n")
 	}
 
 	if surfaceCarries(surfaces, st, "cook") {
 		b.WriteString("    def self.cook_open(data, base_offset: 0)\n")
-		fmt.Fprintf(b, "      SchemaTable.open_cook(%s, data, base_offset: base_offset)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.open_cook(%s, data, base_offset: base_offset)\n", cls)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.cook_check(data, base_offset: 0)\n")
-		fmt.Fprintf(b, "      SchemaTable.check_cook(%s, data, base_offset: base_offset)\n", name)
+		fmt.Fprintf(b, "      SchemaTable.check_cook(%s, data, base_offset: base_offset)\n", cls)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def cook(order: SchemaTable::COOK_ORDER_LITTLE, capacity: nil)\n")
 		b.WriteString("      SchemaTable.cook_table(self, order: order, capacity: capacity)\n")
@@ -603,7 +652,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	emitTableDescriptor(b, u, st, false, surfaces)
 	emitBlockDescriptors(b, u, st, blocks)
 	if surfaces.Fixed {
-		fmt.Fprintf(b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(name), name)
+		fmt.Fprintf(b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(name), cls)
 	}
 }
 
@@ -615,7 +664,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		variable = ir.VariableTables(u)[name]
 	}
 	guards := structGuards(st)
-	fmt.Fprintf(b, "  %s.descriptor = SchemaTable::TableDesc.new(\n", name)
+	fmt.Fprintf(b, "  %s.descriptor = SchemaTable::TableDesc.new(\n", ruby.ClassName(name))
 	fmt.Fprintf(b, "    name: %s,\n", rbQuote(name))
 	fmt.Fprintf(b, "    doc: %s, tags: %s,\n", rbQuote(st.Doc), rbTags(st.Tags))
 	fmt.Fprintf(b, "    table: %s,\n", rbBool(st.IsTable))
@@ -639,9 +688,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	b.WriteString("    ]\n")
 	b.WriteString("  )\n")
 	if valueClass {
-		fmt.Fprintf(b, "  SchemaTable.register_value(%s)\n", name)
+		fmt.Fprintf(b, "  SchemaTable.register_value(%s)\n", ruby.ClassName(name))
 	} else {
-		fmt.Fprintf(b, "  SchemaTable.register(%s)\n", name)
+		fmt.Fprintf(b, "  SchemaTable.register(%s)\n", ruby.ClassName(name))
 	}
 }
 
@@ -811,7 +860,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "          deprecated: %s,\n", dep)
 	}
 	if codec == "table" || codec == "union" {
-		fmt.Fprintf(b, "          default_factory: -> { %s.new },\n", targetName(f))
+		fmt.Fprintf(b, "          default_factory: -> { %s.new },\n", ruby.ClassName(targetName(f)))
 	} else {
 		fmt.Fprintf(b, "          default: %s,\n", def)
 	}
@@ -826,7 +875,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 
 func emitUnionDescriptor(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 	size, _, tagSize, armOffset := ir.UnionLayout(u, un)
-	fmt.Fprintf(b, "  %s.descriptor = SchemaTable::UnionDesc.new(\n", un.Name)
+	fmt.Fprintf(b, "  %s.descriptor = SchemaTable::UnionDesc.new(\n", ruby.ClassName(un.Name))
 	fmt.Fprintf(b, "    name: %s,\n", rbQuote(un.Name))
 	fmt.Fprintf(b, "    size: %d, tag_size: %d, arm_offset: %d, doc: %s, tags: %s,\n",
 		size, tagSize, armOffset, rbQuote(un.Doc), rbTags(un.Tags))
@@ -921,19 +970,19 @@ func armFieldDesc(u *ir.Unit, un *ir.Union, v ir.UnionVariant, tag int) string {
 func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUnit) {
 	name := st.Name
 	row := ir.RecordLayout(u, st)
-	fmt.Fprintf(b, "  %s.block_row = SchemaTable::BlockRecord.new(\n", name)
+	fmt.Fprintf(b, "  %s.block_row = SchemaTable::BlockRecord.new(\n", ruby.ClassName(name))
 	emitBlockRecordBody(b, u, row, nil, false, "    ")
 	b.WriteString("  )\n")
 	if blocks == nil || !st.CarriesForm("block") {
-		fmt.Fprintf(b, "  %s.block = nil\n\n", name)
+		fmt.Fprintf(b, "  %s.block = nil\n\n", ruby.ClassName(name))
 		return
 	}
 	bl := blocks.Block(st.Name)
 	if bl == nil {
-		fmt.Fprintf(b, "  %s.block = nil\n\n", name)
+		fmt.Fprintf(b, "  %s.block = nil\n\n", ruby.ClassName(name))
 		return
 	}
-	fmt.Fprintf(b, "  %s.block = SchemaTable::BlockTable.new(\n", name)
+	fmt.Fprintf(b, "  %s.block = SchemaTable::BlockTable.new(\n", ruby.ClassName(name))
 	fmt.Fprintf(b, "    name: %s,\n", rbQuote(name))
 	b.WriteString("    projection: SchemaTable::BlockRecord.new(\n")
 	emitBlockRecordBody(b, u, &bl.Projection, bl, true, "      ")
@@ -953,7 +1002,7 @@ func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks 
 
 func emitValueBlockRow(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	row := ir.RecordLayout(u, st)
-	fmt.Fprintf(b, "  %s.block_row = SchemaTable::BlockRecord.new(\n", st.Name)
+	fmt.Fprintf(b, "  %s.block_row = SchemaTable::BlockRecord.new(\n", ruby.ClassName(st.Name))
 	emitBlockRecordBody(b, u, row, nil, false, "    ")
 	b.WriteString("  )\n\n")
 }
@@ -1058,9 +1107,9 @@ func scalarOrNamedDefault(f *ir.Field) string {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return ref.Name + ".new"
+			return ruby.ClassName(ref.Name) + ".new"
 		case *ir.Union:
-			return ref.Name + ".new"
+			return ruby.ClassName(ref.Name) + ".new"
 		case *ir.Enum:
 			return strconv.FormatInt(enumDefaultValue(f), 10)
 		case *ir.Flags:

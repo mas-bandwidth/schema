@@ -232,9 +232,9 @@ func viewSortedStructs(u *ir.Unit) ([]*ir.Struct, []*ir.Struct) {
 	return types, tables
 }
 
-// AddView places the unit registry beside the generated runtime and exports its
-// entry point from the package. A schema declaration cannot replace that entry.
-func AddView(u *ir.Unit, out map[string][]byte) error {
+// checkViewNames refuses a declaration or schema file named UnitView, the
+// registry's entry point the view surface exports from the package.
+func checkViewNames(u *ir.Unit) error {
 	if _, exists := u.DeclFile["UnitView"]; exists {
 		return fmt.Errorf("python: declaration UnitView conflicts with the unit registry entry point")
 	}
@@ -242,6 +242,15 @@ func AddView(u *ir.Unit, out map[string][]byte) error {
 		if f.Base == "UnitView" {
 			return fmt.Errorf("python: schema file UnitView conflicts with the unit registry entry point")
 		}
+	}
+	return nil
+}
+
+// AddView places the unit registry beside the generated runtime and exports its
+// entry point from the package. A schema declaration cannot replace that entry.
+func AddView(u *ir.Unit, out map[string][]byte) error {
+	if err := checkViewNames(u); err != nil {
+		return err
 	}
 	runtime, err := Runtime()
 	if err != nil {

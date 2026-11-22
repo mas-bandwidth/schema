@@ -373,7 +373,7 @@ assert r.total == 42, 'field write drift'
 func TestPythonReflectionAccessors(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, `package access
-fixed table Data {
+fixed table Sample {
     title string(8)
     raw bytes(4)
     items [2]int32
@@ -386,7 +386,7 @@ fixed table Data {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import access
-x=access.Data()
+x=access.Sample()
 for name, original, index, replacement, expected in (
     ('title', 'cat', 1, 'u', 'cut'),
     ('raw', b'cat', 1, ord('u'), b'cut'),

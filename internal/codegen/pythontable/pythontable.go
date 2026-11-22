@@ -69,25 +69,7 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
-		return nil, err
-	}
-	if surfaces.Retain && (u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil) {
-		return nil, fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
-	}
-	if surfaces.Retain {
-		for _, file := range u.Files {
-			for _, table := range file.Tables {
-				for _, field := range table.Fields {
-					switch field.Name {
-					case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
-						return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
-					}
-				}
-			}
-		}
-	}
-	if err := checkBlobRefName(u); err != nil {
+	if err := checkTableNames(u, surfaces); err != nil {
 		return nil, err
 	}
 	if err := refuseUncarriedPacketKinds(u); err != nil {
@@ -186,6 +168,49 @@ func Runtime() (map[string][]byte, error) {
 		return nil
 	})
 	return out, err
+}
+
+// CheckNamesAtCheck is the Python target's whole name check as schema check
+// runs it for every target (SPEC §4.6): the packet rules, and for a unit with
+// tables the table rules under every surface a generate can select, textform
+// included, so a name only one surface spells is refused before any generate.
+func CheckNamesAtCheck(u *ir.Unit) error {
+	if len(u.Tables) == 0 {
+		return python.CheckNames(u)
+	}
+	all := gotable.DefaultSurfaces()
+	all.TextForm = true
+	if err := python.CheckNames(u); err != nil {
+		return err
+	}
+	if err := checkViewNames(u); err != nil {
+		return err
+	}
+	return checkTableNames(u, all)
+}
+
+// checkTableNames holds a unit with tables to the names the selected table
+// surfaces spell.
+func checkTableNames(u *ir.Unit, surfaces Surfaces) error {
+	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
+		return err
+	}
+	if surfaces.Retain && (u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil) {
+		return fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
+	}
+	if surfaces.Retain {
+		for _, file := range u.Files {
+			for _, table := range file.Tables {
+				for _, field := range table.Fields {
+					switch field.Name {
+					case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
+						return fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
+					}
+				}
+			}
+		}
+	}
+	return checkBlobRefName(u)
 }
 
 // checkBlobRefName protects the public blob-node type from a package export

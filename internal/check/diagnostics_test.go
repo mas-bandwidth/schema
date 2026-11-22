@@ -705,7 +705,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		{name: "a compressed float whose top step is the largest float32",
 			src: "package t\ntype Edge { x float32 | min = 0.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 		{name: "near-miss spellings of the table runtime's names",
-			src: "package t\nconst tableJsonMaxDepths = 5\nconst tableJsonInput = 1\ntype TableReports { n int32 }\n"},
+			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
 		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is
 		// claimed and nothing wider, so a near miss (FrameBit -> read_frame_bit)
 		// and a bare `Bits` (read_bits) beside `type Frame` stay legal.
@@ -723,7 +723,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		{name: "the cooked and read-report names in a packet-only unit",
 			src: "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { n int32 }\n"},
 		{name: "the Go and C lowercase runtime families in a packet-only unit",
-			src: "package t\nconst tableJsonMaxDepth = 5\nconst tableJsonIn = 1\nconst tableCookRecords = 2\n"},
+			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
 		{name: "the accelerators' shared runtimes and the build version in a packet-only unit",
 			src: "package t\ntype BlockRuntime { n int32 }\ntype CookRuntime { n int32 }\nconst BuildVersion = 1\n"},
 		// THE MAPPING THE PAGE BLESSES (schema#451, docs/USAGE.md): a sibling
@@ -920,7 +920,7 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 		// and the one that only LOOKS like the lowercase reservation: the
 		// prefix is `schema_`, so a name that merely starts with `schema` and
 		// carries no underscore is untouched
-		"package t\nconst schematic = 1\n",
+		"package t\ntype schematic { x uint8 }\n",
 	} {
 		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
 			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)

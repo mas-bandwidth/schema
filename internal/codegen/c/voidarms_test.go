@@ -19,7 +19,7 @@ union Signals {
     ping
     pong
 }
-union Signal {
+union Beacon {
     ping
 }
 union Empty {}
@@ -30,7 +30,7 @@ union Empty {}
 	}
 	header := string(files["Arms.h"])
 	wire := string(files["ArmsWire.h"])
-	for _, name := range []string{"Signals", "Signal", "Empty"} {
+	for _, name := range []string{"Signals", "Beacon", "Empty"} {
 		want := "typedef struct " + name + "\n{\n    " + name + "Type type;\n} " + name + ";"
 		if !strings.Contains(header, want) {
 			t.Errorf("%s must have tag-only storage, without an empty C union", name)
@@ -39,7 +39,7 @@ union Empty {}
 	for _, want := range []string{
 		"#define CHOICE_TYPE_PING 1", "#define CHOICE_TYPE_PAYLOAD 2", "#define CHOICE_TYPE_PONG 3",
 		"#define CHOICE_TYPE_MAX 3", "Payload payload;",
-		"#define SIGNALS_MAX_BITS 2", "#define SIGNAL_MAX_BITS 1", "#define EMPTY_MAX_BITS 0",
+		"#define SIGNALS_MAX_BITS 2", "#define BEACON_MAX_BITS 1", "#define EMPTY_MAX_BITS 0",
 	} {
 		if !strings.Contains(header, want) {
 			t.Errorf("Arms.h lost a tag, payload or tag-only bound: %q", want)

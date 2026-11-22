@@ -123,7 +123,8 @@ for token in (b'8 :enabled false', b' 8', b'(8)'):
 func TestPythonHandtextReservedName(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"from_text_form", "load_text", "save_text"} {
-		unit := loadUnit(t, "package probe\ntable Root { "+name+" int32 }\n")
+		checkRefuses(t, "package probe\ntable Root { "+name+" int32 }\n", "the Python target cannot express")
+		unit := loadTableRenamingField(t, name)
 		if _, err := generateHandtext(unit); err == nil || !strings.Contains(err.Error(), name) {
 			t.Fatalf("generated method collision %s was not refused: %v", name, err)
 		}
@@ -155,7 +156,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 			t.Fatalf("%s: missing wire text carrier", tc.name)
 		}
 	}
-	field := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
+	field := loadTableRenamingField(t, "from_text_form")
 	if _, err := GenerateSurface(field, Surfaces{Wire: true}); err != nil {
 		t.Fatalf("unselected name refused: %v", err)
 	}

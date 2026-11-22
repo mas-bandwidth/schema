@@ -45,7 +45,7 @@ func rbsPacketElemType(f *ir.Field) string {
 		case *ir.Enum, *ir.Flags:
 			return "Integer"
 		case *ir.Struct, *ir.Union:
-			return f.Type.Name
+			return ruby.ClassName(f.Type.Name)
 		}
 	}
 	return "untyped"
@@ -304,9 +304,9 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				if d.IsFloat {
 					typ = "Float"
 				}
-				fmt.Fprintf(&b, "\n  %s: %s\n", d.Name, typ)
+				fmt.Fprintf(&b, "\n  %s: %s\n", ruby.ConstName(d.Name), typ)
 			case *ir.Enum:
-				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %s\n", ruby.ClassName(d.Name))
 				b.WriteString("    None: Integer\n")
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", ruby.VariantConstant(v))
@@ -315,7 +315,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				b.WriteString("    NAMES: ::Hash[Integer, String]\n")
 				b.WriteString("  end\n")
 			case *ir.Flags:
-				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %s\n", ruby.ClassName(d.Name))
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", ruby.VariantConstant(v))
 				}
@@ -326,7 +326,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				if d.IsTable {
 					continue
 				}
-				fmt.Fprintf(&b, "\n  class %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  class %s\n", ruby.ClassName(d.Name))
 				if closure[d.Name] {
 					b.WriteString("    self.@descriptor: untyped\n")
 					b.WriteString("    self.@block_row: untyped\n")
@@ -342,12 +342,12 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 					fmt.Fprintf(&b, "    def %s: (%s) -> %s\n", rbsMethodName(fld.Name+"="), ft, ft)
 				}
 				b.WriteString("    def initialize: () -> void\n")
-				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", ruby.HelperPrefix, d.Name, d.Name)
+				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", ruby.HelperPrefix, ruby.ClassName(d.Name), ruby.ClassName(d.Name))
 				b.WriteString("    def to_h: () -> ::Hash[Symbol, untyped]\n")
 				b.WriteString("    def ==: (untyped other) -> bool\n")
 				b.WriteString("    def inspect: () -> String\n")
-				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", d.Name)
-				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", d.Name)
+				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", ruby.ClassName(d.Name))
+				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", ruby.ClassName(d.Name))
 				b.WriteString("    def write: () -> String\n")
 				b.WriteString("    def _s_read: (Serialize::ReadStream stream) -> bool\n")
 				b.WriteString("    def _s_write: (Serialize::WriteStream stream) -> void\n")
@@ -358,7 +358,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				}
 				b.WriteString("  end\n")
 			case *ir.Union:
-				fmt.Fprintf(&b, "\n  module %sType\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %sType\n", ruby.ClassName(d.Name))
 				b.WriteString("    None: Integer\n")
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", ir.GoExportName(v.Name))
@@ -368,7 +368,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				b.WriteString("  end\n")
 
 				arms := rbsPacketUnionArms(d)
-				fmt.Fprintf(&b, "\n  class %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  class %s\n", ruby.ClassName(d.Name))
 				if reachedUnions[d.Name] {
 					b.WriteString("    self.@descriptor: untyped\n")
 					b.WriteString("    def self.descriptor: () -> SchemaTable::UnionDesc\n")
@@ -384,11 +384,11 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 					fmt.Fprintf(&b, "    def %s: (%s) -> %s\n", rbsMethodName(v.Name+"="), ft, ft)
 				}
 				b.WriteString("    def initialize: () -> void\n")
-				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", ruby.HelperPrefix, d.Name, d.Name)
+				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", ruby.HelperPrefix, ruby.ClassName(d.Name), ruby.ClassName(d.Name))
 				b.WriteString("    def ==: (untyped other) -> bool\n")
 				b.WriteString("    def inspect: () -> String\n")
-				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", d.Name)
-				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", d.Name)
+				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", ruby.ClassName(d.Name))
+				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", ruby.ClassName(d.Name))
 				b.WriteString("    def write: () -> String\n")
 				b.WriteString("    def _s_read: (Serialize::ReadStream stream) -> bool\n")
 				b.WriteString("    def _s_write: (Serialize::WriteStream stream) -> void\n")
@@ -404,7 +404,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 
 	for _, plan := range plans {
 		for _, un := range orderUnions(plan.unions) {
-			fmt.Fprintf(&b, "\n  module %sType\n", un.Name)
+			fmt.Fprintf(&b, "\n  module %sType\n", ruby.ClassName(un.Name))
 			b.WriteString("    None: Integer\n")
 			for _, v := range un.Variants {
 				fmt.Fprintf(&b, "    %s: Integer\n", ir.GoExportName(v.Name))
@@ -413,7 +413,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			b.WriteString("    NAMES: ::Hash[Integer, String]\n")
 			b.WriteString("  end\n")
 
-			fmt.Fprintf(&b, "\n  class %s\n", un.Name)
+			fmt.Fprintf(&b, "\n  class %s\n", ruby.ClassName(un.Name))
 			b.WriteString("    self.@descriptor: untyped\n")
 			b.WriteString("    def self.descriptor: () -> SchemaTable::UnionDesc\n")
 			b.WriteString("    def self.descriptor=: (untyped) -> untyped\n")
@@ -443,7 +443,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 					b.WriteString("  end\n")
 				}
 			}
-			fmt.Fprintf(&b, "\n  class %s\n", st.Name)
+			fmt.Fprintf(&b, "\n  class %s\n", ruby.ClassName(st.Name))
 			b.WriteString("    self.@descriptor: untyped\n")
 			b.WriteString("    self.@block: untyped\n")
 			b.WriteString("    self.@block_row: untyped\n")
@@ -461,36 +461,36 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			}
 			b.WriteString("    def initialize: () -> void\n")
 			b.WriteString("    def _s_reset: () -> void\n")
-			fmt.Fprintf(&b, "    def _s_copy_from: (%s other) -> %s\n", st.Name, st.Name)
+			fmt.Fprintf(&b, "    def _s_copy_from: (%s other) -> %s\n", ruby.ClassName(st.Name), ruby.ClassName(st.Name))
 			b.WriteString("    def ==: (untyped other) -> bool\n")
 			b.WriteString("    def inspect: () -> String\n")
-			fmt.Fprintf(&b, "    def self.load: (untyped data, ?untyped report) -> %s\n", st.Name)
+			fmt.Fprintf(&b, "    def self.load: (untyped data, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
 			b.WriteString("    def save: () -> String\n")
 			b.WriteString("    def measure: () -> Integer\n")
-			fmt.Fprintf(&b, "    def self.measure: (%s value) -> Integer\n", st.Name)
+			fmt.Fprintf(&b, "    def self.measure: (%s value) -> Integer\n", ruby.ClassName(st.Name))
 			if surfaces.Fixed && st.FixedDeclared {
 				b.WriteString("    def self.fixed_plan_max: () -> Integer\n")
 				b.WriteString("    def self.fixed_plan_max=: (Integer) -> Integer\n")
 			}
 			if surfaces.Fixed && fixedRootAdmitted(u, st) {
-				fmt.Fprintf(&b, "    def self.fixed_load: (untyped data, ?untyped capacity, ?untyped report, ?untyped plan_capacity, **untyped opts) -> ::Array[%s]\n", st.Name)
+				fmt.Fprintf(&b, "    def self.fixed_load: (untyped data, ?untyped capacity, ?untyped report, ?untyped plan_capacity, **untyped opts) -> ::Array[%s]\n", ruby.ClassName(st.Name))
 				fmt.Fprintf(&b, "    def self.fixed_save: (untyped values) -> String\n")
 				b.WriteString("    def self.fixed_measure: (untyped count) -> Integer\n")
 			}
 			if surfaces.Retain {
-				fmt.Fprintf(&b, "    def self.load_retain: (untyped data, untyped retain, ?untyped report) -> %s\n", st.Name)
+				fmt.Fprintf(&b, "    def self.load_retain: (untyped data, untyped retain, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
 				b.WriteString("    def measure_retain: (untyped retain) -> Integer\n")
 				b.WriteString("    def save_retain: (untyped retain, untyped report) -> String\n")
 			}
 			if surfaceCarries(surfaces, st, "json") {
-				fmt.Fprintf(&b, "    def self.from_json: (untyped text, ?untyped report) -> %s\n", st.Name)
+				fmt.Fprintf(&b, "    def self.from_json: (untyped text, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
 				b.WriteString("    def to_json: (*untyped) -> String\n")
 				if surfaces.TextForm {
 					b.WriteString("    def self.from_text_form: (untyped text, ?max_bytes: Integer, ?max_tokens: Integer, ?max_nodes: Integer, ?max_allocation: Integer, ?max_depth: Integer) -> SchemaTable::TextDocument\n")
 					b.WriteString("    def self.read_text: (untyped text, ?max_bytes: Integer, ?max_tokens: Integer, ?max_nodes: Integer, ?max_allocation: Integer, ?max_depth: Integer) -> SchemaTable::TextDocument\n")
 				}
 			}
-			fmt.Fprintf(&b, "    def self.load_text: (untyped text, ?untyped report) -> %s\n", st.Name)
+			fmt.Fprintf(&b, "    def self.load_text: (untyped text, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
 			b.WriteString("    def save_text: () -> String\n")
 			if surfaceCarries(surfaces, st, "block") {
 				b.WriteString("    def self.block_open: (untyped data, ?build_version: untyped, ?base_offset: Integer) -> SchemaTable::Block\n")
