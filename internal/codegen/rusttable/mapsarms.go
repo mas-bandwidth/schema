@@ -1207,9 +1207,11 @@ func (g *gen) emitKeyedTextWrite(b *strings.Builder, f *ir.Field, x, d, ind stri
 func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind string) {
 	elemField := scalarOnly(f)
 	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }\n", ind)
+	fmt.Fprintf(b, "%selse if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; }\n", ind)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%s%s = %s;\n", in, field, fieldDefault(f))
 	fmt.Fprintf(b, "%slet mut seen = [false; %d];\n", in, len(f.KeyEnumRef.Variants))
 	// a key this build cannot name is skipped and counted unknown, but the same
@@ -1243,6 +1245,7 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1292,8 +1295,17 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "    }\n}\n\n")
 
 		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
+		// THE READ CAP COUNTS THE UNION'S OBJECT (§16.2): the object opens at the
+		// depth counter, the body runs one deeper, the counter comes back on every exit
 		fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", fn(un.Name, "json_read"), un.Name)
 		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); return; }\n")
+		fmt.Fprintf(b, "    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }\n")
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		fmt.Fprintf(b, "    %s(jr, v);\n", fn(un.Name, "json_read_body"))
+		fmt.Fprintf(b, "    jr.depth -= 1;\n")
+		fmt.Fprintf(b, "}\n\n")
+		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
+		fmt.Fprintf(b, "fn %s(jr: &mut Jr, v: &mut %s) {\n", fn(un.Name, "json_read_body"), un.Name)
 		fmt.Fprintf(b, "    jr.p += 1;\n")
 		fmt.Fprintf(b, "    *v = %s::None;\n", un.Name)
 		fmt.Fprintf(b, "    if jr.peek() == b'}' { jr.p += 1; return; }\n")
@@ -1387,9 +1399,11 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	valName := ir.RustSnake(ir.MapValueFieldName)
 	ent := "ent_" + ir.RustSnake(f.MapEntry.Name)
 	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }\n", ind)
+	fmt.Fprintf(b, "%selse if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; }\n", ind)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
@@ -1428,6 +1442,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	if c := classOf(ir.MapKeyField(f)); c == vScalar || c == vEnum {
 		// a Copy key sorts by the key itself (clippy's unnecessary_sort_by)
 		fmt.Fprintf(b, "%s%s.sort_by_key(|e| e.%s);\n", in, field, keyName)
