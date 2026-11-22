@@ -3,7 +3,6 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -124,10 +123,7 @@ fixed table FoxAll
 		}
 	}
 
-	cc, err := exec.LookPath("cc")
-	if err != nil {
-		return
-	}
+	cc := slowtest.Tool(t, "cc")
 	dir := t.TempDir()
 	var sources []string
 	var header string

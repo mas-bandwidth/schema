@@ -1,0 +1,14 @@
+package decls
+
+table Link | was = "ListNode"
+{
+    value int32
+    next  *Link
+}
+
+table Holder
+{
+    p *Link
+    c int32
+    d int32
+}

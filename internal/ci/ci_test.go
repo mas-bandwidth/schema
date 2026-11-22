@@ -1450,6 +1450,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",

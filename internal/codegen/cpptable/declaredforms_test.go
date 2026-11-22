@@ -11,7 +11,6 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -133,10 +132,7 @@ fixed table FoxAll
 	}
 
 	slowtest.Gate(t, "c++")
-	cxx, err := exec.LookPath("c++")
-	if err != nil {
-		return
-	}
+	cxx := slowtest.Tool(t, "c++")
 	dir := t.TempDir()
 	var sources []string
 	var header string

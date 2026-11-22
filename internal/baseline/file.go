@@ -92,7 +92,7 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 		warnings = append(warnings, fmt.Sprintf("%s: %s", path, w))
 	}
 	for _, r := range refusals {
-		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason \"...\" (docs/SPEC-TABLES.md §18)", path, r))
+		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason \"...\" (docs/SPEC-TABLES.md §18)", path, r))
 	}
 	return warnings, errs
 }
@@ -192,8 +192,10 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 			live.History = salvageHistory(data)
 			live.Retired = salvageRetired(data)
 			// the salvaged ledger still acknowledges a resurrection; the regenerated
-			// entry below carries no per-edit lines, so the list itself is unused
-			ackRevivals(live, ldate)
+			// entry below carries no per-edit lines, so the list itself is unused.
+			// There is no projection to pair against, so the scope is the
+			// entry's own owner.
+			ackRevivals(live, ldate, nil)
 			// the committed file carries no machine paths: the reader of this
 			// history is on another machine, years later
 			entry = []string{
@@ -206,10 +208,25 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		if base.Package != u.Package {
 			// §18.4 treats another unit's baseline like an unreadable projection:
 			// its history survives, but its members cannot be diffed against this unit.
+			// So does its RETIRED LEDGER (F-245): it is the one record the live
+			// projection cannot regenerate, and a package rename is the commonest
+			// way a unit's own baseline turns "foreign" — dropping the ledger
+			// there would let a retired member come back over its old saves.
 			live.History = base.History
+			live.Retired = append([]Retired(nil), base.Retired...)
+			revived = ackRevivals(live, ldate, nil)
+			// The previous projection PARSED, so what it carried and this unit
+			// does not is still known: a declaration or member removed in the
+			// same update as the package rename is retired here as on any
+			// other update, or the rename would be the way to free a name.
+			newly = retirements(base, live, ldate)
+			live.Retired = append(live.Retired, newly...)
 			entry = []string{
 				fmt.Sprintf("### %s — %s", date, reason),
 				fmt.Sprintf("- baseline REGENERATED over a foreign unit's baseline (baseline is for package %s, this unit is package %s); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow", base.Package, u.Package),
+			}
+			if len(newly) > 0 || len(revived) > 0 {
+				entry = retiredEntry(entry, newly, revived)
 			}
 			break
 		}
@@ -217,7 +234,7 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		live.Retired = append([]Retired(nil), base.Retired...)
 		// a live name or id the ledger carries is a resurrection: this
 		// reasoned update is where it is acknowledged
-		revived = ackRevivals(live, ldate)
+		revived = ackRevivals(live, ldate, newDiffer(base, live, DefaultTokenPolicy).carriedTo)
 		// and every declaration the unit no longer carries is retired here,
 		// appended and never dropped
 		newly = retirements(base, live, ldate)
@@ -277,11 +294,14 @@ func salvageHistory(data []byte) []string {
 // ackRevivals marks every unrevived ledger entry the live projection now
 // carries and returns those entries. `--update --reason` is the act that
 // acknowledges a resurrection, and the marker records it so the check passes
-// while the entry itself is never dropped (issue #441).
-func ackRevivals(live *Unit, date string) []Retired {
+// while the entry itself is never dropped (issue #441). It matches exactly
+// what the check refuses — the same owner-scoped match, through the same
+// rename pairing — so an update never records a revival the check would not
+// have refused (F-242).
+func ackRevivals(live *Unit, date string, carried func(vocab, owner string) string) []Retired {
 	var revived []Retired
 	for i := range live.Retired {
-		if live.Retired[i].Revived != "" || !liveMatchesRetired(live, live.Retired[i]) {
+		if live.Retired[i].Revived != "" || !liveMatchesRetired(live, live.Retired[i], carried) {
 			continue
 		}
 		live.Retired[i].Revived = date

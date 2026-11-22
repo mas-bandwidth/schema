@@ -153,7 +153,7 @@ func TestExternalModuleCarriesEveryCLISource(t *testing.T) {
 // TestExternalModuleBuildsTheCLI is the acceptance test of the public-API boundary.
 func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds two compilers")
+		t.Skip("-short: builds two compilers")
 	}
 	root := repoRoot(t)
 	work := t.TempDir()
@@ -327,7 +327,7 @@ func readTree(t *testing.T, dir string) map[string][]byte {
 // same public API.
 func TestExternalGeneratorRegisters(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds a compiler")
+		t.Skip("-short: builds a compiler")
 	}
 	root := repoRoot(t)
 	work := t.TempDir()

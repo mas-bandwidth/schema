@@ -393,7 +393,7 @@ func TestFinalWriteFailureRetainsJournalAndRefusesSeal(t *testing.T) {
 // means the parent never stopped it, and that is a failure.
 func TestQuietWindowChild(t *testing.T) {
 	if os.Getenv("SCHEMA_WINDOW_TEST_CHILD") != "1" {
-		t.Skip("child-process helper: runs only as the child of TestQuietWindowStopsOwnedRunnerAndRetainsRefusal")
+		t.Skip("helper for TestQuietWindowStopsOwnedRunnerAndRetainsRefusal")
 	}
 	fmt.Print("child ready\n")
 	time.Sleep(30 * time.Second)

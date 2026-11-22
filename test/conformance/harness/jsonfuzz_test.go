@@ -158,7 +158,7 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 
 func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") != "1" {
-		t.Skip("child-process helper: the synthetic json-fuzz driver runs only as the child of TestJSONFuzzPlantedNegativeControls")
+		t.Skip("helper for TestJSONFuzzPlantedNegativeControls")
 	}
 	var args []string
 	for i, a := range os.Args {
