@@ -54,7 +54,10 @@ cooktorturewide = { path = "../../../build/tables-generated-rust/cooktorturewide
 featurewitnesses = { path = "../../../build/tables-generated-rust-witnesses/featurewitnesses" }
 
 [profile.dev]
-# the conformance corpus is small and the driver runs seven times per matrix;
-# an optimised build costs nothing here and keeps the leg's wall inside the
-# two-minute rule
-opt-level = 1
+# 37 generated crates build cold on every CI runner (the checkout is clean), and
+# optimisation plus debuginfo made that build 137 s on four cores: past the
+# two-minute rule on its own. opt-level 0 without debuginfo builds in 31 s;
+# overflow checks and debug assertions stay on in the dev profile, and every
+# case still runs.
+opt-level = 0
+debug = false
