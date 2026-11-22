@@ -14,7 +14,6 @@ local L = require("load")
 local F = {}
 
 local strfind = string.find
-local utf8len = utf8.len
 
 local formByte = 3
 local maxRecordBytes = 65536
@@ -49,7 +48,7 @@ local function unpack_float(f32, buf, pos)
 end
 
 local function check_utf8(s)
-  if strfind(s, "\0", 1, true) or utf8len(s) == nil then error("text_ill_formed", 0) end
+  if strfind(s, "\0", 1, true) or not D.utf8_ok(s) then error("text_ill_formed", 0) end
 end
 
 local function zeros(n)
