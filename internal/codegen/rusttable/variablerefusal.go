@@ -189,7 +189,8 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // *bytes blob (§2.5), an enum, a table nested by value
 // or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
 // (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), an unbounded
-// []T or bounded [..N]T array (§2.9), and any of these inside an `if` group,
+// []T, bounded [..N]T or counted [A..B]T array (§2.9; ruling R10: A holds on
+// every read and write, wherever the array sits), and any of these inside an `if` group,
 // which the walks gate on its branch condition (variableguard.go, §3.1, §4). Whether a referenced TABLE is itself
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
@@ -206,8 +207,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
-		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}
 	if ref, ok := f.Type.Ref.(*ir.Union); ok {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
@@ -227,18 +226,7 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 		if v.Body() {
 			continue
 		}
-		arm := v.F
-		if arm.Array == ir.ArrayCounted && arm.ArrayMin > 0 {
-			// A COUNTED ARM [A..B]T IS CARRIED (ruling R10, docs/SPEC-TABLES.md
-			// §3.3): the arm read refuses a count below A on the wire and in
-			// text (mapsarms.go, variabletext.go), the fixed form's scatter
-			// holds it to OutOfRange, and the arm writer debug-asserts A. The
-			// minimum is checked here as a bounded [..B]T would be.
-			inner := *arm
-			inner.ArrayMin = 0
-			arm = &inner
-		}
-		if why := variableFieldConstruct(arm); why != "" {
+		if why := variableFieldConstruct(v.F); why != "" {
 			if v.F.Array == ir.ArrayFixed && mapValueArrayCarried(v.F) {
 				continue
 			}
