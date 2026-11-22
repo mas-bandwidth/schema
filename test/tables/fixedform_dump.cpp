@@ -1244,10 +1244,12 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vold_array_fixed_grow, ArrayFixedGrow, "old_array_fixed_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu );
           for ( int i = 0; i < 4; ++i ) { MSI( v[0].vals[i].x, -500 - i, (long long) ( i ) ); MSI( v[0].vals[i].y, -600 - i, (long long) ( i ) ); }
+          for ( int i = 0; i < 4; ++i ) { MSI( v[0].ints[i], -800 - i, (long long) ( i ) ); MSI( v[0].octet[i], (uint8_t) ( 200 + i ), (long long) ( i ) ); }
           MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_array_fixed_grow, ArrayFixedGrow, "new_array_fixed_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu );
           for ( int i = 0; i < 8; ++i ) { MSI( v[0].vals[i].x, 3000 + i, (long long) ( i ) ); MSI( v[0].vals[i].y, 4000 + i, (long long) ( i ) ); }
+          for ( int i = 0; i < 8; ++i ) { MSI( v[0].ints[i], 5000 + i, (long long) ( i ) ); MSI( v[0].octet[i], (uint8_t) ( 100 + i ), (long long) ( i ) ); }
           MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_array_elem_widen, ArrayElemWiden, "old_array_elem_widen.bin",

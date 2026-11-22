@@ -79,7 +79,6 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 	mem := unionMembers(un)
 	_, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
-	b.WriteString("import java.nio.charset.StandardCharsets;\nimport java.util.ArrayList;\nimport java.util.List;\n")
 	fmt.Fprintf(&b, "public final class %sVariable {private %sVariable(){}\n", un.Name, un.Name)
 	fmt.Fprintf(&b, "    static final int GRAPH_KIND = %d;\n", graphIndex[un.Name])
 	writeVariableMapHelpers(&b, u, st)
@@ -89,7 +88,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableDefault(f))
 		if f.Type.Pointer {
 			if f.Array != ir.ArrayNone {
-				fmt.Fprintf(&b, "        public List<Long> %sIdx=new ArrayList<>();\n", varMember(f))
+				fmt.Fprintf(&b, "        public java.util.List<java.lang.Long> %sIdx=new java.util.ArrayList<>();\n", varMember(f))
 			} else {
 				fmt.Fprintf(&b, "        public long %sIdx;\n", varMember(f))
 			}
@@ -126,7 +125,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 	b.WriteString("            default: return true;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n")
-	b.WriteString("    static void resolveNodes(Value v,TableVariable.NodeTable nt,Object root,long rootTypeId,TableVariable.Report report){if(v==null)return;switch(v.tag){\n")
+	b.WriteString("    static void resolveNodes(Value v,TableVariable.NodeTable nt,java.lang.Object root,long rootTypeId,TableVariable.Report report){if(v==null)return;switch(v.tag){\n")
 	for i, arm := range un.Variants {
 		if !arm.Void() {
 			fmt.Fprintf(&b, "        case %d:{\n", i+1)
@@ -245,7 +244,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 		b.WriteString("return v;}\n")
 	}
 	if unitCarriesForm(u, "json") {
-		b.WriteString("    static void jsonFields(StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
+		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
 			if arm.Void() {
@@ -262,7 +261,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 			b.WriteString("        break;}\n")
 		}
 		b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
-		b.WriteString("    static Value readJson(TableJson.In in,int depth){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanName();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
+		b.WriteString("    static Value readJson(TableJson.In in,int depth){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}java.lang.String armName=in.scanName();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
 			if arm.Void() {

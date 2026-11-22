@@ -199,16 +199,19 @@ public final class BenchMixedFixed {
             TableFixed.put8(b, at + 1122 + i * 1 + 0, v.loadout[i]);
         }
         TableFixed.put32(b, at + 1126, v.playerNameLength);
-        System.arraycopy(v.playerName, 0, b, at + 1130, v.playerNameLength);
+        java.lang.System.arraycopy(v.playerName, 0, b, at + 1130, v.playerNameLength);
         java.util.Arrays.fill(b, at + 1130 + v.playerNameLength, at + 1145, (byte) 0);
         TableFixed.put32(b, at + 1145, v.payloadLength);
-        System.arraycopy(v.payload, 0, b, at + 1149, v.payloadLength);
+        java.lang.System.arraycopy(v.payload, 0, b, at + 1149, v.payloadLength);
         java.util.Arrays.fill(b, at + 1149 + v.payloadLength, at + 1165, (byte) 0);
-        TableFixed.put32(b, at + 1165, Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX)));
-        TableFixed.put32(b, at + 1169, Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY)));
-        TableFixed.put32(b, at + 1173, Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ)));
-        TableFixed.put32(b, at + 1177, Float.floatToRawIntBits(v.recoil));
-        TableFixed.put64(b, at + 1181, Double.doubleToRawLongBits(v.drift));
+        TableFixed.put32(
+                b, at + 1165, java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX)));
+        TableFixed.put32(
+                b, at + 1169, java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY)));
+        TableFixed.put32(
+                b, at + 1173, java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ)));
+        TableFixed.put32(b, at + 1177, java.lang.Float.floatToRawIntBits(v.recoil));
+        TableFixed.put64(b, at + 1181, java.lang.Double.doubleToRawLongBits(v.drift));
         TableFixed.put64(b, at + 1189, v.wideKey.lo);
         TableFixed.put64(b, at + 1197, v.wideKey.hi);
         TableFixed.put64(b, at + 1205, v.flux.lo);
@@ -226,8 +229,8 @@ public final class BenchMixedFixed {
     private static boolean checkWrite(Value v) {
         assert (v.sequence & 0xffffffffffff0000L) == 0;
         assert v.ackSequence >= 0L && v.ackSequence <= 65535L;
-        assert Long.compareUnsigned(v.nonce, 0x0L) >= 0
-                && Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0;
+        assert java.lang.Long.compareUnsigned(v.nonce, 0x0L) >= 0
+                && java.lang.Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0;
         assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L;
         assert (v.frameTick & 0xffff000000000000L) == 0;
         assert v.serverTime >= 0L && v.serverTime <= 16776960L;
@@ -265,7 +268,7 @@ public final class BenchMixedFixed {
     static void scatter(
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.sequence = TableFixed.get32(b, at + 0);
-        if (Integer.compareUnsigned(v.sequence, 65535) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.sequence, 65535) > 0) {
             v.sequence = (int) (65535L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -291,12 +294,12 @@ public final class BenchMixedFixed {
         v.clientId = TableFixed.get32(b, at + 20);
         {
             long q = TableFixed.get64(b, at + 24);
-            if (Long.compareUnsigned(q, 0x0L) < 0) {
+            if (java.lang.Long.compareUnsigned(q, 0x0L) < 0) {
                 q = 0x0L;
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
-            } else if (Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
+            } else if (java.lang.Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
                 q = 0xffffffffffffffffL;
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
@@ -320,7 +323,7 @@ public final class BenchMixedFixed {
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
-        if (Long.compareUnsigned(v.frameTick, 281474976710655L) > 0) {
+        if (java.lang.Long.compareUnsigned(v.frameTick, 281474976710655L) > 0) {
             v.frameTick = 281474976710655L;
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -424,7 +427,7 @@ public final class BenchMixedFixed {
             r.refuse(TableFixed.Reason.textIllFormed);
             return;
         }
-        System.arraycopy(b, at + 1130, v.playerName, 0, v.playerNameLength);
+        java.lang.System.arraycopy(b, at + 1130, v.playerName, 0, v.playerNameLength);
         if (v.playerNameLength < v.playerName.length) {
             java.util.Arrays.fill(v.playerName, v.playerNameLength, v.playerName.length, (byte) 0);
         }
@@ -451,7 +454,7 @@ public final class BenchMixedFixed {
                 }
             }
         }
-        System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
+        java.lang.System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
         if (v.payloadLength < v.payload.length) {
             java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0);
         }
@@ -461,14 +464,14 @@ public final class BenchMixedFixed {
                 r.refuseNonFinite("BenchMixed.aim_x");
                 return;
             }
-            float q = Float.intBitsToFloat(fbits);
-            if (q < Float.intBitsToFloat(0xbf800000)) {
-                q = Float.intBitsToFloat(0xbf800000);
+            float q = java.lang.Float.intBitsToFloat(fbits);
+            if (q < java.lang.Float.intBitsToFloat(0xbf800000)) {
+                q = java.lang.Float.intBitsToFloat(0xbf800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
-            } else if (q > Float.intBitsToFloat(0x3f800000)) {
-                q = Float.intBitsToFloat(0x3f800000);
+            } else if (q > java.lang.Float.intBitsToFloat(0x3f800000)) {
+                q = java.lang.Float.intBitsToFloat(0x3f800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
@@ -483,14 +486,14 @@ public final class BenchMixedFixed {
                 r.refuseNonFinite("BenchMixed.aim_y");
                 return;
             }
-            float q = Float.intBitsToFloat(fbits);
-            if (q < Float.intBitsToFloat(0xbf800000)) {
-                q = Float.intBitsToFloat(0xbf800000);
+            float q = java.lang.Float.intBitsToFloat(fbits);
+            if (q < java.lang.Float.intBitsToFloat(0xbf800000)) {
+                q = java.lang.Float.intBitsToFloat(0xbf800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
-            } else if (q > Float.intBitsToFloat(0x3f800000)) {
-                q = Float.intBitsToFloat(0x3f800000);
+            } else if (q > java.lang.Float.intBitsToFloat(0x3f800000)) {
+                q = java.lang.Float.intBitsToFloat(0x3f800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
@@ -505,14 +508,14 @@ public final class BenchMixedFixed {
                 r.refuseNonFinite("BenchMixed.aim_z");
                 return;
             }
-            float q = Float.intBitsToFloat(fbits);
-            if (q < Float.intBitsToFloat(0xbf800000)) {
-                q = Float.intBitsToFloat(0xbf800000);
+            float q = java.lang.Float.intBitsToFloat(fbits);
+            if (q < java.lang.Float.intBitsToFloat(0xbf800000)) {
+                q = java.lang.Float.intBitsToFloat(0xbf800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
-            } else if (q > Float.intBitsToFloat(0x3f800000)) {
-                q = Float.intBitsToFloat(0x3f800000);
+            } else if (q > java.lang.Float.intBitsToFloat(0x3f800000)) {
+                q = java.lang.Float.intBitsToFloat(0x3f800000);
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
@@ -527,7 +530,7 @@ public final class BenchMixedFixed {
                 r.refuseNonFinite("BenchMixed.recoil");
                 return;
             }
-            v.recoil = Float.intBitsToFloat(fbits);
+            v.recoil = java.lang.Float.intBitsToFloat(fbits);
         }
         {
             final long fbits = TableFixed.get64(b, at + 1181);
@@ -535,7 +538,7 @@ public final class BenchMixedFixed {
                 r.refuseNonFinite("BenchMixed.drift");
                 return;
             }
-            v.drift = Double.longBitsToDouble(fbits);
+            v.drift = java.lang.Double.longBitsToDouble(fbits);
         }
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
         {
@@ -569,7 +572,7 @@ public final class BenchMixedFixed {
             v.ping = (short) (q);
         }
         v.crcHint = TableFixed.get32(b, at + 1223);
-        if (Integer.compareUnsigned(v.crcHint, 16777215) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.crcHint, 16777215) > 0) {
             v.crcHint = (int) (16777215L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -615,19 +618,19 @@ public final class BenchMixedFixed {
 
     /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
     static boolean finite(Value v) {
-        if (!Float.isFinite(v.aimX)) {
+        if (!java.lang.Float.isFinite(v.aimX)) {
             return false;
         }
-        if (!Float.isFinite(v.aimY)) {
+        if (!java.lang.Float.isFinite(v.aimY)) {
             return false;
         }
-        if (!Float.isFinite(v.aimZ)) {
+        if (!java.lang.Float.isFinite(v.aimZ)) {
             return false;
         }
-        if (!Float.isFinite(v.recoil)) {
+        if (!java.lang.Float.isFinite(v.recoil)) {
             return false;
         }
-        if (!Double.isFinite(v.drift)) {
+        if (!java.lang.Double.isFinite(v.drift)) {
             return false;
         }
         return true;

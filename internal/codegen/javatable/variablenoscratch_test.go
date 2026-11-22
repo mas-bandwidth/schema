@@ -43,7 +43,7 @@ func TestVariableSaveAndMeasureOwnNoScratchJava(t *testing.T) {
 					"public void frameBody(int start, int drop) {",
 					"public void frameEntry(int start, long key, int drop) {",
 					"public void frameKeyed(int start, int kind, int count) {",
-					"public void putUtf8(String s) {",
+					"public void putUtf8(java.lang.String s) {",
 				} {
 					body := javaMethodBody(t, name, src, sig)
 					if strings.Contains(body, "new ") {

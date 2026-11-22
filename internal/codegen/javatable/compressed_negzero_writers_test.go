@@ -41,7 +41,7 @@ func TestJavaCompressedFloatStoresAreGuarded(t *testing.T) {
 	}
 	use := regexp.MustCompile(`(floatToRawIntBits\(|TableJson\.writeFloat\(b, )\s*`)
 	guard := regexp.MustCompile(`^\([^()]*(\([^()]*\))? == 0\.0f \? 0\.0f : `)
-	literal := regexp.MustCompile(`^(0\.0f\)|0\.05f\)|Float\.intBitsToFloat\()`)
+	literal := regexp.MustCompile(`^(0\.0f\)|0\.05f\)|(java\.lang\.)?Float\.intBitsToFloat\()`)
 	guarded, plain := 0, 0
 	var runtime strings.Builder
 	for name, data := range files {

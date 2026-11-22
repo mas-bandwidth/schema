@@ -1,0 +1,7 @@
+# F-176: TestLong logs 70 KB, then t.Skip("SCHEMA_SLOW: trace collection
+# finished"). The reason after the long log is kept: an optional slow skip,
+# accepted, not an unknown one.
+args: -require-record -provides tool:rust
+exit: 0
+want: skip ledger: 1 skip(s)
+want: 1  slow
