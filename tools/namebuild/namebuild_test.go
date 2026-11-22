@@ -166,8 +166,8 @@ func TestNameBuildability(t *testing.T) {
 	}
 }
 
-// runJob generates one case in one target and builds and loads it, or, for
-// a job that must refuse, requires the generation to refuse.
+// runJob generates one builds case in one target and builds and loads it; a
+// refuse-at-check row has no job (Plan), since the checker refuses it.
 func runJob(t *testing.T, run Runner, env Env, schema, work string, j Job, unity *sync.Mutex) error {
 	c, err := ReadCase(filepath.Join(corpus, j.Case))
 	if err != nil {

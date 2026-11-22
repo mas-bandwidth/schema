@@ -1582,9 +1582,8 @@ All compile errors with positions:
   some target's emitter still spells unqualified is refused for every target
   instead (platform-name safety, below). In C and C++ a
   declared type or table may spell a libc type, function or macro
-  (`table uint8_t`, `table memcpy`, `type NULL`; a type named in lowercase
-  letters is no Ruby constant, so the checker refuses it under the emitter
-  name rules below): the emitters write the declared types under a
+  (`table uint8_t`, `table memcpy`, `type NULL`): the emitters write the
+  declared types under a
   marker the pass after them maps back (`internal/codegen/cqualify`), so the
   emitter's own `uint8_t`, `memcpy(` and `NULL` stay the platform's. C++
   then names the platform's from the global root where a declared type hides
@@ -1597,7 +1596,12 @@ All compile errors with positions:
   C# names `global::System.Math`, and a unit with a declaration named in
   lowercase letters only disables CS8981 in its generated files. Elixir
   lowers a declaration to the module `<Ns>.<Name>` with its first letter
-  raised (`enum kind` is `Probe.Kind`). Every one of these is the target's
+  raised (`enum kind` is `Probe.Kind`). Ruby spells a declaration whose
+  name is no Ruby constant as the constant it maps to: a const in
+  SCREAMING_SNAKE_CASE (`const max_items` is `MAX_ITEMS`), every other
+  declaration in UpperCamelCase (`enum kind` is `Kind`, `table max_items`
+  is `MaxItems`, and a union's tag module is that name and `Type`); a name
+  that is already a constant is spelled as written. Every one of these is the target's
   spelling and nothing else: the wire name, every id, every projection, the
   descriptors and every diagnostic keep the schema name. The cases are
   `testdata/name-buildability-emit`, built by each target's toolchain.
@@ -1725,11 +1729,15 @@ All compile errors with positions:
   any length N), the 128-bit support classes `Int128` and
   `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
   reserved word or a claimed name above takes its own diagnostic instead.
-- **Emitter name rules:** the checker also runs, over the package and every
-  type name, the rules a target's emitter holds itself (a Ruby constant
-  starts with an uppercase letter and is none the interpreter defines, a
-  Python package is no standard-library module and a type no builtin, a
-  Goose namespace is no reserved one) and the C and C++ wire-header name
+- **Emitter name rules:** the checker also runs the rules a target's
+  emitter holds itself (for Ruby and Python, the emitter's whole name check
+  under every surface a generate can select: a Ruby declaration's constant,
+  as mapped above, is none the interpreter or the generated runtime defines
+  and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
+  Python package is no standard-library module and no declaration a
+  builtin; in both, no field or arm starts with `__` or the helper prefix
+  `_s_` or spells a member the generated class defines; a Goose namespace is
+  no reserved one) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
   refuses for every target, naming the target, a unit one of them refuses,
   so those names are refused at check rather than at generate.

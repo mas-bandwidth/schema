@@ -252,10 +252,10 @@ t_ValueError	refuse-at-check	Python	the python emitter refuses the name; the che
 t_Vec	builds	-	-
 t_WriteStream	refuse-at-check	Rust	refused on main (survey control)
 t_Writer	builds	-	-
-t_alloc	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_alloc	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_assert	refuse-at-check	-	refused on main (survey control)
 t_binary	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_bit32	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_bit32	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_bits	refuse-at-check	-	refused on main (survey control)
 t_buffer	refuse-at-check	Luau	rule 4: type name shadows a platform name
 t_core	refuse-at-check	Rust	rule 4: type name shadows a platform name
@@ -265,28 +265,28 @@ t_f32	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_f64	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_fmt	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_i64	refuse-at-check	Rust	rule 4: type name shadows a platform name
-t_io	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
-t_ipairs	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_io	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
+t_ipairs	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_len	refuse-at-check	Go	refused on main (survey control)
 t_math	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_memcpy	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_memcpy	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_print	refuse-at-check	Go	refused on main (survey control)
 t_select	refuse-at-check	Go	refused on main (survey control)
 t_serialize	refuse-at-check	Rust	refused on main (survey control)
-t_size_t	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_size_t	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_std	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_str	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_struct	refuse-at-check	-	refused on main (survey control)
 t_table	refuse-at-check	-	refused on main (survey control)
-t_tonumber	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
-t_tostring	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_tonumber	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
+t_tostring	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_type	refuse-at-check	-	refused on main (survey control)
 t_u128	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_u8	refuse-at-check	Rust	rule 4: type name shadows a platform name
-t_uint8_t	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_uint8_t	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_unsafe	refuse-at-check	-	type name is a reserved word (refused on main)
 t_utf8	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_vector	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_vector	builds	-	a type named in lowercase: Ruby spells it in UpperCamelCase (SPEC §4.6, Ruby mapping)
 t_usize	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_isize	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_i8	refuse-at-check	Rust	rule 4: type name shadows a platform name
@@ -311,3 +311,12 @@ t_Core_case1	builds	-	-
 t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
+c_max_items	builds	-	a const named in lowercase: Ruby spells it MAX_ITEMS (SPEC §4.6, Ruby mapping)
+e_kind	builds	-	an enum named in lowercase: Ruby spells it Kind
+u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module PickType
+tb_fleet	builds	-	a table named in lowercase: Ruby spells it Fleet
+tb_max_items	builds	-	tables named in snake case, one holding the other: Ruby spells them MaxItemsTable and FleetRoot
+t_a_b_AB	refuse-at-check	Ruby	types a_b and AB: Ruby spells both AB (the Rust and C forms a_b and ab differ)
+t_integer	refuse-at-check	Ruby	a type named integer: Ruby spells it Integer, the core constant
+u_beacon_BeaconType	refuse-at-check	Ruby	union beacon beside type BeaconType: the union's Ruby tag module is BeaconType
+b_UnitView_tables	refuse-at-check	Python	a file UnitView.schema in a unit with tables: the Python view surface exports UnitView from the package

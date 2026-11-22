@@ -382,11 +382,9 @@ public final class Wire {
 // javaClassNamesRefused is each committed file under refused/ and the words
 // its refusal must name. A file base that is a reserved word of any target or
 // starts with _ is refused by schema check before the Java emitter sees it
-// (SPEC §4.6), and so is a type name another target's emitter cannot express
-// (a lowercase type is no Ruby constant), so those rows name the checker's
-// refusal; the rest are the Java emitter's own. The Java guard behind the
-// checker's for those type names is reached by
-// TestJavaRefusesATypeNameBehindTheChecker.
+// (SPEC §4.6), so those rows name the checker's refusal; the rest are the
+// Java emitter's own. The Java guard for a type name is also reached behind
+// the checker by TestJavaRefusesATypeNameBehindTheChecker.
 var javaClassNamesRefused = map[string]string{
 	"class.schema":          `schema file class.schema: class is a reserved word`,
 	"enum.schema":           `schema file enum.schema: enum is a reserved word`,
@@ -399,8 +397,8 @@ var javaClassNamesRefused = map[string]string{
 	"var.schema":            `schema file var.schema: var is a reserved word`,
 	"yield.schema":          `schema file yield.schema: yield is a reserved word`,
 	"java.schema":           `a class named "java" obscures the java package`,
-	"PermitsType.schema":    `ruby: PermitsType.schema: type permits is not a Ruby constant`,
-	"JavaType.schema":       `ruby: JavaType.schema: type java is not a Ruby constant`,
+	"PermitsType.schema":    `type permits is reserved as a Java class name`,
+	"JavaType.schema":       `type java becomes a class named "java", which obscures the java package`,
 	"JavaField.schema":      `field java of Packet maps to the Java identifier "java", which obscures the java package`,
 	"JavaTableField.schema": `field java of table Shelf maps to the Java identifier "java", which obscures the java package`,
 }
@@ -436,9 +434,9 @@ func TestJavaRefusesAClassNameJavacCannotTake(t *testing.T) {
 	}
 }
 
-// schema check refuses a lowercase type name first (Ruby, SPEC §4.6), so the
-// Java emitter's own guard for a type named java or permits is reached by
-// renaming the type after the check: a unit built in memory meets it.
+// The Java emitter's own guard for a type named java or permits holds behind
+// whatever schema check refuses first (SPEC §4.6): it is reached by renaming
+// the type after the check, so a unit built in memory meets it.
 func TestJavaRefusesATypeNameBehindTheChecker(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, want string }{
