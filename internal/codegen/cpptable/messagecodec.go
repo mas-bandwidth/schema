@@ -473,7 +473,10 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 	case tkBool:
 		g.pf("%sw.put( %s ? 1 : 0, 1 );\n", ind, expr)
 	case tkF64:
-		g.pf("%sw.put( table_double_to_bits( %s ), 64 );\n", ind, expr)
+		// a ranged float64 rides whole, and its -0 as +0 (§3.3,
+		// fixed-compressed-negzero); a compressed float32 is quantized below,
+		// where -0 is the index of 0
+		g.pf("%sw.put( %s( %s ), 64 );\n", ind, storedFloatBits(f, "table_double_to_bits"), expr)
 	case tkF32:
 		if shape.Packing == ir.TableMessageQuantized {
 			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the

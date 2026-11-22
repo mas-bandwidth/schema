@@ -30,7 +30,10 @@ import (
 // side by side in one vocabulary. **WHAT SEPARATES A COOK FROM A BLOCK IS THE
 // MAGIC** — they share the build version, because a build version answers
 // "which build?" and not "which form?" (§7).
-const Magic = uint64(0x4B4F4F434D484353)
+//
+// The constant is [ir.CookMagic], which sits beside the block's in the one
+// table that says which leading bytes mean which format.
+const Magic = ir.CookMagic
 
 // Byte-order words, the same two values a block's prologue carries (§19.1). The
 // MAGIC is what refuses a foreign order; this word is what RECORDS which order
@@ -211,15 +214,13 @@ func ReadHeader(file []byte, build uint64, rootAlign ...int64) (Header, error) {
 	}
 	// THE MAGIC IS READ BYTEWISE, BEFORE ANYTHING ELSE, since it is what
 	// establishes the byte order every other header field is written in
-	var ord order
-	var wrote uint64
-	switch {
-	case binary.LittleEndian.Uint64(file) == Magic:
-		ord, wrote = binary.LittleEndian, ByteOrderLittle
-	case binary.BigEndian.Uint64(file) == Magic:
-		ord, wrote = binary.BigEndian, ByteOrderBig
-	default:
-		return h, fmt.Errorf("not a cook: the magic is 0x%016x, and a cook's is 0x%016x in one order or the other", binary.LittleEndian.Uint64(file), Magic)
+	ord, err := magicOrder(file)
+	if err != nil {
+		return h, err
+	}
+	wrote := ByteOrderLittle
+	if ord == order(binary.BigEndian) {
+		wrote = ByteOrderBig
 	}
 	h.BuildVersion = ord.Uint64(file[offBuildVer:])
 	h.ByteOrder = ord.Uint64(file[offByteOrder:])

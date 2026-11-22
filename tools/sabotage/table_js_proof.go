@@ -73,8 +73,8 @@ func init() {
 	// M21: elision compares a float by VALUE rather than by bits, so a -0
 	// under a +0 default is elided and reads back +0.
 	sabotages["js-float-value-compare"] = []edit{{
-		old: "return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);",
-		new: "return f32 ? Math.fround(a) === Math.fround(b) : a === b; // SABOTAGED: compare by value",
+		old: "return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);",
+		new: "return f32 ? globalThis.Math.fround(a) === globalThis.Math.fround(b) : a === b; // SABOTAGED: compare by value",
 	}}
 
 	// I6: the fixed runtime binds one more module-scope name that nothing

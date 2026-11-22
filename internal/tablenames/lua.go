@@ -44,7 +44,7 @@ var luaModuleKeys = map[string][]string{
 	},
 	"fixed.lua":         {"load", "measure", "read", "save", "write"},
 	"json.lua":          {"FromJson", "ToJson", "fromJsonWalk"},
-	"load.lua":          {"Load", "LoadMeasure", "NewState", "crc32c", "loadWalk"},
+	"load.lua":          {"Load", "LoadMeasure", "NewState", "crc32c", "loadWalk", "zero_elem"},
 	"message.lua":       {"announceRead", "loadMessages", "measureMessages", "saveMessages"},
 	"refusal.lua":       {"ReadStrict"},
 	"retain.lua":        {"LoadRetain", "MeasureRetain", "SaveRetain"},

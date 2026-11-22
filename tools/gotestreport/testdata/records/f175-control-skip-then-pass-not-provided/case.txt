@@ -1,0 +1,6 @@
+# F-175 control: the same record in a lane that does not provide tool:rust.
+# The first run's skip is counted under its ledger line and accepted.
+args: -require-record
+exit: 0
+want: skip ledger: 1 skip(s)
+want: 1  tool:rust

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestLuauLegBuildsItsOracles holds the Luau test leg to making everything its
@@ -69,7 +71,7 @@ func TestLuauLegBuildsItsOracles(t *testing.T) {
 	// Every oracle resolves the runtime the same way. A test that names the
 	// fetched build/serialize.go path directly dies on a staged bench, where
 	// the sibling checkout is what the Makefile resolves.
-	files, err := filepath.Glob(filepath.Join(root, "internal", "codegen", "luautable", "*_test.go"))
+	files, err := provesran.Glob(filepath.Join(root, "internal", "codegen", "luautable", "*_test.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,6 @@
+package referents
+
+table Root
+{
+    labels []uint32 | was = "cells", json = "cells"
+}

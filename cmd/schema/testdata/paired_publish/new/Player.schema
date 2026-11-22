@@ -1,0 +1,7 @@
+package paircorpus
+
+fixed table Player
+{
+    level uint32
+    score uint32
+}

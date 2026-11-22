@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var (
@@ -226,7 +228,10 @@ func makeTargetExists(root, mkFile, target string) bool {
 		files = []string{filepath.Join(root, filepath.FromSlash(mkFile))}
 	} else {
 		files = append(files, filepath.Join(root, "Makefile"))
-		matches, _ := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+		matches, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
+		if err != nil {
+			return false
+		}
 		files = append(files, matches...)
 	}
 	for _, f := range files {

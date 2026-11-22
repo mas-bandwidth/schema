@@ -41,7 +41,6 @@ tables-go-block-fill-refuser	./internal/codegen/gotable	TestBlockFillRefuser rea
 tables-go-block-fill-refuser-negative-control	./internal/codegen/gotable	TestBlockFillRefuserNegativeControl reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.02s under a plain go test)
 tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaimed reaches no slowtest.Gate (measured: 0 gate skips, PASS 0.01s under a plain go test); it compares emitted source to internal/tablenames, no dart toolchain
 fuzz-tables-go	./internal/fuzz	FuzzTableFrontEnd reaches no slowtest.Gate, and `-run '^$'` selects no test (measured at this head: plain `go test -count=1 -timeout 600s -v -run '^$' ./internal/fuzz` -> 0 gate skips, no tests to run)
-schema-go-generated-golangci-lint-gate-probe	./...	the line is `cd $(1) && go test -race ./...` inside the GENERATED module directories, not the schema module; `./...` there is the generated package, which has no tests and no slowtest.Gate (measured at this head: plain `go test -race -count=1 -timeout 600s -v ./...` in build/schema-go-generated-golangci-lint-gate/example and .../ludicrous -> 0 gate skips, `[no test files]`)
 
 # --- sprint/schema-shared (2026-10-19): this stream's own check, measured at head
 # (cards-test and tables-java-cards-refusal-bites are excused once, below).

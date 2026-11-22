@@ -30,7 +30,7 @@ func TestReleaseRefusesOnDifferentialReachesDifferential(t *testing.T) {
 		t.Fatal("Makefile has no release-refuses-on-differential-negative-control target")
 	}
 
-	const proofAssignment = "RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json"
+	const proofAssignment = "RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json"
 	if !strings.Contains(makefile, proofAssignment) {
 		t.Errorf("RELEASE_GATE_MAKE must pass the synthetic PROOF=$(RELEASE_GATE_TEST)/green.json")
 	}

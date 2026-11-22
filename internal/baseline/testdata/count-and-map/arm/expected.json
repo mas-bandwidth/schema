@@ -1,0 +1,51 @@
+{
+  "verdict": "refuse",
+  "contains": "count_over_bound",
+  "saves": [
+    {
+      "name": "single",
+      "input": {
+        "picked": {
+          "values": [
+            7
+          ]
+        }
+      },
+      "old": {
+        "picked": {
+          "values": [
+            7
+          ]
+        }
+      },
+      "refusal": "count_over_bound"
+    },
+    {
+      "name": "double",
+      "input": {
+        "picked": {
+          "values": [
+            7,
+            8
+          ]
+        }
+      },
+      "old": {
+        "picked": {
+          "values": [
+            7,
+            8
+          ]
+        }
+      },
+      "new": {
+        "picked": {
+          "values": [
+            7,
+            8
+          ]
+        }
+      }
+    }
+  ]
+}

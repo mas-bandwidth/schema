@@ -272,7 +272,7 @@ func sharedPlanLayoutBytes(target, src string) ([]byte, error) {
 	case "go":
 		region = between(src, "RowFixedLayout = []byte{", "}")
 	case "js":
-		region = between(src, "RowFixedLayout = new Uint8Array([", "]")
+		region = between(src, "RowFixedLayout = new globalThis.Uint8Array([", "]")
 	case "rust":
 		region = between(src, "ROW_FIXED_BLOCK: [u8;", "];")
 	case "elixir":

@@ -611,6 +611,16 @@ def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, 
         _write_scalar(writer, shape, v)
 
 
+def _grown_slot(element: Any) -> object:
+    """One fresh default element for a slot a grown fixed bound added."""
+    from . import descriptor
+    if element.codec == "table":
+        return descriptor.new_by_name(element.target)
+    if element.codec in ("union", "union_array"):
+        return descriptor.new_union_by_name(element.target)
+    return element.default
+
+
 def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int, in_field: bool = False, existing: object = None, same_shape: bool = False) -> object:
     from typing import Any, cast
     from . import descriptor
@@ -635,6 +645,10 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         except UnicodeDecodeError:
             raise Refused("wire_damaged", "message text is not UTF-8") from None
     if shape.kind == 14:
+        # bytes(N) and [..N]uint8 are one kind (SPEC-TABLES §3.3): any other
+        # announced element kind is a kind mismatch, as an array's is below.
+        if fd.codec == "bytes" and shape.element != 6:
+            raise Refused("kind_mismatch", "message bytes element kind changed")
         count = shape.minimum + reader.get((shape.maximum - shape.minimum).bit_length())
         if count > shape.maximum:
             raise Refused("wire_damaged", "message count exceeds announced bound")
@@ -656,8 +670,12 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             raise Refused("count_over_bound", fd.name)
         values = [_read_value(reader, element, shape.inner, vocab, own_version, keys, stats, depth + 1) for _ in range(count)]
         if fd.array_kind == 1 and count < fd.bound:
+            # A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that
+            # announced a smaller bound wrote fewer elements; each new slot
+            # holds one fresh default element of the reader's element kind (a
+            # table, or a union with no arm), never the field's whole default.
             for _ in range(fd.bound - count):
-                values.append(descriptor.new_by_name(element.target) if element.codec == "table" else element.default)
+                values.append(_grown_slot(element))
         return bytes(cast(list[int], values)) if fd.codec == "bytes" else values
     if shape.kind == 30:
         entry = _reference(reader, vocab)
@@ -738,6 +756,9 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
     if type(value) is float and getattr(fd, "float_range", False):
         if value < fd.fmin or value > fd.fmax:
             raise Refused("out_of_range", fd.name)
+        if value == 0:
+            # A compressed float's -0 is +0 (SPEC-TABLES §3.3), whatever the peer announced.
+            return 0.0
     return value
 
 
