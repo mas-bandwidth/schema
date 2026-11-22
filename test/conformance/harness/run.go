@@ -813,6 +813,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err != nil {
 		return false, err
 	}
+	// a substituted registry is one leg of a port, not the matrix: the check
+	// belongs to the discovered registry the Makefile runs
+	var running []string
+	for _, d := range drivers {
+		if discovered && (only == "" || d.lang == only) && !skipped[d.lang] {
+			running = append(running, d.lang)
+		}
+	}
+	if err := requireSiblings(running); err != nil {
+		return false, err
+	}
 	reports, err := readReports(reportsPath)
 	if err != nil {
 		return false, err
