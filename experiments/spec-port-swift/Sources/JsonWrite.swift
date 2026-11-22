@@ -132,7 +132,7 @@ final class JsonWriter {
             for (n, s) in names.enumerated() { if n > 0 { out.append(0x2C) }; nl(d + 1); str(Array(s.utf8)) }
             nl(d); out.append(0x5D)
         case let (.float(w, _, _), .f32(x)): raw(try floatText(Double(x), w == 32 ? 32 : 64))
-        case let (.float(w, _, _), .f64(x)): raw(try floatText(x, w))
+        case let (.float(w, _, _), .f64(x)): raw(try floatText(w == 32 ? Double(Float(x)) : x, w))
         case let (.str, .bytes(bb)): try strChecked(bb)
         case let (.bytes, .bytes(bb)): raw("\"" + base64(bb) + "\"")
         case let (.table, .rec(r)): try table(r, d, isRootOrValue: true)

@@ -83,6 +83,52 @@ for f in manifest.lines {
                 let v = try loadWire(u, root, w)
                 writeFile(out(name), try saveWire(v))
             } catch let e as Refusal {
+                // the harness reads any answer file as bytes; a refusal rides
+                // the historical marker (SPEC-GAP 4)
+                note("\(name): \(e)")
+                writeFile(out(name + ".absent"), [])
+            }
+        case ("report", "report"), ("framing", "framing"):
+            let name = f[1]
+            let u = try unit(manifest, f[2]); let root = try rootDecl(u, f[3])
+            guard let w = readFile(f[4]) else { throw Refusal("missing wire \(f[4])") }
+            do {
+                let v = try loadWire(u, root, w)
+                let text = try JsonWriter().write(v)
+                let wire = try saveWire(v)
+                writeFile(out(name), Array("read\n".utf8) + text)
+                writeFile(out(name + ".wire"), wire)
+            } catch let e as Refusal {
+                note("\(name): \(e)")
+                writeText(out(name), "refused\n")
+            }
+        case ("json-hostile", "json-hostile"):
+            let name = f[1]
+            let u = try unit(manifest, f[2]); let root = try rootDecl(u, f[3])
+            let path = f[4] + "/" + f[3] + ".json"
+            guard let t = readFile(path) else { throw Refusal("missing text \(path)") }
+            do {
+                let v = try JsonReader(t).readRoot(root)
+                let text = try JsonWriter().write(v)
+                let wire = try saveWire(v)
+                writeFile(out(name), Array("read\n".utf8) + text)
+                writeFile(out(name + ".wire"), wire)
+            } catch let e as Refusal {
+                note("\(name): \(e)")
+                writeText(out(name), "refused\n")
+            }
+        case ("write-refusal", "write-refusal"), ("write-refusal-json", "write-refusal-json"):
+            let name = f[1]
+            let u = try unit(manifest, f[2]); let root = try rootDecl(u, f[3])
+            guard let w = readFile(f[4]) else { throw Refusal("missing wire \(f[4])") }
+            let v = try loadWire(u, root, w)
+            do {
+                try applyEdit(v, path: f[5], kind: f[6], value: f.count > 7 ? f[7] : "")
+                if surface == "write-refusal" { _ = try saveWire(v) } else { _ = try JsonWriter().write(v) }
+                writeText(out(name), "wrote\n")
+            } catch is Unrepresentable {
+                writeText(out(name), "unrepresentable\n")
+            } catch let e as Refusal {
                 note("\(name): \(e)")
                 writeText(out(name), "refused\n")
             }
