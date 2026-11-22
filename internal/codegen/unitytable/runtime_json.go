@@ -1181,7 +1181,8 @@ internal static class TableJson
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
         string mapField = input.TextField;
-        byte[] spellingBuf = new byte[MaxKey]; Span<byte> spelling = spellingBuf;
+        // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
+        byte[] spellingBuf = new byte[key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? key.ArrayBound : MaxKey]; Span<byte> spelling = spellingBuf;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1489,7 +1490,7 @@ internal static class TableJson
         // changed kind, an out-of-range value, a count or length past its
         // bound, or text that cannot be stored refuses the load. The rest of
         // the walk's failures are damage.
-        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
         {
             input.Report.Refused = true;
         }
@@ -2061,6 +2062,11 @@ internal static class TableJson
             {
                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                 {
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                    // ELEMENT default inside an array) and is never counted unknown
+                    // (docs/SPEC-TABLES.md §2.15)
+                    if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                    { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                     f.SetRaw(owner, index, (ulong)v);
                     return true;
                 }

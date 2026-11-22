@@ -523,6 +523,9 @@ internal sealed class _R
     internal int KindChanged = 0;
     internal int Substituted = 0;
     internal bool Empty = false;
+    // how many of a message batch's bodies a refused read touched: the caller's
+    // values it must hand back reset (docs/SPEC-TABLES.md §3.3)
+    internal int Touched = 0;
     public ulong LayoutHash = 0;
 }
 

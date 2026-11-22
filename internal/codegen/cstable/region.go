@@ -270,12 +270,13 @@ const tableRegionSource = `
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : keyField.Kind == 12 ? last.Text.SequenceCompareTo(key.Text) : keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((long)last.Raw).CompareTo(unchecked((long)key.Raw)) : last.Raw.CompareTo(key.Raw);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
             if (state.Refused || report.Refused) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); } else { last = key; landed++; }
+            last = key; landed++;
         }
         value.SetCount(f, landed);
         // bytes left inside the map's L after its entries are damage
@@ -301,6 +302,8 @@ const tableRegionSource = `
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
