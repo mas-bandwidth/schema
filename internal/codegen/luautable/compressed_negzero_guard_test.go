@@ -38,11 +38,11 @@ func TestLuauCompressedFloatStoresAreGuarded(t *testing.T) {
 			return ""
 		}
 		rest := text[at:]
-		end := strings.Index(rest, "\nend\n")
-		if end < 0 {
+		head, _, found := strings.Cut(rest, "\nend\n")
+		if !found {
 			t.Fatalf("%s: %q has no end", file, header)
 		}
-		return rest[:end]
+		return head
 	}
 	// before requires guard to occur in fn, ahead of the first write.
 	before := func(file, fn, where, guard, write string) {
@@ -89,7 +89,11 @@ func TestLuauCompressedFloatStoresAreGuarded(t *testing.T) {
 		"if e.lo ~= nil and f == 0 then f = 0 end", "put_float(w, at, f,")
 
 	json := src("schema_json.luau")
-	jw := json[strings.Index(json, "  elseif s == \"float\" then\n    if not float_ok(d, val)"):]
+	const floatWriter = "  elseif s == \"float\" then\n    if not float_ok(d, val)"
+	_, jw, found := strings.Cut(json, floatWriter)
+	if !found {
+		t.Fatalf("schema_json.luau: no float value writer %q", floatWriter)
+	}
 	before("schema_json.luau", jw, "the float value writer",
 		"if d.lo ~= nil and val == 0 then val = 0 end", "float_text(val, d.f32)")
 

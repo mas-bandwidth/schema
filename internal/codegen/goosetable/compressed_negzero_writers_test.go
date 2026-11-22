@@ -382,7 +382,7 @@ func TestGooseCompressedNegZeroCorpus(t *testing.T) {
 	}
 	out := string(gooserun.Run(t, dir, "main.goose", inputs))
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
