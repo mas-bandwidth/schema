@@ -92,7 +92,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 				if value.TargetID < 0 || value.TargetID > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetID))
+				w.Put32(uint32(int64(value.TargetID) & 0xffffffff))
 			}
 		}
 	}
@@ -273,7 +273,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TargetID = int32(v)
+						value.TargetID = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -286,7 +286,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 1000 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -435,7 +435,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 				if value.TargetID < 0 || value.TargetID > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetID))
+				w.Put32(uint32(int64(value.TargetID) & 0xffffffff))
 			}
 		}
 	}
@@ -620,7 +620,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TargetID = int32(v)
+						value.TargetID = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -633,7 +633,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 1000 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
 					r.Report.Refuse(TableRefuseWireDamaged, "")

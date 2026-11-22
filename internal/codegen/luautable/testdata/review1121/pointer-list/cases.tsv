@@ -1,0 +1,13 @@
+# LUAU-3 (review 2026-11-21): the exported type of a list of pointers is what
+# the load stores. TestLuauListOfPointersTypeMatchesTheLoad generates the
+# modules of Graph.schema and, for each row, passes the generated modules and
+# the probe through luau-analyze (strict) and runs the probe.
+# id	probe
+#
+# (A list of byte buffers, []*bytes, is refused by schema check, docs/SPEC-TABLES.md
+# §15, so no table unit reaches that spelling.)
+#
+# the defect: a null element (false) and the live length (n)
+null-element	null-element.luau
+# the control: live elements only
+live-elements	live-elements.luau

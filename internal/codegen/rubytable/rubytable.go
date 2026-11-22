@@ -1316,7 +1316,10 @@ func floatBound(f *ir.Field, v float64) string {
 	if !compressedFloat(f) {
 		return "0.0"
 	}
-	return rbFloatLiteral(v)
+	// SPEC.md 4.6: a float32 field's range is compared at float32, so the
+	// descriptor carries the float32 ends and the runtime rounds the value to
+	// float32 before it compares (a declared 0.1 is 0.10000000149011612).
+	return rbFloatLiteral(float64(float32(v)))
 }
 
 func rbFloatLiteral(v float64) string {

@@ -9,7 +9,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const jsonEveryJavaProbe = `import java.nio.charset.StandardCharsets;
@@ -96,7 +97,7 @@ func TestTableJsonEveryTableJava(t *testing.T) {
 			}
 			args := append([]string{"--release", "17", "-d", classes}, srcs...)
 			args = append(args, probe)
-			if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("javac %s: %v\n%s", dir, err, out)
 			}
 
@@ -119,7 +120,7 @@ func TestTableJsonEveryTableJava(t *testing.T) {
 				}
 				run = append(run, name, in, filepath.Join(root, name+".out"))
 			}
-			out, err := exec.Command(javaBin, append([]string{"-ea", "-cp", classes, "JsonEveryProbe"}, run...)...).CombinedOutput()
+			out, err := testproc.Command(t, javaBin, append([]string{"-ea", "-cp", classes, "JsonEveryProbe"}, run...)...).CombinedOutput()
 			if err != nil {
 				t.Fatalf("java %s: %v\n%s", dir, err, out)
 			}

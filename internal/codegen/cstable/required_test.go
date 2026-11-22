@@ -8,10 +8,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestRequiredCSharp(t *testing.T) {
@@ -242,7 +243,7 @@ func TestRequiredOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("independent Go oracle: %v\n%s", err, out)

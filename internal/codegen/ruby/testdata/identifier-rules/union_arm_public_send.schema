@@ -1,0 +1,12 @@
+package game
+
+type Hit
+{
+    n int32
+}
+
+union Event
+{
+    public_send Hit
+    hit Hit
+}

@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The OLDER, NARROWER writer and the newer reader of one table: every field the
@@ -104,10 +105,10 @@ func TestWideningReasonsJava(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	probeCMD := exec.Command(javaBin, "-ea", "-cp", classes, "Probe")
+	probeCMD := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe")
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "JAVA_TOOL_OPTIONS=") {

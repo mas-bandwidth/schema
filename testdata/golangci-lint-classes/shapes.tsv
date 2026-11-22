@@ -1,0 +1,45 @@
+# The golangci-lint classes corpus, emitted shape (PR #4515, finding F-210).
+# internal/goldens/golangci_lint_classes_test.go generates Go from packet/ and
+# tables/ with the compiler's public API and holds every row: the number of
+# lines of <file> that match <pattern> (a Go regexp, one line at a time) is at
+# least <min> and at most <max>. A `0 0` row is a shape the fix removed; the
+# rows beside it are the shape that replaced it. The linter half of the same
+# corpus is lint.ratchet.tsv, run by make schema-go-generated-golangci-lint-gate.
+#
+# corpus	file	min	max	class	pattern
+#
+# errcheck, flat packet runs: each chunk's stream call discards its sticky
+# error explicitly and the run checks stream.Err() once.
+packet	Flat.go	2	2	errcheck	^\s*_ = stream\.SerializeBits\(&
+packet	Flat.go	2	2	errcheck	^\s*_ = stream\.SerializeBits64\(&
+packet	Flat.go	0	0	errcheck	^\s*stream\.SerializeBits(64)?\(
+packet	Flat.go	1	1	errcheck	^\s*if stream\.Err\(\) != nil \{
+# G115, same-width signed lanes: reads through getI8..getI64, writes through
+# putI64 or a masked same-width store, never a bare signed/unsigned cast.
+tables	LanesTable.go	14	14	G115	v := r\.getI(8|16|32|64)\(\)
+tables	LanesTable.go	0	0	G115	int(8|16|32|64)\(r\.Get(8|16|32|64)\(\)\)
+tables	LanesTable.go	2	2	G115	w\.putI64\(value\.I64\)
+tables	LanesTable.go	0	0	G115	w\.Put64\(uint64\(value\.I64\)\)
+tables	LanesTable.go	6	6	G115	w\.Put(8|16|32)\(uint(8|16|32)\(int64\(value\.I(8|16|32)\) & 0x(ff|ffff|ffffffff)\)\)
+tables	LanesTable.go	0	0	G115	w\.Put(8|16|32)\(uint(8|16|32)\(value\.I(8|16|32)\)\)
+# G115, narrowing: a 64-bit value behind a runtime wire kind lands in a
+# narrower field with a folded mask (unsigned) or the kind check's #nosec
+# (signed), never a bare narrowing cast. The bare casts left are the 14 whose
+# v was read at the field's own width (v := r.getI16(), r.Get16(), ...), where
+# the conversion narrows nothing; the 10 behind r.Signed(kind) and
+# r.Unsigned(kind) are the masked and #nosec rows above them.
+tables	LanesTable.go	10	10	G115	= u?int(8|16|32)\(v( & 0x(ff|ffff|ffffffff)\)$|\) // #nosec G115 -- the kind check above)
+tables	LanesTable.go	1	-	G115	= uint16\(v & 0xffff\)$
+tables	LanesTable.go	1	-	G115	= int(16|32)\(v\) // #nosec G115 -- the kind check above
+tables	LanesTable.go	14	14	G115	= u?int(8|16|32)\(v\)$
+# G103, region and overlay access: one shared helper per package does the
+# unsafe slice; each Open and each fixed overlay calls it.
+tables	LanesTable.go	2	2	G103	return tableFixedOverlayOf\(&def\)
+tables	LanesTable.go	2	2	G103	dst := tableFixedOverlayOf\(&values\[k\]\)
+tables	LanesTable.go	0	0	G103	tableFixedOverlay\(unsafe\.Pointer\(
+tables	LanesBlock.go	2	2	G103	tableBlockOpenHeader\(base, bytes, [0-9]+\)
+tables	LanesBlock.go	0	0	G103	unsafe\.Slice\(\(\*byte\)\(base\), [0-9]+\)
+tables	LanesCook.go	3	3	G103	= tableCookOpenRegion\(base, length, [0-9]+, [0-9]+\)
+tables	LanesCook.go	1	1	G103	unsafe\.Slice\(\(\*byte\)\(base\), 64\)
+tables	LanesBlock.go	0	0	G103	unsafe\.Pointer\(&probe\)
+tables	LanesCook.go	0	0	G103	unsafe\.Pointer\(&probe\)
