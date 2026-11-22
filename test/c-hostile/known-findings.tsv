@@ -1,3 +1,4 @@
-# carried findings: name	slug	input	one line
+# carried findings: name	slug	input	answer	one line
+# the answer is what this port gives the case today, `accept <digest>` or `refuse`; a finding carries that answer and no other (F-079)
 # every line is a FIX-CARD the c port owes; the runner fails if one goes green (tools/hostilecorpusexec, test/c-hostile)
 # No carried findings; unexpected disagreements and stale entries fail.

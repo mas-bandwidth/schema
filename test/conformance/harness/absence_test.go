@@ -252,25 +252,33 @@ func TestReferenceCaseAbsent(t *testing.T) {
 // the matrix is the completion tracker.
 func TestPortAbsenceStaysAllowed(t *testing.T) {
 	needShell(t)
-	absences := fakeLeg{unlisted: "json-write", exitTwo: "json-read", caseGone: true}
+	// Two sets, because a leg that answers NO case at all is not an absence
+	// but a leg that was not run (proveRan, silent_run_test.go): each set
+	// leaves the port one case it does answer.
+	sets := []struct {
+		name string
+		leg  fakeLeg
+		says []string
+	}{
+		{"whole surfaces", fakeLeg{unlisted: "json-write", exitTwo: "json-read"}, []string{footer, "absent"}},
+		{"one case", fakeLeg{caseGone: true}, []string{footer, "pass 0/0 +1a"}},
+	}
 
-	t.Run("a second leg of the committed registry", func(t *testing.T) {
-		c := newFakeCorpus(t)
-		out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
-			referenceLang: {},
-			"zz":          absences,
-		}))
-		if !ok {
-			t.Errorf("a PORT's absences turned the harness red:\n%s", out)
-		}
-		mustSay(t, out,
-			[]string{
-				footer,
-				"absent",       // the surfaces zz does not implement, named where they can be seen
-				"pass 0/0 +1a", // and the case it said it cannot answer
-			},
-			[]string{"REFERENCE leg", "FAIL"})
-	})
+	for _, set := range sets {
+		t.Run("a second leg of the committed registry, "+set.name, func(t *testing.T) {
+			c := newFakeCorpus(t)
+			out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
+				referenceLang: {},
+				"zz":          set.leg,
+			}))
+			if !ok {
+				t.Errorf("a PORT's absences turned the harness red:\n%s", out)
+			}
+			// the surfaces zz does not implement are named where they can be
+			// seen, and so is the case it said it cannot answer
+			mustSay(t, out, set.says, []string{"REFERENCE leg", "FAIL"})
+		})
+	}
 
 	// A run handed a SUBSTITUTED registry is one leg of a port and not the
 	// matrix, so its first line is not the reference however it goes absent.
@@ -278,14 +286,16 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("the first leg of a substituted registry", func(t *testing.T) {
-		c := newFakeCorpus(t)
-		out, ok := c.runHarness(t, c.substituted(t, referenceLang, absences))
-		if !ok {
-			t.Errorf("absences under a SUBSTITUTED registry turned the harness red:\n%s", out)
-		}
-		mustSay(t, out, []string{footer, "absent"}, []string{"REFERENCE leg", "FAIL"})
-	})
+	for _, set := range sets {
+		t.Run("the first leg of a substituted registry, "+set.name, func(t *testing.T) {
+			c := newFakeCorpus(t)
+			out, ok := c.runHarness(t, c.substituted(t, referenceLang, set.leg))
+			if !ok {
+				t.Errorf("absences under a SUBSTITUTED registry turned the harness red:\n%s", out)
+			}
+			mustSay(t, out, set.says, []string{"REFERENCE leg", "FAIL"})
+		})
+	}
 	after, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

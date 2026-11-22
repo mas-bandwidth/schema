@@ -1,0 +1,2 @@
+# F-079: the finding records a refusal and the port accepts; the accept is not the answer it carries, and the run fails
+wire-valid	carry-refuse	inputs/wire-valid.bin	refuse	carry control: a refusal the port does not give
