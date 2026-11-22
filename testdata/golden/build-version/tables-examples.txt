@@ -1,4 +1,4 @@
-0x3684616af27a45c9
+0xc3b73b40e20b7821
 schema-build-version 6
 protocol 5c9bc5717146f630
 byteorder little
@@ -11,8 +11,12 @@ record Attachment sizeof=8 alignof=4
     field eef9d1358ae7b4e6 kind=10 offset=4 size=4 default=1.0
 record Buff sizeof=4 alignof=4
     field 9adc623a805c87c6 kind=10 offset=0 size=4 default=1.0
+record CountedMin sizeof=24 alignof=4
+    field dcc67d18feea8c19 kind=8 offset=0 size=24 elem=4 array=bounded bound=5 countmin=2
 record Debuff sizeof=4 alignof=4
     field 8113fe7ea2b16969 kind=4 offset=0 size=4 default=0 min=0 max=100
+record FloatBound sizeof=4 alignof=4
+    field e8ddc90a9d7c709d kind=10 offset=0 size=4 default=0.0 min=0.0 max=0.1 step=0.01
 record GlobalSettings sizeof=72 alignof=4
     field a65f859b617deaf3 kind=8 offset=0 size=4 default=60 min=1 max=240
     field 467f35a74c6e4a70 kind=30 offset=4 size=1 enum=Difficulty default=Normal
@@ -41,6 +45,8 @@ record LoadoutConfig sizeof=176 alignof=8
     field bf31137ff783e939 kind=13 offset=24 size=28 type=WeaponConfig
     field de28f0f5118acc24 kind=13 offset=52 size=56 type=WeaponConfig elem=28 array=fixed bound=2
     field f901aa0340249a41 kind=13 offset=108 size=68 type=Attachment elem=8 array=bounded bound=8 countmin=0
+record Moods sizeof=8 alignof=4
+    field 8a0bc1196111ad9b kind=30 offset=0 size=8 enum=Mood elem=1 array=bounded bound=4 countmin=0
 record PackConfig sizeof=740 alignof=4
     field bb62c62c9808ea37 kind=8 offset=0 size=4 default=1
     field 7fb43557b54149ce kind=13 offset=4 size=72 type=GlobalSettings
@@ -159,6 +165,10 @@ enum Hull
     variant 1 Interceptor
     variant 2 Gunship
     variant 3 Freighter
+enum Mood
+    variant 1 Calm
+    variant 2 Old
+    variant 3 Fierce
 enum ShipType
     variant 1 Fighter
     variant 2 Bomber

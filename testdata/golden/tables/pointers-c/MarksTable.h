@@ -6910,7 +6910,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_fixed_load( graphdemo_tally_t * val
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
