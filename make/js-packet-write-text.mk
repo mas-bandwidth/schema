@@ -7,9 +7,9 @@ build/packet-write-text/js/.stamp: bin/schema test/packet-write-text/js/Text.sch
 	@touch $@
 
 .PHONY: packet-write-text-js packet-write-text-js-negative-control
-packet-write-text-js: build/packet-write-text/js/.stamp
-	$(NODE) test/packet-write-text/js/main.mjs
-	NODE_ENV=production $(NODE) test/packet-write-text/js/main.mjs
+packet-write-text-js: build/mustrun build/packet-write-text/js/.stamp
+	$(MUSTRUN) -name packet-write-text-js -count 11 -- $(NODE) test/packet-write-text/js/main.mjs
+	NODE_ENV=production $(MUSTRUN) -name packet-write-text-js-production -count 11 -- $(NODE) test/packet-write-text/js/main.mjs
 
 packet-write-text-js-negative-control: packet-write-text-js
 	@mkdir -p build/packet-write-text/js-negative

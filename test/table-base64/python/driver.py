@@ -10,10 +10,18 @@ def packed(data: bytes) -> str:
 
 
 for line in sys.stdin.buffer:
+    raw = bytes.fromhex(line.decode("ascii"))
+    # Ill-formed UTF-8 input is refused here, before the codec. Inside the
+    # codec only its own Refused is a refusal: a UnicodeError raised there is
+    # a codec bug, and must crash the driver rather than read as a verdict.
     try:
-        text = bytes.fromhex(line.decode("ascii")).decode("utf-8")
+        text = raw.decode("utf-8")
+    except UnicodeError:
+        print("1 - -")
+        continue
+    try:
         value = Blob.from_json(text)
-    except (Refused, UnicodeError):
+    except Refused:
         print("1 - -")
     else:
         print("0", packed(value.payload), packed(value.to_json().encode("utf-8")))

@@ -63,11 +63,9 @@ def run(manifest, outdir):
             absent(outdir, case, "fixed root not generated for python")
             continue
         runtime = importlib.import_module(cls.__module__.split(".")[0] + "._schema.fixedform")
-        try:
-            value = cls.load(read_bytes(wire))
-        except ValueError as err:
-            absent(outdir, case, err)
-            continue
+        # A committed wire the reader refuses is a reader failure, never a
+        # missing feature: let it raise, so the surface is red and not absent.
+        value = cls.load(read_bytes(wire))
         _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
         try:
             cls.fixed_save([value])

@@ -736,7 +736,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if arm.Void() {
 				g.pf("\t\t\tout.raw('null');\n")
 			} else {
-				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "throw StateError('invalid_value: arm "+un.Name+"."+arm.Name+" out of range');"))
+				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "_rangeF32", ""))
 				g.emitJsonValue(arm.F, "v."+armMember(arm), 1, "\t\t\t", un.Name+"."+arm.Name)
 			}
 			g.pf("\t\t\tout.line(depth);\n")
@@ -1056,7 +1056,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("_jsonBoolField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg)
+		return jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg))
 	case enumRef(f) != nil:
 		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:

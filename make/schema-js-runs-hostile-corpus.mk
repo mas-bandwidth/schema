@@ -35,10 +35,15 @@ schema-js-hostile-generate: bin/schema
 	@rm -rf $(JS_HOSTILE_BUILD)/generated && mkdir -p $(JS_HOSTILE_BUILD)/generated
 	@$(NODE) test/js-hostile/runner.mjs generate "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated ./bin/schema >/dev/null
 
+# The registered count: the rows the committed corpus manifest gives the
+# JavaScript readers. The runner prints "ran N, failed M" and tools/mustrun
+# holds N to this number, so a manifest that loses rows is red. A commit that
+# adds a hostile case changes it.
+JS_HOSTILE_ROWS ?= 216
 .PHONY: schema-js-runs-hostile-corpus
-schema-js-runs-hostile-corpus: schema-js-hostile-generate
+schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
 	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated \
+	$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated \
 		"$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)"
 
 test-js: schema-js-runs-hostile-corpus

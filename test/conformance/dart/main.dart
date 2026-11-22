@@ -6028,14 +6028,18 @@ void _fillTextFixed(Uint8List dst, void Function(int) setLen, String kind, Strin
   setLen(b.length);
 }
 
+// A write refusal is the writer's own: its debug assert (AssertionError), or
+// the StateError / FormatException the generated writers throw by name. Any
+// other error (a RangeError, a TypeError, a null dereference) is the writer
+// crashing, and must fail the surface rather than read as a correct refusal.
 String _catchWrite(int Function() fn) {
   try {
     return fn() < 0 ? 'refused' : 'wrote';
   } on AssertionError {
     return 'refused';
-  } on Error {
+  } on StateError {
     return 'refused';
-  } on Exception {
+  } on FormatException {
     return 'refused';
   }
 }

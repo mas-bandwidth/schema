@@ -17,7 +17,9 @@ local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", tr
 local Text = dofile(generatedDir + "/schema_module.nut", true).require("Text");
 
 local failed = 0;
+local ran = 0;
 local check = function(ok, what) {
+  ran++;
   if (!ok) {
     print("FAILED: packet write text " + what + "\n");
     failed++;
@@ -110,5 +112,9 @@ foreach (raw in split(readText(casesPath), "\n")) {
 }
 
 check(cases > 0, "found no cases in " + casesPath);
-if (failed > 0) throw "packet write text squirrel: " + failed + " check(s) failed";
+// The count tools/mustrun reads: the checks run and the ones that failed.
+print("packet write text Squirrel count: ran " + ran + ", failed " + failed + "\n");
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || ran == 0) return 1;
 print("packet write text Squirrel: " + cases + " cases, ill-formed text refused, well-formed text written and read back byte-exact\n");
+return 0;
