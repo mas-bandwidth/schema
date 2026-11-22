@@ -87,6 +87,8 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 		fmt.Fprintf(&b, "0x%02x,", v)
 	}
 	b.WriteString("\n];\n\n")
+	b.WriteString("/// R8: the writer refuses a vocabulary past the readers' default entry maximum.\n")
+	fmt.Fprintf(&b, "pub const TABLE_ANNOUNCEMENT_TOO_LARGE: bool = %t;\n\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
 
 	// THE WRITER's reference width is its OWN vocabulary's (§3.3): every slot
 	// of the announcement it sent, and the zero reference beside them.
@@ -228,14 +230,17 @@ const ID_TABLE_PROBE_SLOTS: usize = 8192;
 
 /// The announcement's byte count and the copy that hands it out (§3.3): both
 /// are the constant, never a walk. Nothing here allocates.
-pub fn announce_measure() -> usize {
-    TABLE_ANNOUNCEMENT.len()
+pub fn announce_measure() -> i64 {
+    if TABLE_ANNOUNCEMENT_TOO_LARGE {
+        return -1;
+    }
+    TABLE_ANNOUNCEMENT.len() as i64
 }
 
 /// Copy the announcement into the caller's buffer and answer its byte count, or
 /// -1 when the buffer is short (§3.3).
 pub fn announce(buffer: &mut [u8]) -> i64 {
-    if buffer.len() < TABLE_ANNOUNCEMENT.len() {
+    if TABLE_ANNOUNCEMENT_TOO_LARGE || buffer.len() < TABLE_ANNOUNCEMENT.len() {
         return -1;
     }
     buffer[..TABLE_ANNOUNCEMENT.len()].copy_from_slice(&TABLE_ANNOUNCEMENT);
