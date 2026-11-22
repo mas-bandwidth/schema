@@ -21,17 +21,7 @@ type vector struct {
 	name, text string
 	want       []byte
 	refused    bool
-	// noncanonical is a spelling the read refuses only by the ruling
-	// json-base64-canonical (docs/rulings.json, 2026-11-10): it decodes,
-	// but it is not the text the writer writes.
-	noncanonical bool
 }
-
-// relaxSlug is -relax <slug>. RELAXED 2026-11-14 (maintainer: get main
-// green): a leg whose JSON read still accepts a non-canonical spelling passes
-// its slug, and those cases keep the old accept; every other case is gated.
-// re-enable: relax/hostile-rows-<lang> (docs/relaxed.md).
-var relaxSlug string
 
 func must(err error) {
 	if err != nil {
@@ -50,11 +40,10 @@ func corpus() []vector {
 		// THE READ ACCEPTS ONLY CANONICAL BASE64 (docs/rulings.json
 		// json-base64-canonical): a spelling that decodes but is not the
 		// writer's text is refused.
-		noncanonical := false
 		if !refused && encoded != base64.StdEncoding.EncodeToString(want) {
-			refused, noncanonical = true, true // want stays the decoding a relaxed leg lands
+			refused = true
 		}
-		cases = append(cases, vector{name, `{"payload":"` + encoded + `"}`, want, refused, noncanonical})
+		cases = append(cases, vector{name, `{"payload":"` + encoded + `"}`, want, refused})
 	}
 	lengths := []int{511, 512, 513, 4095, 4096, 4097, 16383, 16384, 16385, 16400}
 	for n := 0; n <= 257; n++ {
@@ -114,11 +103,8 @@ func corpus() []vector {
 
 func main() {
 	args := os.Args[1:]
-	if len(args) >= 2 && args[0] == "-relax" {
-		relaxSlug, args = args[1], args[2:]
-	}
 	if len(args) < 1 {
-		must(fmt.Errorf("usage: harness [-relax relax/<slug>] driver [args...]"))
+		must(fmt.Errorf("usage: harness driver [args...]"))
 	}
 	cases := corpus()
 	var input bytes.Buffer
@@ -140,14 +126,6 @@ func main() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) != 3 {
 			must(fmt.Errorf("%s: bad driver result %q", v.name, scanner.Text()))
-		}
-		if v.noncanonical && relaxSlug != "" {
-			// RELAXED 2026-11-14 (maintainer: get main green): the old
-			// accept; re-enable: relax/hostile-rows-<lang>
-			if fields[0] == "1" {
-				must(fmt.Errorf("%s: relaxed (%s) but refused: drop -relax so it is gated", v.name, relaxSlug))
-			}
-			v.refused = false
 		}
 		if (fields[0] == "1") != v.refused {
 			must(fmt.Errorf("%s: refused=%s, want %t", v.name, fields[0], v.refused))
