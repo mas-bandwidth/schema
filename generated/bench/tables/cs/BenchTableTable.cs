@@ -1839,7 +1839,7 @@ namespace Benchtable
             }
             static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
             {
-                if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                 input.Pos++; f.ResetField(owner);
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
@@ -1881,7 +1881,7 @@ namespace Benchtable
                         }
                         if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
-                    if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
+                    if (drop) { if (!SkipValue(text, ref input, depth + 1)) { return false; } }
                     else
                     {
                         char shape = ValueShape(text, ref input);
@@ -1900,7 +1900,7 @@ namespace Benchtable
                             {
                                 return RefuseText(ref input, "kind_mismatch");
                             }
-                            else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                            else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                         }
                         int at = 0;
                         while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
@@ -2645,7 +2645,7 @@ namespace Benchtable
                     // a union is an object with ONE key, the arm's name; {} is None,
                     // and two keys is a text this walk will not guess at
                     object union = f.GetChild(owner, index);
-                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
@@ -2662,7 +2662,7 @@ namespace Benchtable
                     if (tag == 0)
                     {
                         input.Report.Unknown++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        if (!SkipValue(text, ref input, depth + 2)) { return false; }
                     }
                     else
                     {
@@ -2683,7 +2683,7 @@ namespace Benchtable
                             {
                                 object body = arm.Payload(union);
                                 arm.Table.Reset(body);
-                                if (!ReadTable(text, ref input, body, arm.Table, depth + 1)) { return false; }
+                                if (!ReadTable(text, ref input, body, arm.Table, depth + 2)) { return false; }
                             }
                             else
                             {
@@ -2726,7 +2726,7 @@ namespace Benchtable
                 }
                 if (IsFlags(f))
                 {
-                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     ulong bits = 0;
                     Span<byte> name = stackalloc byte[MaxName];
@@ -3028,7 +3028,7 @@ namespace Benchtable
                 }
                 if (IsKeyed(f))
                 {
-                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     // every slot back to its declared defaults first, so a key the text
                     // omits keeps them and a repeated field key cannot leave an earlier
@@ -3078,7 +3078,7 @@ namespace Benchtable
                             unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                             if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                             input.Report.Unknown++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                         {
@@ -3098,7 +3098,7 @@ namespace Benchtable
                 }
                 if (f.IsArray)
                 {
-                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     // LAST WINS has to be true of a repeated ARRAY key too, and it is
                     // wire-visible: a fixed array writes every slot, so a second,

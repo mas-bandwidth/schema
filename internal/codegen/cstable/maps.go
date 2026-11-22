@@ -105,7 +105,7 @@ const tableMapJsonSource = `
     }
     static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
     {
-        if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+        if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
@@ -147,7 +147,7 @@ const tableMapJsonSource = `
                 }
                 if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
             }
-            if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
+            if (drop) { if (!SkipValue(text, ref input, depth + 1)) { return false; } }
             else
             {
                 char shape = ValueShape(text, ref input);
@@ -166,7 +166,7 @@ const tableMapJsonSource = `
                     {
                         return RefuseText(ref input, "kind_mismatch");
                     }
-                    else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                    else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                 }
                 int at = 0;
                 while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
