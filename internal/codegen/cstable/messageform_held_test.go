@@ -36,6 +36,7 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"no_vocabulary", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
 		{"second_announcement", "NO RE-ANNOUNCEMENT, EVER. ... REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the connection gets."},
 		{"vocabulary_too_large", "`vocabulary_too_large` covers both bounds, the entry count and the vocabulary's bytes."},
+		{"strict_mode", "STRICT MODE IS OPT-IN, and the default is unchanged ... refused by the name `build_version_mismatch`, sets no vocabulary, keeps the peer's build version, moves no counter and is never `wire_damaged`, and is terminal."},
 		{"announcement_strict_checks", "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ... A FAILED STRICT CHECK IS MALFORMED, not a refusal."},
 		{"batch_too_large", "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME."},
 		{"damage_inside_body", "damage anywhere in a form-`2` batch refuses the whole batch, `malformed` counts, and nothing the read produced is a value to use."},
@@ -320,6 +321,7 @@ static class Held
         NoVocabulary();
         SecondAnnouncement();
         VocabularyTooLarge();
+        StrictMode();
         StrictChecks();
         BatchTooLarge();
         DamageInsideBody();
@@ -397,6 +399,44 @@ static class Held
         var byteReport = new TableReport();
         Schema.AnnounceRead(bytes, ann, byteReport);
         if (!byteReport.Refused || byteReport.Reason != "vocabulary_too_large" || byteReport.Damaged || bytes.Announced) { Fail(row, "vocabulary bytes: reason=" + byteReport.Reason); return; }
+        Ok(row);
+    }
+
+    // "STRICT MODE IS OPT-IN, and the default is unchanged ... an announcement
+    // whose build version is not the unit's own is refused by the name
+    // build_version_mismatch, sets no vocabulary, keeps the peer's build
+    // version, moves no counter and is never wire_damaged, and is terminal" and
+    // THE LANGUAGE-NEUTRAL SHAPE: one boolean, false when made; the refusal
+    // carries the peer's build version (remote) and the reader's own (own).
+    static byte[] Endpoint(ulong version)
+    {
+        byte[] ann = Schema.Announce().ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(ann.AsSpan(3, 8), version);
+        return ann;
+    }
+    static void StrictMode()
+    {
+        const string row = "strict_mode";
+        var probe = new TableVocabulary();
+        var own0 = new TableReport();
+        Schema.AnnounceRead(probe, Schema.Announce(), own0);
+        ulong own = probe.BuildVersion, remote = own ^ ulong.MaxValue;
+        var tolerant = new TableVocabulary();
+        if (tolerant.Strict) { Fail(row, "a vocabulary is not made tolerant"); return; }
+        var report = new TableReport();
+        if (Schema.AnnounceRead(tolerant, Endpoint(remote), report) != Schema.TableWire.Verdict.Ok || report.Refused || tolerant.BuildVersion != remote) { Fail(row, "tolerant: reason=" + report.Reason); return; }
+        var same = new TableVocabulary { Strict = true };
+        report = new TableReport();
+        if (Schema.AnnounceRead(same, Endpoint(own), report) != Schema.TableWire.Verdict.Ok || report.Refused || report.BuildVersionRemote != 0 || report.BuildVersionOwn != 0) { Fail(row, "strict same: reason=" + report.Reason); return; }
+        var strict = new TableVocabulary { Strict = true };
+        report = new TableReport();
+        if (Schema.AnnounceRead(strict, Endpoint(remote), report) != Schema.TableWire.Verdict.Refused || !report.Refused || report.Reason != "build_version_mismatch" || report.Damaged) { Fail(row, "strict other: reason=" + report.Reason); return; }
+        if (report.BuildVersionRemote != remote || report.BuildVersionOwn != own) { Fail(row, "the refusal does not carry both versions"); return; }
+        if (strict.Announced || strict.Count != 0 || strict.BuildVersion != remote) { Fail(row, "the refusal set a vocabulary or lost the peer's build version"); return; }
+        if (report.Unknown != 0 || report.Widened != 0 || report.Retained != 0 || report.RetainLost != 0) { Fail(row, "the refusal moved a counter"); return; }
+        var second = new TableReport();
+        Schema.AnnounceRead(strict, Endpoint(own), second);
+        if (!second.Refused || second.Reason != "second_announcement" || strict.Announced) { Fail(row, "after a strict refusal: reason=" + second.Reason); return; }
         Ok(row);
     }
 

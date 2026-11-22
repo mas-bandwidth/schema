@@ -1207,7 +1207,8 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "enum":
-      if (val !== fd.def) {
+      // None is null or the string "None": one value, so one compare
+      if ((val === "None" ? null : val) !== fd.def) {
         const ref = ids.ref(fd.id);
         const vref = TableVariableEnumRef(fd, ids, val);
         if (vref < 0) { return false; }
@@ -1462,6 +1463,9 @@ function TableVariableFirstUseOk(table, st) {
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
+  // EVERY READ STARTS FROM A ZEROED REPORT: no counter, flag or reason a
+  // previous read left behind can refuse or colour this one.
+  report.reset();
   if (c.integrity && bytes.length > 0 && bytes[0] === 1) {
     if (!c.integrity.holds(bytes, 1)) {
       report.damaged = true; report.reason = "integrity_mismatch";
@@ -3710,6 +3714,8 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
+      // the save's own test: a BigInt mask inside the unsigned width, never a Number
+      if (!TableVariableIntegerValid(d, val)) { return false; }
       const bits = globalThis.BigInt(val);
       if (bits === 0n) { out.push("[]"); return true; }
       out.push("[");
@@ -3793,7 +3799,21 @@ function TableVariableTimestampText(nanos) {
 // ---- the READ half (tabletext read.go) --------------------------------------
 
 class TableVariableTextIn {
-  constructor(text) { this.t = text; this.p = 0; this.bad = false; }
+  constructor(text) { this.t = text; this.p = 0; this.bad = false; this.badUtf8 = false; }
+  // a lone surrogate half inside a comment is ill-formed text (§16.3); a
+  // high half followed by a low half is one well-formed pair
+  loneSurrogateAt(k) {
+    const c = this.t.charCodeAt(k);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const d = this.t.charCodeAt(k + 1);
+      return !(d >= 0xdc00 && d <= 0xdfff);
+    }
+    if (c >= 0xdc00 && c <= 0xdfff) {
+      const b = k > 0 ? this.t.charCodeAt(k - 1) : 0;
+      return !(b >= 0xd800 && b <= 0xdbff);
+    }
+    return false;
+  }
   // whitespace, and comments: accepted on read, never written (§16.2)
   space() {
     const t = this.t;
@@ -3804,6 +3824,7 @@ class TableVariableTextIn {
         this.p += 2;
         while (this.p < t.length && t.charCodeAt(this.p) !== 10) {
           if (t.charCodeAt(this.p) === 0) { this.bad = true; this.p = t.length; return; }
+          if (this.loneSurrogateAt(this.p)) { this.bad = true; this.badUtf8 = true; this.p = t.length; return; }
           this.p++;
         }
         continue;
@@ -3813,6 +3834,7 @@ class TableVariableTextIn {
         if (end < 0) { this.bad = true; this.p = t.length; return; }
         for (let k = this.p + 2; k < end; k++) {
           if (t.charCodeAt(k) === 0) { this.bad = true; this.p = t.length; return; }
+          if (this.loneSurrogateAt(k)) { this.bad = true; this.badUtf8 = true; this.p = t.length; return; }
         }
         this.p = end + 2;
         continue;
@@ -4022,6 +4044,7 @@ function TableVariableFromJsonBytes(c, bytes, report) {
   if (!(bytes instanceof globalThis.Uint8Array)) {
     throw new globalThis.TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
   }
+  report.reset();
   const decoded = TableVariableUtf8Decode(bytes);
   if (!decoded.ok) {
     report.damaged = true;
@@ -4035,9 +4058,9 @@ function TableVariableFromJsonBytes(c, bytes, report) {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is damaged.
 function TableVariableFromJson(c, text, report) {
+  report.reset();
   const missingBefore = report.missingRequired;
   const strictBefore = TableVariableStrictMark(report);
-  report.reason = ""; report.refused = 0;
   const carried = report.damaged;
   report.damaged = false;
   const inp = new TableVariableTextIn(text);
@@ -4052,6 +4075,7 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
+  if (inp.badUtf8 && report.reason === "") { report.reason = "string_not_utf8"; }
   if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
