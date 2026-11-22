@@ -2498,9 +2498,16 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
     return 0
 
 // json_read_into fills rec from one JSON text (docs/SPEC-TABLES.md §16.1):
-// the whole value on success; a failed read releases its candidate and leaves
-// the caller's existing record untouched.
+// the whole value on success; a failed read releases its candidate and resets
+// the caller's record to its declared defaults (ruling R4), on every refusal.
 def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
+    let ok = json_read_walk(rec, text, report)
+    if not ok:
+        release(rec)
+        rec.fields = new_record(rec.d).fields
+    return ok
+
+def json_read_walk(rec:Record, text:string, report:LoadReport) -> bool:
     read_reset(report)
     if not rec.d.json_form:
         return read_refuse(report, "json_form_not_carried")
