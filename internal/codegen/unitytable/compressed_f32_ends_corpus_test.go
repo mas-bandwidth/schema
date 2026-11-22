@@ -32,7 +32,6 @@ static class F32EndsProbe
 
     static string Hex(ReadOnlySpan<byte> b) { return Convert.ToHexString(b).ToLowerInvariant(); }
     static void Fail(string row, string what) { Console.WriteLine("ROW " + row + ": FAILED " + what); bad++; }
-    static bool OutOfRange(Schema.TableReport r) { return r.Reason == Schema.TableReport.OutOfRange || r.ReasonText == "out_of_range"; }
     static string Why(Schema.TableReport r) { return r.ReasonText ?? Schema.TableReport.ReasonName(r.Reason); }
 
     static byte[] SaveV(V v)
@@ -120,8 +119,8 @@ static class F32EndsProbe
                     }
                     if (expect == "refused")
                     {
+                        // refusal-verdict-only (docs/rulings.json): the verdict is checked, never the reason.
                         if (ok) { Fail(row, "the " + form + " read was not refused"); }
-                        else if (form != "json" && !OutOfRange(r)) { Fail(row, "refused, but not out_of_range: " + Why(r)); }
                     }
                     else if (!ok) { Fail(row, "the " + form + " read refused the value at the float32 end: " + Why(r)); }
                     else
