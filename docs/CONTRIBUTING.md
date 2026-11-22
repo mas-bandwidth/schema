@@ -628,6 +628,8 @@ refuses a push when any pushed commit has an author or committer other than
 rowan-claude, and prints the offending commits and the one-line fix. In every
 other clone the hook does nothing; the CAA check on GitHub covers those.
 
+Never push with --no-verify: it bypasses this hook. If the hook refuses a push wrongly, fix the hook.
+
 ## License
 
 The compiler ships under the license in [LICENSE](../LICENSE), and the
