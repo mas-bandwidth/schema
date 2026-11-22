@@ -7061,6 +7061,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 45, 0x4b06f5847096e54aull, 9 );
+            schema_assert( ( (uint64_t)( value->perks ) >> 3 ) == 0 ); /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->perks ) );
         }
     }
@@ -7308,6 +7309,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                             {
                                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) tabledemo_table_reader_get8( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -7315,6 +7317,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                             {
                                 if ( !tabledemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) tabledemo_table_reader_get16( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -7322,6 +7325,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                             {
                                 if ( !tabledemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) tabledemo_table_reader_get32( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -7330,6 +7334,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                                 if ( !tabledemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) tabledemo_table_reader_get64( &(*r) );
+                                    if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) { decoded_v &= 0x7ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                     value->perks = decoded_v;
                                 }
                                 break;
@@ -7346,6 +7351,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                 if ( !tabledemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) tabledemo_table_reader_get64( &(*r) );
+                    if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) { decoded_v &= 0x7ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                     value->perks = decoded_v;
                 }
                 break;
@@ -7807,6 +7813,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_message_body(tabledemo_ta
  if(!tabledemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
+  if ( ( (uint64_t) decoded >> 3 ) != 0 ) { decoded &= 0x7ull;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+  } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
   value->perks=(tabledemo_perks_t)decoded;
   }
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
@@ -11074,6 +11083,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
             if ( (uint64_t) value->podium[i] > 3u ) { (*out_of_range)++; }
         }
     }
+    if ( ( (uint64_t) value->perks >> 3 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
     schema_tabledemo_weapon_config_fixed_clamp_body_( &value->primary, out_of_range, damaged );
     {
         int64_t i;
@@ -11178,6 +11188,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
             if ( (uint64_t) value->podium[i] > 3u ) { (*out_of_range)++; }
         }
     }
+    if ( ( (uint64_t) value->perks >> 3 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
     schema_tabledemo_weapon_config_fixed_write_check_body_( &value->primary, out_of_range, damaged );
     {
         int64_t i;
@@ -15186,6 +15197,8 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body_retain( tabledemo_ta
             }
             tabledemo_table_retain_writer_id( w, 0x4b06f5847096e54aull , retention);
             tabledemo_table_writer_put8( w, 9 );
+            schema_assert( ( (uint64_t)( value->perks ) >> 3 ) == 0 );
+            /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->perks ) );
         }
     }
@@ -15523,6 +15536,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 return 0;
                                 }
                                 uint64_t decoded_wide = (uint8_t) tabledemo_table_reader_get8( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull;
+                                r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                                } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -15532,6 +15548,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 return 0;
                                 }
                                 uint64_t decoded_wide = (uint16_t) tabledemo_table_reader_get16( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull;
+                                r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                                } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -15541,6 +15560,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 return 0;
                                 }
                                 uint64_t decoded_wide = (uint32_t) tabledemo_table_reader_get32( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) { decoded_wide &= 0x7ull;
+                                r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                                } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->perks = decoded_wide;
                                 break;
                             }
@@ -15551,6 +15573,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 }
                                 {
                                     uint64_t decoded_v = (uint64_t) tabledemo_table_reader_get64( &(*r) );
+                                    if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) { decoded_v &= 0x7ull;
+                                    r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                                    } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                     value->perks = decoded_v;
                                 }
                                 break;
@@ -15573,6 +15598,9 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                 }
                 {
                     uint64_t decoded_v = (uint64_t) tabledemo_table_reader_get64( &(*r) );
+                    if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) { decoded_v &= 0x7ull;
+                    r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                    } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                     value->perks = decoded_v;
                 }
                 break;

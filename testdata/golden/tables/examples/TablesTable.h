@@ -12656,6 +12656,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
             bytes += TableLebBytes( ref_podium ) + 1 + TableLebBytes( (uint64_t) ( body_podium ) ) + ( body_podium ); // podium
         }
     }
+    schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
     {
         const int32_t mark_primary = ids.count;
@@ -12770,6 +12771,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.perks != 0 )
     {
         w.header( ids.ref_at( 45, 0x4b06f5847096e54aull ), 9 ); // perks
+        schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
         w.put64( uint64_t( value.perks ) );
     }
     {
@@ -13119,6 +13121,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
+                        if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                        {
+                            decoded_v &= 0x7ull;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.perks = decoded_v;
                         r.report->widened++;
                         break;
@@ -13140,6 +13148,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
+                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                {
+                    decoded_v &= 0x7ull;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.perks = decoded_v;
                 break;
             }
@@ -13957,6 +13971,12 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_wide &= 0x7ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.perks = decoded_v;
                         }
@@ -13989,6 +14009,12 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
+                    if ( ( (uint64_t) decoded_wide >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                    {
+                        decoded_wide &= 0x7ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
@@ -19383,6 +19409,7 @@ TABLE_FIXED_INLINE bool LoadoutConfigFixedInRange( const LoadoutConfig & value )
     {
         bad |= (int) ( (uint64_t) value.podium[i] > 3u );
     }
+    bad |= (int) ( ( (uint64_t) value.perks >> 3 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     bad |= (int) !WeaponConfigFixedInRange( value.primary );
     for ( int64_t i = 0; i < 2; ++i )
     {
@@ -19410,6 +19437,7 @@ inline bool LoadoutConfigFixedWriteAdmits( const LoadoutConfig & value )
     {
         bad |= (int) ( (uint64_t) value.podium[i] > 3u );
     }
+    bad |= (int) ( ( (uint64_t) value.perks >> 3 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     bad |= (int) !WeaponConfigFixedWriteAdmits( value.primary );
     for ( int64_t i = 0; i < 2; ++i )
     {
@@ -19437,6 +19465,7 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & TABLE_
     {
         if ( (uint64_t) value.podium[i] > 3u ) { value.podium[i] = Grade::None; oor_count++; }
     }
+    if ( ( (uint64_t) value.perks >> 3 ) != 0 ) { value.perks &= 0x7ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
     WeaponConfigFixedClampBody( value.primary, oor_count, damaged );
     for ( int64_t i = 0; i < 2; ++i )
     {
@@ -23684,6 +23713,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
             bytes += TableLebBytes( ref_podium ) + 1 + TableLebBytes( (uint64_t) ( body_podium ) ) + ( body_podium ); // podium
         }
     }
+    schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
     {
         const int32_t mark_primary = ids.count;
@@ -23789,6 +23819,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.perks != 0 )
     {
         w.header( ids.ref_at( 45, 0x4b06f5847096e54aull ), 9 ); // perks
+        schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
         w.put64( uint64_t( value.perks ) );
     }
     {
@@ -24123,6 +24154,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
+                        if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                        {
+                            decoded_v &= 0x7ull;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.perks = decoded_v;
                         r.report->widened++;
                         break;
@@ -24144,6 +24181,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
+                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                {
+                    decoded_v &= 0x7ull;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.perks = decoded_v;
                 break;
             }

@@ -14419,6 +14419,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) ( cursor_perms.count ) );
             for ( int32_t elem_i_perms = 0; elem_i_perms < cursor_perms.count; elem_i_perms++ )
             {
+                schema_assert( ( uint64_t( cursor_perms[elem_i_perms] ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( cursor_perms[elem_i_perms] ) );
             }
         }
@@ -14791,6 +14792,12 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                                     break;
                                 }
                                 uint64_t decoded_v = (uint64_t) widened_v;
+                                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                {
+                                    decoded_v &= 0x7ull;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 ( *slot ) = decoded_v;
                                 landed = true;
                             } while ( 0 );
@@ -14853,6 +14860,12 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                                     break;
                                 }
                                 uint64_t decoded_v = uint64_t( sub.get64() );
+                                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                {
+                                    decoded_v &= 0x7ull;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 ( *slot ) = decoded_v;
                                 landed = true;
                             } while ( 0 );
@@ -21054,6 +21067,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) ( cursor_perms.count ) );
             for ( int32_t elem_i_perms = 0; elem_i_perms < cursor_perms.count; elem_i_perms++ )
             {
+                schema_assert( ( uint64_t( cursor_perms[elem_i_perms] ) >> 3 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( cursor_perms[elem_i_perms] ) );
             }
         }
@@ -21432,6 +21446,12 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                     break;
                                 }
                                 uint64_t decoded_v = (uint64_t) widened_v;
+                                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                {
+                                    decoded_v &= 0x7ull;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 ( *slot ) = decoded_v;
                                 landed = true;
                             } while ( 0 );
@@ -21494,6 +21514,12 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                     break;
                                 }
                                 uint64_t decoded_v = uint64_t( sub.get64() );
+                                if ( ( (uint64_t) decoded_v >> 3 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                {
+                                    decoded_v &= 0x7ull;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 ( *slot ) = decoded_v;
                                 landed = true;
                             } while ( 0 );
