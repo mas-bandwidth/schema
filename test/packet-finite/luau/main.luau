@@ -7,10 +7,12 @@
 -- on a byte and one behind a bool, both widths as list elements, and a fixed
 -- array of float64.
 --
--- The rule, through the runtime: a NaN (any sign, any payload) or an infinity
--- is refused on write (serialize.luau traps write misuse, IMPLEMENTING.md U9:
--- "must be finite") and on read on its raw bits (the reader returns false and
--- the stream latches non_finite_float). Negative zero, the subnormals and the
+-- The rule: a NaN (any sign, any payload) or an infinity is refused on write
+-- by the generated writer, which returns false and never raises (LUAU-4,
+-- c601ef0d1d: the writer's own finite guard runs before the runtime, whose
+-- trap, IMPLEMENTING.md U9 "must be finite", it never reaches), and on read on
+-- its raw bits (the reader returns false and the stream latches
+-- non_finite_float). Negative zero, the subnormals and the
 -- largest finite values ride bit exact. The quantized float32 rides its step
 -- index, not the pattern; its write refuses a non-finite value too.
 --
@@ -165,8 +167,8 @@ local function checkWriteRefused(name: string, writer: any, value: any)
 	local ok, detail = write(writer, value)
 	if ok then
 		fail(name, "write accepted a non-finite float (" .. detail .. ")")
-	elseif not string.find(detail, "must be finite", 1, true) then
-		fail(name, "write refused with " .. detail .. ", want the runtime's finite trap")
+	elseif detail ~= "returned false" then
+		fail(name, "write raised (" .. detail .. "); a writer refuses by returning false (LUAU-4)")
 	end
 end
 
