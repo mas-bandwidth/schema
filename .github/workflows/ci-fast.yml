@@ -222,6 +222,7 @@ jobs:
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
+      newleg: ${{ steps.pick.outputs.newleg }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -598,6 +599,35 @@ jobs:
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
+
+          # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541). `schema new-leg`
+          # lays down a package that imports the compiler's own packages, the
+          # ones its templates in compiler/newleg.go name. Its fixture test,
+          # cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses, drives the
+          # built CLI and so runs only behind SCHEMA_SLOW, which no other row
+          # here sets: #4428 changed what the scaffold imports, and the red
+          # waited for ci-full. The job runs when the diff touches
+          # compiler/newleg.go, that test's file, or a non-test .go file of a
+          # main-module package in the import closure (go list -deps) of the
+          # packages the templates import. TestFastPlanSelectsNewLegScaffold
+          # runs this block over internal/ci/testdata/newleg-plan.json.
+          newleg=no
+          # a template with no main-module import leaves the closure empty
+          scaffold_imports=$({ grep -oE '"github\.com/mas-bandwidth/schema/v2/[a-z0-9_/]+"' compiler/newleg.go || true; } | tr -d '"' | sort -u | xargs)
+          scaffold_dirs=""
+          if [ -n "$scaffold_imports" ]; then
+            # shellcheck disable=SC2086
+            scaffold_dirs=$(go list -deps $scaffold_imports | sed -n 's#^github\.com/mas-bandwidth/schema/v2/##p' | xargs)
+          fi
+          while read -r f; do
+            case "$f" in
+              compiler/newleg.go|cmd/schema/newleg_test.go) newleg=yes ;;
+              *_test.go) ;;
+              */*.go) case " $scaffold_dirs " in *" ${f%/*} "*) newleg=yes ;; esac ;;
+            esac
+          done <<<"$files"
+          # END OF THE NEW-LEG SCAFFOLD.
+          echo "newleg=$newleg"             >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
             echo
@@ -609,6 +639,7 @@ jobs:
             echo "* clean-legs: \`$clean_legs_json\`"
             echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
+            echo "* new-leg scaffold: **$newleg**"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
@@ -1282,6 +1313,37 @@ jobs:
       # per-commit limit on a busy runner.
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
         run: make -j"$(nproc)" tables-block-zero-cost
+
+  # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
+  # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
+  # `pick`): `schema new-leg zig` into a scratch tree, then the scaffold's own
+  # fixture test as a module at the scaffold's import path. It builds the CLI
+  # once: on bench space, four cores, 22 s with an empty build cache and 1.3 s
+  # warm, plus about 8 s of checkout (2026-11-21).
+  newleg-scaffold:
+    needs: plan
+    # plan writes newleg as yes or no; the job runs unless plan said no, the
+    # form of the other plan-gated rows here (clean_legs != '[]')
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.newleg != 'no' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the new-leg scaffold's fixture passes (SCHEMA_SLOW)
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 ./cmd/schema -run '^TestNewLegZigWritesSkeletonAndFixturePasses$'
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,

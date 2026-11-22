@@ -1,0 +1,11 @@
+package alias
+
+type A
+{
+    x uint8 = 7
+}
+
+table TA
+{
+    a A
+}

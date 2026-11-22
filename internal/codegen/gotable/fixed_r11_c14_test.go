@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +36,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // runFixedProbe compiles the unit with the lineage the test plays the lock
@@ -74,7 +75,7 @@ func runFixedProbe(t *testing.T, u *ir.Unit, lineage map[string][]FixedLineageEn
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

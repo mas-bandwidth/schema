@@ -19,6 +19,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func cppKeysOf(files map[string][]byte) []string {
@@ -152,7 +154,7 @@ fixed table FoxAll
 	args := []string{"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile mixed unit: %v\n%s", err, out)
 	}
 }

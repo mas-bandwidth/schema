@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cUfixedBridgeSchema = `package ufixedprobe
@@ -320,10 +322,10 @@ int main( void )
 		driverPath, filepath.Join(serializeC, "serialize.c"),
 		"-o", binPath, "-lm",
 	}
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
-	cmd := exec.Command(binPath)
+	cmd := testproc.Command(t, binPath)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("run failed: %v\n%s", err, out)

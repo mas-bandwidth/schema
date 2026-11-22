@@ -20,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func unitFromSource(t *testing.T, name, src string) *ir.Unit {
@@ -255,7 +257,7 @@ serialize = { package = "serialize-official", path = %q }
 		}
 	}
 
-	cmd := exec.Command(cargoBin, "check", "--quiet")
+	cmd := testproc.Command(t, cargoBin, "check", "--quiet")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(cargoBin)+":"+os.Getenv("PATH"))
 	if out, err := cmd.CombinedOutput(); err != nil {

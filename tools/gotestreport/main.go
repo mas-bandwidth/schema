@@ -8,14 +8,14 @@
 // test that started and never reported (the row was killed while it ran); and
 // the slowest tests, so the next split of a slow row is read off the log.
 //
-// It exits 1 when a test or a package started and never reported, or when a
-// package's test binary ran longer than its budget. The budget is the
-// -timeout its go test command named, which pgroup's shim lifted and wrote as
-// the record's first line (go test's own 10m default when the command named
-// none; -budget for a record without that line; 0 is none). That is the
-// detection the nightly's old limits gave: a hang or a blow-up still turns the
-// row red, but only AFTER every test has run and reported, never by cutting
-// the run short. A test failure is the test step's verdict, not this
+// It exits 1 when a test or a package started and never reported. A package
+// whose test binary ran longer than its budget is NAMED (OVER BUDGET) and is
+// not a failure: a nightly has no time limit (the owner, 2026-11-16 and
+// 2026-11-21; the 2-minute per-commit limit is tools/pgroup's PGROUP_WALL, not
+// this report's). The budget is the -timeout its go test command named, which
+// pgroup's shim lifted and wrote as the record's first line (go test's own 10m
+// default when the command named none; -budget for a record without that
+// line; 0 is none). A test failure is the test step's verdict, not this
 // report's, so it is listed and not counted twice. A directory with no record
 // says so and is not an error: a row whose steps ran no `go test` has nothing
 // to report. With -require-record it is red, and so is a record file that
@@ -267,9 +267,9 @@ func (r *report) findings(slowest int) findings {
 	}
 	for _, k := range pkgs {
 		if res := r.packages[k]; res.finished && res.budget > 0 && res.elapsed > res.budget {
-			fmt.Fprintf(&b, "  OVER BUDGET     %s ran %s, past the %s its go test named: every test reported first; split the row or find what grew\n",
+			// named, never red: the nightly has no time limit (TestThePackageBudget)
+			fmt.Fprintf(&b, "  OVER BUDGET     %s ran %s, past the %s its go test named: every test reported first; not a failure (a nightly has no time limit), find what grew\n",
 				r.name(k, multi), res.elapsed.Round(time.Second), res.budget)
-			red = true
 		}
 	}
 

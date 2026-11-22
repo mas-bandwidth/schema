@@ -809,6 +809,9 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	}
 	def := e.m.FieldDefaultCell(f)
 	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// a text or byte cell holds its value in Str, never in U (§3)
+		return bytes.Equal(cell.Str, def.Str)
 	case f.Type.Kind == ir.TBool:
 		return cell.B == def.B
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:

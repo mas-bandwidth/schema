@@ -1027,11 +1027,14 @@ tables-go-clean: build/tables-generated-go/.stamp
 GO_CLEAN_UNITS ?= build/tables-generated-go/*
 .PHONY: tables-go-clean-units
 tables-go-clean-units:
-	@set -e; for d in $(GO_CLEAN_UNITS); do \
+	@set -e; n=0; for d in $(GO_CLEAN_UNITS); do \
 		[ -f "$$d/go.mod" ] || continue; \
 		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
 		(cd "$$d" && go vet ./...); \
-	done
+		n=$$((n + 1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "tables-go-clean: no generated Go unit under $(GO_CLEAN_UNITS); nothing was formatted or vetted"; exit 1; }; \
+	echo "tables-go-clean: $$n generated Go units gofmt-canonical and vet-clean"
 tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg build
 	bench/tables/go/leg run --gate

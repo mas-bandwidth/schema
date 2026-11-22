@@ -3,12 +3,13 @@ package cstable_test
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpCardsStrictReport pins the C# cards facade, driver, and tests
@@ -112,7 +113,7 @@ func TestCSharpCardsStrictReport(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", "cards-cs-test", "cards-cs-conformance")
+	cmd := testproc.CommandContext(t, ctx, "make", "cards-cs-test", "cards-cs-conformance")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C# cards facade tests and conformance failed: %v\n%s", err, out)

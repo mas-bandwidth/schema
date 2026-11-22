@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaCardsStrict pins the Java cards facade, driver, and tests
@@ -223,7 +225,7 @@ func javaCardsBuildAndRun(t *testing.T, javac, java, repo string, generated map[
 	javaFiles = append(javaFiles, runnerPath)
 
 	javacArgs := append([]string{"--release", "17", "-nowarn", "-d", classesDir}, javaFiles...)
-	buildCmd := exec.Command(javac, javacArgs...)
+	buildCmd := testproc.Command(t, javac, javacArgs...)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("javac failed: %w\n%s", err, out)
 	}
@@ -243,7 +245,7 @@ func javaCardsBuildAndRun(t *testing.T, javac, java, repo string, generated map[
 		runArgs = append(runArgs, surface, od)
 	}
 
-	runCmd := exec.Command(java, runArgs...)
+	runCmd := testproc.Command(t, java, runArgs...)
 	runCmd.Dir = repo
 	if out, err := runCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("StrictCardsRunner failed: %w\n%s", err, out)

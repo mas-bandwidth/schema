@@ -3,12 +3,13 @@ package gotable
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsonBase64BodyDecodesEscapesFirst pins docs/SPEC-TABLES.md §16.2: a
@@ -33,7 +34,7 @@ func TestJsonBase64BodyDecodesEscapesFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated runtime: %v\n%s", err, out)

@@ -1,0 +1,14 @@
+package probe
+
+type Inner { x int32 }
+
+table Probe
+{
+    items [2..4]int32
+    inner [2..4]Inner
+}
+
+fixed table Msg
+{
+    items [2..4]int32
+}
