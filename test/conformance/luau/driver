@@ -14,7 +14,9 @@
 # lowercase hex — which this script writes as one file per case into <outdir>
 # (a case the leg cannot answer is the line "<case> absent", written as
 # <case>.absent; "<case> absent <reason>" writes the reason into that file, as
-# a named writer refusal is answered, docs/SPEC-TABLES.md §2.5).
+# a named writer refusal is answered, docs/SPEC-TABLES.md §2.5; a read the leg
+# ran and refused, on the `message-prior` surface, is "<case> refused <reason>",
+# written as <case>.refused).
 #
 # While main.luau is absent the leg answers ABSENT: `list` prints nothing and
 # every surface exits 2.
@@ -71,6 +73,6 @@ list)
 	"$luau" "$main" -a "$2" >"$dir/$2.out"
 	status=$?
 	[ "$status" -eq 0 ] || exit "$status"
-	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h, $why) = split / /, $_, 3; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; print $f $why if defined $why; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h, $why) = split / /, $_, 3; next unless defined $c && $c ne ""; if (defined $h && $h eq "refused") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.refused") or die; print $f $why if defined $why; close $f; next } if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; print $f $why if defined $why; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
 	;;
 esac
