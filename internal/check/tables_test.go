@@ -15,12 +15,12 @@ import (
 
 func buildUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()
-	f, perrs := parser.Parse("T.schema", []byte(src))
+	f, perrs := parser.Parse("Unit.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
 	u, cerrs := Unit([]SourceFile{{
-		Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f,
+		Path: "Unit.schema", Name: "Unit.schema", Base: "Unit", Bytes: []byte(src), AST: f,
 	}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])

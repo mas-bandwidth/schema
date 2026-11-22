@@ -4156,3 +4156,7 @@ func splitAssertMsg(e string) (cond, msg string, ok bool) {
 	}
 	return "", "", false
 }
+
+// CheckNames is this emitter's name check, run by schema check for every
+// target (SPEC §4.6, compiler/emitter_names.go) as well as at generate.
+func CheckNames(u *ir.Unit) error { return checkNames(u) }
