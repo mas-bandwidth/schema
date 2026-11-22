@@ -37,20 +37,27 @@ build/verify-reuse-bin: $(wildcard test/verify-reuse/*.go) test/verify-reuse/Reu
 	@mkdir -p build
 	go build -o $@.$$$$ ./test/verify-reuse && mv $@.$$$$ $@
 
+# Made the way make/verify-widen-18.mk makes its corpus stamps (F-046): under
+# the lock, regenerate unless the stamp is newer than every prerequisite, and
+# exit with the generator's status, touching the stamp only on success.
 build/verify-reuse/corpus/.stamp: build/verify-reuse-bin bin/schema
 	@mkdir -p build/verify-reuse
 	@lockdir="build/verify-reuse/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
 	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
-	if ! test -f "$@"; then \
+	status=0; current=1; \
+	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
+	if test "$$current" -eq 0; then \
+		rm -f "$@"; \
 		mkdir -p build/verify-reuse/corpus; \
-		SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" ./build/verify-reuse-bin --generate-only \
+		if SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" ./build/verify-reuse-bin --generate-only \
 			--schema ./bin/schema \
 			--work build/verify-reuse/corpus-gen \
-			--corpus build/verify-reuse/corpus && touch "$@"; \
+			--corpus build/verify-reuse/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
 	rmdir "$$lockdir" 2>/dev/null || true; \
-	trap - EXIT INT TERM HUP
+	trap - EXIT INT TERM HUP; \
+	exit $$status
 
 define verify_reuse_18_rules
 .PHONY: verify-reuse-$(1)

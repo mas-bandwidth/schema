@@ -10,10 +10,10 @@ build/packet-write-text/java/.stamp: bin/schema test/packet-write-text/java/Pack
 	@touch $@
 
 .PHONY: packet-write-text-java packet-write-text-java-negative-control
-packet-write-text-java: build/packet-write-text/java/.stamp
+packet-write-text-java: build/mustrun build/packet-write-text/java/.stamp
 	@mkdir -p build/packet-write-text/java/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-write-text/java/classes build/packet-write-text/java/gen/*.java test/packet-write-text/java/Main.java
-	$(JAVA) -ea -cp build/packet-write-text/java/classes Main test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-java -count 11 -- $(JAVA) -ea -cp build/packet-write-text/java/classes Main test/packet-write-text/cases.txt
 
 packet-write-text-java-negative-control: packet-write-text-java
 	@mkdir -p build/packet-write-text/java-negative

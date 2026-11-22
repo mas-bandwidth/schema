@@ -41,7 +41,7 @@ conformance-java-cook-write-negative-control: build/conformance-harness build-co
 		echo "NEGATIVE CONTROL FAILED: a cook writer that fills dead counted slots left the Java cook-write line green"; \
 		cat $(JAVA_COOK_WRITE_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -E 'root_full' $(JAVA_COOK_WRITE_SABOTAGE)/log | grep -m1 'cook-write' || \
+	@grep -E 'root_full' $(JAVA_COOK_WRITE_SABOTAGE)/log | awk '/cook-write/ && !n++ { print } END { exit !n }' || \
 		{ echo "NEGATIVE CONTROL FAILED: the cook-write line went red, but not on root_full"; \
 		  cat $(JAVA_COOK_WRITE_SABOTAGE)/log; exit 1; }
 	@echo "negative control: a cook writer that fills a counted array's dead slots turns Java cook-write RED on root_full"

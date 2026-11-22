@@ -42,6 +42,9 @@ function readCases() {
     const line = raw.trim();
     if (line === "" || line.startsWith("#")) continue;
     const f = line.split(/\s+/);
+    if (f[2] !== "written" && f[2] !== "refused") {
+      throw new Error(`cases.txt: ${f[0]}: verdict "${f[2]}" is neither written nor refused`);
+    }
     cases.push({
       name: f[0],
       value: parseValue(f[1]),
@@ -95,7 +98,8 @@ const tiers = [
   { name: "flat", write: writeFlat, read: readFlat },
 ];
 
-for (const c of readCases()) {
+const cases = readCases();
+for (const c of cases) {
   for (const tier of tiers) {
     let wire;
     try {
@@ -128,5 +132,7 @@ for (const c of readCases()) {
   }
 }
 
-if (failures !== 0) process.exit(1);
-console.log(`packet write compressed float JavaScript: ${mode} build, every case holds in the runtime and flat tiers`);
+// One unit per shared case: tools/mustrun holds the count to the one the recipe
+// registers, so an emptied or shortened cases.txt is red.
+console.log(`packet write compressed float JavaScript, ${mode} build: ran ${cases.length}, failed ${failures}`);
+if (failures !== 0 || cases.length === 0) process.exit(1);

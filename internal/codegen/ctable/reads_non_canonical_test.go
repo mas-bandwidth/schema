@@ -124,6 +124,9 @@ func TestCReadsRefuseNonCanonical(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "non-canonical")
 	rows := cNonCanonicalRows(t, vector)
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row.file, func(t *testing.T) {
 			t.Parallel()

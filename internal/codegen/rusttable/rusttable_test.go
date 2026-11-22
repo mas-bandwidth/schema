@@ -444,6 +444,9 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 func TestFixedFormHashAndBlockAreDeterministic(t *testing.T) {
 	first := string(generate(t, valueOnly)["probe_fixed.rs"])
 	second := string(generate(t, valueOnly)["probe_fixed.rs"])
+	if first == "" {
+		t.Fatal("valueOnly emitted no probe_fixed.rs, so there is no fixed form to hold stable")
+	}
 	if first != second {
 		t.Fatal("the fixed form's emission is not byte-stable across two runs")
 	}

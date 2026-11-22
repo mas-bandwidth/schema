@@ -414,6 +414,9 @@ func TestLobsterOptionals(t *testing.T) {
 			}
 		}
 	}
+	if len(order) == 0 {
+		t.Fatal("order is empty: the loop below would check nothing")
+	}
 	for _, unit := range order {
 		paths, err := compiler.GatherPaths(prefix(units[unit]))
 		if err != nil {

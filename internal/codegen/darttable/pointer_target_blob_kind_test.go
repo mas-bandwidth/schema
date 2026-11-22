@@ -84,13 +84,18 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 		for _, retaining := range []bool{false, true} {
 			value := m.New(def)
 			var r tabletext.Report
+			var ok bool
+			var derr error
 			if retaining {
-				_, _ = tablewire.DecodeRetain(m, value, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+				ok, derr = tablewire.DecodeRetain(m, value, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 			} else {
-				_, _ = tablewire.Decode(m, value, wire, &r)
+				ok, derr = tablewire.Decode(m, value, wire, &r)
+			}
+			if ok != (derr == nil) || r.Refused != (derr != nil) {
+				t.Fatalf("%s: the engine (retaining=%v) disagrees with itself: ok=%v err=%v refused=%v", row.name, retaining, ok, derr, r.Refused)
 			}
 			if r.Refused != (row.verdict == "refused") {
-				t.Fatalf("%s: the engine (retaining=%v) refused=%v (%v), the manifest says %s", row.name, retaining, r.Refused, err, row.verdict)
+				t.Fatalf("%s: the engine (retaining=%v) refused=%v (%v), the manifest says %s", row.name, retaining, r.Refused, derr, row.verdict)
 			}
 			if row.verdict == "read" {
 				if row.unknown >= 0 && r.Unknown != row.unknown {
@@ -123,7 +128,11 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 				t.Errorf("the probe printed %d saves, want 12 (Text and Bin, null, empty and set, plain and retaining)", saves)
 			}
 		}()
-		for _, line := range dartBlobKindRun(t, files, source) {
+		allDartBlobKindRun := dartBlobKindRun(t, files, source)
+		if len(allDartBlobKindRun) == 0 {
+			t.Fatal("dartBlobKindRun(t, files, source) is empty: the loop below would check nothing")
+		}
+		for _, line := range allDartBlobKindRun {
 			if !strings.HasPrefix(line, "save ") {
 				continue
 			}
@@ -226,13 +235,15 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 			}
 			for _, retaining := range []bool{false, true} {
 				var r tabletext.Report
+				var ok bool
+				var derr error
 				if retaining {
-					_, _ = tablewire.DecodeRetain(wm, wm.New(wu.Tables[c.Reader]), wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+					ok, derr = tablewire.DecodeRetain(wm, wm.New(wu.Tables[c.Reader]), wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 				} else {
-					_, _ = tablewire.Decode(wm, wm.New(wu.Tables[c.Reader]), wire, &r)
+					ok, derr = tablewire.Decode(wm, wm.New(wu.Tables[c.Reader]), wire, &r)
 				}
-				if !r.Refused {
-					t.Fatalf("%s: the engine (retaining=%v) read it (%v); the witness row is a refusal", c.Name, retaining, err)
+				if derr == nil || ok || !r.Refused {
+					t.Fatalf("%s: the engine (retaining=%v) read it (ok=%v err=%v refused=%v); the witness row is a refusal", c.Name, retaining, ok, derr, r.Refused)
 				}
 			}
 			fn := dartName(c.Reader)
@@ -295,10 +306,15 @@ table Bin { data *bytes }
 			for _, retaining := range []bool{false, true} {
 				out := rm.New(reader.Tables[c.reader])
 				var r tabletext.Report
+				var ok bool
+				var derr error
 				if retaining {
-					_, _ = tablewire.DecodeRetain(rm, out, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+					ok, derr = tablewire.DecodeRetain(rm, out, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 				} else {
-					_, _ = tablewire.Decode(rm, out, wire, &r)
+					ok, derr = tablewire.Decode(rm, out, wire, &r)
+				}
+				if ok != (derr == nil) || r.Refused != (derr != nil) {
+					t.Fatalf("%s: the engine (retaining=%v) disagrees with itself: ok=%v err=%v refused=%v", c.name, retaining, ok, derr, r.Refused)
 				}
 				reads = append(reads, !r.Refused)
 				unknown = append(unknown, r.Unknown)

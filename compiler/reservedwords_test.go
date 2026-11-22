@@ -12,8 +12,16 @@ import (
 // target without one cannot register.
 func TestEveryPortRegistersWithItsReservedWords(t *testing.T) {
 	t.Parallel()
-	for _, g := range builtins() {
-		for _, name := range g.Names() {
+	allBuiltins := builtins()
+	if len(allBuiltins) == 0 {
+		t.Fatal("builtins() is empty: the loop below would check nothing")
+	}
+	for _, g := range allBuiltins {
+		allNames := g.Names()
+		if len(allNames) == 0 {
+			t.Fatal("g.Names() is empty: the loop below would check nothing")
+		}
+		for _, name := range allNames {
 			if _, ok := check.ReservedLanguageOf(name); !ok {
 				t.Errorf("built-in target %q has no reserved words in the one table", name)
 			}

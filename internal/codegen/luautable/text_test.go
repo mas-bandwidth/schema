@@ -217,6 +217,9 @@ func TestLuauBase64TextNegativeControl(t *testing.T) {
 	}
 	sort.Strings(keys)
 	const anchor = "\t\tif pad > 0 then parts[#parts + 1] = string.rep(\"=\", pad) end\n"
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, key := range keys {
 		g := generateUnit(t, units, key)
 		if g.err != nil {

@@ -385,15 +385,20 @@ func TestMooBlockNegativeControls(t *testing.T) {
 				t.Errorf("dump: the planted float still dumps clean")
 			}
 		case "pitch":
+			pitched := 0
 			for _, fg := range forgeries(t, "block") {
 				if fg.name != "block_pitch" {
 					continue
 				}
+				pitched++
 				base, _ := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", fg.base+".bin"))
 				data, lead, extent, null := fg.materialize(t, base)
 				if got := g.run(t, blockMain(g, blockTableOf(fg.subject), lead, extent, null, false), map[string][]byte{"block": data}); got == "refuse bad_layout" {
 					t.Errorf("pitch: block_pitch still refuses as bad_layout with the check removed")
 				}
+			}
+			if pitched != 1 {
+				t.Fatalf("pitch: the manifest names %d block_pitch forgeries, want 1: the control ran over nothing", pitched)
 			}
 		}
 	}

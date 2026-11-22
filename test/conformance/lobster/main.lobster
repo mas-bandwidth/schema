@@ -239,6 +239,7 @@ def surface_message(text:string):
                 let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
                 assert schema_rt.announce_read(v, fixture(announcement), schema_rt.LoadReport {})
                 let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[4]), schema_rt.LoadReport {}, 256)
+                assert length(recs) >= 0 and (ok or count == 0)  // both unused otherwise: the compiler warns on stdout, which is not an answer line
                 say(f[1], "count " + string(count) + "\n")
 
 // lines are the manifest's lines of one kind, whatever unit they name

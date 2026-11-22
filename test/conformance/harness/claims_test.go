@@ -213,7 +213,9 @@ func TestCoverageMarkdown(t *testing.T) {
 		{Lang: "aa", Direction: directionCppReads, Surface: "wire", Class: "fixed", Cases: 12, Answered: 12},
 	}
 	var b bytes.Buffer
-	coverageMarkdown(&b, rows, map[string]string{"aa": "pass", "bb": "none"})
+	if err := coverageMarkdown(&b, rows, map[string]string{"aa": "pass", "bb": "none"}); err != nil {
+		t.Fatal(err)
+	}
 	mustSay(t, b.String(), []string{
 		"| surface | aa | bb |",
 		"| wire (fixed) | 12/16 +4nc | 13/16 x1 !2 |",

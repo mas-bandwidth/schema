@@ -46,7 +46,7 @@ conformance-java-text-fixed-roots-negative-control: build/conformance-harness bu
 	@grep -qE '^json-read +pass ([0-9]+)/\1 *$$' $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: dropping a field from the text writer also redded json-read"; \
 		  cat $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log; exit 1; }
-	@grep -E 'root_full\.json' $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log | grep -m1 'json-write' || \
+	@grep -E 'root_full\.json' $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log | awk '/json-write/ && !n++ { print } END { exit !n }' || \
 		{ echo "NEGATIVE CONTROL FAILED: the json-write line went red, but not on root_full"; \
 		  cat $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log; exit 1; }
 	@echo "negative control: a fixed root's text writer with a field dropped turns Java json-write RED on root_full"

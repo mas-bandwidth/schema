@@ -1843,6 +1843,11 @@ int readU32(Uint8List d, int off) {
   return v;
 }
 
+// _rangeF32 is the one reusable cell a write check narrows a compressed
+// float32 through before its range test (docs/SPEC-TABLES.md §3.3): store the
+// value, read [0], no allocation per check.
+final Float32List _rangeF32 = Float32List(1);
+
 // _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
 // (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
 // little-endian, exactly as the other backends write it.
@@ -3051,11 +3056,11 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.frameTick);
   }
-  assert(!v.serverTime.isFinite || (v.serverTime >= 0.0 && v.serverTime <= 65535.0));
-  if (_f32Bits(v.serverTime) != 0) {
+  assert(!v.serverTime.isFinite || ((_rangeF32..[0] = v.serverTime)[0] >= 0.0 && _rangeF32[0] <= 65535.0));
+  if (_f32Bits((v.serverTime == 0 ? 0.0 : v.serverTime)) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
-    w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
+    w.putU32(_f32Write((v.serverTime == 0 ? 0.0 : v.serverTime), 'TableMixed.server_time'));
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
   if (v.entities.isNotEmpty) {
@@ -3136,23 +3141,23 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
-  if (_f32Bits(v.aimX) != 0) {
+  assert(!v.aimX.isFinite || ((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0));
+  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
+    w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'TableMixed.aim_x'));
   }
-  assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
-  if (_f32Bits(v.aimY) != 0) {
+  assert(!v.aimY.isFinite || ((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0));
+  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
+    w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'TableMixed.aim_y'));
   }
-  assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
-  if (_f32Bits(v.aimZ) != 0) {
+  assert(!v.aimZ.isFinite || ((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0));
+  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimZ, 'TableMixed.aim_z'));
+    w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'TableMixed.aim_z'));
   }
   if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
@@ -3175,11 +3180,11 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(5);
     w.putU64(v.flux);
   }
-  assert(!v.ping.isFinite || (v.ping >= 0.0 && v.ping <= 250.0));
-  if (_f32Bits(v.ping) != 0) {
+  assert(!v.ping.isFinite || ((_rangeF32..[0] = v.ping)[0] >= 0.0 && _rangeF32[0] <= 250.0));
+  if (_f32Bits((v.ping == 0 ? 0.0 : v.ping)) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
-    w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
+    w.putU32(_f32Write((v.ping == 0 ? 0.0 : v.ping), 'TableMixed.ping'));
   }
   assert(v.crcHint >= 0 && v.crcHint <= 16777215);
   if (v.crcHint != 0) {
@@ -4410,8 +4415,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { r.report.refuse('out_of_range'); return; }
-          if (d > 65535) { r.report.refuse('out_of_range'); return; }
+          if (d < 0.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 65535.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.serverTime = d;
         }
@@ -4542,8 +4547,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimX = d;
         }
@@ -4560,8 +4565,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimY = d;
         }
@@ -4578,8 +4583,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimZ = d;
         }
@@ -4711,8 +4716,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { r.report.refuse('out_of_range'); return; }
-          if (d > 250) { r.report.refuse('out_of_range'); return; }
+          if (d < 0.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 250.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.ping = d;
         }
@@ -6126,6 +6131,15 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonRangedFloat holds a compressed float's read to its range (§3.3): the
+// value as placed (a float32 already narrowed), inside the ends given, which
+// for a float32 are the float32 nearest each declared end (THE RANGE IS HELD
+// AT FLOAT32); one past an end refuses out_of_range, and a -0 lands as +0.
+double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
+  if (x < lo || x > hi) r.refuse('out_of_range');
+  return x == 0 ? 0.0 : x;
+}
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
@@ -7089,70 +7103,70 @@ void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int?
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.entityId & ~4095) == 0)) { throw StateError('invalid_value: field entity_id out of range'); }
+  assert((v.entityId & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("entity_id"));
   out.raw(': ');
   out.raw(v.entityId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posX >= -16383 && v.posX <= 16383)) { throw StateError('invalid_value: field pos_x out of range'); }
+  assert(v.posX >= -16383 && v.posX <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_x"));
   out.raw(': ');
   out.raw(v.posX.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posY >= -16383 && v.posY <= 16383)) { throw StateError('invalid_value: field pos_y out of range'); }
+  assert(v.posY >= -16383 && v.posY <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_y"));
   out.raw(': ');
   out.raw(v.posY.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posZ >= -16383 && v.posZ <= 16383)) { throw StateError('invalid_value: field pos_z out of range'); }
+  assert(v.posZ >= -16383 && v.posZ <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_z"));
   out.raw(': ');
   out.raw(v.posZ.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.yaw & ~511) == 0)) { throw StateError('invalid_value: field yaw out of range'); }
+  assert((v.yaw & ~511) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("yaw"));
   out.raw(': ');
   out.raw(v.yaw.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.pitch & ~511) == 0)) { throw StateError('invalid_value: field pitch out of range'); }
+  assert((v.pitch & ~511) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("pitch"));
   out.raw(': ');
   out.raw(v.pitch.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velX >= -2048 && v.velX <= 2047)) { throw StateError('invalid_value: field vel_x out of range'); }
+  assert(v.velX >= -2048 && v.velX <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_x"));
   out.raw(': ');
   out.raw(v.velX.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velY >= -2048 && v.velY <= 2047)) { throw StateError('invalid_value: field vel_y out of range'); }
+  assert(v.velY >= -2048 && v.velY <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_y"));
   out.raw(': ');
   out.raw(v.velY.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velZ >= -2048 && v.velZ <= 2047)) { throw StateError('invalid_value: field vel_z out of range'); }
+  assert(v.velZ >= -2048 && v.velZ <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_z"));
   out.raw(': ');
   out.raw(v.velZ.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.health >= 0 && v.health <= 1000)) { throw StateError('invalid_value: field health out of range'); }
+  assert(v.health >= 0 && v.health <= 1000);
   out.line(depth + 1);
   out.raw(_jsonString("health"));
   out.raw(': ');
@@ -7280,14 +7294,14 @@ void tableStatToJsonBody(_JOut out, TableStat v, int depth, _Share sh, [int? lab
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.statId & ~255) == 0)) { throw StateError('invalid_value: field stat_id out of range'); }
+  assert((v.statId & ~255) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("stat_id"));
   out.raw(': ');
   out.raw(v.statId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.delta >= -512 && v.delta <= 511)) { throw StateError('invalid_value: field delta out of range'); }
+  assert(v.delta >= -512 && v.delta <= 511);
   out.line(depth + 1);
   out.raw(_jsonString("delta"));
   out.raw(': ');
@@ -7343,21 +7357,21 @@ void tableHitEventToJsonBody(_JOut out, TableHitEvent v, int depth, _Share sh, [
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.targetId & ~4095) == 0)) { throw StateError('invalid_value: field target_id out of range'); }
+  assert((v.targetId & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("target_id"));
   out.raw(': ');
   out.raw(v.targetId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.damage >= 0 && v.damage <= 4095)) { throw StateError('invalid_value: field damage out of range'); }
+  assert(v.damage >= 0 && v.damage <= 4095);
   out.line(depth + 1);
   out.raw(_jsonString("damage"));
   out.raw(': ');
   out.raw(v.damage.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.hitKind >= 0 && v.hitKind <= 7)) { throw StateError('invalid_value: field hit_kind out of range'); }
+  assert(v.hitKind >= 0 && v.hitKind <= 7);
   out.line(depth + 1);
   out.raw(_jsonString("hit_kind"));
   out.raw(': ');
@@ -7427,14 +7441,14 @@ void tableChatEventToJsonBody(_JOut out, TableChatEvent v, int depth, _Share sh,
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.channel >= 0 && v.channel <= 3)) { throw StateError('invalid_value: field channel out of range'); }
+  assert(v.channel >= 0 && v.channel <= 3);
   out.line(depth + 1);
   out.raw(_jsonString("channel"));
   out.raw(': ');
   out.raw(v.channel.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.speaker & ~4095) == 0)) { throw StateError('invalid_value: field speaker out of range'); }
+  assert((v.speaker & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("speaker"));
   out.raw(': ');
@@ -7490,14 +7504,14 @@ void tablePickupEventToJsonBody(_JOut out, TablePickupEvent v, int depth, _Share
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.itemId & ~1023) == 0)) { throw StateError('invalid_value: field item_id out of range'); }
+  assert((v.itemId & ~1023) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("item_id"));
   out.raw(': ');
   out.raw(v.itemId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.amount >= 0 && v.amount <= 255)) { throw StateError('invalid_value: field amount out of range'); }
+  assert(v.amount >= 0 && v.amount <= 255);
   out.line(depth + 1);
   out.raw(_jsonString("amount"));
   out.raw(': ');
@@ -7562,21 +7576,21 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(v.protocolMagic.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.sequence & ~65535) == 0)) { throw StateError('invalid_value: field sequence out of range'); }
+  assert((v.sequence & ~65535) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("sequence"));
   out.raw(': ');
   out.raw(v.sequence.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ackSequence >= 0 && v.ackSequence <= 65535)) { throw StateError('invalid_value: field ack_sequence out of range'); }
+  assert(v.ackSequence >= 0 && v.ackSequence <= 65535);
   out.line(depth + 1);
   out.raw(_jsonString("ack_sequence"));
   out.raw(': ');
   out.raw(v.ackSequence.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.ackBits & ~4294967295) == 0)) { throw StateError('invalid_value: field ack_bits out of range'); }
+  assert((v.ackBits & ~4294967295) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("ack_bits"));
   out.raw(': ');
@@ -7595,35 +7609,35 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(v.clientId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(BigInt.from(v.nonce).toUnsigned(64) >= BigInt.parse('1') && BigInt.from(v.nonce).toUnsigned(64) <= BigInt.parse('9223372036854775807'))) { throw StateError('invalid_value: field nonce out of range'); }
+  assert(BigInt.from(v.nonce).toUnsigned(64) >= BigInt.parse('1') && BigInt.from(v.nonce).toUnsigned(64) <= BigInt.parse('9223372036854775807'));
   out.line(depth + 1);
   out.raw(_jsonString("nonce"));
   out.raw(': ');
   out.raw(_jsonString(BigInt.from(v.nonce).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.worldTime >= -1000000000000 && v.worldTime <= 1000000000000)) { throw StateError('invalid_value: field world_time out of range'); }
+  assert(v.worldTime >= -1000000000000 && v.worldTime <= 1000000000000);
   out.line(depth + 1);
   out.raw(_jsonString("world_time"));
   out.raw(': ');
   out.raw(_jsonString(v.worldTime.toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.frameTick & ~281474976710655) == 0)) { throw StateError('invalid_value: field frame_tick out of range'); }
+  assert((v.frameTick & ~281474976710655) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("frame_tick"));
   out.raw(': ');
   out.raw(_jsonString(BigInt.from(v.frameTick).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.serverTime >= 0 && v.serverTime <= 65535)) { throw StateError('invalid_value: field server_time out of range'); }
+  assert((_rangeF32..[0] = v.serverTime)[0] >= 0.0 && _rangeF32[0] <= 65535.0);
   out.line(depth + 1);
   out.raw(_jsonString("server_time"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.serverTime, true));
+  out.raw(_jsonFloat((v.serverTime == 0 ? 0.0 : v.serverTime), true));
   if (comma) out.raw(',');
   comma = true;
-  if (v.entities.length < 1 || v.entities.length > 8) { throw StateError('invalid_value: field entities out of range'); }
+  assert(v.entities.length >= 1 && v.entities.length <= 8);
   out.line(depth + 1);
   out.raw(_jsonString("entities"));
   out.raw(': ');
@@ -7643,7 +7657,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   }
   if (comma) out.raw(',');
   comma = true;
-  if (v.stats.length < 0 || v.stats.length > 80) { throw StateError('invalid_value: field stats out of range'); }
+  assert(v.stats.length >= 0 && v.stats.length <= 80);
   out.line(depth + 1);
   out.raw(_jsonString("stats"));
   out.raw(': ');
@@ -7688,39 +7702,39 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   }
   if (comma) out.raw(',');
   comma = true;
-  if (utf8.encode(v.playerName).length > 15) { throw StateError('invalid_value: field player_name out of range'); }
+  assert(utf8.encode(v.playerName).length <= 15);
   out.line(depth + 1);
   out.raw(_jsonString("player_name"));
   out.raw(': ');
   out.raw(_jsonString(v.playerName));
   if (comma) out.raw(',');
   comma = true;
-  if (v.payload.length > 16) { throw StateError('invalid_value: field payload out of range'); }
+  assert(v.payload.length <= 16);
   out.line(depth + 1);
   out.raw(_jsonString("payload"));
   out.raw(': ');
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1 && v.aimX <= 1)) { throw StateError('invalid_value: field aim_x out of range'); }
+  assert((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimX, true));
+  out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1 && v.aimY <= 1)) { throw StateError('invalid_value: field aim_y out of range'); }
+  assert((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimY, true));
+  out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1 && v.aimZ <= 1)) { throw StateError('invalid_value: field aim_z out of range'); }
+  assert((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimZ, true));
+  out.raw(_jsonFloat((v.aimZ == 0 ? 0.0 : v.aimZ), true));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7741,21 +7755,21 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(BigInt.from(v.wideKey).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.flux >= -1000000000000000000 && v.flux <= 1000000000000000000)) { throw StateError('invalid_value: field flux out of range'); }
+  assert(v.flux >= -1000000000000000000 && v.flux <= 1000000000000000000);
   out.line(depth + 1);
   out.raw(_jsonString("flux"));
   out.raw(': ');
   out.raw(_jsonString(v.flux.toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ping >= 0 && v.ping <= 250)) { throw StateError('invalid_value: field ping out of range'); }
+  assert((_rangeF32..[0] = v.ping)[0] >= 0.0 && _rangeF32[0] <= 250.0);
   out.line(depth + 1);
   out.raw(_jsonString("ping"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.ping, true));
+  out.raw(_jsonFloat((v.ping == 0 ? 0.0 : v.ping), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.crcHint & ~16777215) == 0)) { throw StateError('invalid_value: field crc_hint out of range'); }
+  assert((v.crcHint & ~16777215) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("crc_hint"));
   out.raw(': ');
@@ -7768,14 +7782,14 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(v.hasExtra ? 'true' : 'false');
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.extra >= 0 && v.extra <= 255)) { throw StateError('invalid_value: field extra out of range'); }
+  assert(v.extra >= 0 && v.extra <= 255);
   out.line(depth + 1);
   out.raw(_jsonString("extra"));
   out.raw(': ');
   out.raw(v.extra.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.idleTicks >= 0 && v.idleTicks <= 15)) { throw StateError('invalid_value: field idle_ticks out of range'); }
+  assert(v.idleTicks >= 0 && v.idleTicks <= 15);
   out.line(depth + 1);
   out.raw(_jsonString("idle_ticks"));
   out.raw(': ');
@@ -7835,7 +7849,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "server_time":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.serverTime = _jsonFloatField(val, r, true, v.serverTime);
+        v.serverTime = _jsonRangedFloat(_jsonFloatField(val, r, true, v.serverTime), 0.0, 65535.0, r);
         break;
       case "entities":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7887,15 +7901,15 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "aim_x":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimX = _jsonFloatField(val, r, true, v.aimX);
+        v.aimX = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimX), -1.0, 1.0, r);
         break;
       case "aim_y":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimY = _jsonFloatField(val, r, true, v.aimY);
+        v.aimY = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimY), -1.0, 1.0, r);
         break;
       case "aim_z":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
+        v.aimZ = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimZ), -1.0, 1.0, r);
         break;
       case "recoil":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7915,7 +7929,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "ping":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.ping = _jsonFloatField(val, r, true, v.ping);
+        v.ping = _jsonRangedFloat(_jsonFloatField(val, r, true, v.ping), 0.0, 250.0, r);
         break;
       case "crc_hint":
         if (!seen.add(key)) r.refuse('text_damaged');

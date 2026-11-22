@@ -224,7 +224,11 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 	var want []string
 	for _, u := range units {
 		vc := newVariableClass(u.unit)
-		for _, st := range ir.TableFixedRoots(u.unit) {
+		allTableFixedRoots := ir.TableFixedRoots(u.unit)
+		if len(allTableFixedRoots) == 0 {
+			t.Fatal("ir.TableFixedRoots(u.unit) is empty: the loop below would check nothing")
+		}
+		for _, st := range allTableFixedRoots {
 			if !vc.carried(st.Name) {
 				t.Errorf("%s: this leg refuses the fixed table %s on the variable wire: %s", u.module, st.Name, vc.reason[st.Name])
 			}
@@ -249,7 +253,11 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 		sort.Strings(names)
 		// THE FORM-1 SURFACE IS PRESENT for every fixed root: the surface
 		// vt/fixed-class/rust said was absent.
-		for _, st := range ir.TableFixedRoots(u.unit) {
+		allTableFixedRootss := ir.TableFixedRoots(u.unit)
+		if len(allTableFixedRootss) == 0 {
+			t.Fatal("ir.TableFixedRoots(u.unit) is empty: the loop below would check nothing")
+		}
+		for _, st := range allTableFixedRootss {
 			table := fcTableModule(u.unit, st.Name)
 			snake := ir.RustSnake(st.Name)
 			for _, verb := range []string{"_load(", "_save(", "_to_json_checked(", "_from_json("} {
@@ -312,6 +320,9 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 	got := map[string]bool{}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
+	}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
 	}
 	for _, w := range want {
 		if !got[w] {

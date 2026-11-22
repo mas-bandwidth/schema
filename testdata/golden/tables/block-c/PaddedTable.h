@@ -122,6 +122,11 @@ typedef struct blockdemo_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -971,7 +976,7 @@ enum
    translation unit meets first declares the set; the values are the same. */
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
-enum { SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE=6,SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 /* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
    name with nothing decoded and no counter moved, on the form byte's own
@@ -3380,10 +3385,15 @@ typedef struct blockdemo_table_message_shape_facts_t {
 typedef struct blockdemo_table_vocabulary_t {
  blockdemo_table_message_entry_t * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
+ /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+ int strict;
 } blockdemo_table_vocabulary_t;
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
-enum { SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE=6,SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 static SCHEMA_UNUSED blockdemo_table_vocabulary_t blockdemo_table_vocabulary(blockdemo_table_message_entry_t * storage,int64_t capacity)
 {blockdemo_table_vocabulary_t v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
@@ -3556,6 +3566,16 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
   if(!blockdemo_table_reader_skip_checked(&r,kind,0))goto damaged;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
+ /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+ if(v->strict && v->build_version!=SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE){
+  report->refused=1;
+  report->reason=SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH;
+  report->build_version_remote=v->build_version;
+  report->build_version_own=SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
+  return 0;
+ }
  while(at<words_bytes){
   blockdemo_table_message_entry_t * entry;
   int64_t i,began=at;
@@ -6189,10 +6209,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_row_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -7921,10 +7947,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_frame_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

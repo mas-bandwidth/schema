@@ -86,6 +86,11 @@ print("B=" .. hex(wb))
 			kv[k] = unhexTestBytes(t, v)
 		}
 	}
+	for _, k := range []string{"ANNOUNCE", "A", "B"} {
+		if len(kv[k]) == 0 {
+			t.Fatalf("the SaveMessages probe printed no %s wire: %q", k, out)
+		}
+	}
 
 	var vocab tablewire.Vocabulary
 	var report tabletext.Report

@@ -307,6 +307,9 @@ fixed table Root
 func TestPythonMessageReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
 	cases, announcements := pyNonCanonicalCases(t)
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -318,6 +321,9 @@ func TestPythonMessageReadsRefuseNonCanonical(t *testing.T) {
 				t.Error(problem)
 			}
 		})
+	}
+	if len(announcements) == 0 {
+		t.Fatal("announcements is empty: the loop below would check nothing")
 	}
 	for name, pair := range announcements {
 		t.Run(name, func(t *testing.T) {

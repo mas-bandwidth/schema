@@ -52,6 +52,9 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 		}
 	}
 	generated := t.TempDir()
+	if len(neededUnits) == 0 {
+		t.Fatal("neededUnits is empty: the loop below would check nothing")
+	}
 	for _, uname := range neededUnits {
 		rel, ok := unitPaths[uname]
 		if !ok {

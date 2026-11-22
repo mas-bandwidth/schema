@@ -368,6 +368,12 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		}
 	}
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+		// docs/rulings.json fixed-compressed-negzero): -0 === 0, so the test
+		// stores the +0 bits. A plain float's -0 rides bit-exact.
+		expr = fmt.Sprintf("(%s === 0 ? 0 : %s)", expr, expr)
+	}
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
@@ -526,7 +532,10 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n",
 			ind, expr, expr)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+			// THE RANGE IS HELD AT FLOAT32 (§3.3): the value the store
+			// narrows is the value the range holds, against the float32
+			// nearest each end
+			g.pf("%sif (globalThis.Math.fround(%s) < %s || globalThis.Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
 		return
 	case ir.TFloat64:
@@ -550,6 +559,18 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
 		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+	} else if f.Type.Kind == ir.TInt && f.Type.Width > 0 {
+		// A BARE intN/uintN has no declared range, but its own width is one
+		// (docs/SPEC.md §5.1 row 11): the writer puts N bits, so a value past
+		// them reads back as a different one, and this check is the only guard.
+		w := uint(f.Type.Width)
+		lo := big.NewInt(0)
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+		if f.Type.Signed {
+			hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+			lo = new(big.Int).Neg(new(big.Int).Add(hi, big.NewInt(1)))
+		}
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, asBig), expr, jsIntLit(hi, asBig))
 	}
 	if f.Type.Kind == ir.TBits {
 		// a bits slot is unsigned at EVERY width: an N-bit value is 0..2^N-1,

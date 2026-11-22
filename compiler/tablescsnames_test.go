@@ -78,7 +78,11 @@ table NativeRoot
 	if len(clean) == 0 {
 		t.Fatal("the scan found no Table* identifier in the emitted C# at all — the scan, not the registry, is what broke")
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Cs) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Cs)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Cs) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !clean[name] {
 			t.Errorf("registry says Cs defines %s and the copied collector does not see it", name)
 		}

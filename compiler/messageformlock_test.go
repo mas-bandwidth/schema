@@ -143,6 +143,9 @@ func generateMessageFormLock(t *testing.T) (map[string]map[string][]byte, []stri
 // TestNoVariableTableMessagePath is the lock across every backend.
 func TestNoVariableTableMessagePath(t *testing.T) {
 	outputs, targets := generateMessageFormLock(t)
+	if len(targets) == 0 {
+		t.Fatal("targets is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		for _, v := range variableMessageViolations(target, outputs[target]) {
 			t.Error(v)
@@ -158,6 +161,9 @@ func TestNoVariableTableMessagePath(t *testing.T) {
 // the plant must be named for every target, and the clean output must not be.
 func TestNoVariableTableMessagePathNegativeControl(t *testing.T) {
 	outputs, targets := generateMessageFormLock(t)
+	if len(targets) == 0 {
+		t.Fatal("targets is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		files := outputs[target]
 		if got := variableMessageViolations(target, files); len(got) != 0 {

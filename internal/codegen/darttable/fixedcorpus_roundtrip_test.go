@@ -116,6 +116,9 @@ func TestFixedCorpusRoundTripsByteIdenticalDart(t *testing.T) {
 			t.Errorf("contract row %s names a file the manifest does not carry", file)
 		}
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, file := range slices.Sorted(maps.Keys(rows)) {
 		t.Run(file, func(t *testing.T) {
 			t.Parallel()

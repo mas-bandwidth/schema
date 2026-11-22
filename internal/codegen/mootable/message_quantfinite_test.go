@@ -61,7 +61,7 @@ func quantFiniteSteps(min, max, res float32) uint64 {
 	}
 	delta := max - min
 	values := delta / res
-	if math.IsInf(float64(delta), 0) || math.IsInf(float64(values), 0) || values != values {
+	if math.IsInf(float64(delta), 0) || math.IsInf(float64(values), 0) || math.IsNaN(float64(values)) {
 		return 0
 	}
 	if values < 1 {
@@ -177,7 +177,11 @@ func quantFiniteMoo(t *testing.T, row quantFiniteRow, files map[string][]byte) s
 func TestMooMessageQuantizedFloatIsFinite(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
-	for _, row := range quantFiniteRows(t) {
+	allQuantFiniteRows := quantFiniteRows(t)
+	if len(allQuantFiniteRows) == 0 {
+		t.Fatal("quantFiniteRows(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allQuantFiniteRows {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			want := quantFiniteGo(t, row.reader, row.ann, row.msg)
@@ -202,7 +206,11 @@ func TestMooMessageQuantizedFloatIsFiniteNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	const anchor = "\tif not V.finite32(bits) then\n\t\tt.report.nonFinite += 1\n"
-	for _, row := range quantFiniteRows(t) {
+	allQuantFiniteRows := quantFiniteRows(t)
+	if len(allQuantFiniteRows) == 0 {
+		t.Fatal("quantFiniteRows(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allQuantFiniteRows {
 		if row.name != "float64/top_step_overflows/top" {
 			continue
 		}
