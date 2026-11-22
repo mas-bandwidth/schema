@@ -84,6 +84,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 			d.refuse("wire", i.Name, key)
 		} else {
 			d.accept("wire", i.Name, key)
+			d.accept("wire", i.Name, at("wire", i.Unit))
 		}
 		if !i.NoText {
 			d.accept("json-write", i.Name+".json", at("json-write", i.Unit, i.Root))
@@ -137,15 +138,14 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 		}
 		// A root the corpus reads NOWHERE (tabledemo WideBlob: past the
 		// form-3 ceiling it has no file form, so every file read of it
-		// refuses by rule) falls back last to the unit's lawful reports:
-		// the leg's report read of that unit runs.
+		// refuses by rule) falls back last to the unit's lawful wire rows:
+		// the leg reads files of that unit through the same Load.
 		key := at("report", r.Unit, r.Root)
-		d.fallback[key] = []string{at("wire", r.Unit, r.Root), at("report", r.Unit)}
+		d.fallback[key] = []string{at("wire", r.Unit, r.Root), at("wire", r.Unit)}
 		if verdict == "refused" {
 			d.refuse("report", r.Name, key)
 		} else {
 			d.accept("report", r.Name, key)
-			d.accept("report", r.Name, at("report", r.Unit))
 		}
 	}
 	for _, fc := range m.Framings {
