@@ -170,7 +170,9 @@ def _shape(reader: "Reader", kind: int) -> Shape:
 
 
 def _known_kind(kind: int) -> bool:
-    return 0 <= kind <= 32 or kind == 36
+    # 31 is held by name and never written (R17): an announcement naming it
+    # is malformed, as one naming 33 or 34 is
+    return 0 <= kind <= 30 or kind == 32 or kind == 36
 
 
 class Entry:
@@ -910,13 +912,6 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
             _skip_value(reader, inner, vocab, depth + 1, False, pending)
             if reader.position == start:
                 raise Refused("wire_damaged", "message element consumes no bits")
-        return
-    if kind == 31:
-        reader.align()
-        length = reader.get(32)
-        if length > (len(reader.data) * 8 - reader.position) // 8:
-            raise Refused("wire_damaged", "escape exceeds message batch")
-        reader.position += length * 8
         return
     raise Refused("wire_damaged", "invalid message body kind")
 

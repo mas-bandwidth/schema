@@ -384,7 +384,7 @@ func (c *strictWireChecker) payload(buf []byte, off int, kind int) (int, bool) {
 		return next, true
 	case kind == ir.TableKindUnion:
 		return c.union(buf, off)
-	case kind == ir.TableKindString, kind == ir.TableKindEscape,
+	case kind == ir.TableKindString,
 		kind == ir.TableKindNoPayload, kind == ir.TableKindTable, kind == ir.TableKindArray,
 		kind == ir.TableKindKeyed:
 		n, next, ok := strictReadLeb(buf, off)
@@ -406,8 +406,6 @@ func (c *strictWireChecker) content(b []byte, kind int) bool {
 		return c.scalar(b, kind)
 	case kind == ir.TableKindString:
 		return strictTextValid(b)
-	case kind == ir.TableKindEscape:
-		return true
 	case kind == ir.TableKindNoPayload:
 		return len(b) == 0
 	case kind == ir.TableKindTable, kind == ir.TableKindArray, kind == ir.TableKindKeyed:
@@ -778,15 +776,6 @@ func strictSkipMessageAt(r *strictBitReader, entries []ir.TableVocabularyEntry, 
 	case ir.TableKindString:
 		n, ok := r.get(ir.TableMessageBitsRequired(0, shape.Max))
 		if !ok || !r.align() {
-			return false
-		}
-		return r.skip(int(n) * 8)
-	case ir.TableKindEscape:
-		if !r.align() {
-			return false
-		}
-		n, ok := r.get(32)
-		if !ok {
 			return false
 		}
 		return r.skip(int(n) * 8)

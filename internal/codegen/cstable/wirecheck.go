@@ -246,7 +246,6 @@ const tableWireCheckSource = `
                     return true;
                 case 15: return Union(buf, ref off);
                 case 12:
-                case 31:
                 case 32:
                 case 13:
                 case 14:
@@ -266,7 +265,6 @@ const tableWireCheckSource = `
             switch (kind)
             {
                 case 12: return TextValid(b) || Damage();
-                case 31: return true;
                 case 32: return b.Length == 0 || Damage();
                 case 13:
                 case 14:

@@ -38,6 +38,14 @@ _MAX_DEPTH = 128
 # a collection count above the int32 storage cap
 _COUNT_CAP = 0x7FFFFFFF
 
+# THE KINDS HELD BY NAME AND NEVER WRITTEN (docs/SPEC-TABLES.md §3): 31 was
+# the escape a later major would have written for an older reader to skip, and
+# the newer reader reads old data but never the other way (R17), 33 is retired
+# and 34 is reserved for float16. No writer of this major emits one, so a
+# reader meets them only as damage, at a field or arm it names as at one it
+# cannot, never as a kind mismatch.
+_HELD_KINDS = frozenset((31, 33, 34))
+
 _FIXED_WIDTH = {
     1: 1,
     2: 1,
@@ -349,6 +357,8 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool, map_key: FieldDes
             _unknown_field(reader, field_id, kind, ctx, root)
             continue
         if kind != field.kind:
+            if kind in _HELD_KINDS:
+                raise Refused("wire_damaged", f"kind {kind} is held by name and never written")
             # Decode permitted scalar widening at the writer's width (§4).
             from .kind_array import _widens
 
@@ -805,7 +815,7 @@ def _skip_payload(reader: Reader, kind: int, ctx: Ctx, depth: int) -> None:
     if kind == 15:
         _skip_union(reader, ctx, depth)
         return
-    if kind in (12, 13, 14, 16, 31, 32):
+    if kind in (12, 13, 14, 16, 32):
         length = reader.varint()
         _skip_content(reader.take(length), kind, ctx, depth)
         return
@@ -823,8 +833,6 @@ def _skip_content(data: memoryview, kind: int, ctx: Ctx, depth: int) -> None:
     if kind == 12:
         _check_text(data, "ill-formed text")
         return
-    if kind == 31:
-        return  # opaque: the one kind whose meaning a reader may not know (§3)
     if kind == 32:
         if len(data) != 0:
             raise Refused("wire_damaged", "kind 32 with a nonzero L")

@@ -850,9 +850,9 @@ func TableFixedSignedKind(kind uint8) bool {
 
 // THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing escape, 33
-// is retired and 34 is reserved: none of the four is a kind a declaration
-// spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// optional wrapper 35. 0 is no kind at all, 31 is held by name and never
+// written (R17), 33 is retired and 34 is reserved: none of the four is a kind
+// a declaration spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
 // leaf to step over — the form byte versions the kinds behind it, so a kind
 // this build does not know names a FORM this reader never saw.
 func TableFixedKindKnown(kind uint8) bool {
@@ -2125,10 +2125,11 @@ func TableMessageRefuse(r *TableReport, reason string) bool {
 // repeated entry read before the bound is crossed is damage, as it was when
 // each entry was compared on arrival. It is spelled inline so the emitter
 // claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
-// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
-// stay malformed.
-func TableMessageKnownKind(k uint8) bool { return k <= 32 || k == 36 }
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..30, the
+// payload-free 32 and the timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape
+// table); 31 is held by name and never written (R17), and it, 33, 34, 35 and
+// 37 stay malformed.
+func TableMessageKnownKind(k uint8) bool { return k <= 30 || k == 32 || k == 36 }
 
 func TableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
@@ -2247,11 +2248,7 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		return TableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
-		if !r.Align() {
-			return false
-		}
-		n, ok := r.Get(32)
-		return ok && r.Skip(int64(n)*8)
+		return false // held by name, never written (R17): met only as damage
 	case 14, 16:
 		n, ok := TableMessageCount(r, s)
 		if !ok || n > uint64(s.Max) {
@@ -2528,4 +2525,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x3af2702a313e2e51
+const Version uint64 = 0x0e8702581dce3641

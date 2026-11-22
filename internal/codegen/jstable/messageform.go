@@ -157,7 +157,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -214,7 +214,9 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 32 || k === 36; }
+// 31 is held by name and never written (R17): an announcement naming it is
+// malformed, as one naming 33 or 34 is.
+function TableMessageKnownKind(k) { return k <= 30 || k === 32 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }

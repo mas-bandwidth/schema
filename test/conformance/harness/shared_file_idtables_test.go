@@ -56,7 +56,9 @@ func TestSharedReadableFileIdTables(t *testing.T) {
 		cases = append(cases, fileCase{x.Name, x.Unit, x.Root, x.Wire})
 	}
 	for _, x := range m.Retains {
-		cases = append(cases, fileCase{x.Name, x.Unit, x.Root, x.Wire})
+		if !x.Refused {
+			cases = append(cases, fileCase{x.Name, x.Unit, x.Root, x.Wire})
+		}
 	}
 	for _, x := range m.JSONWriteRefusals {
 		cases = append(cases, fileCase{x.Name, x.Unit, x.Root, x.Wire})

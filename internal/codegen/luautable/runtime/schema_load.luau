@@ -167,7 +167,8 @@ local function r_int128(r: any): any
 	return { lo = lo, hi = hi }
 end
 
--- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3)
+-- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3). Kind 31 is
+-- held by name and never written (R17): like 33 and 34 it is damage, not skipped.
 local function skip(r: any, kind: number): boolean
 	if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then
 		if r.at + 1 > r.e then return false end; r.at = r.at + 1; return true
@@ -179,7 +180,7 @@ local function skip(r: any, kind: number): boolean
 		if r.at + 8 > r.e then return false end; r.at = r.at + 8; return true
 	elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
 		if r.at + 16 > r.e then return false end; r.at = r.at + 16; return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
 		local n = r_leb(r); if r.bad then return false end
 		if r.at + n > r.e then return false end; r.at = r.at + n; return true
 	elseif kind == 15 then
@@ -2065,7 +2066,7 @@ local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 		if at + fixedWidth > e then return nil end
 		return at + fixedWidth
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
 		local n, p = leb(b, at, e)
 		if n == nil or p + n > e then return nil end
 		return p + n
@@ -2385,8 +2386,6 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 		end
 		if kind == 12 then
 			return not utf8_ok(b, s, e - s)
-		elseif kind == 31 then
-			return false
 		elseif kind == 32 then
 			return e ~= s
 		elseif kind == 13 or kind == 14 or kind == 16 then
@@ -2425,7 +2424,7 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 		elseif kind == 30 then
 			local ref, nxt = leb(b, at, e)
 			return ref == nil or nxt ~= e or ref > #ids
-		elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+		elseif kind == 12 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
 			local n, bs = leb(b, at, e)
 			if n == nil or bs + n ~= e then return true end
 			return scanContent(bs, bs + n, kind)

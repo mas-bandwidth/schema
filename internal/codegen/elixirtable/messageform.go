@@ -2068,7 +2068,7 @@ const messageRuntimeBody = `  defstruct announced: false,
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -2224,7 +2224,9 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)

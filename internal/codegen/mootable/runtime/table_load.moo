@@ -50,7 +50,8 @@ local function r_u8(r: any): number
 	return v
 end
 
--- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3)
+-- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3). Kind 31 is
+-- held by name and never written (R17): like 33 and 34 it is damage, not skipped.
 local function skip(r: any, kind: number): boolean
 	local w = V.width(kind)
 	if w > 0 then
@@ -60,7 +61,7 @@ local function skip(r: any, kind: number): boolean
 		r.at += w
 		return true
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
 		local n = r_leb(r)
 		if r.bad or n > r.e - r.at then
 			return false
@@ -2321,7 +2322,7 @@ wcPayload = function(at: number, e: number, kind: number): number?
 		return nxt
 	elseif kind == 15 then
 		return wcUnion(at, e)
-	elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+	elseif kind == 12 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
 		local n, nxt = V.leb(wc.b, at, e)
 		if n == nil or n > e - nxt then
 			wcFail("wire_damaged")
@@ -2350,8 +2351,6 @@ wcContent = function(s: number, e: number, kind: number): boolean
 			return wcFail("wire_damaged")
 		end
 		return true
-	elseif kind == 31 then
-		return true -- opaque: the one kind whose meaning a reader may not know (§3)
 	elseif kind == 32 then
 		if e ~= s then
 			return wcFail("wire_damaged")

@@ -819,7 +819,6 @@ skip_entry = function(R, e, ctx, depth, field)
       or inner.kind == 13
       or (inner.kind >= 14 and inner.kind <= 17)
       or inner.kind == 30
-      or inner.kind == 31
     for _ = 1, n do
       local at = R.off
       if k == 16 then
@@ -846,11 +845,6 @@ skip_entry = function(R, e, ctx, depth, field)
       if R.off == at then return false end
     end
     return true
-  elseif k == 31 then
-    if not R:align() then return false end
-    local n, ok = R:get(32)
-    if not ok then return false end
-    return R:raw(n) ~= nil
   end
   return false
 end
@@ -1387,12 +1381,14 @@ local function read_leb(s, at)
 end
 
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
--- not an entry's to give (§3.3).
+-- not an entry's to give (§3.3). Kind 31 is held by name and never
+-- written (R17): an announcement naming it is malformed, as one naming 33 or 34.
 local function known_kind(kind)
   return kind == 0
     or (kind >= 1 and kind <= 17)
     or (kind >= 18 and kind <= 29)
-    or (kind >= 30 and kind <= 32)
+    or kind == 30
+    or kind == 32
     or kind == 36
 end
 
@@ -1430,7 +1426,6 @@ local function read_shape(e, s, at)
     or kind == 15
     or kind == 17
     or kind == 30
-    or kind == 31
     or kind == 32
     or kind == 36
   then
@@ -1686,10 +1681,6 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
       local s = buf:sub(np, np + n - 1)
       if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
       return np + n
-    elseif k == 31 then
-      local n, np = read_leb(buf, pos)
-      if n == nil or math.ult(lim - np + 1, n) then return nil end
-      return np + n
     elseif k == 32 then
       local n, np = read_leb(buf, pos)
       if n == nil or np - 1 > lim or n ~= 0 then return nil end
@@ -1758,8 +1749,6 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
       if ak == 12 then
         local s = buf:sub(anp, aEnd)
         if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
-        return aEnd + 1
-      elseif ak == 31 then
         return aEnd + 1
       elseif ak == 32 then
         return (n == 0) and (aEnd + 1) or nil

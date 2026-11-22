@@ -1554,11 +1554,6 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
       // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
       return tableTextValid(r.bits.buffer, start, n);
-    case 31:
-      if (!r.bits.align()) return false;
-      final n = r.bits.get(32);
-      if (r.bits.failed) return false;
-      return r.bits.skip(n * 8);
     case 10:
       // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
       // a raw NaN or infinity is refused on its bits, and a quantized index

@@ -827,8 +827,8 @@ function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n =
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
-// reserved: none is a kind a declaration spells, so none is ever an entry's
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired
+// and 34 is reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
@@ -1705,7 +1705,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -1762,7 +1762,9 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 32 || k === 36; }
+// 31 is held by name and never written (R17): an announcement naming it is
+// malformed, as one naming 33 or 34 is.
+function TableMessageKnownKind(k) { return k <= 30 || k === 32 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -2238,11 +2240,8 @@ export function tableMessageSkip(r, v, indexBits, e, depth, atField = false) {
       const at = r.Offset >> 3;
       return r.Skip(globalThis.Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, globalThis.Number(n));
     }
-    case 31: {
-      if (!r.Align()) { return false; }
-      const [n, ok] = r.Get(32);
-      return ok && r.Skip(globalThis.Number(n) * 8);
-    }
+    // 31 is held by name and never written (R17): met only as damage
+    case 31: { return false; }
     case 10: {
       if (s.Packing === 2) {
         const [v, ok] = tableMessageReadScalar(r, s);

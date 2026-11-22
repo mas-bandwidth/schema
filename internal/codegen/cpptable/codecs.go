@@ -2309,7 +2309,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                        break;\n                    }\n")
 			}
 			g.pf("                    // AT A POSITION THE READER DOES NAME, a field under\n")
-			g.pf("                    // kind 31 or kind 32 takes this same rule and no other (§3)\n")
+			g.pf("                    // kind 32 takes this same rule and no other (§3)\n")
 			g.pf("                    r.report->refused = true;\n")
 			g.pf("                    r.report->refuse_reason = kind_mismatch;\n")
 			g.pf("                    if ( !r.skip( kind ) )\n                    {\n                        r.report->damaged = true;\n                        return false;\n                    }\n")

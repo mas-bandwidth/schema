@@ -297,6 +297,7 @@ end
 
 -- skipping a field the reader cannot name (§3): fixed widths first, then
 -- references, then lengths, and a unknown kind is damage (not skippable).
+-- Kind 31 is held by name and never written (R17): it is met only as damage.
 local function skip(r, kind)
   local w = width_of(kind)
   if w > 0 then
@@ -308,7 +309,7 @@ local function skip(r, kind)
     r_leb(r)
     return not r.bad
   end
-  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
     local n = r_leb(r)
     if r.bad or not fits(r, n) then return false end
     r.at = r.at + n
@@ -2547,7 +2548,7 @@ wc_payload = function(c, b, at, lim, kind)
     return nx
   elseif kind == 15 then
     return wc_union(c, b, at, lim)
-  elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+  elseif kind == 12 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
     local n, nx = wc_leb(b, at, lim)
     if n == nil or above(n, lim - nx) then return wc_fail(c, "wire_damaged") end
     if not wc_content(c, b, nx, nx + n, kind) then return nil end
@@ -2565,8 +2566,6 @@ wc_content = function(c, b, at, lim, kind)
   end
   if kind == 12 then
     if not wc_text(b, at, lim) then return wc_fail(c, "wire_damaged") end
-    return true
-  elseif kind == 31 then
     return true
   elseif kind == 32 then
     if lim ~= at then return wc_fail(c, "wire_damaged") end

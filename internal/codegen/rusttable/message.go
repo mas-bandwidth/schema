@@ -585,8 +585,10 @@ fn bits_required(count: usize) -> u32 {
     64 - (count as u64).leading_zeros()
 }
 
+/// 31 is held by name and never written (R17): an announcement naming it is
+/// malformed, as one naming 33 or 34 is.
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=32).contains(&kind) || kind == 36
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || kind == 30 || kind == 32 || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -817,7 +819,8 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
 /// enum's variant by one LEB128, the framed kinds by one LEB128 length and
 /// that many bytes, and a union by its arm reference, its arm's kind byte, one
 /// length and that many bytes. A kind outside the set is not skippable, which
-/// is why the set is closed and why kind 31 exists (§3).
+/// is why the set is closed; kind 31 is held by name and never written
+/// (R17), so it too is damage here (§3).
 fn skip_field(
     bytes: &[u8],
     at: &mut usize,
@@ -892,14 +895,6 @@ fn skip_field(
             let s = &bytes[*at..*at + n as usize];
             *at += n as usize;
             !s.contains(&0) && core::str::from_utf8(s).is_ok()
-        }
-        31 => {
-            let (n, ok) = read_leb(bytes, at);
-            if !ok || n > (bytes.len() - *at) as u64 {
-                return false;
-            }
-            *at += n as usize;
-            true
         }
         32 => {
             let (n, ok) = read_leb(bytes, at);
@@ -980,8 +975,6 @@ fn skip_field(
             *at += n as usize;
             if ak == 12 {
                 !sub.contains(&0) && core::str::from_utf8(sub).is_ok()
-            } else if ak == 31 {
-                true
             } else if ak == 32 {
                 n == 0
             } else if ak == 13 {

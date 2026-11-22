@@ -550,17 +550,6 @@ public final class TableMessage {
                     final int start = r.atByte();
                     return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
                 }
-            case 31:
-                {
-                    if (!r.align()) {
-                        return false;
-                    }
-                    long n = r.get(32);
-                    if (r.err) {
-                        return false;
-                    }
-                    return r.skipBits(n * 8L);
-                }
             case 14:
             case 16:
                 {

@@ -271,11 +271,8 @@ export function tableMessageSkip(r, v, indexBits, e, depth, atField = false) {
       const at = r.Offset >> 3;
       return r.Skip(globalThis.Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, globalThis.Number(n));
     }
-    case 31: {
-      if (!r.Align()) { return false; }
-      const [n, ok] = r.Get(32);
-      return ok && r.Skip(globalThis.Number(n) * 8);
-    }
+    // 31 is held by name and never written (R17): met only as damage
+    case 31: { return false; }
     case 10: {
       if (s.Packing === 2) {
         const [v, ok] = tableMessageReadScalar(r, s);

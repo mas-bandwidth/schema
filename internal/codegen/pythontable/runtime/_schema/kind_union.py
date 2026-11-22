@@ -23,7 +23,7 @@ from .descriptor import ArmDesc, FieldDesc
 
 # The kinds whose FIELD payload begins with its own length: an arm holds the
 # bytes after that length, so the arm's L is that length.
-_LENGTH_KINDS = frozenset((12, 13, 14, 16, 31, 32))
+_LENGTH_KINDS = frozenset((12, 13, 14, 16, 32))
 # a collection count above the int32 storage cap (§2.9)
 _COUNT_CAP = 0x7FFFFFFF
 
@@ -82,6 +82,8 @@ def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
         ctx.unknown += 1
         return un()
     if kind != arm.kind:
+        if kind in _load._HELD_KINDS:
+            raise Refused("wire_damaged", f"kind {kind} is held by name and never written")
         from .kind_array import _widens
 
         if arm.field is None or not _widens(kind, arm.kind):

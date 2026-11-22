@@ -609,7 +609,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 32 || kind == 36);
+/// 31 is held by name and never written (R17): an announcement naming it is
+/// malformed, as one naming 33 or 34 is.
+bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 30 || kind == 32 || kind == 36);
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -668,7 +670,7 @@ int tableMessageKindWidth(int kind) {
 /// tableMessageSkipField steps over ONE unknown body field's payload by its
 /// kind (docs/SPEC-TABLES.md §3.3), the reference's Skip(kind) rule: a
 /// fixed-width scalar is its width, a reference or a union is a LEB, and a
-/// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
+/// length-prefixed slice — 12, 13, 14, 16, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
 bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
@@ -696,7 +698,6 @@ bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
 
 int tableMessageSkipFramed(Uint8List bytes, ByteData view, int start, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
   if (kind == 12) return tableMessageAnnounceUtf8(bytes, start, end) ? end : -1;
-  if (kind == 31) return end;
   if (kind == 32) return start == end ? end : -1;
   if (kind == 13) {
     if (depth >= 128) return -1;
@@ -788,7 +789,6 @@ int tableMessageSkipChecked(Uint8List bytes, ByteData view, int at, int end, int
     case 13:
     case 14:
     case 16:
-    case 31:
     case 32:
       final n = tableMessageLeb(bytes, at, end);
       if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;

@@ -330,12 +330,13 @@ instance optional_present_edge    tblg1 Guarded testdata/wire/tables/optional_pr
 report k1_as_k2  tblk2 Root testdata/wire/tables/k1_as_k2.bin
 report k2_as_k1  tblk1 Root testdata/wire/tables/k2_as_k1.bin
 
-# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Where the reader meets them
-# decides which event it counts: at a position it CANNOT name the escape is
-# skipped by its L and counted unknown, and at a position it DOES name — a
-# field, an arm, an array's element kind — it is an ordinary kind mismatch, on
-# the rule every other kind already takes. The bytes are the reference leg's,
-# built from §3's grammar and pinned by test/tables/main.cpp.
+# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Kind 31 is HELD BY NAME AND
+# NEVER WRITTEN (R17: the newer reader reads old data, never the other way),
+# so wherever a reader meets it — a field it cannot name, one it does, an arm,
+# an array's element kind — the whole load is refused, exactly as for 33
+# and 34. Kind 32 at a named field is an ordinary kind mismatch. The bytes
+# are the reference leg's, built from §3's grammar and pinned by
+# test/tables/main.cpp.
 report escape_unnamed_field   messagedemo ToolMessage testdata/wire/tables/escape_unnamed_field.bin
 report escape_named_field     messagedemo ToolMessage testdata/wire/tables/escape_named_field.bin
 report escape_arm             messagedemo ToolMessage testdata/wire/tables/escape_arm.bin
@@ -1616,10 +1617,12 @@ report varevo_v3_full_as_v1   tblvarevo1 EvoDoc testdata/conformance/tables/wire
 retain varevo_retain_v3_via_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin full full testdata/wire/tables/varevo_retain_v1_save.bin
 report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
 
-# Track C Part 1.1 — 2-Hop Multi-Generation Retention (v3 + Kind 31 -> v1 LoadRetain/SaveRetain -> v2 LoadRetain/SaveRetain -> v3):
-retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full testdata/wire/tables/varevo_2hop_after_v1.bin
+# Track C Part 1.1 — 2-Hop Multi-Generation Retention, carrying Kind 31: every hop is REFUSED, as
+# kind 31 is held by name and never written (R17). The hop files stay as hostile inputs:
+# the kind 31 rides at the root of the first and inside retained bytes of the later two.
+retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full refused
 report  varevo_2hop_step2_v2_report  tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
-retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full testdata/wire/tables/varevo_2hop_after_v2.bin
+retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full refused
 report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 
 # Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
@@ -1637,11 +1640,11 @@ report  varevo_cycle_two_unknowns_report      tblvarevo1 EvoDoc testdata/wire/ta
 retain varevo_retain_default_containers tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin full full testdata/wire/tables/varevo_retain_default_containers_v1.bin
 report varevo_default_containers_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
 
-# Kind 31 future-major escape payloads (VERSIONING.md Rule #6): skip on framing/report, byte-exact preserve on retain, refuse truncated:
-framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    read    testdata/conformance/tables/framing/varevo_kind31_escape.json
+# Kind 31 is HELD BY NAME AND NEVER WRITTEN (R17; VERSIONING.md promise 6): refused on framing, report and retain alike:
+framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    refused -
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
 report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full testdata/wire/tables/varevo_kind31_retain_save.bin
+retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full refused
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
 connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin
@@ -1756,12 +1759,8 @@ rewrite varevo_v1_ping_as_v3            tblvarevo3 EvoDoc testdata/conformance/t
 rewrite varevo_v2_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
 rewrite varevo_v3_compat_as_v1          tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
 rewrite varevo_rollback_as_v3           tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
-rewrite varevo_2hop_step2_v2_report     tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
 rewrite fixed_array_rides_absent tblvarevo1 EvoDoc testdata/wire/tables/framing/fixed_array_rides_absent.bin
-rewrite varevo_2hop_step3_v3_report     tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 rewrite varevo_default_containers_as_v3 tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
-rewrite varevo_kind31_escape            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-rewrite varevo_kind31_report            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 
 # ---- ROUND 2 & 3: PILLAR #3 COOK & BLOCK SIGNED/UNSIGNED EXTREMES, ALIGNMENT & FORGERY TORTURE ----
 unit cooktorture     test/tables/cooktorture/CookTorture.schema

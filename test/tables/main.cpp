@@ -7551,31 +7551,30 @@ static void test_enum_kind_against_the_raw_integer()
 
 // ---- KIND 31 AND KIND 32, AT EVERY POSITION (docs/SPEC-TABLES.md §3) ------
 //
-// WHERE THE READER MEETS THEM DECIDES WHICH EVENT IT COUNTS. At a position it
-// CANNOT name, the escape kind is skipped by its L and counted `unknown`,
-// exactly as a field whose id the reader cannot name is. At a position it DOES
-// name, a field or an arm arriving under kind 31 or kind 32 where the
-// declaration says otherwise is an ordinary kind mismatch. One rule decides it,
-// and it is the rule every other kind already takes. Each row is pinned so
-// every leg answers the same bytes.
-static void test_escape_and_payload_free_kinds()
+// KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17: the newer reader reads old
+// data, never the other way). A reader meets it only as DAMAGE, wherever it
+// sits: at a field it cannot name, at one it does name, at an arm and as an
+// element kind, the whole load refuses wire_damaged, exactly as it refuses 33
+// and 34. Kind 32 where a declaration says otherwise is an ordinary kind
+// mismatch. Each row is pinned so every leg answers the same bytes.
+static void test_held_kind31_and_payload_free_kinds()
 {
-    // (1) AT A FIELD THE READER CANNOT NAME: skipped by its L, counted unknown
+    // (1) AT A FIELD THE READER CANNOT NAME: damage, the whole load refuses
     {
         uint8_t wire[256];
         WireBuilder b;
-        b.field( 0xBEEFBEEFBEEFBEEFull, 31 ); // the escape, under an id no build names
+        b.field( 0xBEEFBEEFBEEFBEEFull, 31 ); // kind 31, under an id no build names
         b.leb( 3 );
-        b.u8( 1 ); b.u8( 2 ); b.u8( 3 );      // opaque: a kind a later major added
+        b.u8( 1 ); b.u8( 2 ); b.u8( 3 );      // no writer of this major emits it
         b.end();
         const int64_t n = b.finish( wire );
         pin_table_golden( "escape_unnamed_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
-        CHECK( report.unknown == 1 && !report.damaged );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == messagedemo::wire_damaged && report.unknown == 0 && report.damaged );
     }
-    // (2) AT A FIELD IT DOES NAME: an ordinary kind mismatch, which refuses the load
+    // (2) AT A FIELD IT DOES NAME: damage, not a kind mismatch
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7588,16 +7587,16 @@ static void test_escape_and_payload_free_kinds()
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
         CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
-        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
+        CHECK( report.refuse_reason == messagedemo::wire_damaged && report.unknown == 0 && report.damaged );
         CHECK( out.sequence == 0 );
     }
-    // (3) AT AN ARM: a kind mismatch, which refuses the load; the union reads None
+    // (3) AT AN ARM: damage, which refuses the load; the union reads None
     {
         uint8_t wire[256];
         WireBuilder b;
         b.field( "body", 15 );
         b.leb( b.ref( "ping" ) );
-        b.u8( 31 );                           // the escape where a body is declared
+        b.u8( 31 );                           // kind 31 where a body is declared
         b.leb( 2 );
         b.u8( 7 ); b.u8( 7 );
         b.end();
@@ -7606,7 +7605,7 @@ static void test_escape_and_payload_free_kinds()
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
         CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
-        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
+        CHECK( report.refuse_reason == messagedemo::wire_damaged && report.unknown == 0 && report.damaged );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
     // Bytes after a whole nested union inside its arm frame are damage
@@ -9619,7 +9618,7 @@ int main()
     RUN( test_unwritten_fields_are_not_edges );
     RUN( test_absent_optional_is_not_descended );
     RUN( test_enum_kind_against_the_raw_integer );
-    RUN( test_escape_and_payload_free_kinds );
+    RUN( test_held_kind31_and_payload_free_kinds );
     RUN( test_arm_kind_pins );
     RUN( test_pointer_arrays_element_kind_mismatch );
     RUN( test_pointer_arrays_count_past_bound );

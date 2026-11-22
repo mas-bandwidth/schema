@@ -813,7 +813,7 @@ tr_payload = function(r, atable, kind, depth, w)
     r.at = r.at + width
     return true
   end
-  if kind == 12 or kind == 31 or kind == 32 then
+  if kind == 12 or kind == 32 then
     local n = tr_leb(r)
     if r.bad or not tr_has(r, n) then return false end
     cw_leb(w, n)
@@ -920,7 +920,7 @@ end
 out_payload = function(o, kind, depth)
   local width = kind_width(kind)
   if width ~= 0 then return out_raw(o, width) end
-  if kind == 12 or kind == 31 or kind == 32 then
+  if kind == 12 or kind == 32 then
     local n = tr_leb(o.r)
     if o.r.bad or not tr_has(o.r, n) then return false end
     out_leb(o.w, n)
@@ -1122,7 +1122,7 @@ local function wire_skip(r, kind)
     tr_leb(r)
     return not r.bad
   end
-  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
     local n = tr_leb(r)
     if r.bad or not tr_has(r, n) then return false end
     r.at = r.at + n

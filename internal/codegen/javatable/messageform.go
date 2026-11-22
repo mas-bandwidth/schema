@@ -525,7 +525,9 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 32 || kind == 36;
+        // 31 is held by name, never written (R17): an announcement naming it is
+        // malformed, as one naming 33 or 34 is
+        return kind <= 30 || kind == 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -1189,12 +1191,6 @@ public final class TableMessage {
                 // this reader does not keep are still damage when ill-formed.
                 final int start = r.atByte();
                 return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
-            }
-            case 31: {
-                if (!r.align()) { return false; }
-                long n = r.get(32);
-                if (r.err) { return false; }
-                return r.skipBits(n * 8L);
             }
             case 14: case 16: {
                 // AN ARRAY OR KEYED BODY IS ONE LEVEL DEEPER (§4): a body past

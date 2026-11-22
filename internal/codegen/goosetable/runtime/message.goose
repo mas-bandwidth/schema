@@ -219,8 +219,10 @@ fn msg_fixed_kind(k: u8) -> bool { k >= 20 && k <= 29 }
 fn msg_wide_kind(k: u8) -> bool { k == 18 || k == 19 || k == 24 || k == 29 }
 fn msg_signed_kind(k: u8) -> bool { (k >= 2 && k <= 5) || (k >= 20 && k <= 23) }
 
-// msg_known_kind is §3's closed set and the 0 of a name.
-fn msg_known_kind(k: u8) -> bool { k <= 32 }
+// msg_known_kind is §3's closed set and the 0 of a name. Kind 31 is held by
+// name and never written (R17): an announcement naming it is malformed, as one
+// naming 33 or 34 is.
+fn msg_known_kind(k: u8) -> bool { k <= 32 && k != 31 }
 
 // msg_kind_bits is the widest RANGED value a kind carries, its own storage
 // width: a width above it is a hostile width on the announcement.
@@ -393,7 +395,7 @@ fn msg_file_skip(data: const u8[:], off: i64&, end: i64, kind: u8) -> bool {
         if ok { off = next; }
         return ok;
     }
-    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 {
+    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 32 {
         let n, next, ok = leb_at(data, off, end);
         if !ok || n > (end - next) as! u64 { return false; }
         off = next + (n as! i64);
@@ -920,12 +922,6 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         if !r.ok || !msg_align_read(r) { return false; }
         if r.end < r.pos || n > ((r.end - r.pos) / 8) as! u64 { return false; }
         if !fixed_utf8_ok(r.b, r.pos >> 3, n as! i64) { return msg_damage(r); }
-        return msg_skip_run(r, n, 8);
-    }
-    if kind == 31 {
-        if !msg_align_read(r) { return false; }
-        let n = msg_get(r, 32);
-        if !r.ok { return false; }
         return msg_skip_run(r, n, 8);
     }
     if kind == 10 {

@@ -477,7 +477,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {

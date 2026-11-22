@@ -615,10 +615,11 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 // repeated entry read before the bound is crossed is damage, as it was when
 // each entry was compared on arrival. It is spelled inline so the emitter
 // claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
-// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
-// stay malformed.
-func tableMessageKnownKind(k uint8) bool { return k <= 32 || k == 36 }
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..30, the
+// payload-free 32 and the timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape
+// table); 31 is held by name and never written (R17), and it, 33, 34, 35 and
+// 37 stay malformed.
+func tableMessageKnownKind(k uint8) bool { return k <= 30 || k == 32 || k == 36 }
 func tableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
 		return 0
@@ -849,11 +850,7 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		return tableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
-		if !r.Align() {
-			return false
-		}
-		n, ok := r.Get(32)
-		return ok && r.Skip(int64(n)*8)
+		return false // held by name, never written (R17): met only as damage
 	case 14, 16:
 		n, ok := tableMessageCount(r, s)
 		if !ok || n > uint64(s.Max) {

@@ -923,6 +923,7 @@ public final class TableRetain {
             return false;
         }
         switch (kind) {
+            case 31: // held by name, never written (R17): met only as damage
             case 17:
                 return false;
             case 13:
@@ -1075,7 +1076,6 @@ public final class TableRetain {
                 }
                 break;
             case 12:
-            case 31:
             case 32:
                 {
                     long n = r.leb();
@@ -1199,6 +1199,8 @@ public final class TableRetain {
             int end,
             int kind) {
         switch (kind) {
+            case 31: // held by name, never written (R17): met only as damage
+                return false;
             case 13:
                 return emitBody(w, retain, report, b, at, end);
             case 14:
@@ -1311,7 +1313,6 @@ public final class TableRetain {
                 at[0] += 16;
                 return true;
             case 12:
-            case 31:
             case 32:
                 {
                     long n = getLeb(b, at);

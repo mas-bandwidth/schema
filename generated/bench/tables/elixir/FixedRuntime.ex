@@ -747,8 +747,9 @@ defmodule Benchtable.FixedRuntime do
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   # the no-payload variant 32, and the ONE kind this form's layout adds, the
-  # optional wrapper 35, plus timestamp 36. 31 is §3's body framing escape, 33
-  # is retired and 34 is reserved: none is a kind a declaration spells.
+  # optional wrapper 35, plus timestamp 36. 31 is held by name and never
+  # written (R17), 33 is retired and 34 is reserved: none is a kind a
+  # declaration spells, and a reader meets each only as damage.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
   defp known_kind?(kind), do: kind == 32 or kind == 35 or kind == 36
 

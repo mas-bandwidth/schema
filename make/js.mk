@@ -690,7 +690,7 @@ test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-nod
 # §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
 # by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
 # enum, table and pointer elements, the rest of the scalar kinds, bytes(N), the
-# escape kind and the text form's &node sharing — held byte for byte against the
+# held kind 31 (refused whole) and the text form's &node sharing — held byte for byte against the
 # Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
 # the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
 # construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.

@@ -951,13 +951,14 @@ test-java: tables-java-block-build
 # blob and list corpora round-trip against the committed reference bytes. It is
 # the variable class beyond the card constructs — *bytes blobs, unbounded
 # arrays of scalars/strings/enums, arrays of pointers and pointers outside a
-# list element, the 64-bit id-table escape kind and the §16.7 sharing text.
+# list element, the 64-bit id-table wire refusing the held kind 31 (R17) and the
+# §16.7 sharing text.
 # `SCHEMA_REQUIRE_CORPUS=1` turns a missing-oracle skip into a FAILURE, so under
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestEscapeKind31SkippedAndCountedJava'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed

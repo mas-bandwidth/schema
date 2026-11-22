@@ -124,7 +124,9 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 			if len(f) >= 10 {
 				save = f[9]
 			}
-			if save != "-" {
+			// A row that owes a refusal (kind 31 is held by name, R17) saves
+			// nothing, so it is no retain-save case.
+			if save != "-" && save != "refused" {
 				var saves strings.Builder
 				for p := range strings.SplitSeq(save, ",") {
 					saves.WriteString(read(p))

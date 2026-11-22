@@ -114,7 +114,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("\t\t\t\t}\n")
 		}
 		// A KIND THAT IS NOT THE DECLARED ONE AND NOT A WIDENING REFUSES the
-		// load (docs/SPEC-TABLES.md §4); kinds 31 and 32 take the same rule.
+		// load (docs/SPEC-TABLES.md §4); kind 32 takes the same rule, and
+		// kind 31, held by name and never written (R17), is refused before here
+		// as damage by the wire check.
 		g.pf("\t\t\t\t%s\n", refuse("TableRefuseKindMismatch", g.floatOwner(f), "return false"))
 		g.pf("\t\t\t}\n")
 		g.elides = false

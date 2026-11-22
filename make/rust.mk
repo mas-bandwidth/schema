@@ -707,7 +707,7 @@ test-rust:
 # §16.7): the constructs the card record does not use but the variable class
 # carries — table pointers over the flat node table, tables nested by value,
 # blobs, unbounded and bounded arrays of scalar, enum, table and pointer
-# elements, the rest of the scalar kinds, bytes(N), the escape kind and the
+# elements, the rest of the scalar kinds, bytes(N), the held kind 31 (refused whole) and the
 # text form's &node sharing — held byte for byte against the Go oracle over
 # tables/pointers, tables/blobs and tables/lists by
 # TestVariableClassBeyondCardConstructsRust, and every construct the leg still

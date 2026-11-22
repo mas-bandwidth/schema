@@ -61,7 +61,7 @@ as a text kind; `string(N)` (`12`) is the only text kind in a layout. **The hash
 **the 4-byte count included**, and then over the DEFINITIONS DIGEST (§5.2) — the facts a range, a `bits(N)`, a
 `fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. A
 legacy empty digest leaves the hash the layout's alone; prospective v2 roots always include their identity prefix (§5.2). It is a wire identity, never a security claim (fix 8). **The closed
-kind set is `1..30`, `32`, `35`** — `31` (§3's framing escape), `33` (retired) and `34` (reserved) are not in it, and a
+kind set is `1..30`, `32`, `35`** — `31` (held by name and never written, R17), `33` (retired) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
 
 **THE KIND CODES, the whole closed set.** A port needs the NUMBERS and not only the set's shape, and they are
@@ -75,7 +75,7 @@ wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/
 | `6` `7` `8` `9` | u8, u16, u32, u64 | `20`–`24` | `fixed(I,F)` SIGNED, at 8/16/32/64/128 storage bits |
 | `10` `11` | f32, f64 | `25`–`29` | `ufixed(I,F)` UNSIGNED, the same five widths |
 | `12` | string(N) | `30` | enum |
-| `13` | table | `31` | §3's framing escape — **NOT in the closed set** |
+| `13` | table | `31` | held by name and never written (R17) — **NOT in the closed set** |
 | `14` | array — and `bytes(N)`, as an array of `6` | `32` | a variant, or a payload-free arm: size `0`, no children |
 | `15` | union | `33` | retired (wide text) — **NOT in the closed set** |
 | `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |

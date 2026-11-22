@@ -103,7 +103,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
   if ref!=0 { r.meetFirstUse(ref) }
  case 15:
   return c.union(r)
- case 12, 13, 14, 16, 31, 32:
+ case 12, 13, 14, 16, 32:
   sub,ok:=r.Body()
   if !ok || !c.framed(sub,kind) { return 0,c.fail(TableRefuseWireDamaged) }
  default:
@@ -122,8 +122,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
  switch kind {
  case 12:
   return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
- case 31:
-  return true
  case 32:
   return len(sub.Buffer)==0 || c.fail(TableRefuseWireDamaged)
  case 13, 14, 16:

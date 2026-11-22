@@ -319,7 +319,6 @@ internal static partial class TableWire
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     return Slice(out _);
                 case 15:
@@ -569,7 +568,6 @@ internal static partial class TableWire
                     return true;
                 case 15: return Union(buf, ref off);
                 case 12:
-                case 31:
                 case 32:
                 case 13:
                 case 14:
@@ -589,7 +587,6 @@ internal static partial class TableWire
             switch (kind)
             {
                 case 12: return TextValid(b) || Damage();
-                case 31: return true;
                 case 32: return b.Length == 0 || Damage();
                 case 13:
                 case 14:
@@ -1300,7 +1297,7 @@ internal static partial class TableWire
 
     static int BitCount(ulong n) { return n == 0 ? 0 : Log2Bits(n) + 1; }
     static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-    static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
+    static bool MessageKind(byte kind) { return kind <= 30 || kind == 32 || kind == 36; } // 31 is held by name, never written (R17): an announcement naming it is malformed, as one naming 33 or 34 is
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
     static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
     static int ValueBits(byte kind, TableMessageShape s)
@@ -1663,8 +1660,6 @@ internal static partial class TableWire
                 if (!r.Get(BitCount(shape.Max), out UInt128Value length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
                 if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
                 r.At += (long)length * 8; return true;
-            case 31:
-                return r.Align() && r.Get(32, out UInt128Value opaque) && r.Skip((long)opaque * 8);
             case 14:
             case 16:
                 ulong min = kind == 16 ? 0 : shape.Min;
