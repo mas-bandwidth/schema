@@ -12,8 +12,9 @@ import (
 	"testing"
 )
 
-// boundedChildDirs are the packages whose tests start an interpreter, and the
-// helper packages that start it for them. Every child process they start goes
+// boundedChildDirs are the packages whose tests start an interpreter or a
+// compiled leg's toolchain and binaries, and the helper packages that start
+// them for them. Every child process they start goes
 // through internal/testproc, which kills it with its process group when the
 // test ends, before the test binary's deadline, and (on Linux) when the binary
 // dies (review-owed/ci-tools/test-children-bounded:
@@ -30,6 +31,13 @@ var boundedChildDirs = []string{
 	"internal/codegen/python", "internal/codegen/pythontable", "internal/codegen/python/pyrun",
 	"internal/codegen/ruby", "internal/codegen/rubytable", "internal/codegen/ruby/rubyrun",
 	"internal/codegen/squirrel", "internal/codegen/squirreltable", "internal/codegen/squirrel/sqrun",
+	"internal/codegen/c", "internal/codegen/ctable",
+	"internal/codegen/cpp", "internal/codegen/cpptable",
+	"internal/codegen/csharp", "internal/codegen/cstable", "internal/codegen/unitytable",
+	"internal/codegen/golang", "internal/codegen/gotable", "internal/codegen/gotable/fuzzunit",
+	"internal/codegen/java", "internal/codegen/javatable",
+	"internal/codegen/rust", "internal/codegen/rusttable",
+	"compiler",
 	"tools/namebuild",
 }
 
@@ -86,7 +94,7 @@ func TestEveryTestChildIsBounded(t *testing.T) {
 		}
 		for _, e := range entries {
 			n := e.Name()
-			if e.IsDir() || !strings.HasSuffix(n, ".go") || (!helperDir(dir) && !strings.HasSuffix(n, "_test.go")) {
+			if e.IsDir() || !judgedFile(dir, n) {
 				continue
 			}
 			rel := filepath.ToSlash(filepath.Join(dir, n))

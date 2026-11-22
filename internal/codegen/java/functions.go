@@ -398,7 +398,7 @@ func (g *gen) emitReadFunction(name string, walk func(ind string)) {
 		g.use("loadTail")
 		g.bpf("        // the final 64-bit window, assembled once so every load stays inside\n")
 		g.bpf("        // the buffer (the family's no-slack reader stance)\n")
-		g.bpf("        final int tailBase = Math.max(data.length - 8, 0);\n")
+		g.bpf("        final int tailBase = java.lang.Math.max(data.length - 8, 0);\n")
 		g.bpf("        final long tailWord = loadTail(data);\n")
 	}
 	if body == "" {
@@ -762,10 +762,10 @@ func (g *gen) assertRange(expr string, min, max *big.Int, signedDomain bool, ind
 	}
 	// unsigned 64-bit domain: bit-transparent compares
 	if min.Sign() > 0 {
-		g.pf("%sassert Long.compareUnsigned(%s, %s) >= 0;\n", ind, expr, javaIntLit(min))
+		g.pf("%sassert java.lang.Long.compareUnsigned(%s, %s) >= 0;\n", ind, expr, javaIntLit(min))
 	}
 	if max.Cmp(maxUint64Big) < 0 {
-		g.pf("%sassert Long.compareUnsigned(%s, %s) <= 0;\n", ind, expr, javaIntLit(max))
+		g.pf("%sassert java.lang.Long.compareUnsigned(%s, %s) <= 0;\n", ind, expr, javaIntLit(max))
 	}
 }
 
@@ -856,7 +856,7 @@ func (g *gen) emitWriteBulk(src, lenBytes, lenBits, ind string) {
 	g.pf("%s// byte-aligned payload — the fused bulk copy (flush, copy, reload),\n", ind)
 	g.pf("%s// wire-identical to the per-byte merge\n", ind)
 	g.store(ind)
-	g.pf("%sSystem.arraycopy(%s, 0, data, pos >>> 3, %s);\n", ind, src, lenBytes)
+	g.pf("%sjava.lang.System.arraycopy(%s, 0, data, pos >>> 3, %s);\n", ind, src, lenBytes)
 	g.pf("%spos += %s;\n", ind, lenBits)
 }
 
@@ -999,10 +999,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			return
 		}
 		// the raw bits of a finite value: -0 and subnormals bit exact
-		g.putW(fmt.Sprintf("Float.floatToRawIntBits(%s) & 0xffffffffL", name), 32, ind)
+		g.putW(fmt.Sprintf("java.lang.Float.floatToRawIntBits(%s) & 0xffffffffL", name), 32, ind)
 	case ir.TFloat64:
 		g.pf("%s{\n", ind)
-		g.pf("%s    final long b = Double.doubleToRawLongBits(%s);\n", ind, name)
+		g.pf("%s    final long b = java.lang.Double.doubleToRawLongBits(%s);\n", ind, name)
 		g.emitWriteWide64("b", 64, ind+"    ")
 		g.pf("%s}\n", ind)
 	case ir.TString, ir.TBytes:
@@ -1046,7 +1046,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%s    }\n", ind)
 	g.pf("%s    // two roundings, not one: the product rounds to float32 BEFORE 0.5\n", ind)
 	g.pf("%s    // is added, and the sum rounds before the floor (SPEC §4.3)\n", ind)
-	g.pf("%s    v = (long) Math.floor(n * %sf + 0.5f);\n", ind, f32lit(float64(mivF)))
+	g.pf("%s    v = (long) java.lang.Math.floor(n * %sf + 0.5f);\n", ind, f32lit(float64(mivF)))
 	g.pf("%s    if (v > %dL) v = %dL;\n", ind, maxInt, maxInt)
 	g.pf("%s}\n", ind)
 	g.needV = true
@@ -1305,7 +1305,7 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 			// port's readBytes, wire-identical to the per-byte loop
 			g.usesRead = true
 			g.pf("%sif ((bitsRead & 7) == 0) {\n", ind)
-			g.pf("%s    System.arraycopy(data, bitsRead >>> 3, %s, 0, %d);\n", ind, name, f.ArrayBound)
+			g.pf("%s    java.lang.System.arraycopy(data, bitsRead >>> 3, %s, 0, %d);\n", ind, name, f.ArrayBound)
 			g.pf("%s    bitsRead += %s;\n", ind, javaIntLit(big.NewInt(f.ArrayBound*8)))
 			g.pf("%s} else {\n", ind)
 			g.emitReadLoop(f, name, fmt.Sprint(f.ArrayBound), ind+"    ", true)
@@ -1399,7 +1399,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%s%s = (int) v;\n", ind, length)
 	g.emitReadAlign(ind)
 	g.boundRead(length+" * 8L", ind)
-	g.pf("%sSystem.arraycopy(data, bitsRead >>> 3, %s, 0, %s);\n", ind, name, length)
+	g.pf("%sjava.lang.System.arraycopy(data, bitsRead >>> 3, %s, 0, %s);\n", ind, name, length)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
 		g.emitReadUTF8(name, length, ind)
@@ -1473,11 +1473,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		}
 		g.readR(32, ind)
 		g.pf("%sif ((v & 0x7f800000L) == 0x7f800000L) {\n%s    return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)\n%s}\n", ind, ind, ind)
-		g.pf("%s%s = Float.intBitsToFloat((int) v);\n", ind, name)
+		g.pf("%s%s = java.lang.Float.intBitsToFloat((int) v);\n", ind, name)
 	case ir.TFloat64:
 		g.emitReadWide64(64, ind)
 		g.pf("%sif ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {\n%s    return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)\n%s}\n", ind, ind, ind)
-		g.pf("%s%s = Double.longBitsToDouble(lo);\n", ind, name)
+		g.pf("%s%s = java.lang.Double.longBitsToDouble(lo);\n", ind, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1552,7 +1552,7 @@ func (g *gen) emitReadOffset(name, styp string, min, max *big.Int, bits int64, i
 	}
 	if diff.Cmp(full) != 0 {
 		if bits == 64 {
-			g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
+			g.pf("%sif (java.lang.Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 				ind, src, javaIntLit(diff), ind, ind)
 		} else {
 			g.pf("%sif (%s > %s) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
@@ -1628,7 +1628,7 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 		}
 		if diff.Cmp(full) != 0 {
 			if bits == 64 {
-				g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
+				g.pf("%sif (java.lang.Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 					ind, src, javaIntLit(new(big.Int).And(diff, maxUint64Big)), ind, ind)
 			} else {
 				g.pf("%sif (%s > %s) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
@@ -1735,8 +1735,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) 
 	name := path + "." + javaName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.usesArrays = true
-		g.pf("%sArrays.fill(%s, (byte) 0);\n", ind, name)
+		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, name)
 		g.pf("%s%sLength = 0;\n", ind, name)
 		if defaults {
 			for _, line := range byteDefaultLines(f, name, ind) {
@@ -1762,8 +1761,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) 
 			g.pf("%s}\n", ind)
 			g.loopDepth--
 		default:
-			g.usesArrays = true
-			g.pf("%sArrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
+			g.pf("%sjava.util.Arrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
 		}
 		if f.Array == ir.ArrayCounted {
 			count := int64(0)

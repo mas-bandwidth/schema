@@ -3,13 +3,14 @@ package rusttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, AND A NON-ZERO ONE REFUSES THE
@@ -102,7 +103,7 @@ fn %[1]s() {
 		root:   "DeadRoot",
 		src:    versionProbeSource(tests.String()),
 	})
-	cmd := exec.Command("cargo", "test", "--", "--nocapture")
+	cmd := testproc.Command(t, "cargo", "test", "--", "--nocapture")
 	cmd.Dir = filepath.Join(root, "probe_dead_bytes")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()
@@ -168,7 +169,7 @@ fn dead_old_string_tail() {
 		root:   "StringGrow",
 		src:    versionProbeSource(oldTests),
 	})
-	oldCmd := exec.Command("cargo", "test", "--", "--nocapture")
+	oldCmd := testproc.Command(t, "cargo", "test", "--", "--nocapture")
 	oldCmd.Dir = filepath.Join(oldRoot, "probe_dead_bytes_old")
 	oldCmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	oldOut, oldErr := oldCmd.CombinedOutput()
@@ -239,7 +240,7 @@ fn old_optional_dead_payload() {
 	} {
 		probeRoot := t.TempDir()
 		versionWriteCrate(t, probeRoot, serialize, probe)
-		cmd := exec.Command("cargo", "test", "--", "--nocapture")
+		cmd := testproc.Command(t, "cargo", "test", "--", "--nocapture")
 		cmd.Dir = filepath.Join(probeRoot, probe.name)
 		cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"), "CARGO_NET_OFFLINE=true")
 		out, err := cmd.CombinedOutput()

@@ -12,10 +12,10 @@
 # These are real findings in the generator's output, not a clean bill: the
 # pin records the residue so the gate catches new ones (see the card's
 # report).
-example	errcheck	-	402
+example	errcheck	-	250
 example	gosec	G115	47
 ludicrous	errcheck	-	58
 ludicrous	gosec	G115	1
-tables	errcheck	-	110
-tables	gosec	G103	4613
-tables	gosec	G115	6727
+tables	errcheck	-	88
+tables	gosec	G103	4282
+tables	gosec	G115	5940

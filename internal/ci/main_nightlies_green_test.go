@@ -91,8 +91,8 @@ func TestMainNightliesGateInputsAgree(t *testing.T) {
 		}
 		foundG103 = true
 		count, err := strconv.Atoi(fields[3])
-		if err != nil || count != 4613 {
-			t.Errorf("tables/gosec/G103 pin = %q, want measured count 4613", fields[3])
+		if err != nil || count != 4282 {
+			t.Errorf("tables/gosec/G103 pin = %q, want measured count 4282", fields[3])
 		}
 	}
 	if err := scanner.Err(); err != nil {

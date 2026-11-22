@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // `forged_ordinal_both_plans`, §5.8 row 12 of docs/FIXED-FORM-VERSIONING-TESTS.md:
@@ -114,7 +115,7 @@ debug = 0
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast")
+	cmd := testproc.Command(t, "cargo", "test", "--workspace", "--no-fail-fast")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, runErr := cmd.CombinedOutput()

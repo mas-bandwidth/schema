@@ -49,6 +49,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // refOrdinalWideFields is the nested table's field count. It is above 127 on
@@ -297,10 +299,10 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 		"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
 		"-ffp-contract=off", "-I", dir, main, "-o", bin,
 	}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -480,10 +482,10 @@ func TestCppTableRefOrdinalSharedId(t *testing.T) {
 				"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
 				"-ffp-contract=off", "-I", dir, main, "-o", bin,
 			}
-			if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
-			out, err := exec.Command(bin).CombinedOutput()
+			out, err := testproc.Command(t, bin).CombinedOutput()
 			if err != nil {
 				t.Fatalf("a shared key/field id is not undone by truncate: %v\n%s", err, out)
 			}
