@@ -2,7 +2,8 @@
 
 import importlib
 
-from _common import absent, entries, read_bytes, root_class, write_bytes
+from _common import absent, entries, root_class, write_bytes
+from _mutate import UNREPRESENTABLE, apply, fresh_or_load
 
 
 def _convert_fixed(field, previous, rule, token, default):
@@ -65,8 +66,13 @@ def run(manifest, outdir):
         runtime = importlib.import_module(cls.__module__.split(".")[0] + "._schema.fixedform")
         # A committed wire the reader refuses is a reader failure, never a
         # missing feature: let it raise, so the surface is red and not absent.
-        value = cls.load(read_bytes(wire))
-        _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
+        value = fresh_or_load(cls, wire)
+        special = apply(value, path, rule, token)
+        if special is UNREPRESENTABLE:
+            write_bytes(outdir, case, b"unrepresentable\n")
+            continue
+        if not special:
+            _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
         try:
             cls.fixed_save([value])
         except ValueError:
