@@ -176,11 +176,14 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
 # fails when no test ran, or none passed (all skipped). PKG and RUN are both
 # required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
-# not bare go test -run, in every brief, recipe and by hand.
+# not bare go test -run, in every brief, recipe and by hand. A test of the
+# selection that skips because SCHEMA_SLOW is unset is printed SKIPPED-SLOW and
+# makes the run red: set SCHEMA_SLOW=1 to run it, or SKIP_SLOW_OK=1 to accept
+# the skip by name (a local pass that ran nothing is not a pass, 2026-11-22).
 .PHONY: test-run
 test-run:
 	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
-	go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
+	SKIP_SLOW_OK='$(SKIP_SLOW_OK)' go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
 
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
