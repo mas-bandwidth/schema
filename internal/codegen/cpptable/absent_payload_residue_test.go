@@ -157,7 +157,7 @@ int main( void )
     }
 
     // THE RESIDUE: stain the payload under the absent flag. A dead byte that is
-    // not zero refuses the whole load, and no destination byte lands.
+    // not zero refuses the whole load, and the row goes back to its defaults.
     body[kValueAt + 0] = 100;
     body[kValueAt + 1] = 0;
     body[kValueAt + 2] = 0;
@@ -173,8 +173,9 @@ int main( void )
         back.link.value = 1234;
         back.link.tag_length = 3;
         std::strcpy( back.link.tag, "old" );
-        Chain before;
+        Chain before; // the declared defaults over the same bytes: a refusal resets every row handed in (R4)
         std::memcpy( (void *) &before, (const void *) &back, sizeof( back ) );
+        ChainReset( before );
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = ChainFixedLoad( &back, 1, file, need, plan, 256, NULL, &r );
@@ -185,7 +186,7 @@ int main( void )
         }
         if ( std::memcmp( (const void *) &back, (const void *) &before, sizeof( back ) ) != 0 )
         {
-            std::printf( "residue: a refused load wrote the caller's destination\n" );
+            std::printf( "residue: a refused load left the caller's row off its declared defaults\n" );
             return 1;
         }
     }
@@ -291,7 +292,7 @@ int main( void )
     }
 
     // THE UNION RESIDUE: stain the arm's bytes under the absent flag. The dead
-    // bytes refuse the whole load, and no destination byte lands.
+    // bytes refuse the whole load, and the row goes back to its defaults.
     obody[kOuterTagAt] = 2;
     obody[kOuterValueAt + 0] = 100;
     obody[kOuterValueAt + 1] = 0;
@@ -309,8 +310,9 @@ int main( void )
         back.opt.u.a.value = 1234;
         back.opt.u.a.tag_length = 3;
         std::strcpy( back.opt.u.a.tag, "old" );
-        Outer before;
+        Outer before; // the declared defaults over the same bytes: a refusal resets every row handed in (R4)
         std::memcpy( (void *) &before, (const void *) &back, sizeof( back ) );
+        OuterReset( before );
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = OuterFixedLoad( &back, 1, ofile, oneed, plan, 256, NULL, &r );
@@ -321,7 +323,7 @@ int main( void )
         }
         if ( std::memcmp( (const void *) &back, (const void *) &before, sizeof( back ) ) != 0 )
         {
-            std::printf( "outer residue: a refused load wrote the caller's destination\n" );
+            std::printf( "outer residue: a refused load left the caller's row off its declared defaults\n" );
             return 1;
         }
     }

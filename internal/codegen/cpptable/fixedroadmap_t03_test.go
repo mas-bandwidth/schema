@@ -416,7 +416,7 @@ fixed table T
 	// twice. Under the reader's own hash the count past the PLAN's bound refuses
 	// count_over_bound by name (the OWNER RULE, docs/SPEC-TABLES.md §3.4); under
 	// an unknown header hash the SAME forged count lands layout_newer, no counter
-	// moves and the poisoned destination keeps every byte.
+	// moves and the poisoned row holds its declared defaults (ruling R4).
 	out := t03RunCapability(t, u, `#include <stdio.h>
 #include <string.h>
 #include "ProbeTable.h"
@@ -462,7 +462,7 @@ int main()
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
        hash — a newer writer's file — lands TableFixedReason::layout_unknown before any record. No
-       counter moves and the poisoned destination keeps every byte. */
+       counter moves and the poisoned row holds its declared defaults (R4). */
     static uint8_t newer[ 4096 ];
     memcpy( newer, base, (size_t) written );
     TableFixedPut32( newer + count_at, 12u );
@@ -470,15 +470,18 @@ int main()
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
-    printf( "newer n=%lld refused=%d newer=%d widened=%d out_of_range=%d poisoned=%d\n",
+    T expect[ 1 ];
+    memset( expect, 0x5A, sizeof( expect ) );
+    TReset( expect[ 0 ] );
+    printf( "newer n=%lld refused=%d newer=%d widened=%d out_of_range=%d defaults=%d\n",
             (long long) n, (int) r.refused, (int) ( r.reason == TableFixedReason::layout_unknown ),
-            r.widened, r.refused, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
+            r.widened, r.refused, (int) ( memcmp( &back[ 0 ], &expect[ 0 ], sizeof( expect[ 0 ] ) ) == 0 ) );
     return 0;
 }
 `)
 	for _, want := range []string{
 		"hostile n=-1 refused=1 cob=1",
-		"newer n=-1 refused=1 newer=1 widened=0 out_of_range=1 poisoned=1",
+		"newer n=-1 refused=1 newer=1 widened=0 out_of_range=1 defaults=1",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("R15: the probe output %q does not carry %q", strings.TrimSpace(out), want)

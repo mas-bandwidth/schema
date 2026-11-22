@@ -794,11 +794,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   built from the lock's bytes. The signature keeps both so every caller in\n")
 	g.pf("   test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,\n")
 	g.pf("   not API). */\n")
-	g.pf("/* %s is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load"))
+	g.pf("/* %s is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.sym(st.Name, "fixed_load_walk"))
 	g.pf("   returns every record, or refuses the whole load at the first\n")
-	g.pf("   condition it meets and lands nothing. */\n")
+	g.pf("   condition it meets; %s resets every row on that refusal. */\n", g.api(st.Name, "fixed_load"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
-		g.api(st.Name, "fixed_load"), st.Name)
+		g.sym(st.Name, "fixed_load_walk"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
@@ -941,7 +941,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
 	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
 	g.pf("        if ( table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )\n        {\n")
-	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
 	g.pf("            return -1;\n        }\n")
 	g.fixedBoolDamagePass(st)
@@ -954,7 +953,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		runDefaults = "(const uint8_t *) &defaults"
 	}
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, %s );\n", runDefaults)
-	g.pf("        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } return -1; }\n", g.api(st.Name, "reset"))
+	g.pf("        if ( report->refused ) { return -1; }\n")
 	if finite {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
@@ -966,8 +965,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("           bounds pass: every record this call wrote is reset and no\n")
 		g.pf("           counter moves. */\n")
 		g.pf("        if ( !%s( values + k ) )\n        {\n", g.sym(st.Name, "fixed_finite_body"))
-		g.pf("            int64_t j;\n")
-		g.pf("            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
 		g.pf("            report->widened = read_widened;\n")
 		g.pf("            table_non_finite_float( report );\n")
 		g.pf("            return -1;\n        }\n")
@@ -981,7 +978,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			g.pf("            case %d: %s( values + k, &known_out_of_range ); break;\n", i, g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
 		}
 		g.pf("            default: break;\n            }\n")
-		g.pf("            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n        }\n", g.api(st.Name, "reset"))
+		g.pf("            if ( known_out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n        }\n")
 	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -989,13 +986,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("           content rule that refuses ends the read here, nothing decoded,\n")
 		g.pf("           and the plan's counters are committed only past it (§5.8). */\n")
 		g.pf("        if ( %s( values + k, report ) != 0 )\n", g.sym(st.Name, "fixed_clamp"))
-		g.pf("        {\n            int64_t j;\n            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n            report->widened = rec_widened;\n            return -1;\n        }\n", g.api(st.Name, "reset"))
+		g.pf("        {\n            report->widened = rec_widened;\n            return -1;\n        }\n")
 	}
 	g.pf("        at += record_bytes;\n    }\n")
 	g.pf("    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */\n")
 	g.pf("    report->unknown += census_unknown;\n")
-	g.pf("    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return -1; }\n", g.api(st.Name, "reset"))
+	g.pf("    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return -1; }\n")
 	g.pf("    return count;\n}\n\n")
+	g.pf("/* %s is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load"))
+	g.pf("   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE\n")
+	g.pf("   EXIT (R4): every row handed in, all `capacity` of them, is reset to its\n")
+	g.pf("   declared defaults, so no partial value survives. */\n")
+	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", g.api(st.Name, "fixed_load"), st.Name)
+	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
+	g.pf("    int64_t k;\n")
+	g.pf("    const int64_t n = %s( values, capacity, data, bytes, plan, plan_capacity, cache, report );\n", g.sym(st.Name, "fixed_load_walk"))
+	g.pf("    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { %s( values + k ); } }\n", g.api(st.Name, "reset"))
+	g.pf("    return n;\n}\n\n")
 }
 
 // fixedPlanHasPresentDefaults reports whether the identity plan carries an
@@ -1046,8 +1053,6 @@ func (g *tableGen) fixedBoolDamagePass(st *ir.Struct) {
 	g.pf("                bool_bytes = ( p->op == kTableFixedBool ) ? p->size : 1u;\n")
 	g.pf("                for ( b = 0; b < bool_bytes; ++b )\n                {\n")
 	g.pf("                    if ( ( at + 8 )[p->src + b] > 1u )\n                    {\n")
-	g.pf("                        int64_t j;\n")
-	g.pf("                        for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
 	g.pf("                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
 	g.pf("                        return -1;\n                    }\n                }\n            }\n        }\n")
 }

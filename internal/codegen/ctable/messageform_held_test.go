@@ -264,7 +264,10 @@ int main(void)
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 0 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
-    CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 17);
+    /* R4: a refusal leaves every value handed in at its declared defaults */
+    Root defaults; root_reset(&defaults);
+    CHECK(defaults.c != 17);
+    CHECK(storage[0].a == defaults.a && storage[0].b == defaults.b && storage[0].c == defaults.c);
     return 0;
 }
 `

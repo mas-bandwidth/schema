@@ -140,9 +140,10 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
                  "same schema: a silent report" );
 }
 
-/* ONE FORM-HEADER PROBE: the destination is POISONED before the load and
-   compared unchanged after it, so a refusal that wrote one byte is caught, and
-   the report has to name the reason and claim nothing else. */
+/* ONE FORM-HEADER PROBE: the destination is POISONED before the load, and a
+   refusal leaves it at its declared defaults (ruling R4): it is compared with
+   the same poisoned bytes reset, so a refusal that left the row as it was is
+   caught, and the report has to name the reason and claim nothing else. */
 static void form_case( const char * name, const uint8_t * file, int64_t bytes,
                        int want_reason, int want_refuse_reason )
 {
@@ -152,6 +153,7 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
     int64_t got;
 
     memset( &before, 0xAB, sizeof( before ) );
+    tblfx1_fx_root_reset( &before );
     memset( &after, 0xAB, sizeof( after ) );
     memset( &r, 0, sizeof( r ) );
 
@@ -166,7 +168,7 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
     snprintf( why, sizeof( why ), "C FORM HEADER: %s claims no success", name );
     fixed_check( r.unknown == 0 && r.widened == 0 && r.layout_hash == 0, why );
 
-    snprintf( why, sizeof( why ), "C FORM HEADER: %s writes no destination byte", name );
+    snprintf( why, sizeof( why ), "C FORM HEADER: %s leaves the row at its declared defaults", name );
     fixed_check( memcmp( &before, &after, sizeof( before ) ) == 0, why );
 }
 

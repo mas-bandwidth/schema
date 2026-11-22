@@ -695,7 +695,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 `)
 	})
 
-	// c/F10, c/R12: per-record hash mismatch and out-of-range refusal leave poisoned destination untouched.
+	// c/F10, c/R12: a per-record hash mismatch refuses and leaves every row handed in at its declared defaults (R4).
 	t.Run("c/F10_R12_refuse_writes_nothing", func(t *testing.T) {
 		t.Parallel()
 		newer := cReadSchema(t, "VNEW_nested_append")
@@ -717,13 +717,13 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
     if ( r.unknown != 0 || r.widened != 0 )
         { printf( "counters moved before refusal: u=%d w=%d\n", r.unknown, r.widened ); return 1; }
     {
-        const uint8_t * p = (const uint8_t *) back;
-        size_t i;
-        for ( i = 0; i < sizeof( back ); ++i )
-        {
-            if ( p[i] != 0x5Au )
-                { printf( "REFUSE wrote destination byte %zu (0x%02X, not 0x5A)\n", i, (unsigned) p[i] ); return 1; }
-        }
+        /* RULING R4: every row handed in holds its declared defaults. */
+        static probe_row_t expect[8];
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( k = 0; k < 8; ++k ) { PROBE_RESET( &expect[k] ); }
+        for ( k = 0; k < 8; ++k )
+            if ( memcmp( &back[k], &expect[k], sizeof( back[k] ) ) != 0 )
+                { printf( "REFUSE left row %d off its declared defaults\n", k ); return 1; }
     }
 `
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0, filepath.Join(corpus, "old_nested_append.bin"), body, poison, pre)

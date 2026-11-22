@@ -6568,7 +6568,8 @@ static SCHEMA_UNUSED int graphdemo_meta_load_message_body(graphdemo_table_messag
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* meta_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* meta_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int graphdemo_meta_load_messages(graphdemo_meta_t * values,int64_t * count,const graphdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
 {
  graphdemo_table_report_t ignored={0};
@@ -6583,27 +6584,23 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages(graphdemo_meta_t * values,
  }capacity=*count;
  *count=0;
  bodies=graphdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!graphdemo_meta_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&graphdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_meta_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||graphdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)graphdemo_meta_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||graphdemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)graphdemo_meta_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( graphdemo_table_writer_t * w, const graphdemo_settings_t * value )
 {
@@ -6937,7 +6934,8 @@ static SCHEMA_UNUSED int graphdemo_settings_load_message_body(graphdemo_table_me
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int graphdemo_settings_load_messages(graphdemo_settings_t * values,int64_t * count,const graphdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
 {
  graphdemo_table_report_t ignored={0};
@@ -6952,27 +6950,23 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages(graphdemo_settings_t *
  }capacity=*count;
  *count=0;
  bodies=graphdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!graphdemo_settings_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&graphdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_settings_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||graphdemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)graphdemo_settings_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||graphdemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)graphdemo_settings_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( graphdemo_table_writer_t * w, const graphdemo_list_node_t * value )
 {
@@ -8626,10 +8620,10 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_save( const graphdemo_meta_t *
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* meta_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_graphdemo_meta_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; meta_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_graphdemo_meta_fixed_load_walk_( graphdemo_meta_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  graphdemo_table_fixed_entry_t * plan, int32_t plan_capacity, graphdemo_table_fixed_plan_cache_t * cache, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t local;
@@ -8754,8 +8748,6 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( graphdemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { graphdemo_meta_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -8797,8 +8789,6 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { graphdemo_meta_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -8812,7 +8802,7 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
             return -1;
         }
         graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_meta_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
            then this reader's own below. */
         {
@@ -8822,7 +8812,7 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
             case 0: schema_graphdemo_meta_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
             default: break;
             }
-            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_meta_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+            if ( known_out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
         }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -8830,8 +8820,6 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_graphdemo_meta_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { graphdemo_meta_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -8839,8 +8827,21 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { graphdemo_meta_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* meta_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 graphdemo_table_fixed_entry_t * plan, int32_t plan_capacity, graphdemo_table_fixed_plan_cache_t * cache, graphdemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_graphdemo_meta_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { graphdemo_meta_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Settings holds is
@@ -9151,10 +9152,10 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_save( const graphdemo_sett
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_graphdemo_settings_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; settings_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_graphdemo_settings_fixed_load_walk_( graphdemo_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  graphdemo_table_fixed_entry_t * plan, int32_t plan_capacity, graphdemo_table_fixed_plan_cache_t * cache, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t local;
@@ -9279,8 +9280,6 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( graphdemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { graphdemo_settings_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -9322,8 +9321,6 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { graphdemo_settings_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -9337,7 +9334,7 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
             return -1;
         }
         graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_settings_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
            then this reader's own below. */
         {
@@ -9347,7 +9344,7 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
             case 0: schema_graphdemo_settings_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
             default: break;
             }
-            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+            if ( known_out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
         }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -9355,8 +9352,6 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_graphdemo_settings_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { graphdemo_settings_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -9364,8 +9359,21 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { graphdemo_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 graphdemo_table_fixed_entry_t * plan, int32_t plan_capacity, graphdemo_table_fixed_plan_cache_t * cache, graphdemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_graphdemo_settings_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { graphdemo_settings_reset( values + k ); } }
+    return n;
 }
 
 static SCHEMA_UNUSED int graphdemo_meta_save_body_retain(graphdemo_table_writer_t *,const graphdemo_meta_t *, graphdemo_table_retain_walk_t retention);
