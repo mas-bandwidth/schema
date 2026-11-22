@@ -1591,7 +1591,12 @@ end
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
 -- receiver's entry capacity. Zero or nil takes the conforming defaults.
-function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
+-- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
+-- before the first announcement, one whose build version is not the unit's
+-- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
+-- peer's build version and names both versions in report.remote and
+-- report.own; unset, the read tolerates the difference as the wire does.
+function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1
@@ -1816,6 +1821,15 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
     return false
   end
   if seenVersion ~= 1 or seenVocabulary ~= 1 then return damage() end
+  if vocab.strict and version ~= T.BuildVersion then
+    vocab.buildVersion = version
+    report.refused = 1
+    report.reason = "build_version_mismatch"
+    report.remote = version
+    report.own = T.BuildVersion
+    vocab.refused = true
+    return false
+  end
   local entries, tooLarge = vocabulary_entries(vocabulary, maxEntries)
   if entries == nil then
     if tooLarge then return too_large(version) end
