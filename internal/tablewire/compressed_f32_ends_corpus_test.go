@@ -140,7 +140,6 @@ func TestCompressedF32EndsCorpus(t *testing.T) {
 					t.Fatal(err)
 				}
 				f32EndsSet(t, in, row.path, float64(math.Float32frombits(uint32(bits))))
-				own = row.form
 				got, err := save(row.form, in)
 				if row.expect == "refused" {
 					if err == nil {
