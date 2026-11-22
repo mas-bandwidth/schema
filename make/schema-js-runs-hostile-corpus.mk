@@ -39,7 +39,7 @@ schema-js-hostile-generate: bin/schema
 # JavaScript readers. The runner prints "ran N, failed M" and tools/mustrun
 # holds N to this number, so a manifest that loses rows is red. A commit that
 # adds a hostile case changes it.
-JS_HOSTILE_ROWS ?= 216
+JS_HOSTILE_ROWS ?= 256
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
 	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv

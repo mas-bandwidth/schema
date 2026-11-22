@@ -45,7 +45,7 @@ $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/
 # where N is every case the port answered (a SKIP is not run), and
 # build/mustrun holds N to this number, so a manifest that loses cases or a case
 # that starts skipping is red. A commit that adds a hostile case changes it.
-UNITY_HOSTILE_CASES ?= 192
+UNITY_HOSTILE_CASES ?= 232
 .PHONY: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv

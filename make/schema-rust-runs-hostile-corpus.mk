@@ -87,7 +87,7 @@ schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
 # port answered (a SKIP is not run), and build/mustrun holds N to this number in
 # both profiles, so a manifest that loses cases or a case that starts skipping is
 # red. A commit that adds a hostile case changes it.
-RUST_HOSTILE_CASES ?= 192
+RUST_HOSTILE_CASES ?= 232
 .PHONY: schema-rust-runs-hostile-corpus
 schema-rust-runs-hostile-corpus: build/mustrun schema-rust-runs-hostile-corpus-build
 	@status=0; \

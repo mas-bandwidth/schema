@@ -62,7 +62,7 @@ $(ELIXIR_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh m
 # runner prints "ran N, failed M" and tools/mustrun holds N to this number,
 # so a manifest that loses cases is red. A commit that adds a hostile case
 # changes it.
-ELIXIR_HOSTILE_CASES ?= 192
+ELIXIR_HOSTILE_CASES ?= 232
 .PHONY: schema-elixir-runs-hostile-corpus
 schema-elixir-runs-hostile-corpus: build/mustrun $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
 	$(ELIXIR) test/elixir-hostile/runner.exs --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
