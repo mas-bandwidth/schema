@@ -195,7 +195,7 @@ func t03R10(t *testing.T) {
 		if strings.Contains(string(src), "TableFixed.hash(") {
 			t.Errorf("R10: %s calls TableFixed.hash: the recompute of the header's hash is retired, on every path and not only the load's", name)
 		}
-		load := t03Method(string(src), "public static int load(")
+		load := t03Method(string(src), "private static int loadRecords(")
 		if load == "" {
 			continue
 		}

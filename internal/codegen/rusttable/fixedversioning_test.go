@@ -464,10 +464,16 @@ fn v_%[1]s_new_reads_old() {
         report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: no counter moves: {:?}", report
     );
-    assert!(
-        as_bytes(&values[0]) == as_bytes(&fresh),
-        "REFUSE wrote destination bytes: {:02x?}", as_bytes(&values[0])
-    );`
+    // RULING R4: a refusal leaves EVERY row handed in at its declared default:
+    // fresh's bytes (so the padding matches) with the defaults image scattered in.
+    let mut reset = fresh;
+    SCATTERFN(&DEFAULTSCONST, &mut reset, &mut TableFixedReport::default());
+    for (k, row) in values.iter().enumerate() {
+        assert!(
+            as_bytes(row) == as_bytes(&reset),
+            "row {k} is not its declared default after the refusal: {:02x?}", as_bytes(row)
+        );
+    }`
 		if r.sameHash {
 			// A row whose edit moves no layout byte and no digest byte has NO
 			// second column: the hashes are equal and the file reads in BOTH
@@ -1290,6 +1296,8 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 		"ROWTYPE", table+"Row",
 		"LOADFN", ir.RustSnake(table)+"_fixed_load",
 		"SAVEFN", ir.RustSnake(table)+"_fixed_save",
+		"SCATTERFN", ir.RustSnake(table)+"_fixed_scatter",
+		"DEFAULTSCONST", ir.RustConstName(table)+"_FIXED_DEFAULTS",
 	).Replace(p.src)
 	files["version_probe.rs"] = []byte(src)
 

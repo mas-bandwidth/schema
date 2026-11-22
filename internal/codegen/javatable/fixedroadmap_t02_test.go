@@ -291,7 +291,7 @@ fixed table T
 		t.Fatalf("R4: Generate: %v", err)
 	}
 	t02Has(t, string(files["TFixed.java"]), fmt.Sprintf("public static final long hash = 0x%016xL;", h), "R4 the emitted hash constant")
-	load := methodBody(string(files["TFixed.java"]), "public static int load(")
+	load := methodBody(string(files["TFixed.java"]), "private static int loadRecords(")
 	if load == "" {
 		t.Fatal("R4: no emitted load function found")
 	}

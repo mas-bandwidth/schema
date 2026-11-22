@@ -804,7 +804,7 @@ const messageBatchRefusalsMain = `
         {
             // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
             // ... A refused batch returns a count of 0" (docs/SPEC-TABLES.md
-            // §3.3; F-178), and nothing is decoded: the storage is as it was.
+            // §3.3; F-178), and nothing is decoded; every value handed in is reset (R4).
             final RootFixed.Value[] three = new RootFixed.Value[] { one, one, one };
             final int m3 = RootMessage.measureMessages(three, 3, new TableVocabulary.Report());
             final byte[] buf3 = new byte[m3];
@@ -817,7 +817,7 @@ const messageBatchRefusalsMain = `
             say("batch_too_large_read",
                 count == 0 && rep.refused && "batch_too_large".equals(rep.reason) && !rep.damaged
                 && rep.unknown == 0 && rep.widened == 0
-                && values[0].a == 17 && values[1].a == 17,
+                && values[0].a == new RootFixed.Value().a && values[1].a == new RootFixed.Value().a,
                 "count=" + count + " refused=" + rep.refused + " reason=" + rep.reason);
         }
         {

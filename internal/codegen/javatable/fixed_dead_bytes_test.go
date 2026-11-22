@@ -20,8 +20,8 @@ import (
 // Each vector is read by both the identity reader and a newer reader carrying
 // the writer's layout in its lineage, with wider array, string and bytes
 // capacities. A file the list marks refused is refused by the generated load —
-// the verdict only, never the reason — and the caller's destination is the value
-// it was handed. Identity controls save back byte for byte.
+// the verdict only, never the reason — and (ruling R4) the row handed in holds
+// its declared default. Identity controls save back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it runs the generated reader over the dead-byte corpus)")
@@ -84,8 +84,8 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 			if r.n == 1 && !r.refused && !r.damaged {
 				t.Fatal("nested lineage reader accepted non-zero union dead bytes")
 			}
-			if !mapsEqual(r.before, r.value) {
-				t.Fatal("nested lineage refusal wrote the caller's destination")
+			if !mapsEqual(r.fresh, r.value) {
+				t.Fatal("nested lineage refusal left the row off its declared default (R4)")
 			}
 		})
 	}
@@ -135,8 +135,10 @@ func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeR
 		if read {
 			t.Fatalf("%s reader: %s read the file, want a refusal", reader, vec.File)
 		}
-		if !mapsEqual(r.before, r.value) {
-			t.Fatalf("%s reader: %s refusal wrote the caller's destination", reader, vec.File)
+		// RULING R4: the refusal leaves the row handed in at its declared
+		// default, every field equal to a fresh value's.
+		if !mapsEqual(r.fresh, r.value) {
+			t.Fatalf("%s reader: %s refusal left the row off its declared default", reader, vec.File)
 		}
 		return
 	}
@@ -332,6 +334,7 @@ type deadProbeRun struct {
 	refused, damaged bool
 	saved            bool
 	before, value    map[string]string
+	fresh            map[string]string
 }
 
 func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) deadProbeRun {
@@ -341,7 +344,7 @@ func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) d
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", filepath.Base(file), err, out)
 	}
-	r := deadProbeRun{before: map[string]string{}, value: map[string]string{}}
+	r := deadProbeRun{before: map[string]string{}, value: map[string]string{}, fresh: map[string]string{}}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		switch {
 		case strings.HasPrefix(line, "REPORT "):
@@ -352,6 +355,9 @@ func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) d
 		case strings.HasPrefix(line, "VALUE "):
 			k, v, _ := strings.Cut(strings.TrimPrefix(line, "VALUE "), "=")
 			r.value[k] = v
+		case strings.HasPrefix(line, "FRESH "):
+			k, v, _ := strings.Cut(strings.TrimPrefix(line, "FRESH "), "=")
+			r.fresh[k] = v
 		case strings.HasPrefix(line, "SAVE "):
 			r.saved, r.written, r.file = parseDeadSave(line)
 		}
@@ -416,7 +422,8 @@ func deadBytesProbe(pkg, root string) string {
 import java.nio.file.*;
 
 // One probe for the dead-byte vectors. The destination is poisoned before the
-// load, so a refusal that zero-fills or prefills is not the value that was handed in.
+// load, so a refusal that resets it to the declared default (R4) is told from
+// one that left it as handed in; FRESH is that declared default.
 public final class DeadProbe {
     static final StringBuilder out = new StringBuilder();
 
@@ -427,6 +434,7 @@ public final class DeadProbe {
         poison(vals[0]);
         poisonFinals(vals[0]);
         dump("BEFORE", vals[0]);
+        dump("FRESH", new %s.%sFixed.Value());
         %s.TableFixed.Report report = new %s.TableFixed.Report();
         int n = %s.%sFixed.load(vals, vals.length, data,
             %s.TableFixed.plan(1 << 14), new short[1 << 14], %s.%sFixed.image(), report);
@@ -550,6 +558,6 @@ public final class DeadProbe {
         }
     }
 }
-`, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root)
+`, pkg, root, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root)
 	return b.String()
 }

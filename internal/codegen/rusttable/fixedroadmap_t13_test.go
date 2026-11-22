@@ -23,8 +23,8 @@ package rusttable
 //	    shorter, then longer, with the stated length following the bytes (§5.3 row 3).
 //
 // The generated Rust reader runs over all three: the first READS, each copy is
-// refused as `layout_malformed` BEFORE any record is parsed, and the poisoned
-// destination is untouched (§5.3 row 5, §5.7).
+// refused as `layout_malformed` BEFORE any record is parsed, and every poisoned
+// row handed in is back at its declared default (ruling R4; §5.3 row 5).
 //
 // THE TEST COMPILES AND RUNS RUST, so it is a functional test: it SKIPS BY NAME
 // when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and FAILS BY NAME when
@@ -107,15 +107,16 @@ fn t13_poisoned(n: usize) -> Vec<LineageRow> {
     values
 }
 
-/// Not one destination byte was written: every byte still holds the poison.
-fn t13_untouched(values: &[LineageRow]) -> bool {
-    unsafe {
-        let bytes = core::slice::from_raw_parts(
-            values.as_ptr() as *const u8,
-            core::mem::size_of::<LineageRow>() * values.len(),
-        );
-        bytes.iter().all(|&b| b == 0x5A)
-    }
+/// RULING R4: every row a refused read was handed holds its declared default.
+/// The reference starts from the same 0x5A poison and takes the same scatter of
+/// the defaults image, so padding matches and the byte view compares fields.
+fn t13_defaulted(values: &[LineageRow]) -> bool {
+    let mut want = t13_poisoned(1)[0];
+    lineage_fixed_scatter(&LINEAGE_FIXED_DEFAULTS, &mut want, &mut TableFixedReport::default());
+    let view = |v: &LineageRow| unsafe {
+        core::slice::from_raw_parts((v as *const LineageRow) as *const u8, core::mem::size_of::<LineageRow>()).to_vec()
+    };
+    values.iter().all(|v| view(v) == view(&want))
 }
 
 fn t13_read(data: &[u8]) -> (Option<usize>, TableFixedReport, Vec<LineageRow>) {
@@ -128,7 +129,7 @@ fn t13_read(data: &[u8]) -> (Option<usize>, TableFixedReport, Vec<LineageRow>) {
 }
 
 /// A copy under a held hash must be refused as layout_malformed before any
-/// record, with no counter moved and the destination untouched (§5.3 row 5).
+/// record, with no counter moved and every row at its declared default (§5.3 row 5, R4).
 fn t13_refused_malformed(data: &[u8], why: &str) -> bool {
     let (n, report, values) = t13_read(data);
     if n.is_some() {
@@ -140,7 +141,7 @@ fn t13_refused_malformed(data: &[u8], why: &str) -> bool {
         && report.reason.name() == "layout_malformed"
         && !report.damaged
         && report.layout_hash == 0
-        && t13_untouched(&values)
+        && t13_defaulted(&values)
 }
 
 fn main() {
@@ -261,7 +262,7 @@ func t13Run(t *testing.T) string {
 // TestFixedRoadmapRustT13LayoutHashCollision holds rust/F12: a valid file reads,
 // and each copy of it — a held hash over layout bytes that differ by one, and a
 // held hash over a different layout length — is refused as `layout_malformed`
-// before any record, the destination untouched (docs/FIXED-FORM-ALGORITHM.md
+// before any record, every row at its declared default (R4; docs/FIXED-FORM-ALGORITHM.md
 // §5.3 step 7 and rows 4 and 5).
 func TestFixedRoadmapRustT13LayoutHashCollision(t *testing.T) {
 	t.Parallel()

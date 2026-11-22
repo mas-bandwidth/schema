@@ -221,7 +221,7 @@ func t01R7(t *testing.T, e *t01Env) {
 	var load string
 	for _, src := range files {
 		s := string(src)
-		if i := strings.Index(s, "public static int load("); i >= 0 {
+		if i := strings.Index(s, "private static int loadRecords("); i >= 0 {
 			load = s[i:]
 			if j := strings.Index(load, "\n    }\n"); j >= 0 {
 				load = load[:j]
@@ -302,11 +302,11 @@ func t01R9(t *testing.T, e *t01Env) {
 }
 
 // t01R13 is R13 "REFUSE is total: refused+reason and malformed are never both
-// set, every counter stays zero, and not one destination byte is written":
-// ALGORITHM §5.3's answer table. Each refusal by name that a single-record file
-// can earn is read into storage poisoned with 0x5A, and every byte of it is
-// still 0x5A. A multi-record `no_layout` is the bill's open question
-// (FIXED-FORM-VERSIONING-TESTS.md, row 9) and is not asserted here.
+// set, every counter stays zero", and (ruling R4, which replaces "not one
+// destination byte is written") every row handed in holds its declared
+// default: ALGORITHM §5.3's answer table. Each refusal by name that a
+// single-record file can earn is read into storage poisoned with 0x5A, and
+// every field of it comes back at its declared default.
 func t01R13(t *testing.T, e *t01Env) {
 	forged := map[string]struct {
 		mutate func(b []byte) []byte
@@ -327,11 +327,7 @@ func t01R13(t *testing.T, e *t01Env) {
 		path := e.forge(t, name+".bin", f.mutate)
 		r := t01Deep(t, e.classes, path)
 		requireNamedRefusal(t, name, r, f.reason)
-		for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
-			if got, ok := r.value[field]; !ok || got != poison32 {
-				t.Errorf("%s wrote the destination: %s=%q, want the 0x5A poison %s", name, field, got, poison32)
-			}
-		}
+		t01RequireDefaults(t, name, r)
 	}
 	// The floor: a lineage whose oldest entry is retired refuses the file by name.
 	_, retired := buildRow(t, filepath.Join(e.dir, "retired"), "nested_append", []sideSpec{
@@ -339,13 +335,9 @@ func t01R13(t *testing.T, e *t01Env) {
 	})
 	r := t01Deep(t, retired, e.forge(t, "floor.bin", func(b []byte) []byte { return b }))
 	requireNamedRefusal(t, "layout_unsupported", r, "layoutUnsupported")
-	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
-		if got := r.value[field]; got != poison32 {
-			t.Errorf("layout_unsupported wrote the destination: %s=%q, want the 0x5A poison", field, got)
-		}
-	}
+	t01RequireDefaults(t, "layout_unsupported", r)
 	// The other answer: a malformed read sets malformed and no refusal, and
-	// writes nothing either.
+	// resets every row handed in to its declared default too (R4).
 	ragged := e.forge(t, "ragged.bin", func(b []byte) []byte { return append(b, 0) })
 	m := t01Deep(t, e.classes, ragged)
 	if !m.damaged || m.refused || m.n != -1 || m.reason != "none" {
@@ -354,9 +346,20 @@ func t01R13(t *testing.T, e *t01Env) {
 	if m.unknown != 0 || m.widened != 0 {
 		t.Errorf("a ragged tail moved a counter: %+v", m)
 	}
+	t01RequireDefaults(t, "a ragged tail", m)
+}
+
+// t01RequireDefaults is ruling R4 on the probe's poisoned row: after a refusal
+// every field holds its declared default (a FRESH value's, v.w at its declared
+// 88), and no 0x5A poison is left.
+func t01RequireDefaults(t *testing.T, name string, r probeRun) {
+	t.Helper()
+	if got := r.value["v.w"]; got != "88" {
+		t.Errorf("%s: v.w=%q after the refusal, want its declared default 88", name, got)
+	}
 	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
-		if got := m.value[field]; got != poison32 {
-			t.Errorf("a malformed read wrote the destination: %s=%q, want the 0x5A poison", field, got)
+		if got, ok := r.value[field]; !ok || got != r.fresh[field] || got == poison32 {
+			t.Errorf("%s: %s=%q after the refusal, want its declared default %q", name, field, got, r.fresh[field])
 		}
 	}
 }
