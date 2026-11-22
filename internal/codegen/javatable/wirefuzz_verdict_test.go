@@ -3,13 +3,14 @@ package javatable_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE WIRE-FUZZ VERDICT PIPE FOR JAVA (docs/SPEC-TABLES.md §4.2, §6.5,
@@ -107,7 +108,7 @@ func runJavaWireFuzzVerdictPipe(t *testing.T, root, driver string, retain bool) 
 	)
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), args...)
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), args...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -176,7 +177,7 @@ func TestJavaWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	javac := exec.Command("javac", "--release", "17", "-nowarn",
+	javac := testproc.Command(t, "javac", "--release", "17", "-nowarn",
 		"-cp", filepath.Join(root, "build", "conformance-java"),
 		"-d", classes, sabSrc)
 	if out, err := javac.CombinedOutput(); err != nil {
@@ -187,7 +188,7 @@ func TestJavaWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	driver := fmt.Sprintf("java -cp %s:%s TablesWireFuzz", classes, filepath.Join(root, "build", "conformance-java"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), "wire-fuzz",
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), "wire-fuzz",
 		"--manifest", writeJavaWireFuzzManifest(t),
 		"--vectors", "",
 		"--driver", driver,

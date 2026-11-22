@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // F7 (schema#876, matrix row GGGGGGGGG) is fixed_form_under_20_bytes: a file
@@ -119,7 +120,7 @@ fn v_fixed_form_under_20_bytes() {
 		src:    versionProbeSource(tests),
 	})
 
-	cmd := exec.Command("cargo", "test")
+	cmd := testproc.Command(t, "cargo", "test")
 	cmd.Dir = filepath.Join(root, "probe_fixed_form_under_20_bytes")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

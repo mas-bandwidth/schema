@@ -3,13 +3,14 @@ package rusttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -92,7 +93,7 @@ fn %[1]s() {
 				older:  []string{"VOLD_" + vec.Row},
 				src:    versionProbeSource(tests),
 			})
-			cmd := exec.Command("cargo", "test", "--", "--nocapture")
+			cmd := testproc.Command(t, "cargo", "test", "--", "--nocapture")
 			cmd.Dir = filepath.Join(root, name)
 			cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 			out, err := cmd.CombinedOutput()

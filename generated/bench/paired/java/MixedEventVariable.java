@@ -78,7 +78,7 @@ public final class MixedEventVariable {
     static void resolveNodes(
             Value v,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (v == null) return;
@@ -450,7 +450,8 @@ public final class MixedEventVariable {
         return v;
     }
 
-    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+    static void jsonFields(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
         switch (v.tag) {
             case 0:
@@ -507,7 +508,7 @@ public final class MixedEventVariable {
             in.p++;
             return v;
         }
-        String armName = in.scanName();
+        java.lang.String armName = in.scanName();
         if (in.bad) return v;
         if (in.peek() != ':') {
             in.bad = true;

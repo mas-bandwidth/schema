@@ -259,3 +259,28 @@ func TestGateCases(t *testing.T) {
 		t.Errorf("a verdict the gate does not come to passed: %v", err)
 	}
 }
+
+// TestRowHoldsTheRunToItsBudget carries main's F-064 regression (the
+// reviewer's cases, from internal/ci's shell-row test this tool replaced): the
+// arm, the mixed-builder label and seeds outside the arm still pass, and a
+// summary of the other arm is red both ways.
+func TestRowHoldsTheRunToItsBudget(t *testing.T) {
+	const tail = ", 0 divergences, 0.1 s, 100 mutants/s\n"
+	const counts = "seed 7, 9 seeds over 9 roots, 3 enumerated + 100000 random = 100003 mutants"
+	for _, tc := range []struct {
+		name, leg, arm, log, want string
+	}{
+		{"the budget asked for", "go", "plain", "wire-fuzz: " + counts + tail, "pass (100003 mutants"},
+		{"the retain arm", "go", "retain", "wire-fuzz retain: " + counts + tail, "pass (100003 mutants"},
+		{"a mixed-builder leg", "dart", "plain", "wire-fuzz-mixed-builder: " + counts + tail, "pass (100003 mutants"},
+		{"with seeds outside the arm", "go", "retain", "wire-fuzz retain: seed 7, 9 seeds over 9 roots, 2 seeds outside the arm, 3 enumerated + 100000 random = 100003 mutants" + tail, "pass (100003 mutants"},
+		{"one mutant, python", "python", "plain", "wire-fuzz: seed 7, 9 seeds over 9 roots, 0 enumerated + 1 random = 1 mutants" + tail, "RED: short wire-fuzz run: 1 random mutants"},
+		{"no seed", "go", "plain", "wire-fuzz: 9 seeds over 9 roots, 3 enumerated + 100000 random = 100003 mutants" + tail, "RED: the summary is not seed 7's"},
+		{"the plain arm answered by retain", "go", "plain", "wire-fuzz retain: " + counts + tail, "RED: the summary is not the plain arm's"},
+		{"the retain arm answered by plain", "go", "retain", "wire-fuzz: " + counts + tail, "RED: the summary is not the retain arm's"},
+	} {
+		if got := score(tc.leg, tc.arm, "7", tc.log, 0, 1, 100000, "", "owed.txt", none(), "absent.txt"); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

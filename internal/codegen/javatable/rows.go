@@ -717,9 +717,9 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 	if typ == "long" {
 		widen = "%s"
 	}
-	cmp := "Long.compare"
+	cmp := "java.lang.Long.compare"
 	if !key.Type.Signed {
-		cmp = "Long.compareUnsigned"
+		cmp = "java.lang.Long.compareUnsigned"
 		if width < 64 {
 			widen = fmt.Sprintf("((long) %%s & 0x%xL)", uint64(1)<<width-1)
 		}

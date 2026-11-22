@@ -3,13 +3,14 @@ package golang
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // nestedEndUnit nests a type three ways: a type's field of another type, a
@@ -143,7 +144,7 @@ func runGoProbe(t *testing.T, root string, files map[string][]byte, probe string
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated reader failed its probe: %v\n%s", err, out)

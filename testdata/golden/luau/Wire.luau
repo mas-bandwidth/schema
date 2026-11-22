@@ -1254,6 +1254,7 @@ _M.ProbeHeaderMaxBytes = 16
 -- WriteProbeHeader writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeHeader(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   BITS.value = 171
   if not stream:serializeBits(BITS, 8) then return false end -- const(171, 8) — SPEC §4.3
   if type(v.Version) ~= "number" or v.Version % 1 ~= 0 or v.Version < 0 or v.Version > 7 then return false end
@@ -1276,6 +1277,7 @@ _M.ProbeBitsMaxBytes = 32
 -- WriteProbeBits writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeBits(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Small) ~= "number" or v.Small % 1 ~= 0 or v.Small < 0 or v.Small > 511 then return false end
   BITS.value = v.Small
   if not stream:serializeBits(BITS, 9) then return false end -- the declared bit width
@@ -1302,10 +1304,12 @@ _M.ProbeSampleMaxBytes = 40
 -- WriteProbeSample writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeSample(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Active) ~= "boolean" then return false end
   BOOL.value = v.Active
   if not stream:serializeBool(BOOL) then return false end -- SPEC §4.3
-  if v.Orientation == v.Orientation and v.Orientation ~= math.huge and v.Orientation ~= -math.huge and (v.Orientation < -180.0 or v.Orientation > 180.0) then return false end
+  if type(v.Orientation) ~= "number" or not (math.abs(v.Orientation) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.Orientation < -180.0 or v.Orientation > 180.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if type(v.RawDelta) ~= "number" or v.RawDelta % 1 ~= 0 or v.RawDelta < -2147483648 or v.RawDelta > 2147483647 then return false end
   BITS.value = v.RawDelta % 4294967296
@@ -1331,6 +1335,7 @@ function _M.WriteProbeSample(stream: any, v: any): boolean
     if not stream:serializeBits(BITS, 32) then return false end -- the storage width
   end
   if type(v.SamplesCount) ~= "number" or v.SamplesCount % 1 ~= 0 or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Samples) ~= "table" then return false end
   BITS.value = v.SamplesCount - 1
   if not stream:serializeBits(BITS, 3) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.SamplesCount do
@@ -1349,6 +1354,7 @@ _M.ProbeRingMaxBytes = 8
 -- WriteProbeRing writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeRing(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Radius) ~= "number" or v.Radius % 1 ~= 0 or v.Radius < 0 or v.Radius > 65535 then return false end
   BITS.value = v.Radius
   if not stream:serializeBits(BITS, 16) then return false end -- the storage width
@@ -1363,6 +1369,7 @@ _M.ProbeSlabMaxBytes = 8
 -- WriteProbeSlab writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeSlab(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Width) ~= "number" or v.Width % 1 ~= 0 or v.Width < 0 or v.Width > 100 then return false end
   BITS.value = v.Width
   if not stream:serializeBits(BITS, 7) then return false end -- the offset from min (SPEC §4.3)
@@ -1379,13 +1386,16 @@ _M.ProbeShapeMaxBytes = 8
 
 -- WriteProbeShape writes union ProbeShape (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteProbeShape(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 2 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.Ring) ~= "table" then return false end
     if not _M.WriteProbeRing(stream, v.Ring) then return false end
   end
   if v.Type == 2 then
+    if type(v.Slab) ~= "table" then return false end
     if not _M.WriteProbeSlab(stream, v.Slab) then return false end
   end
   return true
@@ -1399,15 +1409,20 @@ _M.ProbeColliderMaxBytes = 16
 -- WriteProbeCollider writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeCollider(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Armor) ~= "number" or v.Armor % 1 ~= 0 or v.Armor < 0 or v.Armor > 255 then return false end
   BITS.value = v.Armor
   if not stream:serializeBits(BITS, 8) then return false end -- the storage width
+  if type(v.Shape) ~= "table" then return false end
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
+  if type(v.Backup) ~= "table" then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
   if type(v.ExtrasCount) ~= "number" or v.ExtrasCount % 1 ~= 0 or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Extras) ~= "table" then return false end
   BITS.value = v.ExtrasCount
   if not stream:serializeBits(BITS, 2) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ExtrasCount do
+    if type(v.Extras[_i]) ~= "table" then return false end
     if not _M.WriteProbeShape(stream, v.Extras[_i]) then return false end
   end
   return true
@@ -1421,6 +1436,7 @@ _M.ProbeConfigMaxBytes = 8
 -- WriteProbeConfig writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeConfig(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Retries) ~= "number" or v.Retries % 1 ~= 0 or v.Retries < -2147483648 or v.Retries > 2147483647 then return false end
   BITS.value = v.Retries % 4294967296
   if not stream:serializeBits(BITS, 32) then return false end -- the storage width, two's complement
@@ -1438,9 +1454,13 @@ _M.ProbeArrayMaxBytes = 80
 -- WriteProbeArray writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeArray(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Samples) ~= "table" then return false end
   for _i = 1, 2 do
+    if type(v.Samples[_i]) ~= "table" then return false end
     if not _M.WriteProbeSample(stream, v.Samples[_i]) then return false end
   end
+  if type(v.Config) ~= "table" then return false end
   if not _M.WriteProbeConfig(stream, v.Config) then return false end
   return true
 end
@@ -1453,6 +1473,7 @@ _M.HeartbeatMaxBytes = 0
 -- WriteHeartbeat writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteHeartbeat(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   return true
 end
 
@@ -1464,6 +1485,7 @@ _M.TestMaxBytes = 8
 -- WriteTest writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTest(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.TestA) ~= "number" or v.TestA % 1 ~= 0 or v.TestA < 0 or v.TestA > 65535 then return false end
   BITS.value = v.TestA
   if not stream:serializeBits(BITS, 16) then return false end -- the storage width
@@ -1487,6 +1509,7 @@ _M.BlockMaxBytes = 2008
 -- WriteBlock writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteBlock(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.DataLength) ~= "number" or v.DataLength % 1 ~= 0 or v.DataLength < 0 or v.DataLength > 2000 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Data) ~= "buffer" or buffer.len(v.Data) < v.DataLength then return false end
   BITS.value = v.DataLength
@@ -1503,6 +1526,7 @@ _M.ChatMaxBytes = 264
 -- WriteChat writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteChat(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.TextLength) ~= "number" or v.TextLength % 1 ~= 0 or v.TextLength < 0 or v.TextLength > 256 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Text) ~= "buffer" or buffer.len(v.Text) < v.TextLength then return false end
   if not utf8valid(v.Text, v.TextLength) then return false end -- malformed UTF-8 (SPEC §4.7)
@@ -1521,10 +1545,13 @@ _M.ProbeReportMaxBytes = 24
 -- WriteProbeReport writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeReport(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Header) ~= "table" then return false end
   if not _M.WriteProbeHeader(stream, v.Header) then return false end
   if typeof(v.Flags) ~= "integer" or integer.uge(v.Flags, 256i) then return false end
   BIG.value = v.Flags
   if not stream:serializeBits64(BIG, 8) then return false end -- the flags wire width
+  if type(v.Echo) ~= "table" then return false end
   if not _M.WriteTest(stream, v.Echo) then return false end
   return true
 end
@@ -1537,6 +1564,7 @@ _M.TestDataMaxBytes = 344
 -- WriteTestData writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTestData(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.A) ~= "number" or v.A % 1 ~= 0 or v.A < -100 or v.A > 100 then return false end
   BITS.value = v.A + 100
   if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
@@ -1559,6 +1587,7 @@ function _M.WriteTestData(stream: any, v: any): boolean
   BOOL.value = v.G
   if not stream:serializeBool(BOOL) then return false end -- SPEC §4.3
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 5) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1566,9 +1595,12 @@ function _M.WriteTestData(stream: any, v: any): boolean
     BITS.value = v.Items[_i]
     if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
   end
+  if type(v.FloatValue) ~= "number" or not (math.abs(v.FloatValue) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
-  if v.CompressedFloatValue == v.CompressedFloatValue and v.CompressedFloatValue ~= math.huge and v.CompressedFloatValue ~= -math.huge and (v.CompressedFloatValue < 0.0 or v.CompressedFloatValue > 10.0) then return false end
+  if type(v.CompressedFloatValue) ~= "number" or not (math.abs(v.CompressedFloatValue) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.CompressedFloatValue < 0.0 or v.CompressedFloatValue > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if type(v.DoubleValue) ~= "number" or v.DoubleValue ~= v.DoubleValue or v.DoubleValue == math.huge or v.DoubleValue == -math.huge then return false end -- finite (SPEC §5.1)
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
   if type(v.Int8Value) ~= "number" or v.Int8Value % 1 ~= 0 or v.Int8Value < -128 or v.Int8Value > 127 then return false end
   BITS.value = v.Int8Value % 256
@@ -1615,9 +1647,12 @@ _M.CompressedProbeMaxBytes = 8
 -- WriteCompressedProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteCompressedProbe(stream: any, v: any): boolean
-  if v.Boundary == v.Boundary and v.Boundary ~= math.huge and v.Boundary ~= -math.huge and (v.Boundary < 0.0 or v.Boundary > 10.0) then return false end
+  if type(v) ~= "table" then return false end
+  if type(v.Boundary) ~= "number" or not (math.abs(v.Boundary) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.Boundary < 0.0 or v.Boundary > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
-  if v.Offset == v.Offset and v.Offset ~= math.huge and v.Offset ~= -math.huge and (v.Offset < -5.0 or v.Offset > 5.0) then return false end
+  if type(v.Offset) ~= "number" or not (math.abs(v.Offset) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.Offset < -5.0 or v.Offset > 5.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end -- the step index (SPEC §4.3)
   return true
 end

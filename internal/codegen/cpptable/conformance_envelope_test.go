@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The report driver must route a variable ToolEnvelope through its region
@@ -35,7 +36,7 @@ func TestCppConformanceToolEnvelopeReport(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build/conformance-cpp"), manifest, "report", dir)
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build/conformance-cpp"), manifest, "report", dir)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("report driver: %v\n%s", err, out)

@@ -1,0 +1,6 @@
+package game
+
+type Player
+{
+    public_send uint32
+}

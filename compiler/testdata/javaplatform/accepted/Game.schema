@@ -1,0 +1,5 @@
+// Game.schema: the control for refused/, the same unit under an ordinary
+// basename; it generates and compiles (compiler/javaplatform_test.go).
+package demo
+
+type Packet { value uint16 }
