@@ -1,0 +1,48 @@
+#!/bin/sh
+# A C# (unity) write-refusal negative control (make/unity.mk), the C# leg's
+# pattern (test/conformance/cs/write-refusal-control) on the Unity dialect.
+# C# write checks are Debug.Assert (docs/SPEC.md §5.1), and the conformance
+# units are built Debug so they trap. Recompiles ONE generated unit with ONE
+# write assert removed, in a private copy, and runs the harness with that unit
+# swapped into an otherwise unchanged units directory: the named surface must
+# go red while the surface beside it stays green. Run from the repository root
+# after build/conformance-unity/.stamp; no tracked file or normal build output
+# is modified.
+#
+# usage: write-refusal-control <dotnet> <dir> <unit> <perl-sabotage> <witness-regex> <red-surface> <green-surface>
+set -eu
+dotnet=$1 dir=$2 unit=$3 sabotage=$4 witness=$5 red=$6 green=$7
+units=build/conformance-unity
+rm -rf "$dir" && mkdir -p "$dir/units"
+for d in "$units"/*/; do
+    name=${d%/}
+    name=${name##*/}
+    case "$name" in _*|"$unit") continue ;; esac
+    ln -s "$PWD/$units/$name" "$dir/units/$name"
+done
+cp -R "$units/_gen/$unit" "$dir/gen"
+files=$(grep -rlE "$witness" "$dir/gen" || true)
+[ -n "$files" ] || { echo "NEGATIVE CONTROL: the sabotage matches no generated line in $unit"; exit 1; }
+# shellcheck disable=SC2086
+perl -pi -e "$sabotage" $files
+grep -rqF 'SABOTAGED' "$dir/gen" || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+"$dotnet" build test/conformance/unity/unit/schemaunit.csproj -c Debug --nologo -v quiet \
+    -p:UnityUnitDir="$PWD/$dir/gen" -p:ArtifactsPath="$PWD/$dir/_art" \
+    -o "$dir/units/$unit" > "$dir/build.log" 2>&1 || \
+    { cat "$dir/build.log"; echo "NEGATIVE CONTROL: the sabotaged unit does not compile"; exit 1; }
+# the driver lists only the surfaces this control reads, so the harness runs
+# no others
+printf '#!/bin/sh\nif [ "$2" = list ]; then\n\tprintf "wire\\nmessage\\nwrite-refusal\\nwrite-refusal-fixed\\nwrite-refusal-message\\n"\n\texit 0\nfi\nexec env UNITY_CONFORMANCE_UNITS=%s/%s/units %s %s/%s/driver/unityconformance.dll "$@"\n' \
+    "$PWD" "$dir" "$dotnet" "$PWD" "$units" > "$dir/driver"
+chmod +x "$dir/driver"
+printf 'unity %s/%s/driver\n' "$PWD" "$dir" > "$dir/drivers.txt"
+if build/conformance-harness run --drivers "$dir/drivers.txt" --work "$dir/work" > "$dir/log" 2>&1; then
+    cat "$dir/log"; echo "NEGATIVE CONTROL FAILED: the sabotaged writer left conformance green"; exit 1
+fi
+# The FAILURES lines, not the table: a relaxed case (test/conformance/relaxed.txt)
+# still prints FAIL in the table and must not stand in for the sabotage's red.
+grep "^  unity / $red: " "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $red did not go red"; exit 1; }
+grep -Eq "^ *$green *pass" "$dir/log" || { cat "$dir/log"; echo "NEGATIVE CONTROL: $green did not stay green"; exit 1; }
+if grep -Eq 'driver exited|driver wrote nothing' "$dir/log"; then
+    cat "$dir/log"; echo "NEGATIVE CONTROL: the sabotaged driver crashed rather than answering"; exit 1
+fi

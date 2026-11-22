@@ -2605,6 +2605,12 @@
       ]
     },
     {
+      "name": "goose-write-refusal",
+      "when": "pull-request",
+      "why": "the Goose leg's write-contract controls (docs/SPEC.md \u00a75.1; test/conformance/goose/negative-control): Goose refuses in every build, so each removes one refusal from a copy of the generated units (the fixed writer's ranged-int check, its finite-float check, SaveMessages's ranged-int check) and requires the writer's surface red and `wire`, `message` green. About 20 s each on space, measured 2026-11-22.",
+      "targets": []
+    },
+    {
       "name": "goose-conformance",
       "when": "pull-request",
       "why": "the Goose leg's own conformance controls (test/conformance/goose/negative-control): each copies build/conformance-goose, breaks one runtime clause (the load's unknown-field count) and runs the harness over wire, report, retain and retain-save against the copy (report and retain red, wire and retain-save green; 60 s on amd-2), and the accelerators' order-word control (two harness runs over the accelerator surfaces, each Open's byte-order clause taken out of a copy: forgery or cook-forgery red, the foreign surfaces green), and the usage page's two reversed witnesses (docs/USAGE.md's Goose fragment renamed and walking nothing, each a goose run of a small program), so the group needs Go, the host C++ compiler for the reference leg, the ../serialize sibling and the pinned Goose compiler (make dist-goose), and nothing else.",
@@ -3133,6 +3139,13 @@
         "schema-moo-generated-analyze-strict-gate-negative-control",
         "schema-moo-generated-analyze-strict-gate-pin-negative-control"
       ],
+      "moo": "pin"
+    },
+    {
+      "name": "moo-write-refusal",
+      "when": "pull-request",
+      "why": "the moo leg's write-contract controls (docs/SPEC.md \u00a75.1; test/conformance/moo/negative-control): moo refuses in every build, so each sabotages the emitter's runtime (the variable writer's float finiteness check, the fixed writer's, the message writer's UTF-8 check) and requires the writer's surface red with `wire` and `message` green. About 13 s each on space, measured 2026-11-22.",
+      "targets": [],
       "moo": "pin"
     },
     {
