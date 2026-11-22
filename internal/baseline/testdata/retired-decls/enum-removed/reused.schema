@@ -1,0 +1,10 @@
+package decls
+
+// a NEW enum under the name the removal freed, no variant of the old one
+enum Mode { Red, Blue }
+
+table Holder
+{
+    c    int32
+    tint Mode
+}

@@ -103,7 +103,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 	"java": {
 		noCount:  " COUNT = ",
 		max:      "        public static final byte MAX = 2;",
-		nameFunc: "    public static String enumNameWeaponFireType(long value) {",
+		nameFunc: "    public static java.lang.String enumNameWeaponFireType(long value) {",
 	},
 	"js": {
 		// the extent is a module constant beside the frozen tag object, and

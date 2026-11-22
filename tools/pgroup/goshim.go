@@ -18,9 +18,10 @@ package main
 // step had before (PGROUP_REAL_GO). A `go test` a test starts is rewritten
 // the same way, because it finds the shim on the PATH it inherits.
 //
-// When PGROUP_GO_TEST_JSON names a directory as well, the step's outermost
-// `go test` also records its `go test -json` event stream there, one file per
-// invocation, written line by line, so a row cut short still shows which
+// When PGROUP_GO_TEST_JSON names a directory (with the timeout lifted or,
+// in the fast lane, with every go test keeping the -timeout it named), the
+// step's outermost `go test` records its `go test -json` event stream there,
+// one file per invocation, written line by line, so a row cut short still shows which
 // tests reported and which one was running (tools/gotestreport reads them).
 // Each record starts with the -timeout the command named (go test's 10m
 // default when it named none): the report holds every package to that
@@ -461,21 +462,31 @@ func recordGoTest(real string, args []string, dir, named string, summary bool) i
 	return shimStatus(cmd, cmd.Wait())
 }
 
+// shimWanted reports whether the step needs the go shim on its PATH: to lift
+// the test timeout (PGROUP_GO_TEST_TIMEOUT), or to record what its go test
+// ran (PGROUP_GO_TEST_JSON, PGROUP_GO_TEST_SUMMARY). The record does not need the
+// lift: a fast lane keeps the -timeout its go test named and is still read by
+// tools/gotestreport, skip by skip.
+func shimWanted(timeout, jsonDir, summaryDir string) bool {
+	return timeout != "" || jsonDir != "" || summaryDir != ""
+}
+
 // prepareGoShim puts the shim first on this process's PATH (so the command
-// pgroup runs inherits it) when PGROUP_GO_TEST_TIMEOUT is set. It returns
-// the cleanup to run when the command is done.
+// pgroup runs inherits it) when PGROUP_GO_TEST_TIMEOUT, PGROUP_GO_TEST_JSON
+// or PGROUP_GO_TEST_SUMMARY is set. It returns the cleanup to run when the
+// command is done.
 func prepareGoShim() (func(), error) {
 	timeout, err := goTestTimeout(os.Getenv(envGoTestTimeout))
 	if err != nil {
 		return func() {}, err
 	}
-	if timeout == "" {
+	if !shimWanted(timeout, os.Getenv(envGoTestJSON), os.Getenv(envGoTestSummary)) {
 		return func() {}, nil
 	}
 	if os.Getenv(envRealGo) == "" {
 		goPath, err := exec.LookPath("go")
 		if err != nil {
-			return func() {}, fmt.Errorf("%s is set but no go is on PATH: %w", envGoTestTimeout, err)
+			return func() {}, fmt.Errorf("the go test shim was asked for (%s, %s or %s) but no go is on PATH: %w", envGoTestTimeout, envGoTestJSON, envGoTestSummary, err)
 		}
 		if goPath, err = filepath.Abs(goPath); err != nil {
 			return func() {}, err

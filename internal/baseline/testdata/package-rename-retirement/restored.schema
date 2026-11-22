@@ -1,0 +1,6 @@
+package renamed
+table First {
+ keep int32
+ value int32
+}
+table Second { elsewhere int32 }

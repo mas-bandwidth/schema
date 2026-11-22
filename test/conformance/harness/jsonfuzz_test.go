@@ -158,7 +158,7 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 
 func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 	if os.Getenv("SCHEMA_JSONFUZZ_TEST_DRIVER") != "1" {
-		return
+		t.Skip("helper for TestJSONFuzzPlantedNegativeControls")
 	}
 	var args []string
 	for i, a := range os.Args {
