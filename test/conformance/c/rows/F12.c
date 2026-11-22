@@ -16,23 +16,23 @@
 
    THE PRODUCTION PATH THIS TEST DRIVES: the entry point the c leg's own
    conformance driver reaches through K1Table.h's call table — here
-   `root_fixed_load` (build/tables-generated-c/k1/K1Table.h:3569). That body
+   `tblk1_root_fixed_load` (build/tables-generated-c/k1/K1Table.h:3569). That body
    reads the header's hash (step 4), selects a lineage entry by hash (step 5),
    and then at step 7 compares the file's layout bytes to the lock's recorded
    bytes for that hash (line 3629-3631). A byte that differs sets refused=1,
-   reason=SCHEMA_TABLE_LAYOUT_MALFORMED, and returns -1 with no destination
+   reason=SCHEMA_TBLK1_TABLE_LAYOUT_MALFORMED, and returns -1 with no destination
    byte touched — and on the CONTRAST branch a hash no entry of the lineage
-   holds is SCHEMA_TABLE_LAYOUT_NEWER, with `layout_hash` carrying the file's
+   holds is SCHEMA_TBLK1_TABLE_LAYOUT_NEWER, with `layout_hash` carrying the file's
    hash (§5.9 #7).
 
    THE VECTOR IS BUILT FROM THE LAW AND THE BUILD'S OWN FACTS — no corpus file.
    The held hash and the lock's own layout bytes are this build's own
-   (root_fixed_hash, root_fixed_layout); the header carries the hash and the
-   u32 length, then the layout, then one record of `root_fixed_record_bytes`
+   (tblk1_root_fixed_hash, tblk1_root_fixed_layout); the header carries the hash and the
+   u32 length, then the layout, then one record of `tblk1_root_fixed_record_bytes`
    bytes. The forge bends ONE byte INSIDE THE LAYOUT, past the header, without
    touching the header's hash or any reserved byte — the SAME held hash now
    sits over DIFFERENT layout bytes, which is the F12 lie and not any other
-   name's. The CONTRAST carries an unknown hash (root_fixed_hash XOR 1) over
+   name's. The CONTRAST carries an unknown hash (tblk1_root_fixed_hash XOR 1) over
    the lock's correct layout bytes — a hash no lineage entry names, which is
    why the held-hash-over-different-bytes must be its own name and not that
    one.
@@ -56,15 +56,15 @@ static void check( int ok, const char * what )
 
 int main( void )
 {
-    const uint64_t unknown_hash = root_fixed_hash ^ 1ull;
-    const int64_t lock_layout_bytes = root_fixed_layout_bytes;
-    const int64_t record_bytes = root_fixed_record_bytes;
-    const int64_t total_bytes = (int64_t) kTableFixedHeaderBytes + 4 + lock_layout_bytes + record_bytes;
+    const uint64_t unknown_hash = tblk1_root_fixed_hash ^ 1ull;
+    const int64_t lock_layout_bytes = tblk1_root_fixed_layout_bytes;
+    const int64_t record_bytes = tblk1_root_fixed_record_bytes;
+    const int64_t total_bytes = (int64_t) TBLK1_K_TABLE_FIXED_HEADER_BYTES + 4 + lock_layout_bytes + record_bytes;
     static uint8_t clean[4096];
     static uint8_t bent[4096];
     static uint8_t other[4096];
-    Root back;
-    TableReport report;
+    tblk1_root_t back;
+    tblk1_table_report_t report;
     int64_t saved_bytes;
     int64_t n;
 
@@ -72,10 +72,10 @@ int main( void )
        header is the held hash over the lock's own layout bytes, with one
        record of declared width: the same wire the conformance driver's
        `wire` surface reads. */
-    root_reset( &back );
-    back.grade = GRADE_BRONZE;
+    tblk1_root_reset( &back );
+    back.grade = TBLK1_GRADE_BRONZE;
     back.raw = 7;
-    saved_bytes = root_fixed_save( &back, 1, clean, (int64_t) sizeof( clean ) );
+    saved_bytes = tblk1_root_fixed_save( &back, 1, clean, (int64_t) sizeof( clean ) );
     check( saved_bytes == total_bytes, "the one-record save writes the declared bytes" );
 
     /* THE CONTROL: the un-bent file, held hash, lock's own layout bytes — the
@@ -83,10 +83,10 @@ int main( void )
        opens it. The refusal below is about the DIFFERENCE, not the file. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, clean, saved_bytes, NULL, 0, NULL, &report );
+    n = tblk1_root_fixed_load( &back, 1, clean, saved_bytes, NULL, 0, NULL, &report );
     check( n == 1, "CONTROL: the un-bent layout, under its held hash, opens" );
-    check( back.grade == GRADE_BRONZE && back.raw == 7, "CONTROL: the un-bent read lands every field" );
-    check( !report.refused && !report.refused, "CONTROL: the un-bent read is a read, not a refusal" );
+    check( back.grade == TBLK1_GRADE_BRONZE && back.raw == 7, "CONTROL: the un-bent read lands every field" );
+    check( !report.refused && !report.refuse_reason, "CONTROL: the un-bent read is a read, not a refusal" );
     check( report.unknown == 0 && report.widened == 0,
            "CONTROL: the un-bent read moves no counter" );
 
@@ -98,18 +98,18 @@ int main( void )
        u32 (offset 16+4+4=24) so the entry-count check would still pass and
        step 7 is the only check that can refuse. */
     memcpy( bent, clean, (size_t) saved_bytes );
-    bent[(int64_t) kTableFixedHeaderBytes + 4 + 4 + 2] ^= 0x99;
+    bent[(int64_t) TBLK1_K_TABLE_FIXED_HEADER_BYTES + 4 + 4 + 2] ^= 0x99;
 
     /* POISON: a refused read touches no destination byte (§5.8 row 5, §5.3
        step 7's comment), so back must come back with the bytes it had on
        entry, byte for byte. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, bent, total_bytes, NULL, 0, NULL, &report );
+    n = tblk1_root_fixed_load( &back, 1, bent, total_bytes, NULL, 0, NULL, &report );
     check( n == -1, "F12: a second layout for a held hash refuses by name" );
-    check( report.refused && !report.refused,
+    check( report.refused && !report.refuse_reason,
            "F12: the refusal is a refusal by name, not framing damage" );
-    check( report.reason == SCHEMA_TABLE_LAYOUT_MALFORMED,
+    check( report.reason == SCHEMA_TBLK1_TABLE_LAYOUT_MALFORMED,
            "F12: the name is layout_malformed" );
     check( report.unknown == 0 && report.widened == 0,
            "F12: no counter moved on the refused read" );
@@ -124,22 +124,22 @@ int main( void )
     }
 
     /* THE CONTRAST — a hash no lineage entry names, over the lock's OWN
-       layout bytes. §5.3 step 5 refuses this with SCHEMA_TABLE_LAYOUT_NEWER
+       layout bytes. §5.3 step 5 refuses this with SCHEMA_TBLK1_TABLE_LAYOUT_NEWER
        and `layout_hash` carries the FILE'S hash (§5.9 #7). The held-hash
        lie above is layout_malformed for a DIFFERENCE in the bytes; this is
        layout_newer for an UNKNOWN hash — the operator's two distinct
        answers, and the contrast is what makes F12 discriminating. */
     memcpy( other, clean, (size_t) total_bytes );
-    table_fixed_put64( other + kTableFixedHashAt, unknown_hash );
-    table_fixed_put64( other + kTableFixedHeaderBytes + 4 + lock_layout_bytes, unknown_hash );
+    tblk1_table_fixed_put64( other + TBLK1_K_TABLE_FIXED_HASH_AT, unknown_hash );
+    tblk1_table_fixed_put64( other + TBLK1_K_TABLE_FIXED_HEADER_BYTES + 4 + lock_layout_bytes, unknown_hash );
 
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, other, total_bytes, NULL, 0, NULL, &report );
+    n = tblk1_root_fixed_load( &back, 1, other, total_bytes, NULL, 0, NULL, &report );
     check( n == -1, "F12 CONTRAST: an unknown hash refuses" );
-    check( report.refused && !report.refused,
+    check( report.refused && !report.refuse_reason,
            "F12 CONTRAST: the refusal is a refusal by name, not damage" );
-    check( report.reason == SCHEMA_TABLE_LAYOUT_NEWER,
+    check( report.reason == SCHEMA_TBLK1_TABLE_LAYOUT_NEWER,
            "F12 CONTRAST: an unknown hash names a different refusal" );
     check( report.layout_hash == unknown_hash,
            "F12 CONTRAST: layout_newer reports the file's hash" );

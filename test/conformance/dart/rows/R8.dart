@@ -81,10 +81,10 @@ void main() {
 
   // ---- CONFIRM THE BUILD HAS EXACTLY THIS ONE LINEAGE ENTRY ----
   expect(
-    'metaFixedKnown is the one-entry §5.2 lineage for Meta',
-    metaFixedKnown.length == 1 && metaFixedKnown[0].hash == metaFixedHash,
+    'metaFixedKnown ends in the own layout of this build (the current layout is always the last entry, §5.3)',
+    metaFixedKnown.isNotEmpty && metaFixedKnown.last.hash == metaFixedHash,
     'metaFixedKnown.length=${metaFixedKnown.length} '
-        'metaFixedKnown[0].hash=0x${metaFixedKnown[0].hash.toRadixString(16)} '
+        'metaFixedKnown.last.hash=0x${metaFixedKnown.last.hash.toRadixString(16)} '
         'metaFixedHash=0x${metaFixedHash.toRadixString(16)}',
   );
 
@@ -99,6 +99,7 @@ void main() {
   // (the lineage select) fires first.
   final v = Meta()
     ..build = 7
+    ..tag.setRange(0, 5, const [0x68, 0x65, 0x6c, 0x6c, 0x6f])
     ..tagLength = 5;
   final buf = Uint8List(metaFixedMeasure(1));
   final saved = metaFixedSave(<Meta>[v], 1, buf);
@@ -176,8 +177,8 @@ void main() {
   expect(
     'malformed is FALSE — the file is well-formed, the lineage select fired '
         '(§5.3 step 5 fires BEFORE step 7\'s byte compare)',
-    !report.malformed,
-    'malformed=${report.malformed}',
+    report.refused != TableFixedRefusal.damaged,
+    'refused=${report.refused}',
   );
   expect(
     'layoutHash carries the FILE\'S hash verbatim (the law: AND NOTHING ELSE)',
@@ -193,24 +194,9 @@ void main() {
     'unknown=${report.unknown}',
   );
   expect(
-    'kindMismatch == 0 (§5.4)',
-    report.kindMismatch == 0,
-    'kindMismatch=${report.kindMismatch}',
-  );
-  expect(
-    'clamped == 0 (§5.4 — no count or text op lands on REFUSE)',
-    report.clamped == 0,
-    'clamped=${report.clamped}',
-  );
-  expect(
     'widened == 0 (§5.4)',
     report.widened == 0,
     'widened=${report.widened}',
-  );
-  expect(
-    'duplicate == 0 (§5.4)',
-    report.duplicate == 0,
-    'duplicate=${report.duplicate}',
   );
   expect(
     'hash == 0 (the per-record hash slot is for read-returns only, §5.9 #6)',
@@ -243,7 +229,7 @@ void main() {
   final reportSurfaceHas =
       report.refused == TableFixedRefusal.layoutNewer &&
       report.layoutHash == unknownWireHash &&
-      !report.malformed;
+      report.refused != TableFixedRefusal.damaged;
 
   expect(
     'joint report: refused=layoutNewer AND layoutHash=wire AND !malformed '
@@ -251,7 +237,7 @@ void main() {
     reportSurfaceHas,
     'refused=${report.refused} '
         'layoutHash=0x${report.layoutHash.toRadixString(16)} '
-        'malformed=${report.malformed}',
+        'damaged=${report.refused == TableFixedRefusal.damaged}',
   );
 
   // silence unused warnings

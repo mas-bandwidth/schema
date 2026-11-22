@@ -98,21 +98,19 @@ fn test_row_f8_ragged_tail() {
             TableFixedReason::None,
             "ragged tail leaves reason untouched as None: {:?}", report.reason
         );
-        assert_eq!(report.oor, 0, "ragged tail moves no clamped counter");
         assert_eq!(report.widened, 0, "ragged tail moves no widened counter");
         assert_eq!(report.unknown, 0, "ragged tail moves no unknown counter");
-        assert_eq!(report.mismatch, 0, "ragged tail moves no kind_mismatch counter");
 
-        // Verify destination was untouched: every poisoned byte remains 0x5A
-        let raw_dest = unsafe {
-            core::slice::from_raw_parts(
-                values.as_ptr() as *const u8,
-                core::mem::size_of::<PaddedRowRow>(),
-            )
-        };
-        for (i, &b) in raw_dest.iter().enumerate() {
-            assert_eq!(b, 0x5A, "destination byte {i} was overwritten with {b:#04x}");
-        }
+        // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md section 4, the
+        // generated padded_row_fixed_load): the poisoned record is back at its
+        // declared defaults, so nothing the read touched is a value to use. The
+        // poison (0x5A bytes) proves the discard ran; the file's own tag (42)
+        // proves nothing of the ragged file's records was kept.
+        let defaults = PaddedRowRow::default();
+        assert_eq!(values[0].tag, defaults.tag, "ragged tail at +{extra}: tag is not back at its default");
+        assert_eq!(values[0].id, defaults.id, "ragged tail at +{extra}: id is not back at its default");
+        assert_eq!(values[0].value.to_bits(), defaults.value.to_bits(), "ragged tail at +{extra}: value is not back at its default");
+        assert_ne!(values[0].tag, 42, "ragged tail at +{extra}: the file's record must not land");
     }
 
     // 3. NEGATIVE CONTROL: extra == record_bytes is a whole extra record, NOT ragged.
