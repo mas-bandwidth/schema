@@ -1,12 +1,16 @@
 package elixirtable
 
 import (
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // armMinSchema holds a counted [2..4] inside a union arm, once in a fixed table
@@ -228,4 +232,129 @@ IO.puts("ok")
 	if !strings.Contains(out, "FAIL: ") {
 		t.Fatalf("REVERSED WITNESS FAILED: red, but not on a check: %v\n%s", err, out)
 	}
+}
+
+const countedMinElemsSchema = `package countedmin
+
+table E
+{
+    n uint32
+}
+
+union U
+{
+    a uint32
+    b int32
+}
+
+union P
+{
+    few [2..4]uint32
+    other int32
+}
+
+table R
+{
+    es [2..4]E
+}
+
+table RU
+{
+    us [2..4]U
+}
+
+table RP
+{
+    p P
+}
+`
+
+type countedMinCase struct {
+	id, table, text, elixir string
+}
+
+var countedMinCases = []countedMinCase{
+	{"table_born", "R", `{"es":[{},{}]}`, `%{"es" => [%{"n" => 0}, %{"n" => 0}]}`},
+	{"table_three", "R", `{"es":[{},{},{}]}`, `%{"es" => [%{"n" => 0}, %{"n" => 0}, %{"n" => 0}]}`},
+	{"table_one_set", "R", `{"es":[{},{"n":7}]}`, `%{"es" => [%{"n" => 0}, %{"n" => 7}]}`},
+	{"union_born", "RU", `{"us":[{},{}]}`, `%{"us" => [nil, nil]}`},
+	{"union_three", "RU", `{"us":[{},{},{}]}`, `%{"us" => [nil, nil, nil]}`},
+	{"union_one_set", "RU", `{"us":[{},{"a":7}]}`, `%{"us" => [nil, {"a", 7}]}`},
+	// selecting a counted arm with no payload gives it A default elements
+	{"arm_selected", "RP", `{"p":{"few":[0,0]}}`, `%{"p" => {"few", nil}}`},
+	{"arm_set", "RP", `{"p":{"few":[5,6]}}`, `%{"p" => {"few", [5, 6]}}`},
+}
+
+// TestCountedMinElementsMatchEngineElixir compares the Elixir table wire with
+// the independent engine's (internal/tablewire) for a [2..4] array of tables
+// or unions at its born state, one over and one set, and for a counted arm
+// selected with no payload. The reversed witness plants the old judgement
+// back (a born array always rides, a bare arm reads as []).
+func TestCountedMinElementsMatchEngineElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	schema := filepath.Join(t.TempDir(), "CountedMin.schema")
+	if err := os.WriteFile(schema, []byte(countedMinElemsSchema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, schema)
+	m := tabletext.NewModel(u)
+	want := map[string]string{}
+	var probe strings.Builder
+	probe.WriteString("for {id, root, value} <- [\n")
+	for _, c := range countedMinCases {
+		v := m.New(m.Lookup(c.table))
+		var rep tabletext.Report
+		if !m.Read(v, []byte(c.text), &rep) {
+			t.Fatalf("%s: the engine did not read %s: %+v", c.id, c.text, rep)
+		}
+		wire, err := tablewire.Encode(m, v)
+		if err != nil {
+			t.Fatalf("%s: the engine did not encode: %v", c.id, err)
+		}
+		want[c.id] = hex.EncodeToString(wire)
+		fmt.Fprintf(&probe, "  {%q, %q, %s},\n", c.id, c.table, c.elixir)
+	}
+	probe.WriteString(`] do
+  case Countedmin.Table.save(root, value) do
+    {:ok, bytes} -> IO.puts("CROSS " <> id <> " " <> Base.encode16(bytes, case: :lower))
+    other -> IO.puts("CROSS " <> id <> " " <> inspect(other))
+  end
+end
+`)
+	files := generateElixir(t, u)
+	run := func() map[string]string {
+		out, err := runArmProbe(t, elixirBinary(t), files, probe.String())
+		if err != nil {
+			t.Fatalf("probe failed: %v\n%s", err, out)
+		}
+		got := map[string]string{}
+		for _, line := range strings.Split(out, "\n") {
+			if parts := strings.Fields(line); len(parts) == 3 && parts[0] == "CROSS" {
+				got[parts[1]] = parts[2]
+			}
+		}
+		return got
+	}
+	got := run()
+	for _, c := range countedMinCases {
+		if got[c.id] != want[c.id] {
+			t.Errorf("%s: Elixir %q, engine %q", c.id, got[c.id], want[c.id])
+		}
+	}
+	// the reversed witnesses: the old judgements planted back, each in its own
+	// copy of the generated files
+	plant := func(old, repl string, ids ...string) {
+		t.Helper()
+		files = generateElixir(t, u)
+		elixirPatch(t, files, old, repl)
+		after := run()
+		for _, id := range ids {
+			if after[id] == want[id] {
+				t.Errorf("REVERSED WITNESS FAILED: %s still matches the engine with %q planted back", id, old)
+			}
+		}
+	}
+	plant("list_born?(f, elements, idx_map, ids, order) or", "false or", "table_born", "union_born")
+	plant("default: [0, 0]", "default: []", "arm_selected")
 }
