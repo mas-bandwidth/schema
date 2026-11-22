@@ -1,0 +1,6 @@
+{"Action":"start","Package":"github.com/mas-bandwidth/schema/v2/pkg"}
+{"Action":"run","Package":"github.com/mas-bandwidth/schema/v2/pkg","Test":"TestFirst"}
+{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/pkg","Test":"TestFirst","Output":"=== RUN   TestFirst\n"}
+{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/pkg","Test":"TestFirst","Output":"    a_test.go:7: SCHEMA_SLOW: this test shells out (x); set SCHEMA_SLOW=1 to run it\n"}
+{"Action":"output","Package":"github.com/mas-bandwidth/schema/v2/pkg","Test":"TestFirst","Output":"--- SKIP: TestFirst (0.00s)\n"}
+{"Action":"skip","Package":"github.com/mas-bandwidth/schema/v2/pkg","Test":"TestFirst","Elapsed":0}

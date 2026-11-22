@@ -1,0 +1,2 @@
+title string(8)
+title wstring(8)

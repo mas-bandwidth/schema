@@ -1,0 +1,8 @@
+package arithmetic
+
+const Next = 0xffffffff + 1
+
+type Value
+{
+    ticks int64 = Next
+}

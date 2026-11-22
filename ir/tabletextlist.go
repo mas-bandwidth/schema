@@ -15,6 +15,8 @@
 package ir
 
 import (
+	"iter"
+	"slices"
 	"sort"
 )
 
@@ -29,10 +31,19 @@ func TextListElemName(owner, field string) string {
 	return owner + GoExportName(field) + "Text"
 }
 
-// TextListVerbs is the surface a text list claims on its table, `<Table><Field>`
+// textListVerbs is the surface a text list claims on its table, `<Table><Field>`
 // followed by each of these (§2.13, §11). An unbounded list claims §2.9's
-// four as well.
-var TextListVerbs = []string{"Text", "TextAt", "Append", "AppendAbsent"}
+// four as well. It is unexported so that no importer can change what the
+// checker claims; [AllTextListVerbs] reads it and [TextListVerbs] is the copy.
+var textListVerbs = []string{"Text", "TextAt", "Append", "AppendAbsent"}
+
+// TextListVerbs enumerates the text-list surface (§2.13, §11). It is a COPY:
+// editing it changes nothing the checker claims.
+var TextListVerbs = slices.Clone(textListVerbs)
+
+// AllTextListVerbs yields the text-list surface the checker claims, in order
+// (§2.13, §11).
+func AllTextListVerbs() iter.Seq[string] { return slices.Values(textListVerbs) }
 
 // IsTextListElem reports a record the compiler GENERATED for a text list. It is
 // a generated entry as a map's is (MapEntryOf names its holder), reached only

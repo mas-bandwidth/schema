@@ -1,0 +1,10 @@
+package fixture
+
+import (
+	osexec "os/exec"
+	"testing"
+)
+
+func TestRenamedImport(t *testing.T) {
+	_ = osexec.Command("luau", "-v").Run()
+}

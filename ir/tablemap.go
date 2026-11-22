@@ -8,6 +8,8 @@ package ir
 
 import (
 	"fmt"
+	"iter"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -67,11 +69,22 @@ func MapValueField(f *Field) *Field { return f.MapEntry.Fields[1] }
 // The list is claimed with the CONSTRUCT and not with the codec, on the rule
 // §11 already follows for the block form's row accessors: a name free today
 // must not become a collision the day a backend emits it.
-var MapFieldVerbs = []string{
+//
+// It is unexported so that no importer can change what the checker claims;
+// [AllMapFieldVerbs] reads it and [MapFieldVerbs] is the copy.
+var mapFieldVerbs = []string{
 	"Entry", "Insert", "Find", "Erase", "Each",
 	// the SIDE INDEX (§2.8): its measure, the build, and the lookup through it
 	"IndexMeasure", "Index", "IndexFind",
 }
+
+// MapFieldVerbs enumerates the map surface (docs/SPEC-TABLES.md §2.8, §11). It
+// is a COPY: editing it changes nothing the checker claims.
+var MapFieldVerbs = slices.Clone(mapFieldVerbs)
+
+// AllMapFieldVerbs yields the map surface the checker claims, in order
+// (docs/SPEC-TABLES.md §2.8, §11).
+func AllMapFieldVerbs() iter.Seq[string] { return slices.Values(mapFieldVerbs) }
 
 // MapFields lists the map fields an author WROTE, as `Table.field`, sorted —
 // the names a backend that does not carry the construct puts in its refusal

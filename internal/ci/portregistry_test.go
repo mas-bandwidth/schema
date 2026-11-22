@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestPortRegistryDefinedOnce pins the single port-registry definition in
@@ -55,7 +57,7 @@ func TestPortRegistryDefinedOnce(t *testing.T) {
 		filepath.Join(root, "make", "*.mk"),
 		filepath.Join(root, "make", "checks", "*.mk"),
 	} {
-		matches, err := filepath.Glob(pat)
+		matches, err := provesran.Glob(pat)
 		if err != nil {
 			t.Fatalf("glob %s: %v", pat, err)
 		}

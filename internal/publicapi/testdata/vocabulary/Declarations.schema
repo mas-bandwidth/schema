@@ -1,0 +1,11 @@
+package vocabulary
+
+table Pong | forms = "wire,json"
+{
+    score int32
+}
+
+fixed table Record | integrity = "crc32c"
+{
+    count int32
+}
