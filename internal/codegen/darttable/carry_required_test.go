@@ -101,7 +101,7 @@ table Shapes {
 		{"Exact", `{}`, "ver", 0}, {"Exact", `{"ver":7}`, "", 0},
 	} {
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);reason=r.refused?r.reason:'';}on FormatException catch(e){reason='threw: '+e.message.toString();}
-check(reason==%q,%q);}
+check(reason==%q,%q+' got '+reason);}
 `, dartName(tc.root), tc.input, func() string {
 			if tc.missing != "" {
 				return "missing_required: " + tc.missing
