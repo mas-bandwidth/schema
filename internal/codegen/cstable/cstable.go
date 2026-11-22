@@ -805,8 +805,6 @@ public sealed class TableFieldInfo
     public string NonFiniteField, NonFiniteReason;
     // Typed callbacks retain exact integer bounds and defaults without boxing.
     public ulong DefaultRaw;
-    // true for the raw value of a DEPRECATED variant; null when the enum has none
-    public Func<ulong, bool> EnumDeprecated = null;
     public Func<object, bool> WireGuard;
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
