@@ -6870,11 +6870,8 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        graphdemo_stamp_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { graphdemo_stamp_reset( &defaults ); }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;

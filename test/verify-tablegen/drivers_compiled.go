@@ -202,7 +202,7 @@ func verifyCPP(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, 
                 check_bytes( c.id, out.data(), (size_t)msz, c.want1 );
                 return;
             }
-            if ( c.op == 6 ) {
+            if ( c.op == 6 || c.op == 7 ) {
                 %s::%s val;
                 %s::TableReport rep;
                 if ( !%s::%sFromJson( val, (const char *)c.in.data(), (int64_t)c.in.size(), &rep ) || rep.damaged || rep.refused ) die( c.id, "FromJson fix" );
@@ -211,6 +211,14 @@ func verifyCPP(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, 
                 std::vector<char> jout( jsz > 0 ? (size_t)jsz : 1 );
                 if ( %s::%sToJson( val, jout.data(), jsz ) != jsz ) die( c.id, "ToJson fix" );
                 check_bytes( c.id, (const uint8_t *)jout.data(), (size_t)jsz, c.want1 );
+                if ( c.op == 7 ) {
+                    %s::TableReport srep;
+                    int64_t msz = %s::%sMeasureMessages( &val, 1, &srep );
+                    if ( msz < 0 ) die( c.id, "MeasureMessages after FromJson" );
+                    std::vector<uint8_t> mout( msz > 0 ? (size_t)msz : 1 );
+                    if ( %s::%sSaveMessages( &val, 1, mout.data(), msz, &srep ) != msz ) die( c.id, "SaveMessages after FromJson" );
+                    check_bytes( c.id, mout.data(), (size_t)msz, c.want2 );
+                }
                 return;
             }
         }
@@ -219,6 +227,7 @@ func verifyCPP(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, 
 				u.Pkg, fr, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, fr, u.Pkg, fr,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, fr,
 				u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, fr, u.Pkg, fr,
+				u.Pkg, u.Pkg, fr, u.Pkg, fr,
 			)
 		}
 		disp.WriteString("    }\n")
@@ -443,7 +452,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 check_bytes( c->id, out, (size_t)msz, c->w1, c->w1_len );
                 free( out ); free( vals ); free( entries ); return;
             }
-            if ( c->op == 6 ) {
+            if ( c->op == 6 || c->op == 7 ) {
                 %s_%s_t val; memset( &val, 0, sizeof(val) ); %s_%s_reset( &val );
                 %s_table_report_t rep; memset( &rep, 0, sizeof(rep) );
                 if ( !%s_%s_from_json( &val, (const char *)c->in, (int64_t)c->in_len, &rep ) || rep.refused ) die( c->id, "from_json fix" );
@@ -452,6 +461,15 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 char * jout = (char *)calloc( (size_t)jsz + 1, 1 );
                 if ( %s_%s_to_json( &val, jout, jsz + 1 ) != jsz ) die( c->id, "to_json fix" );
                 check_bytes( c->id, (const uint8_t *)jout, (size_t)jsz, c->w1, c->w1_len );
+                if ( c->op == 7 ) {
+                    %s_table_report_t srep; memset( &srep, 0, sizeof(srep) );
+                    int64_t msz = %s_%s_measure_messages( &val, 1, &srep );
+                    if ( msz < 0 ) die( c->id, "measure_messages after from_json" );
+                    uint8_t * mout = (uint8_t *)calloc( (size_t)msz + 1, 1 );
+                    if ( %s_%s_save_messages( &val, 1, mout, msz, &srep ) != msz ) die( c->id, "save_messages after from_json" );
+                    check_bytes( c->id, mout, (size_t)msz, c->w2, c->w2_len );
+                    free( mout );
+                }
                 free( jout ); return;
             }
         }
@@ -460,6 +478,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
 				u.Pkg, fSn, u.Pkg, fSn, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, pUp, pUp, u.Pkg, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, u.Pkg, fSn, u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, fSn, u.Pkg, fSn, u.Pkg, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn,
+				u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
 			)
 		}
 		disp.WriteString("    }\n")
@@ -673,7 +692,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                     CheckBytes(c.Id, outBuf, c.Want1);
                     return;
                 }
-                if (c.Op == 6)
+                if (c.Op == 6 || c.Op == 7)
                 {
                     var v = new %s.%s();
                     var rep = new %s.TableReport();
@@ -683,6 +702,15 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                     byte[] jout = new byte[jsz];
                     if (%s.Schema.%sToJson(v, jout) != jsz) Die(c.Id, "ToJson fix");
                     CheckBytes(c.Id, jout, c.Want1);
+                    if (c.Op == 7)
+                    {
+                        var one = new[] { v };
+                        long msz = %s.Schema.%sMeasureMessages(one);
+                        if (msz < 0) Die(c.Id, "MeasureMessages after FromJson");
+                        byte[] mout = new byte[msz];
+                        if (%s.Schema.%sSaveMessages(one, mout) != msz) Die(c.Id, "SaveMessages after FromJson");
+                        CheckBytes(c.Id, mout, c.Want2);
+                    }
                     return;
                 }
             }
@@ -691,6 +719,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
 					ns, fr, ns, ns, ns, fr, ns, fr, ns, fr,
 					ns, ns, ns, ns, ns, fr, ns, fr, ns, ns, fr, ns, fr, ns, fr,
 					ns, fr, ns, ns, fr, ns, fr, ns, fr,
+					ns, fr, ns, fr,
 				)
 			}
 			disp.WriteString("        }\n")
@@ -729,7 +758,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                 {
                     var v = new %s.%s();
                     var rep = default(%s.Schema.TableReport);
-                    if (!%s.Schema.%sFromJson(v, c.In, ref rep) || rep.Damaged || rep.Refused) Die(c.Id, "FromJson var");
+                    if (!%s.Schema.%sFromJson(ref v, c.In, ref rep) || rep.Damaged || rep.Refused) Die(c.Id, "FromJson var");
                     long jsz = %s.Schema.%sToJsonMeasure(v);
                     if (jsz < 0) Die(c.Id, "ToJsonMeasure var");
                     byte[] jout = new byte[jsz];
@@ -791,7 +820,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                     CheckBytes(c.Id, outBuf, c.Want1);
                     return;
                 }
-                if (c.Op == 6)
+                if (c.Op == 6 || c.Op == 7)
                 {
                     var v = default(%s.%s);
                     var rep = default(%s.Schema.TableReport);
@@ -801,6 +830,15 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                     byte[] jout = new byte[jsz];
                     if (%s.Schema.%sToJson(ref v, jout) != jsz) Die(c.Id, "ToJson fix");
                     CheckBytes(c.Id, jout, c.Want1);
+                    if (c.Op == 7)
+                    {
+                        var one = new[] { v };
+                        long msz = %s.Schema.%sMeasureMessages(one.AsSpan());
+                        if (msz < 0) Die(c.Id, "MeasureMessages after FromJson");
+                        byte[] mout = new byte[msz];
+                        if (%s.Schema.%sSaveMessages(one.AsSpan(), mout) != msz) Die(c.Id, "SaveMessages after FromJson");
+                        CheckBytes(c.Id, mout, c.Want2);
+                    }
                     return;
                 }
             }
@@ -809,6 +847,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
 					ns, fr, ns, fr, ns, ns, fr, ns, fr, ns, fr,
 					ns, ns, ns, ns, ns, fr, ns, fr, ns, ns, fr, ns, fr, ns, fr,
 					ns, fr, ns, ns, fr, ns, fr, ns, fr,
+					ns, fr, ns, fr,
 				)
 			}
 			disp.WriteString("        }\n")
@@ -1353,12 +1392,22 @@ func verifyRust(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
                 check_bytes(&c.id, &out, &c.w1);
                 return;
             }
-            if c.op == 6 {
+            if c.op == 6 || c.op == 7 {
                 let mut rep = %s::TableReport::default();
                 let r = %s::%s_from_json_bytes(&c.inp, &mut rep).unwrap_or_else(|| die(&c.id, "from_json fix"));
                 if rep.refused { die(&c.id, "from_json fix refused"); }
                 let jout = %s::%s_to_json_checked(&r).unwrap_or_else(|| die(&c.id, "to_json fix"));
                 check_bytes(&c.id, jout.as_bytes(), &c.w1);
+                if c.op == 7 {
+                    let mut srep = %s::TableReport::default();
+                    let row = %s::%sRow::from(&r);
+                    let one = std::slice::from_ref(&row);
+                    let msz = %s::%s_measure_messages(one, &mut srep);
+                    if msz < 0 { die(&c.id, "measure_messages after from_json"); }
+                    let mut mout = vec![0u8; msz as usize];
+                    if %s::%s_save_messages(one, &mut mout, &mut srep) != msz { die(&c.id, "save_messages after from_json"); }
+                    check_bytes(&c.id, &mout, &c.w2);
+                }
                 return;
             }
         }
@@ -1367,6 +1416,7 @@ func verifyRust(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
 				u.Pkg, fr, u.Pkg, u.Pkg, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, u.Pkg, fSn, u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
+				u.Pkg, u.Pkg, fr, u.Pkg, fSn, u.Pkg, fSn,
 			)
 		}
 		disp.WriteString("    }\n")
