@@ -47,7 +47,8 @@ CS_HOSTILE_CASES ?= $(shell grep -vc '^#' $(CS_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-cs-runs-hostile-corpus
 schema-cs-runs-hostile-corpus: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)"
+	$(call hostile_ledgered,cs,$(CS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)",$(CS_HOSTILE_CORPUS))
+	sh make/checks/hostile-carry-controls.sh cs findings $(CS_HOSTILE_BUILD)/carry '$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and

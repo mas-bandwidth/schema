@@ -1,0 +1,3 @@
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+audit-ring	packet	s	Ring	inputs/ring.bin	ledger corpus (control for F-076)	accept	-	-
+audit-wire	wire	s	Root	inputs/wire.bin	ledger corpus (control for F-076)	accept	-	-

@@ -40,9 +40,13 @@ RUBY_GEMS_LOCK       := $(CURDIR)/make/ruby-gems.lock
 
 RUBY_FLOOR ?= $(CURDIR)/dist/ruby-$(RUBY_FLOOR_VERSION)/bin/ruby
 RUBY       ?= $(CURDIR)/dist/ruby-$(RUBY_CURRENT_VERSION)/bin/ruby
-RUBOCOP    ?= $(CURDIR)/dist/ruby-$(RUBY_CURRENT_VERSION)/bin/rubocop
-STEEP      ?= $(CURDIR)/dist/ruby-$(RUBY_CURRENT_VERSION)/bin/steep
-RBS        ?= $(CURDIR)/dist/ruby-$(RUBY_CURRENT_VERSION)/bin/rbs
+# the analyzers sit beside the interpreter in use: dist/ruby-<v>/bin by default,
+# and beside $RUBY when a login exports it (the fleet SDK env.sh exports RUBY and
+# RUBY_FLOOR, never the analyzers). make/bench-check.sh holds the same rule: it
+# reads rubocop, steep and rbs beside RUBY and RUBY_FLOOR.
+RUBOCOP    ?= $(dir $(RUBY))rubocop
+STEEP      ?= $(dir $(RUBY))steep
+RBS        ?= $(dir $(RUBY))rbs
 # the Go tests (internal/codegen/ruby/rubyrun) and the conformance driver are
 # processes this make spawns, so they read the pins from the environment
 export RUBY RUBY_FLOOR RUBOCOP STEEP RBS

@@ -90,12 +90,13 @@ schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
 RUST_HOSTILE_CASES ?= $(shell grep -vc '^#' $(RUST_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-rust-runs-hostile-corpus
 schema-rust-runs-hostile-corpus: build/mustrun schema-rust-runs-hostile-corpus-build
-	@status=0; \
+	$(call hostile_ledgered,rust,$(RUST_HOSTILE_BUILD)/run.log,status=0; \
 	for profile in $(RUST_HOSTILE_PROFILES); do \
 		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv || status=1; \
 		$(MUSTRUN) -name "schema-rust-runs-hostile-corpus ($$profile)" -count $(RUST_HOSTILE_CASES) -- $(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
 	done; \
-	exit $$status
+	[ $$status -eq 0 ],$(RUST_HOSTILE_CORPUS),-runs $(words $(RUST_HOSTILE_PROFILES)) -skips test/rust-hostile/known-skips.tsv)
+	sh make/checks/hostile-carry-controls.sh rust findings $(RUST_HOSTILE_BUILD)/carry '$(RUST_HOSTILE_TARGET)/$(firstword $(RUST_HOSTILE_PROFILES))/rust-hostile "$$CARRY_CORPUS" "$$CARRY_FINDINGS" $(firstword $(RUST_HOSTILE_PROFILES))'
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/rust.mk by the Makefile's wildcard, so the prerequisite lands here and

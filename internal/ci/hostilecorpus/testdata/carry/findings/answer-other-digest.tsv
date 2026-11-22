@@ -1,0 +1,2 @@
+# F-079: the finding records an accept under another digest; the port's own digest is not the answer it carries, and the run fails
+wire-valid	carry-other-digest	inputs/wire-valid.bin	accept bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	carry control: an accept under a digest the port does not give

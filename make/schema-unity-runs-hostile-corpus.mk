@@ -49,7 +49,8 @@ UNITY_HOSTILE_CASES ?= $(shell grep -vc '^#' $(UNITY_HOSTILE_CORPUS)/manifest.ts
 .PHONY: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)"
+	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)",$(UNITY_HOSTILE_CORPUS))
+	sh make/checks/hostile-carry-controls.sh unity findings $(UNITY_HOSTILE_BUILD)/carry '$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and
