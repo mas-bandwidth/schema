@@ -48,6 +48,8 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		t.Fatal("the generator wrote no ProbeWire.dart")
 	}
 	const lo, hi = "-0.30000001192092896", "0.10000000149011612"
+	// narrowed through the library's one reusable cell: no allocation per check
+	const n = "(_rangeF32..[0] = v.r)[0] >= " + lo + " && _rangeF32[0] <= " + hi
 	for _, want := range []string{
 		// the variable read: a leaf, and each element of the array
 		"if (d < " + lo + ") { r.report.refuse('out_of_range'); return; }",
@@ -56,12 +58,29 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		// the JSON read: a leaf, and each element of the array
 		"v.r = _jsonRangedFloat(_jsonFloatField(val, r, true, v.r), " + lo + ", " + hi + ", r);",
 		"(i1, p1) => _jsonRangedFloat(_jsonFloatField(i1, r, true, p1), " + lo + ", " + hi + ", r)",
-		// the JSON writer's check
-		"if (!(v.r >= " + lo + " && v.r <= " + hi + ")) {",
+		// the JSON writer's check and the save's check, each a debug assert
+		// (Dart write checks are debug only) on the value NARROWED to float32
+		// first (a double that rounds to 0.1f passes)
+		"assert(" + n + ");",
+		"assert(!v.r.isFinite || (" + n + "));",
+		"final Float32List _rangeF32 = Float32List(1);",
 	} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("ProbeWire.dart lacks %s", want)
 		}
+	}
+	// the fixed writer's debug check narrows first too
+	var all strings.Builder
+	for _, src := range files {
+		all.Write(src)
+	}
+	fn := "(TableFixedLayout._f32..[0] = value.r)[0] >= " + lo + " && TableFixedLayout._f32[0] <= " + hi
+	if want := "assert(!value.r.isFinite || (" + fn + "));"; !strings.Contains(all.String(), want) {
+		t.Errorf("no generated Dart holds %s", want)
+	}
+	// no check allocates a cell to narrow through
+	if strings.Contains(all.String(), "Float32List.fromList(") {
+		t.Error("a generated Dart check allocates a Float32List per value")
 	}
 	// the control: a plain float32 is read and written with no range test
 	if !strings.Contains(wire, "v.p = _jsonFloatField(val, r, true, v.p);") {
@@ -72,6 +91,10 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		"v.p >=",
 		// the doubles a hair inside the float32 ends
 		"d < -0.3)", "d > 0.1)", ">= -0.3 &&", "<= 0.1)",
+		// the double compared unnarrowed
+		"(v.r >= " + lo, "!(v.r >= " + lo,
+		// the JSON writer refusing in every build
+		"if (!(" + n, "invalid_value: field r out of range",
 	} {
 		if strings.Contains(wire, never) {
 			t.Errorf("ProbeWire.dart holds %q", never)

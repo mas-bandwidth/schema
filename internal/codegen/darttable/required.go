@@ -90,22 +90,45 @@ bool _requiredCollectionKind(TableWireReader r, int expected) {
 }
 `
 
-func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
+// writeCheckLine is one write check: ok is the condition a value that may be
+// written keeps. With no refusal it is a debug assert (Dart write checks run in
+// debug builds only, as the save asserts do); with one it refuses in every
+// build.
+func writeCheckLine(ind, ok, refusal string) string {
+	if refusal == "" {
+		return fmt.Sprintf("%sassert(%s);\n", ind, ok)
+	}
+	return fmt.Sprintf("%sif (!(%s)) { %s }\n", ind, ok, refusal)
+}
+
+// writeCheckLoop runs body over each element of expr. Under asserts only, the
+// loop itself rides inside an assert, so a release build walks nothing.
+func writeCheckLoop(ind, name, expr, body, refusal string) string {
+	if refusal == "" {
+		return fmt.Sprintf("%sassert(() {\n%sfor (final %s in %s) {\n%s%s}\n%sreturn true;\n%s}());\n", ind, ind, name, expr, body, ind, ind, ind)
+	}
+	return fmt.Sprintf("%sfor (final %s in %s) {\n%s%s}\n", ind, name, expr, body, ind)
+}
+
+// requiredRangeCheck holds a required ranged field to its range before it is
+// written. cell is the library's reusable Float32List(1) a float32 narrows
+// through; refusal "" makes the check a debug assert.
+func requiredRangeCheck(f *ir.Field, expr, ind, cell, refusal string) string {
 	if !f.Required {
 		return ""
 	}
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		inner := *singleOf(f)
 		inner.Required = true
-		body := requiredRangeCheck(&inner, "requiredElement", ind+"\t", refusal)
+		body := requiredRangeCheck(&inner, "requiredElement", ind+"\t", cell, refusal)
 		if body == "" {
 			return ""
 		}
-		return fmt.Sprintf("%sfor (final requiredElement in %s) {\n%s%s}\n", ind, expr, body, ind)
+		return writeCheckLoop(ind, "requiredElement", expr, body, refusal)
 	}
 	var cond string
 	if f.HasFloatRange {
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, floatRangeLo(f), expr, floatRangeHi(f))
+		cond = floatRangeCond(f, expr, cell)
 	} else if f.HasIntRange {
 		lo, hi, _ := ir.TableRawRange(f)
 		switch {
@@ -121,40 +144,43 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 	if cond == "" {
 		return ""
 	}
-	return fmt.Sprintf("%sif (!(%s)) { %s }\n", ind, cond, refusal)
+	return writeCheckLine(ind, cond, refusal)
 }
 
-func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
+// jsonWriteCheck holds a field the JSON writer is about to write to its
+// declared bounds. Dart write checks are debug asserts (refusal ""); cell is
+// the library's reusable Float32List(1) a float32 narrows through.
+func jsonWriteCheck(f *ir.Field, expr, ind, cell, refusal string) string {
 	if f.Type.Optional {
 		return ""
 	}
 	var out string
 	if f.Array == ir.ArrayCounted {
-		out += fmt.Sprintf("%sif (%s.length < %d || %s.length > %d) { %s }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound, refusal)
+		out += writeCheckLine(ind, fmt.Sprintf("%s.length >= %d && %s.length <= %d", expr, f.ArrayMin, expr, f.ArrayBound), refusal)
 	} else if f.Array == ir.ArrayList && f.ArrayBound > 0 && !f.IsTextList() {
-		out += fmt.Sprintf("%sif (%s.length > %d) { %s }\n", ind, expr, f.ArrayBound, refusal)
+		out += writeCheckLine(ind, fmt.Sprintf("%s.length <= %d", expr, f.ArrayBound), refusal)
 	}
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		if f.IsTextList() {
 			return out
 		}
 		inner := *singleOf(f)
-		body := jsonWriteCheck(&inner, "jsonElement", ind+"\t", refusal)
+		body := jsonWriteCheck(&inner, "jsonElement", ind+"\t", cell, refusal)
 		if body != "" {
-			out += fmt.Sprintf("%sfor (final jsonElement in %s) {\n%s%s}\n", ind, expr, body, ind)
+			out += writeCheckLoop(ind, "jsonElement", expr, body, refusal)
 		}
 		return out
 	}
 	if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.TextUnbounded() && f.Type.Size > 0 {
-		return fmt.Sprintf("%sif (utf8.encode(%s).length > %d) { %s }\n", ind, expr, f.Type.Size, refusal)
+		return writeCheckLine(ind, fmt.Sprintf("utf8.encode(%s).length <= %d", expr, f.Type.Size), refusal)
 	}
 	if f.Type.Kind == ir.TBytes && !f.Type.Blob() && f.Type.Size > 0 {
-		return fmt.Sprintf("%sif (%s.length > %d) { %s }\n", ind, expr, f.Type.Size, refusal)
+		return writeCheckLine(ind, fmt.Sprintf("%s.length <= %d", expr, f.Type.Size), refusal)
 	}
 	var cond string
 	switch {
 	case f.HasFloatRange:
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, floatRangeLo(f), expr, floatRangeHi(f))
+		cond = floatRangeCond(f, expr, cell)
 	case f.Type.Kind == ir.TBits && f.Type.Width < 64:
 		cond = fmt.Sprintf("(%s & ~%s) == 0", expr, dartU64Literal((uint64(1)<<f.Type.Width)-1))
 	case f.HasIntRange || f.Type.Kind == ir.TFixed:
@@ -172,21 +198,22 @@ func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
 		}
 	}
 	if cond != "" {
-		out += fmt.Sprintf("%sif (!(%s)) { %s }\n", ind, cond, refusal)
+		out += writeCheckLine(ind, cond, refusal)
 	}
 	return out
 }
 
-// floatRangeLo and floatRangeHi are a ranged float's ends as the write checks
-// hold them: the float32 nearest each declared end for a float32
-// (docs/SPEC-TABLES.md §3.3, THE RANGE IS HELD AT FLOAT32), the declared end
-// itself for a float64.
-func floatRangeLo(f *ir.Field) string {
-	lo, _, _ := fixedFloatClampEnds(f)
-	return lo
-}
-
-func floatRangeHi(f *ir.Field) string {
-	_, hi, _ := fixedFloatClampEnds(f)
-	return hi
+// floatRangeCond is the condition a ranged float keeps to be written: a
+// float32 NARROWED FIRST (docs/SPEC-TABLES.md §3.3, THE RANGE IS HELD AT
+// FLOAT32) through cell, the library's one reusable Float32List(1) (store
+// the value, read [0]: no allocation per check), then held to the float32
+// nearest each declared end, so a double that rounds to an end passes exactly
+// as the value the store writes does; a float64 as it is, to its declared ends.
+// A NaN fails both comparisons.
+func floatRangeCond(f *ir.Field, expr, cell string) string {
+	lo, hi, _ := fixedFloatClampEnds(f)
+	if f.Type.Kind == ir.TFloat32 {
+		return fmt.Sprintf("(%s..[0] = %s)[0] >= %s && %s[0] <= %s", cell, expr, lo, cell, hi)
+	}
+	return fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi)
 }

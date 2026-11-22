@@ -2359,6 +2359,11 @@ int readU32(Uint8List d, int off) {
   return v;
 }
 
+// _rangeF32 is the one reusable cell a write check narrows a compressed
+// float32 through before its range test (docs/SPEC-TABLES.md §3.3): store the
+// value, read [0], no allocation per check.
+final Float32List _rangeF32 = Float32List(1);
+
 // _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
 // (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
 // little-endian, exactly as the other backends write it.
@@ -2575,7 +2580,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
-	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "_rangeF32", ""))
 	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
 	if f.Type.TextUnbounded() {
 		guard := ""
@@ -4241,8 +4246,8 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
 	}
 	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
-		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+		if _, _, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
 		}
 	}
 }
