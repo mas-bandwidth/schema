@@ -119,7 +119,8 @@ func mustHex(s string) []byte {
 
 // messageClampedBody loads the mutant with the generated Dart batch message
 // load and asserts the strict refusal: no message lands and the report
-// refuses count_over_bound (docs/plans/strict-only.md decision 2): a bytes(N)
+// refuses (docs/plans/strict-only.md decision 2; the verdict alone, rulings
+// refusal-verdict-only: Go names it count_over_bound): a bytes(N)
 // count above the announced max is refused as an array's count is, the
 // reference's `text` (internal/tablewire/messagedecode.go).
 func messageClampedBody(announce, loginMutant []byte) string {
@@ -132,7 +133,7 @@ func messageClampedBody(announce, loginMutant []byte) string {
   final values = <h.LoginRequest>[h.LoginRequest()];
   final rep = h.TableReport();
   final count = r.loginRequestLoadMessages(values, msg, vocab, rep);
-  check(count == 0 && rep.refused && rep.reason == 'count_over_bound',
+  check(count == 0 && rep.refused,
       'over-bound batch body refused: count=$count reason=${rep.reason}');
 `, dartBytes(announce), dartBytes(loginMutant))
 }

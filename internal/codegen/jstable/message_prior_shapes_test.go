@@ -159,7 +159,8 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
   if (!m.AnnounceRead(voc, announce, {})) { throw new Error("announce refused"); }
   const rep = {};
   const n = m.PriorLoadMessages([new m.Prior(), new m.Prior(), new m.Prior(), new m.Prior()], voc, new Uint8Array(readFileSync(%q)), rep);
-  console.log("ROW %s loaded=" + (n === %d && !rep.Damaged) + "|reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0) + "|mismatch=" + (rep.Mismatch ?? 0));
+  console.log("ROW %s loaded=" + (n === %d && !rep.Damaged));
+  console.log("diagnostic %[2]s reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0) + "|mismatch=" + (rep.Mismatch ?? 0));
 }
 `, filepath.Join(wires, row.name+"_message.bin"), row.name, row.bodies)
 	}
@@ -181,10 +182,9 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
 		}
 	}
 	for _, row := range rows {
-		want := "loaded=true|reason=|oor=0|mismatch=0"
-		if row.reason != "" {
-			want = "loaded=false|reason=" + row.reason + "|oor=0|mismatch=0"
-		}
+		// the verdict alone: the reason and the counters are per-language
+		// detail (rulings refusal-verdict-only)
+		want := fmt.Sprintf("loaded=%t", row.reason == "")
 		if got[row.name] != want {
 			t.Errorf("%s: JS=%q, want %q", row.name, got[row.name], want)
 		}
@@ -253,10 +253,10 @@ func TestJsMessageBatchRefusedWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct{ name, first, second, want string }{
-		{"second_past_bits", `{"mask":25}`, `{"mask":75}`, "delivered=false|reason=out_of_range|mask=0,0,17|scalar=0,0,17"},
-		{"second_past_range", `{"scalar":40}`, `{"scalar":75}`, "delivered=false|reason=out_of_range|mask=0,0,17|scalar=0,0,17"},
-		{"second_kind", `{"mask":25}`, `{"narrowed":40}`, "delivered=false|reason=kind_mismatch|mask=0,0,17|scalar=0,0,17"},
-		{"both_inside", `{"mask":25,"scalar":40}`, `{"mask":30,"scalar":50}`, "delivered=true|reason=|mask=25,30,17|scalar=40,50,17"},
+		{"second_past_bits", `{"mask":25}`, `{"mask":75}`, "delivered=false|mask=0,0,17|scalar=0,0,17"},
+		{"second_past_range", `{"scalar":40}`, `{"scalar":75}`, "delivered=false|mask=0,0,17|scalar=0,0,17"},
+		{"second_kind", `{"mask":25}`, `{"narrowed":40}`, "delivered=false|mask=0,0,17|scalar=0,0,17"},
+		{"both_inside", `{"mask":25,"scalar":40}`, `{"mask":30,"scalar":50}`, "delivered=true|mask=25,30,17|scalar=40,50,17"},
 	}
 	for _, tc := range cases {
 		if err := os.WriteFile(filepath.Join(dir, tc.name+".bin"), batch(tc.first, tc.second), 0o600); err != nil {
@@ -270,7 +270,8 @@ func TestJsMessageBatchRefusedWhole(t *testing.T) {
   for (const v of values) { v.mask = 17; v.scalar = 17; }
   const rep = {};
   const n = m.PriorLoadMessages(values, voc, new Uint8Array(readFileSync(%q)), rep);
-  console.log("ROW %s delivered=" + (n === 2) + (n === 2 || n < 1 ? "" : "|count=" + n) + "|reason=" + (rep.Reason ?? "") + "|mask=" + values.map((v) => v.mask).join(",") + "|scalar=" + values.map((v) => v.scalar).join(","));
+  console.log("diagnostic %[2]s reason=" + (rep.Reason ?? ""));
+  console.log("ROW %[2]s delivered=" + (n === 2) + (n === 2 || n < 1 ? "" : "|count=" + n) + "|mask=" + values.map((v) => v.mask).join(",") + "|scalar=" + values.map((v) => v.scalar).join(","));
 }
 `, tc.name+".bin", tc.name)
 	}
