@@ -170,6 +170,14 @@ fn fixed_f32_bits(x: f32) -> u32 {
     return b[0] | (b[1] as u32) << 8 | (b[2] as u32) << 16 | (b[3] as u32) << 24;
 }
 
+// fixed_cf32_bits is a COMPRESSED float's stored bits: its -0 is stored as +0
+// (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero), in
+// every build; every other value is its own pattern.
+fn fixed_cf32_bits(x: f32) -> u32 {
+    if x == 0.0 { return 0; }
+    return fixed_f32_bits(x);
+}
+
 fn fixed_bits_f32(u: u32) -> f32 {
     var img: u8[>..] = [];
     img.push(4);

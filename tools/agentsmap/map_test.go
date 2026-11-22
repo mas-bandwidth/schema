@@ -105,6 +105,10 @@ func TestStaleMapFailsUntilRegenerate(t *testing.T) {
 	}
 }
 
+// ignoredRootOutputs are the directories .gitignore ignores at the repository
+// root: build and toolchain output, never repo content.
+var ignoredRootOutputs = map[string]bool{"bin": true, "build": true, "dist": true, "runtimes": true, "tmp": true}
+
 func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	root := testRoot(t)
 	files := 0
@@ -115,6 +119,14 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", "testdata", "node_modules":
+				return filepath.SkipDir
+			}
+			// The root's gitignored output trees (.gitignore: /bin/,
+			// /build/, /tmp/, /runtimes/, /dist) hold no repo content: make
+			// fetches the serialize sibling checkouts into build/, each with
+			// its own CLAUDE.md, so a `go test ./...` whose other packages ran
+			// make first went red here.
+			if filepath.Dir(path) == root && ignoredRootOutputs[d.Name()] {
 				return filepath.SkipDir
 			}
 			return nil

@@ -177,7 +177,7 @@ func TestAFailedRenameLeavesTheOriginal(t *testing.T) {
 func TestAReadOnlyFileRefusesTheWholeCommit(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
-		t.Skip("root writes a read-only file")
+		t.Skip("root writes into a read-only file")
 	}
 	dir := tempDir(t)
 	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
