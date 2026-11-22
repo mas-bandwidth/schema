@@ -47,6 +47,10 @@ type countedBirthCase struct {
 func countedBirthCases() []countedBirthCase {
 	return []countedBirthCase{
 		{"fresh", "FixI32", "VarI32", ""},
+		// an object that names no field is the birth value, whatever the form
+		{"empty_json", "FixI32", "VarI32", "{}"},
+		{"empty_json", "FixRec", "VarRec", "{}"},
+		{"empty_json", "FixF64", "VarF64", "{}"},
 		{"min_default", "FixI32", "VarI32", `{"few":[0,0]}`},
 		{"min_one", "FixI32", "VarI32", `{"few":[0,7]}`},
 		{"min_plus1_default", "FixI32", "VarI32", `{"few":[0,0,0]}`},
@@ -96,6 +100,9 @@ def value(root, text):
 		text := c.text
 		if text == "" {
 			text = freshText[c.fix]
+		}
+		if c.name == "empty_json" {
+			text = "{}"
 		}
 		fmt.Fprintf(&p, "print(%q + \" msg \" + save_messages(%s, [value(%s, %q)]).hex())\n", key, c.fix, c.fix, text)
 		fmt.Fprintf(&p, "print(%q + \" var \" + value(%s, %q).save().hex())\n", vkey, c.vari, text)
