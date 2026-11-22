@@ -24,9 +24,9 @@ fixed table Batch
 // TestFixedLuauBatchCapacity holds the Luau fixed read to the caller's
 // capacity (docs/FIXED-FORM-ALGORITHM.md §5.3 step 10): n := rest / record_bytes,
 // and n past the capacity refuses the whole load before any record lands. The
-// capacity is the caller's argument, and a caller that passes none gets the
-// leg's default of 4,096, so a file of five records reads at five and at the
-// default and is refused at four.
+// capacity is the caller's argument, and a caller that passes none reads the
+// file's own count, so a file of five records reads at five and with none and
+// is refused at four.
 func TestFixedLuauBatchCapacity(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
