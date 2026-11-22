@@ -53,6 +53,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cRefOrdinalWideFields is the nested table's field count. It is above 127 on
@@ -286,12 +288,12 @@ func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFa
 		}
 	}
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin).CombinedOutput()
+	out, err := testproc.CommandContext(t, ctx, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s: %v\n%s", runFail, err, out)
 	}

@@ -1,0 +1,19 @@
+package counted
+
+type Inner
+{
+    a int32 = 3
+}
+
+union U
+{
+    x int32
+    y int32
+}
+
+fixed table Root
+{
+    ticks uint32
+    ps    [2..3]Inner
+    us    [2..3]U
+}

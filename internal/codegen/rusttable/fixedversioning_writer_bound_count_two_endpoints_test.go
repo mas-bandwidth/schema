@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // §5.8 row 4 (writer_bound_count) with TWO lineage endpoints. The reader is
@@ -83,7 +84,7 @@ fn v_writer_bound_count_two_remotes() {
 		src:    versionProbeSource(tests),
 	})
 
-	cmd := exec.Command("cargo", "test")
+	cmd := testproc.Command(t, "cargo", "test")
 	cmd.Dir = filepath.Join(root, "probe_writer_bound_count_two_remotes")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

@@ -7,7 +7,7 @@
 -- package benchtable — protocol id 0x4c9383ebe3cde248 — the Luau type view (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
-local _BenchTable = require("./BenchTable")
+local _F_BenchTable = require("./BenchTable")
 
 local _V = {}
 

@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppToolMessageProbeMain = `#include <cstdio>
@@ -149,7 +150,7 @@ func TestCppReadsEveryToolMessageInstance(t *testing.T) {
 	probe := filepath.Join(dir, "probe")
 	args := []string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize,
 		filepath.Join(dir, "probe.cpp"), filepath.Join(dir, "MessagesTable.cpp"), "-o", probe}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
 
@@ -183,7 +184,7 @@ func TestCppReadsEveryToolMessageInstance(t *testing.T) {
 
 			savedWire := filepath.Join(t.TempDir(), "saved.bin")
 			savedText := filepath.Join(t.TempDir(), "saved.json")
-			if out, err := exec.Command(probe, file, savedWire, savedText).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, probe, file, savedWire, savedText).CombinedOutput(); err != nil {
 				t.Fatalf("%s: the C++ read: %v\n%s", name, err, out)
 			}
 			gotWire, err := os.ReadFile(savedWire)

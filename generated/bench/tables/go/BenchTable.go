@@ -220,7 +220,7 @@ func WriteTableHitEvent(stream *serialize.WriteStream, value *TableHitEvent) err
 		f3 = 1
 	}
 	w0 := uint32(f0 | f1<<12 | f2<<24 | f3<<27)
-	stream.SerializeBits(&w0, 28)
+	_ = stream.SerializeBits(&w0, 28) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -240,7 +240,7 @@ func ReadTableHitEvent(stream *serialize.ReadStream, value *TableHitEvent) error
 // TableHitEvent nested in another value is read through it.
 func (value *TableHitEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 28)
+	_ = stream.SerializeBits(&n0, 28) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -285,7 +285,7 @@ func WriteTableChatEvent(stream *serialize.WriteStream, value *TableChatEvent) e
 	f0 := uint64(value.Channel) & 0x3
 	f1 := uint64(value.Speaker) & 0xfff
 	w0 := uint32(f0 | f1<<2)
-	stream.SerializeBits(&w0, 14)
+	_ = stream.SerializeBits(&w0, 14) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -305,7 +305,7 @@ func ReadTableChatEvent(stream *serialize.ReadStream, value *TableChatEvent) err
 // TableChatEvent nested in another value is read through it.
 func (value *TableChatEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 14)
+	_ = stream.SerializeBits(&n0, 14) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -346,7 +346,7 @@ func WriteTablePickupEvent(stream *serialize.WriteStream, value *TablePickupEven
 	f0 := uint64(value.ItemID) & 0x3ff
 	f1 := uint64(value.Amount) & 0xff
 	w0 := uint32(f0 | f1<<10)
-	stream.SerializeBits(&w0, 18)
+	_ = stream.SerializeBits(&w0, 18) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -366,7 +366,7 @@ func ReadTablePickupEvent(stream *serialize.ReadStream, value *TablePickupEvent)
 // TablePickupEvent nested in another value is read through it.
 func (value *TablePickupEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 18)
+	_ = stream.SerializeBits(&n0, 18) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()

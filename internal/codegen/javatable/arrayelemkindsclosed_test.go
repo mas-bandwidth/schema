@@ -2,10 +2,11 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // arrayElemKindsDriverJava loads each wire through this leg's strict load as
@@ -83,7 +84,7 @@ func TestJavaArrayElementKindsClosed(t *testing.T) {
 	}
 	sources = append(sources, driver)
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if b, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if b, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, b)
 	}
 
@@ -104,7 +105,7 @@ func TestJavaArrayElementKindsClosed(t *testing.T) {
 	for _, c := range cases {
 		jargs = append(jargs, filepath.Join(repo, "testdata", "wire", "tables", "framing", c.name), c.want)
 	}
-	out, err := exec.Command(java, jargs...).CombinedOutput()
+	out, err := testproc.Command(t, java, jargs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

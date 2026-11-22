@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestTestgenLuau is the gate of `schema testgen --lang luau`
@@ -138,7 +139,7 @@ func TestTestgenLuau(t *testing.T) {
 	if luauBin == "" {
 		t.Fatalf("the Luau interpreter does not resolve: %s", why)
 	}
-	cmd := exec.Command(luauBin, "main.luau")
+	cmd := testproc.Command(t, luauBin, "main.luau")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "fixed load value differs from sample value") {
 		t.Fatalf("the sabotaged save did not fail the generated value oracle:\n%s", out)

@@ -1068,11 +1068,8 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		keep = fd.bound
 		report.clamped = report.clamped + 1; noteField("clamped", arrayName)
 	elseif fd.array == "counted" and count < (fd.min or 0) then
-		-- A COUNT UNDER THE DECLARED MINIMUM is off its declaration at every
-		-- depth (docs/SPEC-TABLES.md §5.1 row 3; internal/tablewire decode.go
-		-- refuses it count_over_bound): the walk counts it where a count past
-		-- the bound counts, so the strict read refuses it, a child's [2..4]
-		-- inside a parent array included, whatever the parent declares.
+		-- A COUNTED ARRAY BELOW ITS MIN (docs/SPEC.md §5.1 row 3): off the
+		-- reader's declaration, as a count past its bound is
 		report.clamped = report.clamped + 1; noteField("clamped", arrayName)
 	end
 	local slot = fd.slot

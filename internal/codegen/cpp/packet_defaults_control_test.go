@@ -30,6 +30,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const packetDefaultsProbe = `#include <cstdio>
@@ -735,14 +737,14 @@ func runCppPacketDefaults(t *testing.T, files map[string][]byte) ([]byte, error)
 	}
 	exe := filepath.Join(dir, "probe")
 	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", dir, probe, "-o", exe}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the C++ probe did not compile: %w", err)
 	}
 	goldens, err := filepath.Abs(filepath.Join("..", "..", "..", "testdata", "wire", "packet-defaults"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return exec.Command(exe, goldens).CombinedOutput()
+	return testproc.Command(t, exe, goldens).CombinedOutput()
 }
 
 func TestCppPacketDefaults(t *testing.T) {
