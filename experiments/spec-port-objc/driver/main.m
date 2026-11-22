@@ -293,7 +293,11 @@ static int runSurface(NSString *surface) {
             } @catch (NSException *e) {
                 if (!isRefusal(e)) { bug(e); continue; }
                 if (!refusedLine) fprintf(stderr, "%s: refused: %s\n", name.UTF8String, e.reason.UTF8String);
-                putText(outName, @"refused"); // SPEC-GAP 3: the spelling of a wire-surface refusal
+                // SPEC-GAP 3: README says a driver "may emit `refused` or the
+                // historical `<case>.absent` file"; on these three surfaces the
+                // harness reads a `refused` file as value bytes, so a refusal is
+                // the `.absent` file, its text the reason (ignored by the harness)
+                putText([outName stringByAppendingString:@".absent"], [NSString stringWithFormat:@"refused: %@\n", e.reason]);
             }
         }
         if ([surface isEqualToString:@"json-write"]) {
