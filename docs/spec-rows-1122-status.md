@@ -34,20 +34,26 @@ The 34 held vectors lose `held: true` in `framing_vectors_test.go`; the held-vec
 256..N bytes under `map[string(N)]V` with N above 255 refused `length_over_bound`. It is now judged against its own
 declared N. Test: `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound` (red on the old code).
 
+## Port fixes (bounded string map key judged against its own N)
+
+The 255-byte cap is on schema names and never reaches a map key; a key under map[string(N)]V is held to N alone.
+
+- C++ (cpptable/json.go, the map reader): a bounded key with N >= 256 takes the whole-key scan path the unbounded key already took, so it is not cut into the 256-byte token buffer.
+- Elixir (elixirtable/variableform.go, json_map_key): the bound is field.size, no longer min(field.size, 255).
+- C# (cstable/maps.go) and C# (unity) (unitytable/runtime_json.go), ReadMap: a bounded key with N >= MaxKey is read through DecodedStringBody, not the 256-byte stack buffer.
+- Planted back (old code restored in each leg, rebuilt): C++ 1/3 red (256, 300), Elixir 1/3 red (256, 300), C# 2/3 red (300), C# (unity) 2/3 red (300); green again with the fix.
+
 ## Failing (language, row) pairs
 
 Run: `harness run --manifest <new rows only> --only <lang>`, every leg built on hetzner2. 101 rows per leg.
 
 | language | failing rows |
 |---|---|
-| C++ (reference) | sp-map-key-256-wide, sp-map-key-300-wide |
-| Elixir | sp-map-key-256-wide, sp-map-key-300-wide |
-| C# | sp-map-key-300-wide |
-| C# (unity) | sp-map-key-300-wide |
+| C++ (reference), Elixir, C#, C# (unity) | none: fixed (above); were sp-map-key-256-wide and -300-wide (C++, Elixir) and -300-wide (C#, unity) |
 | C, Dart, Rust | none failing; `sp-map-key-256/300/301-wide` answer ABSENT (no map class in the leg: `+3a`) |
 | Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Squirrel | none |
 
-Total: 6 failures in 4 legs (C++ 2, Elixir 2, C# 1, unity 1).
+Total: 0 failing (was 6 in 4 legs). Re-run on the 3 map-key rows after the fixes: C++, Elixir, C#, C# (unity) each json-hostile 3/3.
 
 ## Not expressible with an existing registered root (no row yet)
 
