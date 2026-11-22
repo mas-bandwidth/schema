@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -42,28 +41,11 @@ func TestNameCorpusBuildsCs(t *testing.T) {
 		}
 		runtime = append(runtime, path)
 	}
-	// a runtime that names System.Math unqualified cannot share an assembly
-	// with `namespace Math`, whatever the generated code does
-	runtimeMath := false
-	bareMath := regexp.MustCompile(`(^|[^.A-Za-z0-9_:])Math\.`)
-	for _, path := range runtime {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for line := range strings.SplitSeq(string(data), "\n") {
-			code, _, _ := strings.Cut(line, "//") // a doc comment may name Math
-			runtimeMath = runtimeMath || bareMath.MatchString(code)
-		}
-	}
 	csc, refs := cscToolchain(t)
 	for _, c := range nameemit.For(t, "cs") {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			files := nameemit.Generate(t, c, "cs")
-			if runtimeMath && strings.HasPrefix(c.Name, "pkg_Math") {
-				t.Skipf("%s: the serialize.cs at %s still names Math unqualified; the case builds once the pinned runtime spells global::System.Math", c.Name, runtimeDir)
-			}
 			dir := t.TempDir()
 			sources := nameemit.Write(t, files, dir, ".cs")
 			args := []string{"exec", csc, "-nologo", "-noconfig", "-target:library", "-unsafe",

@@ -12,8 +12,8 @@
 //
 // Each target's own package carries the test that generates and builds them
 // (behind slowtest.Gate): this package only lists the cases and generates one.
-// A case the checker refuses is the checker's call and is skipped by name,
-// never failed: the corpus holds the emitters to what the checker accepts.
+// Every case is one the checker accepts: a case it refuses fails, because a
+// skipped case would stop proving anything and nobody would see it stop.
 package nameemit
 
 import (
@@ -89,8 +89,8 @@ func For(t testing.TB, target string) []Case {
 }
 
 // Generate loads the case and emits target through the public driver. It
-// skips the test, by name, when the checker refuses the unit, and fails it when
-// the target's emitter does.
+// fails the test when the checker refuses the unit (a corpus case must be one
+// the checker accepts) and when the target's emitter does.
 func Generate(t testing.TB, c Case, target string) map[string][]byte {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(c.Dir, "*.schema"))
@@ -104,7 +104,7 @@ func Generate(t testing.TB, c Case, target string) map[string][]byte {
 	schema := compiler.New()
 	u, err := schema.Load(paths)
 	if err != nil {
-		t.Skipf("schema check refuses %s (the checker's call, not the emitter's): %v", c.Name, err)
+		t.Fatalf("schema check refuses %s, so it proves nothing about the emitter: drop the case or rename it to a name the checker accepts: %v", c.Name, err)
 	}
 	files, err := schema.Generate(u, target, nil)
 	if err != nil {

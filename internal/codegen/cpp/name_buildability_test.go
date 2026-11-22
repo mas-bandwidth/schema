@@ -11,12 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -42,23 +39,10 @@ func TestNameCorpusBuildsCpp(t *testing.T) {
 	if cxx == "" {
 		cxx = "c++"
 	}
-	header, err := os.ReadFile(filepath.Join(serialize, "serialize.h"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	macros := macroBodies(string(header))
 	for _, c := range nameemit.For(t, "cpp") {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			files := nameemit.Generate(t, c, "cpp")
-			// the packet codecs expand the runtime's macros inside the unit's
-			// namespace, so a runtime whose macros spell the case's name bare
-			// captures the user's type whatever the emitter writes
-			// (a macro's name is the platform's in any case: the user's type is
-			// spelled past it)
-			if name, ok := strings.CutPrefix(c.Name, "type_"); ok && !cqualify.CppMacro(name) && bareIn(macros, name) {
-				t.Skipf("%s: the serialize.h at %s spells %s bare inside its macros; the case builds once the pinned runtime spells it ::%s (mas-bandwidth/serialize#188)", c.Name, serialize, name, name)
-			}
 			dir := t.TempDir()
 			headers := nameemit.Write(t, files, dir, ".h")
 			sources := nameemit.Write(t, files, dir, ".cpp")
@@ -83,28 +67,4 @@ func TestNameCorpusBuildsCpp(t *testing.T) {
 			}
 		})
 	}
-}
-
-// macroBodies is every line of src inside a #define, continuation lines
-// included, with // comments cut.
-func macroBodies(src string) []string {
-	var out []string
-	in := false
-	for line := range strings.SplitSeq(src, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !in && !strings.HasPrefix(strings.ReplaceAll(trimmed, " ", ""), "#define") {
-			continue
-		}
-		code, _, _ := strings.Cut(line, "//")
-		out = append(out, code)
-		in = strings.HasSuffix(strings.TrimRight(line, " \t"), "\\")
-	}
-	return out
-}
-
-// bareIn reports whether name appears in a line as a whole identifier with no
-// :: . or -> before it.
-func bareIn(lines []string, name string) bool {
-	re := regexp.MustCompile(`(^|[^A-Za-z0-9_:.>])` + regexp.QuoteMeta(name) + `($|[^A-Za-z0-9_])`)
-	return slices.ContainsFunc(lines, re.MatchString)
 }
