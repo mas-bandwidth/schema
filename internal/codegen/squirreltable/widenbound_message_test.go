@@ -51,7 +51,7 @@ fixed table Msg
 }
 `
 
-// the older peer: every bound above narrowed from 3 to 1, nothing else
+// the older peer: every bound above narrowed from 3 to 1, nothing else.
 var widenBoundWriterSchema = strings.ReplaceAll(widenBoundReaderSchema, "[3]", "[1]")
 
 func TestSquirrelMessageGrownBoundBornsOneDefaultPerSlot(t *testing.T) {
