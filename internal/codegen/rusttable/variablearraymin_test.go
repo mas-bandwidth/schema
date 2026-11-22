@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // variableMinSrc carries a declared minimum on every element class the
@@ -218,7 +219,7 @@ fn main() {
 	for _, c := range cases {
 		stdin.WriteString(c.mode + " " + c.input + "\n")
 	}
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Stdin = strings.NewReader(stdin.String())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -273,12 +274,12 @@ fn main() {
 
 	// the write side in a DEBUG build: under Min is a debug assert
 	debugBin := filepath.Join(dir, "driver-debug")
-	build := exec.Command("rustc", "--edition", "2024", "-C", "debug-assertions=on", "-A", "warnings", "-o", debugBin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-C", "debug-assertions=on", "-A", "warnings", "-o", debugBin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the generated Rust did not build in debug: %v\n%s", err, out)
 	}
-	run := exec.Command(debugBin, "under")
+	run := testproc.Command(t, debugBin, "under")
 	var debugErr bytes.Buffer
 	run.Stderr = &debugErr
 	if out, err := run.Output(); err == nil || !strings.Contains(debugErr.String(), "items count under 2") {
