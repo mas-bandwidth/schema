@@ -20,11 +20,16 @@ fail=0
 miss() { echo "BENCH-CHECK MISSING $1: $2"; fail=1; }
 pin() { sed -n "s/^$1 *[:?]\{0,1\}= *//p" "$root/make/$2" | sed -n 1p; }
 
-# the pins ci-fast.yml's lint lanes name (bumped by hand with the workflow and the nova-tools sdk-toolchain defaults)
-modernize_pin=0.23.0
-golangci_pin=2.12.2
-eslint_pin=9.39.5
-luacheck_pin=1.2.0
+# the lint pins, read from where the gates read them (no second copy here): golangci-lint and luacheck from their gates' make
+# fragments, eslint from ci-fast.yml's install line, modernize from ci-full.yml's modernize@vX.Y.Z (ci-fast.yml holds it to that)
+golangci_pin=$(pin GOLANGCI_LINT_VERSION schema-go-generated-golangci-lint-gate.mk)
+luacheck_pin=$(pin LUACHECK_VERSION schema-lua-generated-luacheck-gate.mk)
+eslint_pin=$(sed -n 's/.*"eslint@\([0-9][0-9.]*\)".*/\1/p' "$root/.github/workflows/ci-fast.yml" | sed -n 1p)
+modernize_pin=$(sed -n 's/.*modernize@v\([0-9][0-9.]*\).*/\1/p' "$root/.github/workflows/ci-full.yml" | sed -n 1p)
+for p in golangci_pin:golangci-lint luacheck_pin:luacheck eslint_pin:eslint modernize_pin:modernize; do
+	eval "v=\$${p%%:*}"
+	[ -n "$v" ] || miss "${p#*:}" "its pin is not found where the gates read it; fix make/bench-check.sh"
+done
 
 py_cur=$(pin PYTHON_CURRENT_VERSION python-toolchain.mk); py_floor=$(pin PYTHON_FLOOR_VERSION python-toolchain.mk)
 mypy_pin=$(pin PYTHON_MYPY_VERSION python-toolchain.mk)
