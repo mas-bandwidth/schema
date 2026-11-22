@@ -133,7 +133,7 @@ func luauUnit(t *testing.T, files map[string]string) *ir.Unit {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	u, err := New().Load(paths)
+	u, err := New().LoadWithoutEmitterRules(paths)
 	if err != nil {
 		t.Fatalf("the unit does not load: %v", err)
 	}
@@ -175,8 +175,8 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		return err
 	}
 
-	const table = "package p\n\ntable Game\n{\n    x uint8\n}\n"
-	const tableWithType = "package p\n\ntype T\n{\n    x uint8\n}\n\ntable Game\n{\n    x uint8\n}\n"
+	const table = "package px\n\ntable Game\n{\n    x uint8\n}\n"
+	const tableWithType = "package px\n\ntype T\n{\n    x uint8\n}\n\ntable Game\n{\n    x uint8\n}\n"
 	cases := []struct {
 		site, name string
 		files      map[string]string
@@ -184,7 +184,7 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		rename     [2]string // from, to: a basename the checker refuses first (SPEC §4.6), set after the check
 	}{
 		{"luau.CheckBases", "a schema file named for the type surface's runtime",
-			map[string]string{"Probe.schema": "package p\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau", [2]string{"Probe", "schema_runtime"}},
+			map[string]string{"Probe.schema": "package px\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau", [2]string{"Probe", "schema_runtime"}},
 		{"luau.CheckBases", "a schema file named for the table runtime's strict read",
 			map[string]string{"Probe.schema": tableWithType}, "schema_refusal.luau", [2]string{"Probe", "Schema_refusal"}},
 		{"luau.CheckBases", "a schema file named for the table runtime's load",
@@ -195,13 +195,13 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		// form a DAG by reference)
 		{"luau.RequireCycle", "type modules that require each other",
 			map[string]string{
-				"A.schema": "package p\n\ntype A\n{\n    x uint8\n}\n\ntype C\n{\n    b B\n}\n",
-				"B.schema": "package p\n\ntype B\n{\n    a A\n}\n",
+				"A.schema": "package px\n\ntype A\n{\n    x uint8\n}\n\ntype C\n{\n    b B\n}\n",
+				"B.schema": "package px\n\ntype B\n{\n    a A\n}\n",
 			}, "A -> B -> A", [2]string{}},
 		{"luautable.Refuse", "a file and its own table module",
-			map[string]string{"Game.schema": table, "GameTable.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable", [2]string{}},
+			map[string]string{"Game.schema": table, "GameTable.schema": "package px\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable", [2]string{}},
 		{"luautable.Refuse", "a file and its own block module",
-			map[string]string{"Game.schema": table, "GameBlock.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock", [2]string{}},
+			map[string]string{"Game.schema": table, "GameBlock.schema": "package px\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock", [2]string{}},
 	}
 	var c *Compiler
 	for _, g := range builtins() {

@@ -105,13 +105,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range u.Files {
-		if f.Base == "_M" {
-			return nil, fmt.Errorf("schema file _M.schema collides with the module table every Lua module names _M; rename the file (docs/PORT-LUA.md)")
-		}
-		if _, clash := rt[f.Base+".lua"]; clash {
-			return nil, fmt.Errorf("schema file %s.schema collides with the Lua runtime module %s.lua emitted beside it; rename the file (docs/PORT-LUA.md)", f.Base, f.Base)
-		}
+	if err := checkBases(u, rt); err != nil {
+		return nil, err
 	}
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
@@ -127,6 +122,30 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	maps.Copy(out, rt)
 	return out, nil
+}
+
+// checkBases refuses a schema file whose module is the module table's name or
+// a runtime module emitted beside it.
+func checkBases(u *ir.Unit, rt map[string][]byte) error {
+	for _, f := range u.Files {
+		if f.Base == "_M" {
+			return fmt.Errorf("schema file _M.schema collides with the module table every Lua module names _M; rename the file (docs/PORT-LUA.md)")
+		}
+		if _, clash := rt[f.Base+".lua"]; clash {
+			return fmt.Errorf("schema file %s.schema collides with the Lua runtime module %s.lua emitted beside it; rename the file (docs/PORT-LUA.md)", f.Base, f.Base)
+		}
+	}
+	return nil
+}
+
+// CheckBases is the file-name rule of Generate, for schema check (SPEC §4.6):
+// the unit's schema file bases against the module table and the runtime.
+func CheckBases(u *ir.Unit) error {
+	rt, err := runtimeFiles()
+	if err != nil {
+		return err
+	}
+	return checkBases(u, rt)
 }
 
 // runtimeFiles collects runtime/*.lua from every registered file system. Two

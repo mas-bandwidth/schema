@@ -442,7 +442,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	// class is the declaration's, not the layout's. A record past §3.4's 65536-byte ceiling is one
 	// by construction: the fixed form is not emitted for it and the class is
 	// kept; the corpus's own, when it has one, is a case too
-	big := generateFiles(t, map[string]string{"Big.schema": "package big\n\nfixed table Big\n{\n    a [70000]uint8\n}\n"})
+	big := generateFiles(t, map[string]string{"Big.schema": "package bigx\n\nfixed table Big\n{\n    a [70000]uint8\n}\n"})
 	gens["big"], roots["big"] = big, emittedRoots(big)
 	if er := roots["big"]["Big"]; !er.fixed || er.layout {
 		t.Fatalf("Big is not a declared fixed root without a fixed layout: %+v", er)

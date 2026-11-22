@@ -1,0 +1,6 @@
+package kind
+
+table Rec
+{
+    value uint32
+}

@@ -1,0 +1,6 @@
+package probe
+
+table table_message
+{
+    value uint32
+}

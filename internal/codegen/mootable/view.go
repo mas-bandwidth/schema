@@ -123,10 +123,9 @@ end
 
 `
 
-// generateView writes <Package>View.moo (docs/SPEC-TABLES.md §8.3, §8.5).
-// reach is the declarations the table modules describe and mods the files
-// that have one.
-func generateView(u *ir.Unit, reach, mods map[string]bool) (string, []byte, error) {
+// checkViewModule refuses a unit whose view module collides with a module
+// the unit or the runtime claims, folding case as macOS and Windows do.
+func checkViewModule(u *ir.Unit) error {
 	base := ViewModule(u)
 	claims := []string{}
 	for _, f := range u.Files {
@@ -140,9 +139,20 @@ func generateView(u *ir.Unit, reach, mods map[string]bool) (string, []byte, erro
 	}
 	for _, c := range claims {
 		if strings.EqualFold(c, base) {
-			return "", nil, fmt.Errorf("moo: %s.moo is the unit's view module for package %s (docs/SPEC-TABLES.md §8.5), and %s.moo is claimed by the unit or the moo runtime; equal ignoring case — rename the schema file", base, u.Package, c)
+			return fmt.Errorf("moo: %s.moo is the unit's view module for package %s (docs/SPEC-TABLES.md §8.5), and %s.moo is claimed by the unit or the moo runtime; equal ignoring case — rename the schema file", base, u.Package, c)
 		}
 	}
+	return nil
+}
+
+// generateView writes <Package>View.moo (docs/SPEC-TABLES.md §8.3, §8.5).
+// reach is the declarations the table modules describe and mods the files
+// that have one.
+func generateView(u *ir.Unit, reach, mods map[string]bool) (string, []byte, error) {
+	if err := checkViewModule(u); err != nil {
+		return "", nil, err
+	}
+	base := ViewModule(u)
 	g := newGen(u, &ir.File{Base: base})
 	g.Suffix, g.Kind = "", "unit view"
 	v := &viewGen{g: g, u: u, carried: reach, mods: mods, wire: ir.TableClosure(u), reached: ir.TableClosureVocabulary(u)}

@@ -20,7 +20,7 @@ import (
 )
 
 func TestIssue710DirectoryList(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Root { items []int32 }\n")
+	u := unitFromSource(t, "package px\ntable Root { items []int32 }\n")
 	c := New()
 	expanded, flat := t.TempDir(), t.TempDir()
 	if err := os.Mkdir(filepath.Join(expanded, "items"), 0755); err != nil {
@@ -54,7 +54,7 @@ func TestIssue710UnpackPaths(t *testing.T) {
 	c := New()
 	for _, key := range []string{"../escape", "..", "a/b", `a\b`, "C:drive", "a\x00b"} {
 		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
-			src := "package p\ntable Root { x int32 | json = \"" + key + "\" }\n"
+			src := "package px\ntable Root { x int32 | json = \"" + key + "\" }\n"
 			if key == "a\x00b" {
 				path := filepath.Join(t.TempDir(), "Root.schema")
 				if err := os.WriteFile(path, []byte(src), 0644); err != nil {
@@ -83,7 +83,7 @@ func TestIssue710UnpackPaths(t *testing.T) {
 			}
 		})
 	}
-	u := unitFromSource(t, "package p\ntable Root { x int32 }\n")
+	u := unitFromSource(t, "package px\ntable Root { x int32 }\n")
 	m := tabletext.NewModel(u)
 	wire, err := tablewire.Encode(m, m.New(u.Tables["Root"]))
 	if err != nil {
@@ -126,7 +126,7 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 
 func TestIssue710TableRecovery(t *testing.T) {
 	t.Parallel()
-	src := `package p
+	src := `package px
  table Text { label string(32) = "untitled"; past int32 }
  table Element { value int32 = 7 }
  table Rows { items [..2]Element; past int32 }
@@ -261,7 +261,7 @@ func TestIssue710PacketStringBounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("INT32_MAX string helper boundary requires a 2 GiB allocation")
 	}
-	u := unitFromSource(t, "package p\ntype Text { label string(8) }\n")
+	u := unitFromSource(t, "package px\ntype Text { label string(8) }\n")
 	c := New()
 	for _, lang := range []string{"c", "cpp"} {
 		t.Run(lang, func(t *testing.T) {
@@ -344,7 +344,7 @@ int main(void) {
 
 func TestIssue710ListRefusal(t *testing.T) {
 	t.Parallel()
-	u := unitFromSource(t, "package p\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
+	u := unitFromSource(t, "package px\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
 	m := tabletext.NewModel(u)
 	items, past, child := ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child")
 	first := ir.TableWireId(u.Enums["Key"].VariantWireName(0))
@@ -436,7 +436,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 }
 
 func TestIssue710CTableBounds(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Root { value int32 }\n")
+	u := unitFromSource(t, "package px\ntable Root { value int32 }\n")
 	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)

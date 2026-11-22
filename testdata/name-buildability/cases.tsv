@@ -311,3 +311,23 @@ t_Core_case1	builds	-	-
 t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
+c_kind_Kind	refuse-at-check	the C target	Kind and kind are both probe_kind_t
+c_table_kind_Kind	refuse-at-check	the C target	a table kind beside an enum Kind
+c_union_kind_Kind	refuse-at-check	the C target	a union kind beside an enum Kind
+c_table_message	refuse-at-check	the C target	a table table_message: its open is the C table runtime's
+b_cook	refuse-at-check	Lobster	file base is a runtime module of the target: cook.lobster and cook.lua
+b_json	refuse-at-check	Lobster	file base is a runtime module of the target: json.lobster and json.lua
+b_load	refuse-at-check	Lua	file base is a runtime module of the target: load.lua
+b_save	refuse-at-check	Lua	file base is a runtime module of the target: save.lua
+b_descriptor	refuse-at-check	Lua	file base is a runtime module of the target: descriptor.lua
+b_cook_lua	refuse-at-check	Lua	file base is the Lua table runtime cook.lua
+b_json_lua	refuse-at-check	Lua	file base is the Lua table runtime json.lua
+pkg_all	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_id	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_kind	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_list	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_next	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_read	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_view	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+pkg_descriptor	refuse-at-check	Lobster	package is a runtime binding of the Lobster runtime
+v_None_	refuse-at-check	Lobster	variant None_: the generated KindNone collides with Kind.None

@@ -158,6 +158,17 @@ func (d Diagnostics) Error() string {
 // refuses, two files with the same basename — returns a single error, because
 // there is nothing more to report after it.
 func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
+	return c.load(paths, false)
+}
+
+// LoadWithoutEmitterRules is Load without the emitters' name rules at check
+// (SPEC §4.6): for the tests that prove an emitter refuses a name itself at
+// generate, which a unit built in memory meets.
+func (c *Compiler) LoadWithoutEmitterRules(paths []string) (*ir.Unit, error) {
+	return c.load(paths, true)
+}
+
+func (c *Compiler) load(paths []string, noEmitterRules bool) (*ir.Unit, error) {
 	seen := map[string]string{}
 	var files []check.SourceFile
 	var diags Diagnostics
@@ -186,7 +197,11 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	if len(diags) > 0 {
 		return nil, diags
 	}
-	u, cerrs := check.Unit(files)
+	checkUnit := check.Unit
+	if noEmitterRules {
+		checkUnit = check.UnitWithoutEmitterRules
+	}
+	u, cerrs := checkUnit(files)
 	if len(cerrs) > 0 {
 		return nil, Diagnostics(cerrs)
 	}

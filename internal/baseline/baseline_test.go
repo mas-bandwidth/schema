@@ -919,7 +919,7 @@ func TestAbsorbedEdits(t *testing.T) {
 // ids (docs/SPEC-TABLES.md §3.2). A projection that forgot it would leave every
 // keyed collection's vocabulary uncovered.
 func TestKeyEnumIsCovered(t *testing.T) {
-	const src = `package keyed
+	const src = `package keyedx
 
 enum Slot { Head, Chest, Legs }
 
@@ -963,7 +963,7 @@ fixed table Loadout
 // prefix and nothing clamped. The enum walk already says what went and by
 // name, so the extent row must not say it a second time in the wrong words.
 func TestKeyedBoundIsNotJudgedAsAnExtent(t *testing.T) {
-	const src = `package keyed
+	const src = `package keyedx
 
 enum Slot { Head, Chest, Legs }
 

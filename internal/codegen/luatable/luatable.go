@@ -95,12 +95,10 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 // generateWithLineage is Generate's body. It carries every table-wire kind, including the
 // fixed-point and 128-bit families (docs/SPEC-TABLES.md §3, §15).
 func generateWithLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	name := ModuleName(u)
-	for _, f := range u.Files {
-		if f.Base == name {
-			return nil, fmt.Errorf("schema file %s.schema collides with the Lua table module %s.lua the unit's tables are emitted into; rename the file (docs/PORT-LUA.md)", f.Base, name)
-		}
+	if err := CheckBases(u); err != nil {
+		return nil, err
 	}
+	name := ModuleName(u)
 	m := &Module{Unit: u, Lineage: lineage}
 	m.Closure, m.Unions = closure(u)
 	emit(m)
@@ -121,11 +119,6 @@ func generateWithLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (ma
 			return nil, err
 		}
 		base := n[len("runtime/"):]
-		for _, f := range u.Files {
-			if f.Base+".lua" == base {
-				return nil, fmt.Errorf("schema file %s.schema collides with the Lua table runtime %s emitted beside the unit's modules; rename the file (docs/PORT-LUA.md)", f.Base, base)
-			}
-		}
 		// A form no table in the unit carries emits no surface file at all
 		// (docs/SPEC-TABLES.md §2.12), and a declared unit's runtime refuses
 		// a call for a form its table left out by that form's name. The
@@ -139,6 +132,32 @@ func generateWithLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (ma
 		out[base] = data
 	}
 	return out, nil
+}
+
+// CheckBases is the file-name rule of Generate, for schema check (SPEC §4.6):
+// a unit that declares tables may not name a schema file after the table
+// module or after any file of the table runtime, whether or not a form
+// carries that file.
+func CheckBases(u *ir.Unit) error {
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	name := ModuleName(u)
+	names, err := fs.Glob(runtime, "runtime/*.lua")
+	if err != nil {
+		return err
+	}
+	for _, f := range u.Files {
+		if f.Base == name {
+			return fmt.Errorf("schema file %s.schema collides with the Lua table module %s.lua the unit's tables are emitted into; rename the file (docs/PORT-LUA.md)", f.Base, name)
+		}
+		for _, n := range names {
+			if f.Base+".lua" == n[len("runtime/"):] {
+				return fmt.Errorf("schema file %s.schema collides with the Lua table runtime %s.lua emitted beside the unit's modules; rename the file (docs/PORT-LUA.md)", f.Base, f.Base)
+			}
+		}
+	}
+	return nil
 }
 
 // emitTail closes the module: the keyed accessor's entry (docs/PORTING.md M5),

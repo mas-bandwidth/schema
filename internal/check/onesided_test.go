@@ -52,7 +52,7 @@ func checkUnit(t *testing.T, src string) *ir.Unit {
 func TestOneSidedIntegerRange(t *testing.T) {
 	t.Parallel()
 	t.Run("clean one-sided table", func(t *testing.T) {
-		u := checkUnit(t, `package t
+		u := checkUnit(t, `package tx
 table OneSided
 {
     a int64 | min = 0
@@ -93,7 +93,7 @@ table OneSided
 		}
 	})
 	t.Run("generated go byte-identical to the two-sided spelling", func(t *testing.T) {
-		one := checkUnit(t, `package t
+		one := checkUnit(t, `package tx
 table OneSided
 {
     a int64 | min = 0
@@ -101,7 +101,7 @@ table OneSided
     c int8 | min = -3
 }
 `)
-		two := checkUnit(t, `package t
+		two := checkUnit(t, `package tx
 table OneSided
 {
     a int64 | min = 0, max = 9223372036854775807
@@ -137,14 +137,14 @@ table OneSided
 			src  string
 			want string
 		}{
-			{"on a float", "package t\ntable T\n{\n    a float32 | min = 0\n}\n", "a one-sided float range is refused"},
-			{"on fixed point", "package t\ntable T\n{\n    a fixed(24, 8) | min = 0\n}\n", "not valid on fixed point"},
-			{"on int128", "package t\ntable T\n{\n    a int128 | min = 0\n}\n", "not valid on int128"},
-			{"on uint128", "package t\ntable T\n{\n    a uint128 | min = 0\n}\n", "not valid on uint128"},
-			{"on a timestamp", "package t\ntable T\n{\n    at timestamp | min = 0\n}\n", "not valid on timestamp"},
-			{"on a named type", "package t\ntype Name\n{\n    x int32\n}\ntable T\n{\n    n Name | min = 0\n}\n", "not valid on Name"},
-			{"beside resolution", "package t\ntable T\n{\n    a float32 | min = 0, resolution = 0.5\n}\n", "a one-sided range beside resolution is refused"},
-			{"on a type body field", "package t\ntype P\n{\n    x int32 | min = 0\n}\n", "min without max (or vice versa) is a compile error"},
+			{"on a float", "package tx\ntable T\n{\n    a float32 | min = 0\n}\n", "a one-sided float range is refused"},
+			{"on fixed point", "package tx\ntable T\n{\n    a fixed(24, 8) | min = 0\n}\n", "not valid on fixed point"},
+			{"on int128", "package tx\ntable T\n{\n    a int128 | min = 0\n}\n", "not valid on int128"},
+			{"on uint128", "package tx\ntable T\n{\n    a uint128 | min = 0\n}\n", "not valid on uint128"},
+			{"on a timestamp", "package tx\ntable T\n{\n    at timestamp | min = 0\n}\n", "not valid on timestamp"},
+			{"on a named type", "package tx\ntype Name\n{\n    x int32\n}\ntable T\n{\n    n Name | min = 0\n}\n", "not valid on Name"},
+			{"beside resolution", "package tx\ntable T\n{\n    a float32 | min = 0, resolution = 0.5\n}\n", "a one-sided range beside resolution is refused"},
+			{"on a type body field", "package tx\ntype P\n{\n    x int32 | min = 0\n}\n", "min without max (or vice versa) is a compile error"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -167,13 +167,13 @@ table OneSided
 	t.Run("ir flag is not a projection token", func(t *testing.T) {
 		// the filled range is the two-sided declaration: the projection must be
 		// identical to spelling both sides
-		one := checkUnit(t, `package t
+		one := checkUnit(t, `package tx
 table OneSided
 {
     a int64 | min = 0
 }
 `)
-		two := checkUnit(t, `package t
+		two := checkUnit(t, `package tx
 table OneSided
 {
     a int64 | min = 0, max = 9223372036854775807

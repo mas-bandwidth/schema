@@ -26,7 +26,7 @@ func variantCheckErrors(t *testing.T, src string) []string {
 	return out
 }
 
-const retiredTier = `package t
+const retiredTier = `package tx
 
 enum Tier
 {
@@ -58,7 +58,7 @@ table Tab
 	// REVERSED WITNESS: the same default on a variant that was never
 	// deprecated is accepted, so the refusal above is the rule and not the
 	// default production.
-	live := `package t
+	live := `package tx
 
 enum Tier
 {

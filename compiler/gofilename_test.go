@@ -39,7 +39,7 @@ func loadBaseErr(t *testing.T, base, src string) (*ir.Unit, error) {
 
 func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 	t.Parallel()
-	const src = "package p\ntype Ship { hp int32 }\ntable Fleet { size int32 }\n"
+	const src = "package px\ntype Ship { hp int32 }\ntable Fleet { size int32 }\n"
 	for _, base := range []string{"Player_test", "Player_windows", "Player_amd64", "Player_linux_arm64", "Player_js_test", "_Player"} {
 		// the checker refuses it for every target, naming Go
 		if _, err := loadBaseErr(t, base, src); err == nil || !strings.Contains(err.Error(), "(Go)") {

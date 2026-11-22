@@ -1,0 +1,6 @@
+package id
+
+table Rec
+{
+    value uint32
+}

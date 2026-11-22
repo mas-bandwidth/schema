@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-const nullElemSchema = `package p
+const nullElemSchema = `package px
 
 table Leaf { a int32 }
 
@@ -149,7 +149,7 @@ func TestLuauJsonNullElemsArrayRefusal(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			path := filepath.Join(dir, "Carton.schema")
-			src := "package p\n\ntable Box {\n\t" + tc.field + "\n}\n"
+			src := "package px\n\ntable Box {\n\t" + tc.field + "\n}\n"
 			if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 				t.Fatal(err)
 			}

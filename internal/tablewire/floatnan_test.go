@@ -313,8 +313,8 @@ func TestOracleMessageFormRefusesNonFinite(t *testing.T) {
 // finite; the plain read, which retains nothing, steps over it by its kind.
 func TestOracleRetainedFloatIsTested(t *testing.T) {
 	t.Parallel()
-	writer := listModel(t, "package rf\n\ntable T\n{\n    x int32\n    f float32\n    d float64\n}\n")
-	reader := listModel(t, "package rf\n\ntable T\n{\n    x int32\n}\n")
+	writer := listModel(t, "package rfx\n\ntable T\n{\n    x int32\n    f float32\n    d float64\n}\n")
+	reader := listModel(t, "package rfx\n\ntable T\n{\n    x int32\n}\n")
 	inst := writer.New(writer.Lookup("T"))
 	oracleField(t, inst, "x").Cell.I = 7
 	oracleField(t, inst, "x").Cell.U = 7

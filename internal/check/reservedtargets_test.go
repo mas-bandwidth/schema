@@ -40,7 +40,7 @@ func reservedProbeErrors(t *testing.T, src string) ([]error, bool) {
 // no per-target narrowing left to let it through.
 func TestReservedWordsOfEveryLanguageWhateverTheTarget(t *testing.T) {
 	t.Parallel()
-	src := "package t\ntype func {\n  a int32\n}\ntype select {\n  b int32\n}\ntable Words {\n  class int32\n  self int32\n  local int32\n  end int32\n}\n"
+	src := "package tx\ntype func {\n  a int32\n}\ntype select {\n  b int32\n}\ntable Words {\n  class int32\n  self int32\n  local int32\n  end int32\n}\n"
 	errs, ok := reservedProbeErrors(t, src)
 	if !ok {
 		t.Fatal("parse failed")
@@ -67,7 +67,7 @@ func TestReservedWordsOfEveryLanguageWhateverTheTarget(t *testing.T) {
 
 	// THE GO ESCAPE (SPEC §4.6): Go-only words as field names, and as a
 	// table's name, are carried for Go, and no other language reserves them.
-	if errs, _ := reservedProbeErrors(t, "package t\ntable func {\n  select int32\n  go int32\n}\n"); len(errs) > 0 {
+	if errs, _ := reservedProbeErrors(t, "package tx\ntable func {\n  select int32\n  go int32\n}\n"); len(errs) > 0 {
 		t.Errorf("func, select and go are reserved in Go alone, which carries them, so nothing refuses them, got %v", errs)
 	}
 }
@@ -86,17 +86,17 @@ func TestEveryReservedWordAsEveryNameKindIsRefused(t *testing.T) {
 		mk      func(w string) string
 	}{
 		{"package", false, "package name", func(w string) string { return "package " + w + "\ntype T { a int32 }\n" }},
-		{"const", false, "declaration name", func(w string) string { return "package t\nconst " + w + " = 1\n" }},
-		{"type", false, "declaration name", func(w string) string { return "package t\ntype " + w + " { a int32 }\n" }},
-		{"enum", false, "declaration name", func(w string) string { return "package t\nenum " + w + " { a }\n" }},
-		{"flags", false, "declaration name", func(w string) string { return "package t\nflags " + w + " { a }\n" }},
-		{"union", false, "declaration name", func(w string) string { return "package t\ntype P { a int32 }\nunion " + w + " {\n  a P\n}\n" }},
-		{"table", true, "declaration name", func(w string) string { return "package t\ntable " + w + " { a int32 }\n" }},
-		{"type field", true, "field name", func(w string) string { return "package t\ntype T {\n  " + w + " int32\n}\n" }},
-		{"table field", true, "field name", func(w string) string { return "package t\ntable T {\n  " + w + " int32\n}\n" }},
-		{"union arm", true, "variant", func(w string) string { return "package t\ntype P { a int32 }\nunion U {\n  " + w + " P\n}\n" }},
-		{"enum variant", true, "enum variant", func(w string) string { return "package t\nenum E { " + w + " }\n" }},
-		{"flags variant", true, "flags variant", func(w string) string { return "package t\nflags F { " + w + " }\n" }},
+		{"const", false, "declaration name", func(w string) string { return "package tx\nconst " + w + " = 1\n" }},
+		{"type", false, "declaration name", func(w string) string { return "package tx\ntype " + w + " { a int32 }\n" }},
+		{"enum", false, "declaration name", func(w string) string { return "package tx\nenum " + w + " { a }\n" }},
+		{"flags", false, "declaration name", func(w string) string { return "package tx\nflags " + w + " { a }\n" }},
+		{"union", false, "declaration name", func(w string) string { return "package tx\ntype P { a int32 }\nunion " + w + " {\n  a P\n}\n" }},
+		{"table", true, "declaration name", func(w string) string { return "package tx\ntable " + w + " { a int32 }\n" }},
+		{"type field", true, "field name", func(w string) string { return "package tx\ntype T {\n  " + w + " int32\n}\n" }},
+		{"table field", true, "field name", func(w string) string { return "package tx\ntable T {\n  " + w + " int32\n}\n" }},
+		{"union arm", true, "variant", func(w string) string { return "package tx\ntype P { a int32 }\nunion U {\n  " + w + " P\n}\n" }},
+		{"enum variant", true, "enum variant", func(w string) string { return "package tx\nenum E { " + w + " }\n" }},
+		{"flags variant", true, "flags variant", func(w string) string { return "package tx\nflags F { " + w + " }\n" }},
 	}
 	table := ReservedWords()
 	words := make([]string, 0, len(table))
