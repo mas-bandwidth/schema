@@ -294,3 +294,22 @@ func TestRubyPins(t *testing.T) {
 		t.Fatal("no non-comment line was read from the Ruby leg files: the PATH-interpreter check checked nothing")
 	}
 }
+
+// TestRubyAnalyzersBesideRuby holds the rule make/bench-check.sh also holds: the
+// pinned analyzers are the ones beside the interpreter in use, so a login whose
+// env.sh exports RUBY (the fleet SDK does, and exports no analyzer) resolves the
+// same rubocop, steep and rbs that its RUBY sits beside, not dist/ paths that
+// only make dist-ruby creates.
+func TestRubyAnalyzersBesideRuby(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "ruby-toolchain.mk"))
+	if err != nil {
+		t.Fatalf("read make/ruby-toolchain.mk: %v", err)
+	}
+	for _, a := range []string{"RUBOCOP", "STEEP", "RBS"} {
+		want := "(?m)^" + a + `\s+\?=\s+\$\(dir \$\(RUBY\)\)` + strings.ToLower(a) + `\s*$`
+		if !regexp.MustCompile(want).Match(b) {
+			t.Errorf("make/ruby-toolchain.mk does not default %s to the analyzer beside RUBY ($(dir $(RUBY))%s)", a, strings.ToLower(a))
+		}
+	}
+}
