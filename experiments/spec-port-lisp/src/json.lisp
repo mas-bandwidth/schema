@@ -208,7 +208,7 @@
   "§16.2 Numbers: digits with an optional minus; no fraction, no exponent, not -0."
   (and (number-token-p s)
        (not (find #\. s)) (not (find #\e s)) (not (find #\E s))
-       (string/= s "-0")))
+       (string/= s "-0") t))
 
 (defun token-parts (s)
   "(values negative digits-integer exponent10) of a number token."
