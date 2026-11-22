@@ -1,0 +1,27 @@
+schema-tables-baseline 10
+package decls
+
+table Holder
+    field p id=0xaf63ed4c8602096f kind=17 type=Link
+    field c id=0xaf63de4c8601eff2 kind=4
+
+table Link
+    field value id=0x7ce4fd9430e80cea kind=4
+    field next id=0xe5316cbaa025f028 kind=17 type=Link
+
+## retired
+    table ListNode id=0xf60ec899a5a69fa9 date=2026-11-21
+    field ListNode.value id=0x7ce4fd9430e80cea date=2026-11-21
+    field ListNode.next id=0xe5316cbaa025f028 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- table ListNode: no longer in the closure under that name; Link carries 2 of its 2 identities, so it is judged as the rename it looks like [warn]
+- Holder.p: pointer target ListNode renamed to Link without `was` — every stored pointer's node carries ListNode's type id, which no table declares now: each one reads null and counts unknown; was = "ListNode" keeps the type id (docs/SPEC-TABLES.md §3.1, §5) [warn]
+- Link.next: pointer target ListNode renamed to Link without `was` — every stored pointer's node carries ListNode's type id, which no table declares now: each one reads null and counts unknown; was = "ListNode" keeps the type id (docs/SPEC-TABLES.md §3.1, §5) [warn]
+- retired table ListNode id=0xf60ec899a5a69fa9 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field ListNode.value id=0x7ce4fd9430e80cea — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field ListNode.next id=0xe5316cbaa025f028 — a re-added name or id is refused until this entry is acknowledged (issue #441)

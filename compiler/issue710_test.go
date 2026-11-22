@@ -259,7 +259,7 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 func TestIssue710PacketStringBounds(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
-		t.Skip("INT32_MAX string helper boundary requires a 2 GiB allocation")
+		t.Skip("-short: the INT32_MAX string helper boundary requires a 2 GiB allocation")
 	}
 	u := unitFromSource(t, "package p\ntype Text { label string(8) }\n")
 	c := New()

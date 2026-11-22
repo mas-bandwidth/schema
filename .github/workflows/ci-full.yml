@@ -3377,6 +3377,11 @@ jobs:
 
       - run: go vet ./...
       - run: go build ./...
+      # THE WINDOWS-ONLY TESTS RUN HERE OR NOWHERE. tools/treelock's
+      # treelock_windows_test.go is `//go:build windows`: go vet compiled it
+      # and no lane ran it (internal/ci,
+      # TestEveryConstrainedTestFileCompilesInSomeLane).
+      - run: go test ./tools/treelock/
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds
