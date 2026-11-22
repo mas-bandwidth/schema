@@ -60,7 +60,7 @@ func TestGooseWriterRefusesMoreThan4096Ids(t *testing.T) {
 	files := probeFiles(t, u, nil)
 	m := tabletext.NewModel(u)
 	var keys []string
-	for i := 0; i < tablewire.IdCapVariants; i++ {
+	for i := range tablewire.IdCapVariants {
 		keys = append(keys, fmt.Sprintf("\"V%d\":1", i))
 	}
 	for file, x := range map[string]int{"a.bin": 0, "b.bin": 1} {

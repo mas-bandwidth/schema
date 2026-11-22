@@ -21,7 +21,7 @@ func TestMooWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, tablewire.IdCapSchema())
 	var keys []string
-	for i := 0; i < tablewire.IdCapVariants; i++ {
+	for i := range tablewire.IdCapVariants {
 		keys = append(keys, fmt.Sprintf("\"V%d\":1", i))
 	}
 	text := func(x int) string { return fmt.Sprintf(`{"keys":{%s},"x":%d}`, strings.Join(keys, ","), x) }
