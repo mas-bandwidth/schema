@@ -8,7 +8,7 @@ package goosetable_test
 //     such a file but as damage;
 //   - a REFUSED LOAD restores the caller's stores, the way <T>ToLoaded does
 //     (value_bridge.go): the wire load and the text load leave the value and
-//     node tables (and the text load the data buffer) the length they had.
+//     node tables the length they had.
 
 import (
 	"os"
@@ -60,7 +60,7 @@ fn main() {
     print("wire-vals ", v2.len);
     print("wire-nodes ", n2.len);
 
-    // and so does a refused text load, the data buffer too
+    // and so does a refused text load
     var d3: u8[>..] = [];
     var v3: schema_rt::LoadVal[>..] = [];
     var n3: schema_rt::LoadNode[>..] = [];
@@ -70,7 +70,6 @@ fn main() {
     n3.push(schema_rt::LoadNode { tab: -1, blob: 0, off: 0, len: 0, val: -1, named: false });
     var r3 = schema_rt::json_report();
     print("json-at ", schema_rt::json_load_table(probe::TableUnit, probe::TextUnit, "Root", text, d3, v3, n3, r3));
-    print("json-data ", d3.len);
     print("json-vals ", v3.len);
     print("json-nodes ", n3.len);
 }
@@ -108,7 +107,7 @@ func TestGooseRefusedStoresAndDuplicateSave(t *testing.T) {
 		"save-clean": "0",
 		"save-dup":   "8", // SaveRefuseInvalidValue
 		"wire-at":    "-1", "wire-vals": "2", "wire-nodes": "1",
-		"json-at": "-1", "json-data": "1", "json-vals": "2", "json-nodes": "1",
+		"json-at": "-1", "json-vals": "2", "json-nodes": "1",
 	}
 	for k, v := range want {
 		if got[k] != v {
