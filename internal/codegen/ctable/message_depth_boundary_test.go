@@ -30,6 +30,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The message closure of this unit holds four field entries. The announcement
@@ -361,10 +363,10 @@ int main(void)
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir, mainPath}
 	args = append(args, cfiles...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C failed: %v\n%s", err, out)
 	}
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -469,10 +471,10 @@ int main(void)
 	args := []string{"-std=c++17", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++ failed: %v\n%s", err, out)
 	}
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -578,7 +580,7 @@ static class Program
 	args = append(args, sources...)
 	args = append(args, probePath)
 	env := append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1", "HOME="+dir, "DOTNET_CLI_HOME="+dir, "TMPDIR="+dir)
-	compile := exec.Command(dotnetPath, args...)
+	compile := testproc.Command(t, dotnetPath, args...)
 	compile.Env, compile.Dir = env, dir
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc compile failed: %v\n%s", err, out)
@@ -587,7 +589,7 @@ static class Program
 	if err := os.WriteFile(filepath.Join(dir, "depthprobe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnetPath, "exec", app)
+	run := testproc.Command(t, dotnetPath, "exec", app)
 	run.Env, run.Dir = env, dir
 	out, err := run.CombinedOutput()
 	return string(out), err
@@ -671,7 +673,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBin, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -730,7 +732,7 @@ func runAllRuntimesElixir(t *testing.T, u *ir.Unit, ann []byte, cases []depthBou
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", "TableMessage.ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", "TableMessage.ex", "probe.exs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -803,7 +805,7 @@ func TestProbe(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-v", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-v", "-count=1", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -913,10 +915,10 @@ func runAllRuntimesJava(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
 		t.Fatal(err)
 	}
 	args = append(args, driverPath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver").CombinedOutput()
 	return string(out), err
 }
 
@@ -980,7 +982,7 @@ function checkCase(name, wire, expectOK) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -1060,12 +1062,12 @@ fn main() {
 	if err != nil {
 		t.Fatalf("rustc's linker cc: %v", err)
 	}
-	cmd := exec.Command("rustc", "--edition", "2024", "-C", "linker="+linker, "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-C", "linker="+linker, "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rustc: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

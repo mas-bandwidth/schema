@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
@@ -50,42 +51,50 @@ import (
 )
 
 type backend struct {
-	name     string
+	name     string // the emitter package
+	target   string // the compiler target it is registered as
 	generate func(*ir.Unit) (map[string][]byte, error)
 }
 
 // backends is the corpus-complete emitter set shared with property_test.go
 // and compile_test.go.
 var backends = []backend{
-	{"cpp", cpp.Generate},
-	{"csharp", csharp.Generate},
-	{"golang", golang.Generate},
-	{"rust", rust.Generate},
-	{"c", cgen.Generate},
+	{"cpp", "cpp", cpp.Generate},
+	{"csharp", "cs", csharp.Generate},
+	{"golang", "go", golang.Generate},
+	{"rust", "rust", rust.Generate},
+	{"c", "c", cgen.Generate},
 	// the refusal-capable emitters (#164): js and dart may return
 	// generate-time refusals on checked units (reserved-word collisions and
 	// similar) — drive already tolerates a reported error; the panic and the
 	// malformed-output cases below are the bugs.
-	{"js", js.Generate},
-	{"dart", dart.Generate},
-	{"java", java.Generate},
-	{"elixir", elixir.Generate},
-	{"lua", lua.Generate},
-	{"luau", luau.Generate},
-	{"squirrel", squirrel.Generate},
-	{"moo", moo.Generate},
-	{"goose", goose.Generate},
-	{"lobster", lobster.Generate},
+	{"js", "js", js.Generate},
+	{"dart", "dart", dart.Generate},
+	{"java", "java", java.Generate},
+	{"elixir", "elixir", elixir.Generate},
+	{"lua", "lua", lua.Generate},
+	{"luau", "luau", luau.Generate},
+	{"squirrel", "squirrel", squirrel.Generate},
+	{"moo", "moo", moo.Generate},
+	{"goose", "goose", goose.Generate},
+	{"lobster", "lobster", lobster.Generate},
+	{"python", "python", python.Generate},
+	{"ruby", "ruby", ruby.Generate},
+	{"unity", "unity", unity.Generate},
 }
 
-// fuzzBackends is the full 18-emitter set, every target driven by FuzzPipeline and
-// FuzzPipelineTwoFiles, including python (which refuses declarations until P4
-// lands while emitting package skeletons on declaration-free units).
-var fuzzBackends = append(append([]backend(nil), backends...),
-	backend{"python", python.Generate},
-	backend{"ruby", ruby.Generate},
-	backend{"unity", unity.Generate},
-)
+// fuzzBackends is the set FuzzPipeline and FuzzPipelineTwoFiles drive: every
+// emitter, one per compiler target. TestFuzzPipelineDrivesEveryTarget holds it
+// to the compiler's own registered list, so a target registered without a row
+// here is red (ruby and unity were registered and undriven until that test
+// read the list instead of restating it).
+var fuzzBackends = backends
+
+// tagRegisteredTargets are the targets only a tagged build registers; their
+// emitters are plain packages and are driven here in every build. None today:
+// every shipped target is built in (docs/rulings.json
+// every-target-default-build), so the compiler's own list is the whole roster.
+var tagRegisteredTargets []string
 
 // unitOf runs parse+check over the named sources. A parse or check failure is
 // a NORMAL outcome (most fuzz inputs are not valid schemas) and returns nil,
@@ -144,22 +153,67 @@ func drive(t *testing.T, srcs map[string]string) {
 
 // seedFromCorpus feeds the fuzzer every real schema in the repo, so it starts
 // from valid grammar and mutates outward rather than wandering the space of
-// random bytes hoping to hit a brace.
+// random bytes hoping to hit a brace. A corpus directory that is missing, or
+// holds no schema, fails the target: a seed run over no seeds runs nothing and
+// a campaign from no seeds starts from random bytes.
 func seedFromCorpus(f *testing.F, add func(string)) {
 	f.Helper()
 	for _, dir := range []string{"../../examples", "../../examples128"} {
-		entries, err := os.ReadDir(dir)
+		n, err := seedDir(dir, add)
 		if err != nil {
+			f.Fatalf("seed corpus %s: %v", dir, err)
+		}
+		if n == 0 {
+			f.Fatalf("seed corpus %s holds no .schema file", dir)
+		}
+	}
+}
+
+// seedDir adds every .schema file directly under dir and returns how many.
+func seedDir(dir string, add func(string)) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".schema" {
 			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() || filepath.Ext(e.Name()) != ".schema" {
-				continue
-			}
-			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			if err == nil {
-				add(string(b))
-			}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return n, err
+		}
+		add(string(b))
+		n++
+	}
+	return n, nil
+}
+
+// TestSeedDirCountsWhatItAdds is the control on the seed count: a directory
+// that is missing is an error and one with no schema counts zero, which
+// seedFromCorpus turns into a failed target.
+func TestSeedDirCountsWhatItAdds(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := seedDir(filepath.Join(dir, "absent"), func(string) {}); err == nil {
+		t.Fatal("a missing corpus directory seeded without error")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not a schema\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := seedDir(dir, func(string) {}); err != nil || n != 0 {
+		t.Fatalf("a directory with no schema seeded %d (err %v), want 0", n, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "A.schema"), []byte("package t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if n, err := seedDir(dir, func(s string) { got = append(got, s) }); err != nil || n != 1 || len(got) != 1 {
+		t.Fatalf("one schema seeded %d (err %v, added %d), want 1", n, err, len(got))
+	}
+	for _, real := range []string{"../../examples", "../../examples128"} {
+		if n, err := seedDir(real, func(string) {}); err != nil || n == 0 {
+			t.Fatalf("%s seeds %d schemas (err %v), want at least one", real, n, err)
 		}
 	}
 }
@@ -231,42 +285,86 @@ func FuzzPipelineTwoFiles(f *testing.F) {
 	})
 }
 
-// TestFuzzPipelineAllSixteenEmitters verifies that fuzzBackends registers all
-// 18 emitters so FuzzPipeline and FuzzPipelineTwoFiles drive every target.
-func TestFuzzPipelineAllSixteenEmitters(t *testing.T) {
-	want := []string{
-		"cpp", "csharp", "golang", "rust", "c", "js", "dart",
-		"java", "elixir", "lua", "luau", "squirrel", "moo", "goose", "lobster", "python", "ruby", "unity",
+// TestFuzzPipelineDrivesEveryTarget holds fuzzBackends to the compiler's own
+// list, both ways: every registered target (and every target only a tagged
+// build registers) has exactly one row, and every row names such a target. A
+// hand-kept list of sixteen names stood here before and passed with ruby and
+// unity registered and undriven.
+func TestFuzzPipelineDrivesEveryTarget(t *testing.T) {
+	for _, problem := range rosterProblems(fuzzBackends, append(compiler.New().Targets(), tagRegisteredTargets...)) {
+		t.Error(problem)
 	}
-	got := map[string]bool{}
+
+	// the control: the roster as it stood, without ruby and unity
+	var before []backend
 	for _, b := range fuzzBackends {
-		if b.generate == nil {
-			t.Fatalf("backend %q has nil generate func", b.name)
-		}
-		got[b.name] = true
-	}
-	for _, name := range want {
-		if !got[name] {
-			t.Errorf("fuzzBackends missing emitter %q (have %d of %d)", name, len(fuzzBackends), len(want))
+		if b.target != "ruby" && b.target != "unity" {
+			before = append(before, b)
 		}
 	}
+	problems := strings.Join(rosterProblems(before, compiler.New().Targets()), "\n")
+	for _, want := range []string{"target ruby has no fuzz backend", "target unity has no fuzz backend"} {
+		if !strings.Contains(problems, want) {
+			t.Errorf("the roster without ruby and unity reports %q, want %q", problems, want)
+		}
+	}
+	extra := append(append([]backend(nil), fuzzBackends...), backend{"zig", "zig", fuzzBackends[0].generate})
+	if problems := strings.Join(rosterProblems(extra, append(compiler.New().Targets(), tagRegisteredTargets...)), "\n"); !strings.Contains(problems, "backend zig names target zig, which is not registered") {
+		t.Errorf("a row for an unregistered target reports %q", problems)
+	}
+
+	// every row emits the minimal unit, the same bytes each time
 	u := unitOf(map[string]string{"A.schema": "package t\n"})
 	if u == nil {
 		t.Fatal("minimal unit did not check")
 	}
-	first, err := python.Generate(u)
-	if err != nil {
-		t.Fatalf("python.Generate on minimal unit: %v", err)
-	}
-	for i := 1; i < 12; i++ {
-		again, err := python.Generate(u)
+	for _, b := range fuzzBackends {
+		first, err := b.generate(u)
 		if err != nil {
-			t.Fatalf("python.Generate pass %d: %v", i, err)
+			t.Errorf("%s.Generate on the minimal unit: %v", b.name, err)
+			continue
 		}
-		for name, wantBytes := range first {
-			if !bytes.Equal(wantBytes, again[name]) {
-				t.Fatalf("python.Generate pass %d: %s differs between runs", i, name)
+		for i := 1; i < 12; i++ {
+			again, err := b.generate(u)
+			if err != nil {
+				t.Fatalf("%s.Generate pass %d: %v", b.name, i, err)
+			}
+			if len(again) != len(first) {
+				t.Fatalf("%s.Generate pass %d: %d files, then %d", b.name, i, len(first), len(again))
+			}
+			for name, wantBytes := range first {
+				if !bytes.Equal(wantBytes, again[name]) {
+					t.Fatalf("%s.Generate pass %d: %s differs between runs", b.name, i, name)
+				}
 			}
 		}
 	}
+}
+
+func rosterProblems(roster []backend, targets []string) []string {
+	rows := map[string]int{}
+	var problems []string
+	known := map[string]bool{}
+	for _, target := range targets {
+		known[target] = true
+	}
+	for _, b := range roster {
+		if b.generate == nil {
+			problems = append(problems, "backend "+b.name+" has no generate func")
+		}
+		if !known[b.target] {
+			problems = append(problems, "backend "+b.name+" names target "+b.target+", which is not registered")
+		}
+		rows[b.target]++
+	}
+	for _, target := range targets {
+		switch rows[target] {
+		case 0:
+			problems = append(problems, "target "+target+" has no fuzz backend: FuzzPipeline and FuzzPipelineTwoFiles never drive it")
+		case 1:
+		default:
+			problems = append(problems, "target "+target+" has more than one fuzz backend")
+		}
+	}
+	return problems
 }

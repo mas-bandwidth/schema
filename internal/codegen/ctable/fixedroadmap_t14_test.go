@@ -17,6 +17,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const t14Old = `package cfold
@@ -169,15 +171,15 @@ func t14Run(t *testing.T, cc, schema string, older []string, probe, extra string
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	args := append([]string{"-std=c99", "-O2", "-I" + dir}, gccFortifySilence(cc)...)
+	args := append([]string{"-std=c99", "-O2", "-I" + dir}, gccFortifySilence(t, cc)...)
 	if extra != "" {
 		args = append(args, extra)
 	}
 	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 }

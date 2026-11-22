@@ -48,7 +48,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -61,6 +60,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -381,7 +382,7 @@ static class ProbeMain
 	if dotnet == "" {
 		dotnet = "dotnet"
 	}
-	cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+	cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 	return cmd.CombinedOutput()

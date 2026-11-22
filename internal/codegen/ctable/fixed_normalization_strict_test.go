@@ -19,6 +19,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cNormDamageProbe = `#include <stdio.h>
@@ -155,14 +157,14 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-ffp-contract=off"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I"+dir, filepath.Join(dir, "probe.c"))
 	args = append(args, srcs...)
 	args = append(args, "-o", filepath.Join(dir, "probe"), "-lm")
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("compile probe: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 func TestCFixedNormalizationIsDamage(t *testing.T) {

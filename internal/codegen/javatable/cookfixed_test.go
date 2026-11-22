@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaCookWriteFixedRoots cooks FIXED ROOTS (docs/SPEC-TABLES.md §3.4,
@@ -54,7 +55,7 @@ func TestJavaCookWriteFixedRoots(t *testing.T) {
 				if len(wire) == 0 || wire[0] != 3 {
 					t.Fatalf("%s: the instance is no form 3 file, so it is no fixed root's", row)
 				}
-				cmd := exec.Command(javaBin, "-ea", "-cp", dir, class,
+				cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, class,
 					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]))
 				out, err := cmd.CombinedOutput()
 				if err != nil {

@@ -281,38 +281,168 @@ func TestGoldenLudicrousSource(t *testing.T) {
 	}
 }
 
-// pinDir compares (or, under -update, rewrites) one directory of goldens.
+// pinDir compares (or, under -update, rewrites) one directory of goldens,
+// BOTH WAYS: every emitted file has its golden with the same bytes, and every
+// golden on disk is claimed by an emitted file. A golden nothing emits is a
+// file the gate would otherwise never read again, so it is red, and -update
+// removes it. An emission of no files is red too: it would pin nothing.
 func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	t.Helper()
 	if *update {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := rewritePins(dir, files); err != nil {
 			t.Fatal(err)
 		}
+		return
+	}
+	for _, problem := range pinProblems(dir, files) {
+		t.Error(problem)
+	}
+}
+
+func rewritePins(dir string, files map[string][]byte) error {
+	if len(files) == 0 {
+		return fmt.Errorf("%s: nothing was emitted, so there is nothing to pin", dir)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for n, data := range files {
+		path := filepath.Join(dir, filepath.FromSlash(n))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+	}
+	onDisk, err := goldenFiles(dir)
+	if err != nil {
+		return err
+	}
+	for _, n := range onDisk {
+		if _, ok := files[n]; !ok {
+			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(n))); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// pinProblems is pinDir's comparison: one line per missing golden, per golden
+// whose bytes differ, and per golden on disk that no emitted file claims.
+func pinProblems(dir string, files map[string][]byte) []string {
+	if len(files) == 0 {
+		return []string{fmt.Sprintf("%s: nothing was emitted, so nothing was compared", dir)}
 	}
 	names := make([]string, 0, len(files))
 	for n := range files {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	var problems []string
 	for _, n := range names {
-		path := filepath.Join(dir, n)
-		if *update {
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, files[n], 0o644); err != nil {
-				t.Fatal(err)
-			}
-			continue
-		}
+		path := filepath.Join(dir, filepath.FromSlash(n))
 		want, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("missing golden %s (run: make update-goldens): %v", path, err)
+			problems = append(problems, fmt.Sprintf("missing golden %s (run: make update-goldens): %v", path, err))
+			continue
 		}
 		if string(files[n]) != string(want) {
-			t.Errorf("%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", path)
+			problems = append(problems, fmt.Sprintf("%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", path))
 		}
 	}
+	onDisk, err := goldenFiles(dir)
+	if err != nil {
+		return append(problems, fmt.Sprintf("%s: %v", dir, err))
+	}
+	for _, n := range onDisk {
+		if _, ok := files[n]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: a golden no emitted file claims — the emitter no longer writes it, so nothing compares it; remove it with make update-goldens", filepath.Join(dir, filepath.FromSlash(n))))
+		}
+	}
+	return problems
+}
+
+// goldenFiles is every file under dir, as slash-separated paths relative to it.
+func goldenFiles(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		out = append(out, filepath.ToSlash(rel))
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
+// taggedTargets are the targets a build tag registers. A build without the tag
+// cannot emit them, so it only knows their golden directories by name; a build
+// with the tag compares them like any other (TestGoldenSourceEveryTarget).
+// None today: every shipped target is built in (docs/rulings.json
+// every-target-default-build), so every golden directory is a registered one.
+var taggedTargets = map[string]string{}
+
+// TestGoldenSourceEveryTarget pins the main corpus for EVERY registered
+// target — the list is the compiler's own — and holds the directory listing to
+// that list both ways: a target with no golden directory is a missing golden,
+// and a directory that is no target's is a set of goldens nothing compares.
+// The per-language tests above name twelve targets by hand; goose, lobster,
+// ruby, squirrel and unity emitted this corpus with nothing pinning it until
+// this test read the list.
+func TestGoldenSourceEveryTarget(t *testing.T) {
+	u := loadCorpus(t)
+	targets := compiler.New().Targets()
+	if len(targets) < 17 {
+		t.Fatalf("the compiler registers %d targets (%v), want at least 17", len(targets), targets)
+	}
+	for _, target := range targets {
+		pinDir(t, filepath.Join(goldenDir, target), generate(t, u, target, nil))
+	}
+	if *update {
+		return
+	}
+	for _, problem := range dirProblems(goldenDir, targets, []string{"build-version", "ludicrous", "tables"}) {
+		t.Error(problem)
+	}
+	for _, problem := range dirProblems(filepath.Join(goldenDir, "ludicrous"), targets, nil) {
+		t.Error(problem)
+	}
+}
+
+// dirProblems names every directory under dir that is neither a registered
+// target, a tagged target this build leaves out, nor one of the others named.
+func dirProblems(dir string, targets, others []string) []string {
+	known := map[string]bool{}
+	for _, name := range targets {
+		known[name] = true
+	}
+	for name := range taggedTargets {
+		known[name] = true
+	}
+	for _, name := range others {
+		known[name] = true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var problems []string
+	for _, e := range entries {
+		if e.IsDir() && !known[e.Name()] {
+			problems = append(problems, fmt.Sprintf("%s is a directory of goldens for no registered target — nothing compares it", filepath.Join(dir, e.Name())))
+		}
+	}
+	return problems
 }
 
 // tableGoldenDir is the tables units' Table-source pins: one directory per
@@ -362,6 +492,49 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 	return units, nil
 }
 
+// tableUnitsFor is tableUnits as TestGoldenTableSource reads it. Under -update
+// a missing testdata/golden/tables is created first, so the documented repair
+// (`make update-goldens`) writes every required directory from nothing; it
+// used to stop on the missing parent before reading the writers' lists
+// (finding F-056). Without -update a missing parent stays an error: the
+// comparison never passes on a tree that pins nothing.
+func tableUnitsFor(goldenTables string, update bool) ([]tableUnit, error) {
+	if update {
+		if err := os.MkdirAll(goldenTables, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	return tableUnits(goldenTables)
+}
+
+// TestTableGoldenRootIsCreatedOnUpdate is F-056's regression test: with
+// testdata/golden present and its tables directory absent, the update path
+// creates the directory and lists no unit (TestGoldenTableSource then writes
+// every required one); the compare path refuses.
+func TestTableGoldenRootIsCreatedOnUpdate(t *testing.T) {
+	golden := filepath.Join(t.TempDir(), "golden")
+	if err := os.Mkdir(golden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tables := filepath.Join(golden, "tables")
+	if _, err := tableUnitsFor(tables, false); !os.IsNotExist(err) {
+		t.Errorf("compare with no tables directory: error %v, want not-exist", err)
+	}
+	if _, err := os.Stat(tables); !os.IsNotExist(err) {
+		t.Errorf("the compare path created %s", tables)
+	}
+	units, err := tableUnitsFor(tables, true)
+	if err != nil {
+		t.Fatalf("update with no tables directory: %v", err)
+	}
+	if len(units) != 0 {
+		t.Errorf("update listed %v in a directory it just created", units)
+	}
+	if st, err := os.Stat(tables); err != nil || !st.IsDir() {
+		t.Errorf("update did not create %s: %v", tables, err)
+	}
+}
+
 // TestGoldenTableSource pins every tables unit's emitted Table sources
 // byte-for-byte (SPEC §7.2 gate 1), one directory of testdata/golden/tables
 // at a time, the set derived from the listing. What each directory pins is
@@ -371,9 +544,30 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 // emitter change that moves a pinned file is red on the PR that made it,
 // whichever unit it landed in.
 func TestGoldenTableSource(t *testing.T) {
-	units, err := tableUnits(tableGoldenDir)
+	listed, err := tableUnitsFor(tableGoldenDir, *update)
 	if err != nil {
 		t.Fatal(err)
+	}
+	required := requiredTableUnits(t, "../../Makefile")
+	if !*update {
+		// The set of directories is held to the writers' own lists, both
+		// ways. The units compared below come from the listing, so without
+		// this a whole directory of pins could leave the tree and take its
+		// comparison with it.
+		for _, problem := range tableDirProblems(required, listed) {
+			t.Error(problem)
+		}
+	}
+	// under -update a required directory that is gone is written again
+	units := listed
+	have := map[string]bool{}
+	for _, unit := range listed {
+		have[unit.name] = true
+	}
+	for _, unit := range required {
+		if !have[unit.name] {
+			units = append(units, unit)
+		}
 	}
 	for _, unit := range units {
 		t.Run(unit.name, func(t *testing.T) {
@@ -381,7 +575,7 @@ func TestGoldenTableSource(t *testing.T) {
 			files := generate(t, u, unit.target, nil)
 			dir := filepath.Join(tableGoldenDir, unit.name)
 			entries, err := os.ReadDir(dir)
-			if err != nil {
+			if err != nil && (!*update || !os.IsNotExist(err)) {
 				t.Fatal(err)
 			}
 			pinned := map[string][]byte{}
@@ -396,8 +590,174 @@ func TestGoldenTableSource(t *testing.T) {
 				}
 				pinned[e.Name()] = got
 			}
+			// The other way: every emitted file the writer rule pins is on
+			// disk. Without this a deleted pin leaves the listing shorter
+			// and the gate green. -update writes the missing pin, so the
+			// documented repair (make update-goldens) repairs it.
+			for name := range files {
+				if _, ok := pinned[name]; ok || !tablePinRule(unit.target, name) {
+					continue
+				}
+				if *update {
+					pinned[name] = files[name]
+					continue
+				}
+				t.Errorf("%s: the %s target emits %s for %s and no golden pins it (run: make update-goldens)", dir, unit.target, name, unit.dir)
+			}
 			pinDir(t, dir, pinned)
 		})
+	}
+}
+
+// requiredTableUnits is the set of table golden directories the writers are
+// told to write: the Makefile's PINS_SOURCE_CPP_DIRS, PINS_SOURCE_C_DIRS and
+// PINS_SOURCE_CS_DIRS, as `<unit>`, `<unit>-c` and `<unit>-cs`. A list that is
+// missing or empty fails the test: the required set is never nothing.
+func requiredTableUnits(t *testing.T, makefile string) []tableUnit {
+	t.Helper()
+	data, err := os.ReadFile(makefile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := tableUnitsFromMakefile(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return units
+}
+
+func tableUnitsFromMakefile(makefile string) ([]tableUnit, error) {
+	var units []tableUnit
+	for _, list := range []struct{ variable, suffix, target string }{
+		{"PINS_SOURCE_CPP_DIRS", "", "cpp"},
+		{"PINS_SOURCE_C_DIRS", "-c", "c"},
+		{"PINS_SOURCE_CS_DIRS", "-cs", "cs"},
+	} {
+		var names []string
+		found := 0
+		for line := range strings.SplitSeq(makefile, "\n") {
+			name, value, ok := strings.Cut(line, ":=")
+			if ok && strings.TrimSpace(name) == list.variable {
+				found++
+				names = strings.Fields(value)
+			}
+		}
+		if found != 1 || len(names) == 0 {
+			return nil, fmt.Errorf("the Makefile assigns %s %d time(s) with %d unit(s); want one assignment naming at least one unit", list.variable, found, len(names))
+		}
+		for _, name := range names {
+			units = append(units, tableUnit{name: name + list.suffix, dir: "../../tables/" + name, target: list.target})
+		}
+	}
+	return units, nil
+}
+
+// tableDirProblems compares the required table golden directories with the
+// ones on disk, both ways.
+func tableDirProblems(required, listed []tableUnit) []string {
+	want := map[string]tableUnit{}
+	for _, unit := range required {
+		want[unit.name] = unit
+	}
+	var problems []string
+	seen := map[string]bool{}
+	for _, unit := range listed {
+		seen[unit.name] = true
+		req, ok := want[unit.name]
+		switch {
+		case !ok:
+			problems = append(problems, fmt.Sprintf("%s/%s is a directory of table goldens no writer list names (Makefile PINS_SOURCE_*_DIRS): nothing rewrites it", tableGoldenDir, unit.name))
+		case req != unit:
+			problems = append(problems, fmt.Sprintf("%s/%s is read as %s emitted by %s, and the writer lists make it %s emitted by %s", tableGoldenDir, unit.name, unit.dir, unit.target, req.dir, req.target))
+		}
+	}
+	for _, unit := range required {
+		if !seen[unit.name] {
+			problems = append(problems, fmt.Sprintf("%s/%s is missing: the writer lists require the %s target's pins for %s (run: make update-goldens)", tableGoldenDir, unit.name, unit.target, unit.dir))
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
+
+// TestTableGoldenDirectoriesAreTheWritersLists is the control on the set: a
+// whole directory of pins removed is named (the full golden set used to pass
+// with testdata/golden/tables/examples-cs moved away), and so is one no list
+// names. The real tree must have neither.
+func TestTableGoldenDirectoriesAreTheWritersLists(t *testing.T) {
+	required := requiredTableUnits(t, "../../Makefile")
+	listed, err := tableUnits(tableGoldenDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := tableDirProblems(required, listed); len(problems) != 0 {
+		t.Fatalf("the tree: %q", problems)
+	}
+	var without []tableUnit
+	for _, unit := range listed {
+		if unit.name != "examples-cs" {
+			without = append(without, unit)
+		}
+	}
+	if len(without) != len(listed)-1 {
+		t.Fatal("testdata/golden/tables/examples-cs is not in the listing; this control names a directory that has moved")
+	}
+	problems := strings.Join(tableDirProblems(required, without), "\n")
+	if !strings.Contains(problems, "examples-cs is missing") {
+		t.Errorf("a listing without examples-cs reports %q", problems)
+	}
+	extra := append(append([]tableUnit(nil), listed...), tableUnit{name: "planted", dir: "../../tables/planted", target: "cpp"})
+	problems = strings.Join(tableDirProblems(required, extra), "\n")
+	if !strings.Contains(problems, "planted is a directory of table goldens no writer list names") {
+		t.Errorf("a listing with a planted directory reports %q", problems)
+	}
+
+	for _, c := range []struct{ name, makefile, want string }{
+		{"a list removed", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_C_DIRS := a\n", "PINS_SOURCE_CS_DIRS 0 time(s)"},
+		{"an empty list", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_C_DIRS :=\nPINS_SOURCE_CS_DIRS := a\n", "PINS_SOURCE_C_DIRS 1 time(s) with 0 unit(s)"},
+		{"a list assigned twice", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_CPP_DIRS := b\nPINS_SOURCE_C_DIRS := a\nPINS_SOURCE_CS_DIRS := a\n", "PINS_SOURCE_CPP_DIRS 2 time(s)"},
+	} {
+		if _, err := tableUnitsFromMakefile(c.makefile); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: error %v, want one holding %q", c.name, err, c.want)
+		}
+	}
+	units, err := tableUnitsFromMakefile("PINS_SOURCE_CPP_DIRS := a b\nPINS_SOURCE_C_DIRS   := a\nPINS_SOURCE_CS_DIRS  := b\n")
+	want := []tableUnit{{"a", "../../tables/a", "cpp"}, {"b", "../../tables/b", "cpp"}, {"a-c", "../../tables/a", "c"}, {"b-cs", "../../tables/b", "cs"}}
+	if err != nil || fmt.Sprint(units) != fmt.Sprint(want) {
+		t.Errorf("units %v (err %v), want %v", units, err, want)
+	}
+}
+
+// tablePinRule is the writer rule of each tables target: the emitted files
+// `make update-goldens` copies into testdata/golden/tables (Makefile
+// pins-source-cpp, pins-source-c, pins-source-cs).
+func tablePinRule(target, name string) bool {
+	suffixes := map[string][]string{
+		"cpp": {"Table.h", "Table.cpp"},
+		"c":   {"Table.h", "Table.c", "View.h", "View.c"},
+		"cs":  {"Table.cs"},
+	}[target]
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTablePinRuleNamesWhatTheWritersCopy is the control on tablePinRule.
+func TestTablePinRuleNamesWhatTheWritersCopy(t *testing.T) {
+	for _, c := range []struct {
+		target, name string
+		want         bool
+	}{
+		{"cpp", "UnitsTable.h", true}, {"cpp", "UnitsTable.cpp", true}, {"cpp", "Units.h", false},
+		{"c", "UnitsTable.c", true}, {"c", "UnitsView.h", true}, {"c", "Units.c", false},
+		{"cs", "UnitsTable.cs", true}, {"cs", "Units.cs", false}, {"zig", "UnitsTable.zig", false},
+	} {
+		if got := tablePinRule(c.target, c.name); got != c.want {
+			t.Errorf("tablePinRule(%s, %s) = %v, want %v", c.target, c.name, got, c.want)
+		}
 	}
 }
 

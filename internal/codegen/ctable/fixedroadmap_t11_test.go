@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +28,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapCT11Optionals(t *testing.T) {
@@ -112,13 +113,13 @@ int main( void )
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := append([]string{"-std=c99", "-O1", "-I" + dir, "-I" + serialize}, gccFortifySilence(cc)...)
+	args := append([]string{"-std=c99", "-O1", "-I" + dir, "-I" + serialize}, gccFortifySilence(t, cc)...)
 	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
-	build := exec.Command(cc, args...)
+	build := testproc.Command(t, cc, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 func cT11Probe(t *testing.T, src, body string) {

@@ -10,6 +10,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCOneSidedIntegerRange(t *testing.T) {
@@ -245,7 +247,7 @@ func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
 	}
 	bin := filepath.Join(dir, "probe")
 	args := []string{"-std=c99", "-O1", "-Wall", "-Wextra", "-Werror"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, main)
 	for file := range files {
 		if strings.HasSuffix(file, ".c") {
@@ -253,10 +255,10 @@ func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
 		}
 	}
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }
 

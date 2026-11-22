@@ -23,6 +23,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cFixedBatchProbe = `#include <stdio.h>
@@ -158,16 +160,16 @@ func cFixedBatchProbeRun(t *testing.T, mode string, args ...string) ([]byte, err
 		t.Fatal(err)
 	}
 	build := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-I" + dir, filepath.Join(dir, "probe.c")}
-	build = append(build, gccFortifySilence(cc)...)
+	build = append(build, gccFortifySilence(t, cc)...)
 	build = append(build, srcs...)
 	build = append(build, "-lm", "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cc, build...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, build...).CombinedOutput(); err != nil {
 		t.Fatalf("compile probe: %v\n%s", err, out)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	runArgs := append([]string{mode}, args...)
-	return exec.CommandContext(ctx, filepath.Join(dir, "probe"), runArgs...).CombinedOutput()
+	return testproc.CommandContext(t, ctx, filepath.Join(dir, "probe"), runArgs...).CombinedOutput()
 }
 
 func TestCFixedBatchHoldsARecord(t *testing.T) {

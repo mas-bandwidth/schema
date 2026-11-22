@@ -40,6 +40,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const constAgreeConsts = `package agree
@@ -526,7 +528,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		main.WriteString("}\n")
 		agreeWrite(t, filepath.Join(dir, "main.go"), main.String())
 		agreeWrite(t, filepath.Join(dir, "go.mod"), "module agreeprobe\n\ngo 1.21\n")
-		cmd := exec.Command(goBin, "run", ".")
+		cmd := testproc.Command(t, goBin, "run", ".")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOTOOLCHAIN=local")
 		agreePrinted(t, "Go", wantConsts, agreeRun(t, cmd))
@@ -542,7 +544,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 			fmt.Fprintf(&probe, "console.log(%q, String(k.%s));\n", name, name)
 		}
 		agreeWrite(t, filepath.Join(dir, "probe.js"), probe.String())
-		agreePrinted(t, "JavaScript", wantConsts, agreeRun(t, exec.Command(node, filepath.Join(dir, "probe.js"))))
+		agreePrinted(t, "JavaScript", wantConsts, agreeRun(t, testproc.Command(t, node, filepath.Join(dir, "probe.js"))))
 	})
 	t.Run("rust", func(t *testing.T) {
 		t.Parallel()
@@ -560,8 +562,8 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		dir := t.TempDir()
 		agreeWrite(t, filepath.Join(dir, "main.rs"), src.String())
 		bin := filepath.Join(dir, "probe")
-		agreeRun(t, exec.Command(rustc, "--edition", "2021", "-A", "warnings", "-o", bin, filepath.Join(dir, "main.rs")))
-		agreePrinted(t, "Rust", wantConsts, agreeRun(t, exec.Command(bin)))
+		agreeRun(t, testproc.Command(t, rustc, "--edition", "2021", "-A", "warnings", "-o", bin, filepath.Join(dir, "main.rs")))
+		agreePrinted(t, "Rust", wantConsts, agreeRun(t, testproc.Command(t, bin)))
 	})
 	t.Run("cs", func(t *testing.T) {
 		t.Parallel()
@@ -585,7 +587,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		}
 		prog.WriteString("    }\n}\n")
 		agreeWrite(t, filepath.Join(dir, "Program.cs"), prog.String())
-		cmd := exec.Command(dotnet, "run", "--configuration", "Release")
+		cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release")
 		cmd.Dir = dir
 		agreePrinted(t, "C#", wantConsts, agreeRun(t, cmd))
 	})
@@ -604,7 +606,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		src.WriteString("}\n")
 		dir := t.TempDir()
 		agreeWrite(t, filepath.Join(dir, "probe.dart"), src.String())
-		got := agreeRun(t, exec.Command(dart, "run", filepath.Join(dir, "probe.dart")))
+		got := agreeRun(t, testproc.Command(t, dart, "run", filepath.Join(dir, "probe.dart")))
 		// Dart's int is a signed 64-bit integer: a uint64 constant past
 		// INT64_MAX is its bit pattern (dartIntLit), printed negative
 		for name, v := range wantConsts {
@@ -635,7 +637,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		src.WriteString("    }\n}\n")
 		dir := t.TempDir()
 		agreeWrite(t, filepath.Join(dir, "Probe.java"), src.String())
-		agreePrinted(t, "Java", wantConsts, agreeRun(t, exec.Command(java, filepath.Join(dir, "Probe.java"))))
+		agreePrinted(t, "Java", wantConsts, agreeRun(t, testproc.Command(t, java, filepath.Join(dir, "Probe.java"))))
 	})
 }
 
@@ -677,8 +679,8 @@ func runCFamilyProbe(t *testing.T, u *ir.Unit, want map[string]*big.Int, lang st
 	path := filepath.Join(dir, "probe"+ext)
 	agreeWrite(t, path, src.String())
 	bin := filepath.Join(dir, "probe")
-	agreeRun(t, exec.Command(compiler, std, "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-I"+dir, path, "-o", bin))
-	out := agreeRun(t, exec.Command(bin))
+	agreeRun(t, testproc.Command(t, compiler, std, "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-I"+dir, path, "-o", bin))
+	out := agreeRun(t, testproc.Command(t, bin))
 	got := map[string]string{}
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
@@ -753,7 +755,7 @@ func agreeWrite(t *testing.T, path, data string) {
 	}
 }
 
-func agreeRun(t *testing.T, cmd *exec.Cmd) string {
+func agreeRun(t *testing.T, cmd *testproc.Cmd) string {
 	t.Helper()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

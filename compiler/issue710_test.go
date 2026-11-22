@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestIssue710DirectoryList(t *testing.T) {
@@ -243,10 +245,10 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 		args = append(args, "-std=c99")
 	}
 	args = append(args, path, "-o", bin)
-	if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, compiler, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 }

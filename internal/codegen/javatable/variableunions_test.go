@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestVariableUnionArmNamedTagCompiles pins that a union arm whose own wire name
@@ -50,7 +51,7 @@ func TestVariableUnionArmNamedTagCompiles(t *testing.T) {
 			sources = append(sources, path)
 		}
 		args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
 	})

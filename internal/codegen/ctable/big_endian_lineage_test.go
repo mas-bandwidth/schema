@@ -26,6 +26,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A wide tag is two bytes on the wire, which is the smallest width whose byte
@@ -188,9 +190,9 @@ func bigEndianLineageWriteFiles(t *testing.T, dir string, files map[string][]byt
 	}
 }
 
-func bigEndianLineageCArgs(cc, dir, source string, files map[string][]byte, extra ...string) []string {
+func bigEndianLineageCArgs(t testing.TB, cc, dir, source string, files map[string][]byte, extra ...string) []string {
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O1"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, extra...)
 	args = append(args, "-I", dir, filepath.Join(dir, source))
 	for name := range files {
@@ -247,12 +249,12 @@ func TestCBigEndianFormThreeLineageStores(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(oldDir, "writer.c"), []byte(bigEndianLineageWriter), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	oldArgs := bigEndianLineageCArgs(cc, oldDir, "writer.c", oldFiles, "-o", filepath.Join(oldDir, "writer"))
-	if output, err := exec.Command(cc, oldArgs...).CombinedOutput(); err != nil {
+	oldArgs := bigEndianLineageCArgs(t, cc, oldDir, "writer.c", oldFiles, "-o", filepath.Join(oldDir, "writer"))
+	if output, err := testproc.Command(t, cc, oldArgs...).CombinedOutput(); err != nil {
 		t.Fatalf("compile the older writer: %v\n%s", err, output)
 	}
 	file := filepath.Join(t.TempDir(), "lineage.bin")
-	if output, err := exec.CommandContext(ctx, filepath.Join(oldDir, "writer"), file).CombinedOutput(); err != nil {
+	if output, err := testproc.CommandContext(t, ctx, filepath.Join(oldDir, "writer"), file).CombinedOutput(); err != nil {
 		t.Fatalf("run the older writer: %v\n%s", err, output)
 	}
 
@@ -281,11 +283,11 @@ func TestCBigEndianFormThreeLineageStores(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := filepath.Join(newDir, "reader_"+tc.name)
-			args := bigEndianLineageCArgs(cc, newDir, "reader.c", newFiles, append(tc.extra, "-o", out)...)
-			if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+			args := bigEndianLineageCArgs(t, cc, newDir, "reader.c", newFiles, append(tc.extra, "-o", out)...)
+			if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 				t.Fatalf("compile the %s reader: %v\n%s", tc.name, err, output)
 			}
-			output, err := exec.CommandContext(ctx, out).CombinedOutput()
+			output, err := testproc.CommandContext(t, ctx, out).CombinedOutput()
 			if err != nil {
 				t.Fatalf("the %s reader does not hold:\n%s", tc.name, output)
 			}

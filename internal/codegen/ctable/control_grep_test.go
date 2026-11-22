@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // These are executable guards from make/c.mk, not copies of their grep flags.
@@ -62,7 +64,7 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 			}
 			check := func(input string, wantMatch bool) {
 				t.Helper()
-				cmd := exec.Command("grep", flags, "--", pattern)
+				cmd := testproc.Command(t, "grep", flags, "--", pattern)
 				cmd.Stdin = strings.NewReader(input + "\n")
 				output, err := cmd.CombinedOutput()
 				if wantMatch {

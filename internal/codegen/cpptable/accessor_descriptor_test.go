@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // accessorDescriptorSchema declares one block (a fixed table) and one cook (a
@@ -245,11 +246,11 @@ func runCppGeneratedEdited(t *testing.T, schema, mainSource string, edit func(ma
 	}
 	bin := filepath.Join(dir, "probe")
 	args = append(args, "-o", bin)
-	compile := exec.Command("c++", args...)
+	compile := testproc.Command(t, "c++", args...)
 	if out, err := compile.CombinedOutput(); err != nil {
 		return out, err
 	}
-	return exec.Command(bin).CombinedOutput()
+	return testproc.Command(t, bin).CombinedOutput()
 }
 
 // cppUnitFrom parses and checks one schema source into the IR the C++ table

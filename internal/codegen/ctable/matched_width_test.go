@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // C twin of gotable/matched_width_test.go. Regenerated goldens cannot hold
@@ -197,22 +199,22 @@ var gccFortifyFlags = []string{
 // Ubuntu's `cc --version` is "cc (Ubuntu …)" and never contains the word gcc;
 // 2c49a99a required that word and CI dropped the flags. GNU is __GNUC__
 // without __clang__, with --version as a fallback that does not require "gcc".
-func gccFortifySilence(cc string) []string {
-	if gnuCC(cc) {
+func gccFortifySilence(t testing.TB, cc string) []string {
+	if gnuCC(t, cc) {
 		return gccFortifyFlags
 	}
 	return nil
 }
 
-func gnuCC(cc string) bool {
-	cmd := exec.Command(cc, "-dM", "-E", "-")
+func gnuCC(t testing.TB, cc string) bool {
+	cmd := testproc.Command(t, cc, "-dM", "-E", "-")
 	cmd.Stdin = strings.NewReader("\n")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		defs := string(out)
 		return cCarries(defs, "#define __GNUC__") && !cCarries(defs, "#define __clang__")
 	}
-	vout, verr := exec.Command(cc, "--version").CombinedOutput()
+	vout, verr := testproc.Command(t, cc, "--version").CombinedOutput()
 	if verr != nil {
 		return false
 	}
@@ -227,8 +229,8 @@ func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
 	if cc == "" {
 		cc = "cc"
 	}
-	flags := gccFortifySilence(cc)
-	if gnuCC(cc) {
+	flags := gccFortifySilence(t, cc)
+	if gnuCC(t, cc) {
 		if flags == nil {
 			t.Fatal("GNU cc dropped fortify silence flags; Ubuntu's cc --version has no word gcc")
 		}
@@ -279,12 +281,12 @@ func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if output, err := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}
 }

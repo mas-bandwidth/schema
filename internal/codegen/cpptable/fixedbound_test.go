@@ -17,13 +17,14 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCPPFixedCountOverBoundRefusesByName(t *testing.T) {
@@ -213,10 +214,10 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, probePath, "-o", filepath.Join(outDir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("identity probe did not compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(filepath.Join(outDir, "probe")).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("identity probe: %v\n%s", err, out)
 	}
 

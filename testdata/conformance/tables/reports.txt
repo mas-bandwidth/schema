@@ -159,3 +159,7 @@ varevo_v3_full_as_v1 refused
 w1_fleet_as_w2     read
 w1_fleet_default_as_w2 read
 w2_fleet_as_w1     read
+widenbound_envelope read
+widenbound_envelope_spans read
+widenbound_evodoc  read
+widenbound_feed    read

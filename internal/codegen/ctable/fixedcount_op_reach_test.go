@@ -9,13 +9,14 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
@@ -121,14 +122,14 @@ int main(void)
 	// compiles main.c alone — never the packet wire's ProbeWire.c, which pulls in
 	// the sibling serialize.h checkout this leg only needs for 128-bit storage.
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-fsanitize=address", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g")
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
-	output, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	output, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}

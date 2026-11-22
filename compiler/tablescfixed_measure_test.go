@@ -11,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCTableFixedMeasureCountAsserted holds the C fixed form's measure to the
@@ -140,7 +142,7 @@ func buildCTableFixedMeasureProbe(t *testing.T, u *ir.Unit, source string, relea
 		}
 	}
 	args = append(args, "-lm", "-o", binary)
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	return binary
@@ -150,6 +152,6 @@ func runCTableFixedMeasureProbe(t *testing.T, binary, name string) (string, erro
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, binary, name).CombinedOutput()
+	out, err := testproc.CommandContext(t, ctx, binary, name).CombinedOutput()
 	return string(out), err
 }

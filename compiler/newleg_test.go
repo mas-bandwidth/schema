@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestNewLegRefusesExistingTargets(t *testing.T) {
@@ -113,7 +115,7 @@ func TestNewLegZigFixturePasses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -132,7 +134,7 @@ func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"build", "run"} {
-		cmd := exec.Command(leg, action)
+		cmd := testproc.Command(t, leg, action)
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			t.Fatalf("%s exited 0, want unavailable exit 2", action)

@@ -4,13 +4,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpJsonWriterRefusesZeroByte holds docs/SPEC.md §5.1 row 8 and
@@ -76,7 +77,7 @@ table Root {
 	for _, r := range refs {
 		args = append(args, "-r:"+r)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
@@ -87,7 +88,7 @@ table Root {
 	}
 
 	run := func(mode, site string) ([]byte, error) {
-		cmd := exec.Command(csDotnet(), "exec", filepath.Join(dir, "probe.dll"), mode, site)
+		cmd := testproc.Command(t, csDotnet(), "exec", filepath.Join(dir, "probe.dll"), mode, site)
 		cmd.Env = csDotnetEnv(dir, dir)
 		return cmd.CombinedOutput()
 	}

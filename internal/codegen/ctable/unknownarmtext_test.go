@@ -10,6 +10,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPinnedUnknownArmTextC pins the fuzz vector unknown_arm_text_nul
@@ -127,9 +129,9 @@ func runUnknownArmTextProbe(t *testing.T, cc string, files map[string][]byte, sr
 		}
 	}
 	args = append(args, "-lm", "-o", binary)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(binary).CombinedOutput()
+	out, err := testproc.Command(t, binary).CombinedOutput()
 	return string(out), err
 }

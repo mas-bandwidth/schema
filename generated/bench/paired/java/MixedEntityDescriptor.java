@@ -22,55 +22,69 @@ public final class MixedEntityDescriptor {
             t.name = "MixedEntity";
             t.table = false;
             t.doc = "";
-            t.tags = new String[0];
+            t.tags = new java.lang.String[0];
             TableFieldInfo[] fields = new TableFieldInfo[14];
             TableFieldInfo f0 = TableFieldInfo.of("entity_id", 7, "value", 0L);
-            f0.view("entity_id", "bits(12)", 0x23fcfd6678e36712L, false, "", "", new String[0]);
+            f0.view(
+                    "entity_id",
+                    "bits(12)",
+                    0x23fcfd6678e36712L,
+                    false,
+                    "",
+                    "",
+                    new java.lang.String[0]);
             f0.at(false, false, 0, 4, -1, -1);
             f0.longs(MixedEntityDescriptor::get_0, MixedEntityDescriptor::set_0);
             fields[0] = f0;
             TableFieldInfo f1 = TableFieldInfo.of("pos_x", 4, "value", 0L);
-            f1.view("pos_x", "int32", 0xcb4b37357667310eL, false, "", "", new String[0]);
+            f1.view("pos_x", "int32", 0xcb4b37357667310eL, false, "", "", new java.lang.String[0]);
             f1.at(false, false, 4, 4, -1, -1);
             f1.longs(MixedEntityDescriptor::get_1, MixedEntityDescriptor::set_1);
             fields[1] = f1;
             TableFieldInfo f2 = TableFieldInfo.of("pos_y", 4, "value", 0L);
-            f2.view("pos_y", "int32", 0xcb4b3835766732c1L, false, "", "", new String[0]);
+            f2.view("pos_y", "int32", 0xcb4b3835766732c1L, false, "", "", new java.lang.String[0]);
             f2.at(false, false, 8, 4, -1, -1);
             f2.longs(MixedEntityDescriptor::get_2, MixedEntityDescriptor::set_2);
             fields[2] = f2;
             TableFieldInfo f3 = TableFieldInfo.of("pos_z", 4, "value", 0L);
-            f3.view("pos_z", "int32", 0xcb4b353576672da8L, false, "", "", new String[0]);
+            f3.view("pos_z", "int32", 0xcb4b353576672da8L, false, "", "", new java.lang.String[0]);
             f3.at(false, false, 12, 4, -1, -1);
             f3.longs(MixedEntityDescriptor::get_3, MixedEntityDescriptor::set_3);
             fields[3] = f3;
             TableFieldInfo f4 = TableFieldInfo.of("yaw", 7, "value", 0L);
-            f4.view("yaw", "bits(9)", 0xb54d8e19798e16e8L, false, "", "", new String[0]);
+            f4.view("yaw", "bits(9)", 0xb54d8e19798e16e8L, false, "", "", new java.lang.String[0]);
             f4.at(false, false, 16, 4, -1, -1);
             f4.longs(MixedEntityDescriptor::get_4, MixedEntityDescriptor::set_4);
             fields[4] = f4;
             TableFieldInfo f5 = TableFieldInfo.of("pitch", 7, "value", 0L);
-            f5.view("pitch", "bits(9)", 0x53a9f665a90cc1b1L, false, "", "", new String[0]);
+            f5.view(
+                    "pitch",
+                    "bits(9)",
+                    0x53a9f665a90cc1b1L,
+                    false,
+                    "",
+                    "",
+                    new java.lang.String[0]);
             f5.at(false, false, 20, 4, -1, -1);
             f5.longs(MixedEntityDescriptor::get_5, MixedEntityDescriptor::set_5);
             fields[5] = f5;
             TableFieldInfo f6 = TableFieldInfo.of("vel_x", 4, "value", 0L);
-            f6.view("vel_x", "int32", 0x6cede6b6eb60ee67L, false, "", "", new String[0]);
+            f6.view("vel_x", "int32", 0x6cede6b6eb60ee67L, false, "", "", new java.lang.String[0]);
             f6.at(false, false, 24, 4, -1, -1);
             f6.longs(MixedEntityDescriptor::get_6, MixedEntityDescriptor::set_6);
             fields[6] = f6;
             TableFieldInfo f7 = TableFieldInfo.of("vel_y", 4, "value", 0L);
-            f7.view("vel_y", "int32", 0x6cede5b6eb60ecb4L, false, "", "", new String[0]);
+            f7.view("vel_y", "int32", 0x6cede5b6eb60ecb4L, false, "", "", new java.lang.String[0]);
             f7.at(false, false, 28, 4, -1, -1);
             f7.longs(MixedEntityDescriptor::get_7, MixedEntityDescriptor::set_7);
             fields[7] = f7;
             TableFieldInfo f8 = TableFieldInfo.of("vel_z", 4, "value", 0L);
-            f8.view("vel_z", "int32", 0x6cede8b6eb60f1cdL, false, "", "", new String[0]);
+            f8.view("vel_z", "int32", 0x6cede8b6eb60f1cdL, false, "", "", new java.lang.String[0]);
             f8.at(false, false, 32, 4, -1, -1);
             f8.longs(MixedEntityDescriptor::get_8, MixedEntityDescriptor::set_8);
             fields[8] = f8;
             TableFieldInfo f9 = TableFieldInfo.of("health", 4, "value", 0L);
-            f9.view("health", "int32", 0x7f69d4b5288ba9cfL, false, "", "", new String[0]);
+            f9.view("health", "int32", 0x7f69d4b5288ba9cfL, false, "", "", new java.lang.String[0]);
             f9.at(false, false, 36, 4, -1, -1);
             f9.longs(MixedEntityDescriptor::get_9, MixedEntityDescriptor::set_9);
             fields[9] = f9;
@@ -82,7 +96,7 @@ public final class MixedEntityDescriptor {
                     false,
                     "MixedWeapon",
                     "",
-                    new String[0]);
+                    new java.lang.String[0]);
             f10.at(false, false, 40, 1, -1, -1);
             f10.longs(MixedEntityDescriptor::get_10, MixedEntityDescriptor::set_10);
             fields[10] = f10;
@@ -94,17 +108,17 @@ public final class MixedEntityDescriptor {
                     false,
                     "MixedDamage",
                     "",
-                    new String[0]);
+                    new java.lang.String[0]);
             f11.at(false, false, 48, 8, -1, -1);
             f11.longs(MixedEntityDescriptor::get_11, MixedEntityDescriptor::set_11);
             fields[11] = f11;
             TableFieldInfo f12 = TableFieldInfo.of("moving", 1, "value", 0L);
-            f12.view("moving", "bool", 0x11a44fc1d1243da7L, false, "", "", new String[0]);
+            f12.view("moving", "bool", 0x11a44fc1d1243da7L, false, "", "", new java.lang.String[0]);
             f12.at(false, false, 56, 1, -1, -1);
             f12.longs(MixedEntityDescriptor::get_12, MixedEntityDescriptor::set_12);
             fields[12] = f12;
             TableFieldInfo f13 = TableFieldInfo.of("firing", 1, "value", 0L);
-            f13.view("firing", "bool", 0x7674cfd19b9031caL, false, "", "", new String[0]);
+            f13.view("firing", "bool", 0x7674cfd19b9031caL, false, "", "", new java.lang.String[0]);
             f13.at(false, false, 57, 1, -1, -1);
             f13.longs(MixedEntityDescriptor::get_13, MixedEntityDescriptor::set_13);
             fields[13] = f13;
@@ -115,119 +129,119 @@ public final class MixedEntityDescriptor {
         }
     }
 
-    private static long get_0(Object h, int i) {
-        return Integer.toUnsignedLong(((MixedEntityVariable.Value) h).entityId);
+    private static long get_0(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((MixedEntityVariable.Value) h).entityId);
     }
 
-    private static void set_0(Object h, int i, long x) {
+    private static void set_0(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).entityId = (int) x;
     }
 
-    private static long get_1(Object h, int i) {
+    private static long get_1(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).posX;
     }
 
-    private static void set_1(Object h, int i, long x) {
+    private static void set_1(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).posX = (int) x;
     }
 
-    private static long get_2(Object h, int i) {
+    private static long get_2(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).posY;
     }
 
-    private static void set_2(Object h, int i, long x) {
+    private static void set_2(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).posY = (int) x;
     }
 
-    private static long get_3(Object h, int i) {
+    private static long get_3(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).posZ;
     }
 
-    private static void set_3(Object h, int i, long x) {
+    private static void set_3(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).posZ = (int) x;
     }
 
-    private static long get_4(Object h, int i) {
-        return Integer.toUnsignedLong(((MixedEntityVariable.Value) h).yaw);
+    private static long get_4(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((MixedEntityVariable.Value) h).yaw);
     }
 
-    private static void set_4(Object h, int i, long x) {
+    private static void set_4(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).yaw = (int) x;
     }
 
-    private static long get_5(Object h, int i) {
-        return Integer.toUnsignedLong(((MixedEntityVariable.Value) h).pitch);
+    private static long get_5(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((MixedEntityVariable.Value) h).pitch);
     }
 
-    private static void set_5(Object h, int i, long x) {
+    private static void set_5(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).pitch = (int) x;
     }
 
-    private static long get_6(Object h, int i) {
+    private static long get_6(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).velX;
     }
 
-    private static void set_6(Object h, int i, long x) {
+    private static void set_6(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).velX = (int) x;
     }
 
-    private static long get_7(Object h, int i) {
+    private static long get_7(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).velY;
     }
 
-    private static void set_7(Object h, int i, long x) {
+    private static void set_7(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).velY = (int) x;
     }
 
-    private static long get_8(Object h, int i) {
+    private static long get_8(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).velZ;
     }
 
-    private static void set_8(Object h, int i, long x) {
+    private static void set_8(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).velZ = (int) x;
     }
 
-    private static long get_9(Object h, int i) {
+    private static long get_9(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).health;
     }
 
-    private static void set_9(Object h, int i, long x) {
+    private static void set_9(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).health = (int) x;
     }
 
-    private static long get_10(Object h, int i) {
+    private static long get_10(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).weapon;
     }
 
-    private static void set_10(Object h, int i, long x) {
+    private static void set_10(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).weapon = (int) x;
     }
 
-    private static long get_11(Object h, int i) {
+    private static long get_11(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).damage;
     }
 
-    private static void set_11(Object h, int i, long x) {
+    private static void set_11(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).damage = x;
     }
 
-    private static long get_12(Object h, int i) {
+    private static long get_12(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).moving ? 1L : 0L;
     }
 
-    private static void set_12(Object h, int i, long x) {
+    private static void set_12(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).moving = x != 0;
     }
 
-    private static long get_13(Object h, int i) {
+    private static long get_13(java.lang.Object h, int i) {
         return ((MixedEntityVariable.Value) h).firing ? 1L : 0L;
     }
 
-    private static void set_13(Object h, int i, long x) {
+    private static void set_13(java.lang.Object h, int i, long x) {
         ((MixedEntityVariable.Value) h).firing = x != 0;
     }
 
-    private static void reset(Object h) {
+    private static void reset(java.lang.Object h) {
         MixedEntityVariable.Value v = (MixedEntityVariable.Value) h;
         v.entityId = 0;
         v.posX = 0;

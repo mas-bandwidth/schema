@@ -44,6 +44,7 @@ for tree in "$@"; do
 	cat "$OUT/c-format-tree.txt" >> "$OUT/c-format-files.txt"
 done
 sort -u -o "$OUT/c-format-files.txt" "$OUT/c-format-files.txt"
+checked=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
 for dir in $EXPECT_DIRS; do
 	awk -v p="${dir%/}/" 'index( $0, p ) == 1 { found = 1; exit } END { exit !found }' "$OUT/c-format-files.txt" || \
 		{ echo "tables-c-clean: the unit directory $dir put no generated C into the check (missing, empty, or outside the trees named)"; exit 1; }
@@ -99,4 +100,4 @@ done > "$OUT/c-format-unscanned.txt"
 if [ -s "$OUT/c-format-unscanned.txt" ]; then cat "$OUT/c-format-unscanned.txt"; bad=1; fi
 rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-tree.txt" "$OUT/c-format-results.txt" "$OUT/c-format-unscanned.txt"
 [ $bad -eq 0 ] || exit 1
-echo "C: clang-format clean over $*, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C: clang-format clean over $*: $checked files checked, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"

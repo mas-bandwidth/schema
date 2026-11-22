@@ -14,6 +14,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cIntegritySchema = `package probe
@@ -385,10 +387,10 @@ func writeAndCompileCIntegrity(t *testing.T, files map[string][]byte, driver str
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c99", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-I", dir, main}, cFiles...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	return exec.Command(bin).CombinedOutput()
+	return testproc.Command(t, bin).CombinedOutput()
 }
 
 func parseCHexLine(out []byte, prefix string) ([]byte, bool) {

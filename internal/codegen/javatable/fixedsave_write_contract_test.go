@@ -22,13 +22,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const fixedSaveContractSchema = `package probe
@@ -286,14 +287,14 @@ func TestJavaFixedSaveWriteContract(t *testing.T) {
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
 	outcomes := func(flags ...string) map[string]string {
 		t.Helper()
 		args := append(append([]string{}, flags...), "-cp", classes, "probe.Driver")
-		out, err := exec.Command(javaBin, args...).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, args...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("java %v: %v\n%s", flags, err, out)
 		}

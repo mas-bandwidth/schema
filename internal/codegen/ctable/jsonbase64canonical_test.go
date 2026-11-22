@@ -17,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // base64Row is one JSON text read by the engine and by the C leg. want is
@@ -356,12 +358,12 @@ int main( void )
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-I", dir, main}, sources...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin).CombinedOutput()
+	out, err := testproc.CommandContext(t, ctx, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("probe failed: %v\n%s", err, out)
 	}

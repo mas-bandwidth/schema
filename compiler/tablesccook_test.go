@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The compiler's canonical writer is independent of the C generator. These
@@ -290,7 +291,7 @@ void mutate(const RootBlockConst * block) { root_rows_span_const(block)[0].value
 	if err := os.WriteFile(path, []byte(bad), 0600); err != nil {
 		t.Fatal(err)
 	}
-	output, err := exec.Command("cc", "-std=c99", "-I", dir, "-c", path, "-o", filepath.Join(dir, "const-negative.o")).CombinedOutput()
+	output, err := testproc.Command(t, "cc", "-std=c99", "-I", dir, "-c", path, "-o", filepath.Join(dir, "const-negative.o")).CombinedOutput()
 	if err == nil || (!cCarries(string(output), "const") && !cCarries(string(output), "read-only")) {
 		t.Fatalf("const block write did not fail for constness: %v\n%s", err, output)
 	}

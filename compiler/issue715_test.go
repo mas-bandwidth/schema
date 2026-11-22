@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Issue #715: Table JSON Base64 reader wipes declared defaults on malformed input
@@ -199,7 +201,7 @@ func TestIssue715(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "reader_test.go"), []byte(testSrc), 0644); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "test", "-v", ".")
+		cmd := testproc.Command(t, "go", "test", "-v", ".")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go test: %v\n%s", err, strings.TrimSpace(string(out)))
@@ -271,7 +273,7 @@ class Program {
 		if err := os.WriteFile(filepath.Join(dir, "Program.cs"), []byte(program), 0644); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dotnet, "run", "--configuration", "Release")
+		cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("dotnet run: %v\n%s", err, strings.TrimSpace(string(out)))
@@ -336,10 +338,10 @@ func issue715CompileRun(t *testing.T, dir, compiler, ext, source string) {
 		args = append(args, "-std=c99", path, filepath.Join(dir, "ProbeTable.c"))
 	}
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, compiler, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 }
