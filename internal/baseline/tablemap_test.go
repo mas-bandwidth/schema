@@ -215,7 +215,7 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 	}
 	// THE ONE READ KEEPS NO PREFIX (§2.8, §4): the warning names the refusal,
 	// never the retired read-short-and-keep-the-prefix answer.
-	if !find(fs, baseline.Warn, "Fleet.ships", "refuses `wire_damaged`") {
+	if !find(fs, baseline.Warn, "Fleet.ships", "refuses wire_damaged") {
 		t.Errorf("the warning does not say a non-ascending wire refuses: %s", summary(fs))
 	}
 	for _, f := range fs {
