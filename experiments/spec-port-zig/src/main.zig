@@ -287,7 +287,7 @@ fn surfWriteRefusal(c: *Ctx, a: Allocator, f: []const []const u8, text: bool) !v
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
     var rep: wire.Report = .{};
-    const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch return c.absent(a, f[1], "the row's wire did not load");
+    const s = (if (r.decl.is_fixed) fixed.load(a, r.unit, r.decl, bytes) else wire.load(a, r.unit, r.decl, bytes, &rep)) catch return c.absent(a, f[1], "the row's wire did not load");
     setPath(a, s, f[5], f[6], f[7]) catch |e| switch (e) {
         error.Unrepresentable => return c.put(f[1], "unrepresentable\n"),
         error.NoPath => return c.absent(a, f[1], "path not found"),
@@ -308,6 +308,7 @@ fn setPath(a: Allocator, s: *value.Struct, path: []const u8, kind: []const u8, v
     var segs = std.mem.splitScalar(u8, path, '.');
     var slot: *Value = undefined;
     var ty: *const schema.Type = undefined;
+    var entry: ?*value.MapEntry = null;
     var first = true;
     while (segs.next()) |seg0| {
         var seg = seg0;
@@ -315,6 +316,20 @@ fn setPath(a: Allocator, s: *value.Struct, path: []const u8, kind: []const u8, v
         if (std.mem.indexOfScalar(u8, seg, '[')) |b| {
             index = std.fmt.parseInt(usize, seg[b + 1 .. seg.len - 1], 10) catch return error.NoPath;
             seg = seg[0..b];
+        }
+        // SPEC-GAP 12: `map[i].key` and `map[i].value` step into the i-th entry in key order
+        if (entry) |e| {
+            const mt = ty.map;
+            if (std.mem.eql(u8, seg, "key")) {
+                slot = &e.key;
+                ty = mt.key;
+            } else if (std.mem.eql(u8, seg, "value")) {
+                slot = &e.val;
+                ty = mt.val;
+                if (mt.val_optional) slot = slot.opt orelse return error.NoPath;
+            } else return error.NoPath;
+            entry = null;
+            continue;
         }
         if (!first) {
             // descend from the previous slot into a table value
@@ -362,6 +377,11 @@ fn setPath(a: Allocator, s: *value.Struct, path: []const u8, kind: []const u8, v
                         if (slot.opt == null) return error.NoPath;
                         slot = slot.opt.?;
                     }
+                },
+                .map => |mt| {
+                    if (i >= slot.map.len) return error.NoPath;
+                    wire.sortEntries(mt.key, slot.map);
+                    entry = &slot.map[i];
                 },
                 else => return error.NoPath,
             }
