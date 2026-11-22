@@ -948,7 +948,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            return -1;\n        }\n")
 	g.fixedBoolDamagePass(st)
 	g.pf("        /* The immutable spans passed the whole-load preflight above. */\n")
-	g.pf("        if ( !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	g.pf("        if ( fill_count > 0 && !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n")
 	g.pf("            return -1;\n        }\n")
 	runDefaults := "NULL"
