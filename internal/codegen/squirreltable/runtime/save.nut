@@ -1108,6 +1108,11 @@ _M.save <- function(T, rootName, value, retain = null) {
     appendWriter(w, sub);
   }
   wu8(w, 0);
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more than 4096 entries, so the writer refuses the value
+  if (ids.list.len() > 4096) {
+    _M.SaveReason <- "invalid_value: the value needs " + ids.list.len() + " wire ids, past the maximum of 4096";
+    return null;
+  }
   foreach (id in ids.list) wfixed(w, id, 8);
   wfixed(w, ids.list.len(), 8);
   local out = blob(w.b.len());
