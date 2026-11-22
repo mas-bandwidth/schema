@@ -171,13 +171,16 @@ func TestPlantedDivergenceReds(t *testing.T) {
 func TestPairedHeadersAgree(t *testing.T) {
 	cPath := filepath.Join("..", "..", "generated", "bench", "paired", "c", "FixedTableTable.h")
 	cppPath := filepath.Join("..", "..", "generated", "bench", "paired", "cpp", "FixedTableTable.h")
+	// Both headers are tracked (make generated/bench/paired/c/.stamp and
+	// generated/bench/paired/cpp/.stamp regenerate them), so a plain clone
+	// carries them and an absent one is a defect, never a skip.
 	cSrc, err := os.ReadFile(cPath)
 	if err != nil {
-		t.Skip(err)
+		t.Fatalf("the tracked paired C header is absent (make generated/bench/paired/c/.stamp writes it): %v", err)
 	}
 	cppSrc, err := os.ReadFile(cppPath)
 	if err != nil {
-		t.Skip(err)
+		t.Fatalf("the tracked paired C++ header is absent (make generated/bench/paired/cpp/.stamp writes it): %v", err)
 	}
 	cPlain, err := dequalifyC(string(cSrc), filepath.Join("..", ".."))
 	if err != nil {

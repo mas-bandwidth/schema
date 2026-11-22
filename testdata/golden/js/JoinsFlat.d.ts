@@ -11,51 +11,51 @@ import type { ArmAlign, ArmArray, ArmEmpty, ArmsAgree, ArmsDisagree, ArmsNested,
 
 export declare const FlatReadSlack: 8;
 
-export declare function WriteArmsAgreeFlat(view: DataView, value: ArmsAgree): number;
-export declare function ReadArmsAgreeFlat(view: DataView, numBits: number, value: ArmsAgree): boolean;
-export declare function ReadArmsAgreeFlatBits(view: DataView, numBits: number, value: ArmsAgree): number | false;
+export declare function WriteArmsAgreeFlat(view: globalThis.DataView, value: ArmsAgree): number;
+export declare function ReadArmsAgreeFlat(view: globalThis.DataView, numBits: number, value: ArmsAgree): boolean;
+export declare function ReadArmsAgreeFlatBits(view: globalThis.DataView, numBits: number, value: ArmsAgree): number | false;
 
-export declare function WriteArmsDisagreeFlat(view: DataView, value: ArmsDisagree): number;
-export declare function ReadArmsDisagreeFlat(view: DataView, numBits: number, value: ArmsDisagree): boolean;
-export declare function ReadArmsDisagreeFlatBits(view: DataView, numBits: number, value: ArmsDisagree): number | false;
+export declare function WriteArmsDisagreeFlat(view: globalThis.DataView, value: ArmsDisagree): number;
+export declare function ReadArmsDisagreeFlat(view: globalThis.DataView, numBits: number, value: ArmsDisagree): boolean;
+export declare function ReadArmsDisagreeFlatBits(view: globalThis.DataView, numBits: number, value: ArmsDisagree): number | false;
 
-export declare function WriteArmEmptyFlat(view: DataView, value: ArmEmpty): number;
-export declare function ReadArmEmptyFlat(view: DataView, numBits: number, value: ArmEmpty): boolean;
-export declare function ReadArmEmptyFlatBits(view: DataView, numBits: number, value: ArmEmpty): number | false;
+export declare function WriteArmEmptyFlat(view: globalThis.DataView, value: ArmEmpty): number;
+export declare function ReadArmEmptyFlat(view: globalThis.DataView, numBits: number, value: ArmEmpty): boolean;
+export declare function ReadArmEmptyFlatBits(view: globalThis.DataView, numBits: number, value: ArmEmpty): number | false;
 
-export declare function WriteArmsNestedFlat(view: DataView, value: ArmsNested): number;
-export declare function ReadArmsNestedFlat(view: DataView, numBits: number, value: ArmsNested): boolean;
-export declare function ReadArmsNestedFlatBits(view: DataView, numBits: number, value: ArmsNested): number | false;
+export declare function WriteArmsNestedFlat(view: globalThis.DataView, value: ArmsNested): number;
+export declare function ReadArmsNestedFlat(view: globalThis.DataView, numBits: number, value: ArmsNested): boolean;
+export declare function ReadArmsNestedFlatBits(view: globalThis.DataView, numBits: number, value: ArmsNested): number | false;
 
-export declare function WriteArmAlignFlat(view: DataView, value: ArmAlign): number;
-export declare function ReadArmAlignFlat(view: DataView, numBits: number, value: ArmAlign): boolean;
-export declare function ReadArmAlignFlatBits(view: DataView, numBits: number, value: ArmAlign): number | false;
+export declare function WriteArmAlignFlat(view: globalThis.DataView, value: ArmAlign): number;
+export declare function ReadArmAlignFlat(view: globalThis.DataView, numBits: number, value: ArmAlign): boolean;
+export declare function ReadArmAlignFlatBits(view: globalThis.DataView, numBits: number, value: ArmAlign): number | false;
 
-export declare function WriteArmArrayFlat(view: DataView, value: ArmArray): number;
-export declare function ReadArmArrayFlat(view: DataView, numBits: number, value: ArmArray): boolean;
-export declare function ReadArmArrayFlatBits(view: DataView, numBits: number, value: ArmArray): number | false;
+export declare function WriteArmArrayFlat(view: globalThis.DataView, value: ArmArray): number;
+export declare function ReadArmArrayFlat(view: globalThis.DataView, numBits: number, value: ArmArray): boolean;
+export declare function ReadArmArrayFlatBits(view: globalThis.DataView, numBits: number, value: ArmArray): number | false;
 
-export declare function WriteNarrowFlat(view: DataView, value: Narrow): number;
-export declare function ReadNarrowFlat(view: DataView, numBits: number, value: Narrow): boolean;
-export declare function ReadNarrowFlatBits(view: DataView, numBits: number, value: Narrow): number | false;
+export declare function WriteNarrowFlat(view: globalThis.DataView, value: Narrow): number;
+export declare function ReadNarrowFlat(view: globalThis.DataView, numBits: number, value: Narrow): boolean;
+export declare function ReadNarrowFlatBits(view: globalThis.DataView, numBits: number, value: Narrow): number | false;
 
-export declare function WriteWideFlat(view: DataView, value: Wide): number;
-export declare function ReadWideFlat(view: DataView, numBits: number, value: Wide): boolean;
-export declare function ReadWideFlatBits(view: DataView, numBits: number, value: Wide): number | false;
+export declare function WriteWideFlat(view: globalThis.DataView, value: Wide): number;
+export declare function ReadWideFlat(view: globalThis.DataView, numBits: number, value: Wide): boolean;
+export declare function ReadWideFlatBits(view: globalThis.DataView, numBits: number, value: Wide): number | false;
 
-export declare function WriteUnevenFlat(view: DataView, value: Uneven): number;
-export declare function ReadUnevenFlat(view: DataView, numBits: number, value: Uneven): boolean;
-export declare function ReadUnevenFlatBits(view: DataView, numBits: number, value: Uneven): number | false;
+export declare function WriteUnevenFlat(view: globalThis.DataView, value: Uneven): number;
+export declare function ReadUnevenFlat(view: globalThis.DataView, numBits: number, value: Uneven): boolean;
+export declare function ReadUnevenFlatBits(view: globalThis.DataView, numBits: number, value: Uneven): number | false;
 
-export declare function WriteHoldsUnevenFlat(view: DataView, value: HoldsUneven): number;
-export declare function ReadHoldsUnevenFlat(view: DataView, numBits: number, value: HoldsUneven): boolean;
-export declare function ReadHoldsUnevenFlatBits(view: DataView, numBits: number, value: HoldsUneven): number | false;
+export declare function WriteHoldsUnevenFlat(view: globalThis.DataView, value: HoldsUneven): number;
+export declare function ReadHoldsUnevenFlat(view: globalThis.DataView, numBits: number, value: HoldsUneven): boolean;
+export declare function ReadHoldsUnevenFlatBits(view: globalThis.DataView, numBits: number, value: HoldsUneven): number | false;
 
-export declare function WriteArrUnevenFlat(view: DataView, value: ArrUneven): number;
-export declare function ReadArrUnevenFlat(view: DataView, numBits: number, value: ArrUneven): boolean;
-export declare function ReadArrUnevenFlatBits(view: DataView, numBits: number, value: ArrUneven): number | false;
+export declare function WriteArrUnevenFlat(view: globalThis.DataView, value: ArrUneven): number;
+export declare function ReadArrUnevenFlat(view: globalThis.DataView, numBits: number, value: ArrUneven): boolean;
+export declare function ReadArrUnevenFlatBits(view: globalThis.DataView, numBits: number, value: ArrUneven): number | false;
 
-export declare function WriteRegainAfterAlignFlat(view: DataView, value: RegainAfterAlign): number;
-export declare function ReadRegainAfterAlignFlat(view: DataView, numBits: number, value: RegainAfterAlign): boolean;
-export declare function ReadRegainAfterAlignFlatBits(view: DataView, numBits: number, value: RegainAfterAlign): number | false;
+export declare function WriteRegainAfterAlignFlat(view: globalThis.DataView, value: RegainAfterAlign): number;
+export declare function ReadRegainAfterAlignFlat(view: globalThis.DataView, numBits: number, value: RegainAfterAlign): boolean;
+export declare function ReadRegainAfterAlignFlatBits(view: globalThis.DataView, numBits: number, value: RegainAfterAlign): number | false;
 

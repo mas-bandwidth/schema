@@ -985,7 +985,8 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         }
         else
         {
-            w.Fixed(f.GetBuffer != null ? f.GetBuffer(value.Obj)[i] : f.GetRaw(value.Obj, i), Width(f.Kind));
+            // a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+            w.Fixed(f.GetBuffer != null ? f.GetBuffer(value.Obj)[i] : StoredRaw(f.GetRaw(value.Obj, i), f), Width(f.Kind));
         }
     }
 

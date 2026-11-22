@@ -11,23 +11,23 @@ import type { DefaultArm, DefaultBulkArm, DefaultBulkChoice, DefaultChoice, Defa
 
 export declare const FlatReadSlack: 8;
 
-export declare function WriteDefaultArmFlat(view: DataView, value: DefaultArm): number;
-export declare function ReadDefaultArmFlat(view: DataView, numBits: number, value: DefaultArm): boolean;
-export declare function ReadDefaultArmFlatBits(view: DataView, numBits: number, value: DefaultArm): number | false;
+export declare function WriteDefaultArmFlat(view: globalThis.DataView, value: DefaultArm): number;
+export declare function ReadDefaultArmFlat(view: globalThis.DataView, numBits: number, value: DefaultArm): boolean;
+export declare function ReadDefaultArmFlatBits(view: globalThis.DataView, numBits: number, value: DefaultArm): number | false;
 
-export declare function WriteDefaultChoiceFlat(view: DataView, value: DefaultChoice): number;
-export declare function ReadDefaultChoiceFlat(view: DataView, numBits: number, value: DefaultChoice): boolean;
-export declare function ReadDefaultChoiceFlatBits(view: DataView, numBits: number, value: DefaultChoice): number | false;
+export declare function WriteDefaultChoiceFlat(view: globalThis.DataView, value: DefaultChoice): number;
+export declare function ReadDefaultChoiceFlat(view: globalThis.DataView, numBits: number, value: DefaultChoice): boolean;
+export declare function ReadDefaultChoiceFlatBits(view: globalThis.DataView, numBits: number, value: DefaultChoice): number | false;
 
-export declare function WriteDefaultChoicePacketFlat(view: DataView, value: DefaultChoicePacket): number;
-export declare function ReadDefaultChoicePacketFlat(view: DataView, numBits: number, value: DefaultChoicePacket): boolean;
-export declare function ReadDefaultChoicePacketFlatBits(view: DataView, numBits: number, value: DefaultChoicePacket): number | false;
+export declare function WriteDefaultChoicePacketFlat(view: globalThis.DataView, value: DefaultChoicePacket): number;
+export declare function ReadDefaultChoicePacketFlat(view: globalThis.DataView, numBits: number, value: DefaultChoicePacket): boolean;
+export declare function ReadDefaultChoicePacketFlatBits(view: globalThis.DataView, numBits: number, value: DefaultChoicePacket): number | false;
 
-export declare function WriteDefaultBulkArmFlat(view: DataView, value: DefaultBulkArm): number;
-export declare function ReadDefaultBulkArmFlat(view: DataView, numBits: number, value: DefaultBulkArm): boolean;
-export declare function ReadDefaultBulkArmFlatBits(view: DataView, numBits: number, value: DefaultBulkArm): number | false;
+export declare function WriteDefaultBulkArmFlat(view: globalThis.DataView, value: DefaultBulkArm): number;
+export declare function ReadDefaultBulkArmFlat(view: globalThis.DataView, numBits: number, value: DefaultBulkArm): boolean;
+export declare function ReadDefaultBulkArmFlatBits(view: globalThis.DataView, numBits: number, value: DefaultBulkArm): number | false;
 
-export declare function WriteDefaultBulkChoiceFlat(view: DataView, value: DefaultBulkChoice): number;
-export declare function ReadDefaultBulkChoiceFlat(view: DataView, numBits: number, value: DefaultBulkChoice): boolean;
-export declare function ReadDefaultBulkChoiceFlatBits(view: DataView, numBits: number, value: DefaultBulkChoice): number | false;
+export declare function WriteDefaultBulkChoiceFlat(view: globalThis.DataView, value: DefaultBulkChoice): number;
+export declare function ReadDefaultBulkChoiceFlat(view: globalThis.DataView, numBits: number, value: DefaultBulkChoice): boolean;
+export declare function ReadDefaultBulkChoiceFlatBits(view: globalThis.DataView, numBits: number, value: DefaultBulkChoice): number | false;
 

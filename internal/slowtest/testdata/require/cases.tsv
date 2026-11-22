@@ -1,0 +1,27 @@
+# THE LANE PROMISE (internal/slowtest/require.go): what a test that needs a
+# program does, by what the lane says it provides and what is on PATH.
+# TestProgramHoldsTheLanePromise reads every row.
+#
+# program  found   lane                     verdict  text the verdict carries
+#   found: path (the program is on PATH), env (only $NODE / $TSC names it),
+#          stale-env (the variable names nothing, the program is on PATH),
+#          none (nowhere)
+#   lane: the SCHEMA_REQUIRE_* variable the lane sets to 1, or - for none
+#
+# A lane that declares the program and does not have it is red, naming the
+# variable and the reason the skip would have given:
+tsc	none	SCHEMA_REQUIRE_TSC	fail	SCHEMA_REQUIRE_TSC=1 says this lane provides what the test needs, and it is missing: no tsc on PATH: set TSC
+node	none	SCHEMA_REQUIRE_NODE	fail	SCHEMA_REQUIRE_NODE=1 says this lane provides what the test needs, and it is missing: no node on PATH: set NODE
+tsc	none	SCHEMA_REQUIRE_CORPUS	fail	SCHEMA_REQUIRE_CORPUS is set, so this lane is meant to have what the test needs, and it is missing: no tsc on PATH: set TSC
+node	none	SCHEMA_REQUIRE_CORPUS	fail	SCHEMA_REQUIRE_CORPUS is set, so this lane is meant to have what the test needs, and it is missing: no node on PATH: set NODE
+# the controls: a lane that does not declare it skips with the ledger's reason
+# (tool:tsc, tool:node), and a promise for one program covers no other
+tsc	none	-	skip	no tsc on PATH: set TSC
+node	none	-	skip	no node on PATH: set NODE
+tsc	none	SCHEMA_REQUIRE_NODE	skip	no tsc on PATH: set TSC
+node	none	SCHEMA_REQUIRE_TSC	skip	no node on PATH: set NODE
+# and where the program is found the test runs, declared or not
+tsc	path	SCHEMA_REQUIRE_TSC	run	-
+tsc	path	-	run	-
+node	env	SCHEMA_REQUIRE_NODE	run	-
+node	stale-env	SCHEMA_REQUIRE_NODE	run	-

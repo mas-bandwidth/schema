@@ -41,7 +41,7 @@ func messageAnnouncementRuntime(u *ir.Unit) string {
 	fmt.Fprintf(&b, "  return prev;\n")
 	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(tablewire.MessageVocabulary(u)))
-	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
+	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new globalThis.Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
 	b.WriteString(jsAnnounceRuntime)
 	return b.String()
 }
@@ -94,19 +94,19 @@ export function Announce(buffer) {
 // The announcement is an ordinary form-1 file, so its reader is the form-1
 // reader (docs/SPEC-TABLES.md §3): a bounded view of the body, the id trailer,
 // and the framing pre-walk that refuses a body ending after its terminator.
-const TableMessageVersionId = BigInt("0xfffffffffffffffe");
-const TableMessageVocabularyId = BigInt("0xfffffffffffffffd");
-const TableMessageNodeId = BigInt("0xffffffffffffffff");
+const TableMessageVersionId = globalThis.BigInt("0xfffffffffffffffe");
+const TableMessageVocabularyId = globalThis.BigInt("0xfffffffffffffffd");
+const TableMessageNodeId = globalThis.BigInt("0xffffffffffffffff");
 function TableMessageRead64(bytes, at) {
   let v = 0n;
-  for (let i = 7; i >= 0; i--) { v = (v << 8n) | BigInt(bytes[at + i]); }
+  for (let i = 7; i >= 0; i--) { v = (v << 8n) | globalThis.BigInt(bytes[at + i]); }
   return v;
 }
 class TableMessageReader {
   constructor(buffer, ids) { this.Buffer = buffer; this.Ids = ids; this.Offset = 0; }
   Clone() { const r = new TableMessageReader(this.Buffer, this.Ids); r.Offset = this.Offset; return r; }
   Has(n) { return n >= 0 && this.Offset >= 0 && this.Offset <= this.Buffer.length && n <= this.Buffer.length - this.Offset; }
-  Room(n) { return n <= BigInt(this.Buffer.length - this.Offset); }
+  Room(n) { return n <= globalThis.BigInt(this.Buffer.length - this.Offset); }
   Get8() { return this.Buffer[this.Offset++]; }
   Get32() {
     const v = this.Buffer[this.Offset] | (this.Buffer[this.Offset + 1] << 8) |
@@ -119,7 +119,7 @@ class TableMessageReader {
     const at = this.Offset;
     if (at < this.Buffer.length) {
       const b = this.Buffer[at];
-      if (b < 128) { this.Offset = at + 1; return [BigInt(b), true]; }
+      if (b < 128) { this.Offset = at + 1; return [globalThis.BigInt(b), true]; }
     }
     return [0n, false];
   }
@@ -130,7 +130,7 @@ class TableMessageReader {
       if (!this.Has(1)) { break; }
       const b = this.Get8();
       if (i === 9 && b > 1) { break; }
-      v |= BigInt(b & 127) << BigInt(7 * i);
+      v |= globalThis.BigInt(b & 127) << globalThis.BigInt(7 * i);
       if (b < 128) {
         if (i > 0 && b === 0) { break; }
         return [v, true];
@@ -141,13 +141,13 @@ class TableMessageReader {
   }
   Leb() { const [v, ok] = this.LebPair(); if (ok) { return [v, true]; } return this.LebWide(); }
   Resolve(ref) {
-    if (ref === 0n || ref > BigInt(Math.floor(this.Ids.length / 8))) { return [0n, false]; }
-    return [TableMessageRead64(this.Ids, Number((ref - 1n) * 8n)), true];
+    if (ref === 0n || ref > globalThis.BigInt(globalThis.Math.floor(this.Ids.length / 8))) { return [0n, false]; }
+    return [TableMessageRead64(this.Ids, globalThis.Number((ref - 1n) * 8n)), true];
   }
   Body() {
     const [n, ok] = this.Leb();
     if (!ok || !this.Room(n)) { return [null, false]; }
-    const end = this.Offset + Number(n);
+    const end = this.Offset + globalThis.Number(n);
     const sub = new TableMessageReader(this.Buffer.subarray(this.Offset, end), this.Ids);
     this.Offset = end;
     return [sub, true];
@@ -197,11 +197,11 @@ function TableMessageOpen(data) {
   if (data[0] !== 1) { return [null, TableMessageOpenRefused]; }
   if (data.length < 9) { return [null, TableMessageOpenDamaged]; }
   const n = TableMessageRead64(data, data.length - 8);
-  if (n > 4096n || n > BigInt(Math.floor((data.length - 9) / 8))) { return [null, TableMessageOpenDamaged]; }
-  const start = data.length - 8 - Number(n) * 8;
+  if (n > 4096n || n > globalThis.BigInt(globalThis.Math.floor((data.length - 9) / 8))) { return [null, TableMessageOpenDamaged]; }
+  const start = data.length - 8 - globalThis.Number(n) * 8;
   const ids = data.subarray(start, data.length - 8);
-  const seenIds = new Set();
-  for (let i = 0; i < Number(n); i++) {
+  const seenIds = new globalThis.Set();
+  for (let i = 0; i < globalThis.Number(n); i++) {
     const id = TableMessageRead64(ids, i * 8);
     if (seenIds.has(id)) { return [null, TableMessageOpenDamaged]; }
     seenIds.add(id);
@@ -227,8 +227,8 @@ function TableMessageKindBits(k) {
   }
   return -1;
 }
-const TableMessageFloat = new Float32Array(1);
-const TableMessageWords = new Uint32Array(TableMessageFloat.buffer);
+const TableMessageFloat = new globalThis.Float32Array(1);
+const TableMessageWords = new globalThis.Uint32Array(TableMessageFloat.buffer);
 export function TableMessageFloat32FromBits(bits) { TableMessageWords[0] = bits >>> 0; return TableMessageFloat[0]; }
 function TableMessageShape() {
   return { Kind: 0, Packing: 0, Bits: 0, Base: [0n, 0n], Min: 0, Max: 0, QMin: 0, QDelta: 0, QCount: 0 };
@@ -243,23 +243,23 @@ function TableMessageShapeRead(r, k) {
     if (s.Packing === 0) { return [s, true]; }
     if (s.Packing === 1 && k !== 10) {
       const [n, ok] = r.Leb();
-      if (!ok || n > BigInt(s.Bits)) { return [s, false]; }
-      s.Bits = Number(n);
+      if (!ok || n > globalThis.BigInt(s.Bits)) { return [s, false]; }
+      s.Bits = globalThis.Number(n);
       if (k >= 18) {
         if (!r.Has(16)) { return [s, false]; }
         s.Base = [r.Get64(), r.Get64()];
         if (k >= 20 && k <= 23) {
-          const sblo = BigInt.asIntN(64, s.Base[0]);
+          const sblo = globalThis.BigInt.asIntN(64, s.Base[0]);
           const whi = sblo < 0n ? 0xffffffffffffffffn : 0n;
           if (s.Base[1] !== whi) { return [s, false]; }
-          const dom = BigInt(TableMessageKindBits(k));
+          const dom = globalThis.BigInt(TableMessageKindBits(k));
           if (dom < 64n) {
             const mn = -(1n << (dom - 1n)), mx = (1n << (dom - 1n)) - 1n;
             if (sblo < mn || sblo > mx) { return [s, false]; }
           }
         } else if (k >= 25 && k <= 28) {
           if (s.Base[1] !== 0n) { return [s, false]; }
-          const dom = BigInt(TableMessageKindBits(k));
+          const dom = globalThis.BigInt(TableMessageKindBits(k));
           if (dom < 64n && s.Base[0] > (1n << dom) - 1n) { return [s, false]; }
         }
         return [s, true];
@@ -269,14 +269,14 @@ function TableMessageShapeRead(r, k) {
       let base = raw;
       if (k >= 2 && k <= 5) {
         const sbase = (raw >> 1n) ^ (-(raw & 1n));
-        const dom = BigInt(TableMessageKindBits(k));
+        const dom = globalThis.BigInt(TableMessageKindBits(k));
         if (dom < 64n) {
           const mn = -(1n << (dom - 1n)), mx = (1n << (dom - 1n)) - 1n;
           if (sbase < mn || sbase > mx) { return [s, false]; }
         }
-        base = BigInt.asUintN(64, sbase);
+        base = globalThis.BigInt.asUintN(64, sbase);
       } else {
-        const dom = BigInt(TableMessageKindBits(k));
+        const dom = globalThis.BigInt(TableMessageKindBits(k));
         if (dom < 64n && raw > (1n << dom) - 1n) { return [s, false]; }
       }
       s.Base = [base, 0n];
@@ -288,14 +288,14 @@ function TableMessageShapeRead(r, k) {
       const hi = TableMessageFloat32FromBits(r.Get32());
       const res = TableMessageFloat32FromBits(r.Get32());
       if (!(lo < hi) || !(res > 0)) { return [s, false]; }
-      const delta = Math.fround(hi - lo);
-      let values = Math.fround(delta / res);
+      const delta = globalThis.Math.fround(hi - lo);
+      let values = globalThis.Math.fround(delta / res);
       if (delta - delta !== 0 || values - values !== 0) { return [s, false]; }
       if (!(values >= 1)) { values = 1; } else if (values > 4294967040.0) { values = 4294967040.0; }
       s.QMin = lo;
       s.QDelta = delta;
-      s.QCount = Math.ceil(values) >>> 0;
-      s.Bits = TableMessageBits(BigInt(s.QCount));
+      s.QCount = globalThis.Math.ceil(values) >>> 0;
+      s.Bits = TableMessageBits(globalThis.BigInt(s.QCount));
       return [s, true];
     }
     return [s, false];
@@ -303,16 +303,16 @@ function TableMessageShapeRead(r, k) {
   if (k === 12) {
     const [n, ok] = r.Leb();
     if (!ok || n > 2147483647n) { return [s, false]; }
-    s.Max = Number(n);
+    s.Max = globalThis.Number(n);
   } else if (k === 14 || k === 16) {
     if (k === 14) {
       const [n, ok] = r.Leb();
       if (!ok || n > 4294967295n) { return [s, false]; }
-      s.Min = Number(n);
+      s.Min = globalThis.Number(n);
     }
     const [n, ok] = r.Leb();
-    if (!ok || n > 4294967295n || Number(n) < s.Min) { return [s, false]; }
-    s.Max = Number(n);
+    if (!ok || n > 4294967295n || globalThis.Number(n) < s.Min) { return [s, false]; }
+    s.Max = globalThis.Number(n);
   }
   return [s, true];
 }
@@ -368,7 +368,7 @@ function TableAnnounceRead(v, data, report) {
   }
   report.Unknown = 0;
   let versionCount = 0, wordsCount = 0, words = null, nextRef = 1n;
-  const seenBody = new Set();
+  const seenBody = new globalThis.Set();
   for (;;) {
     const [ref, ok] = r.Leb();
     if (!ok) { report.Damaged = true; return false; }
@@ -388,10 +388,10 @@ function TableAnnounceRead(v, data, report) {
       const [sub, bok] = r.Body();
       if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Damaged = true; return false; }
       const [n, nok] = sub.Leb();
-      if (!nok || n > BigInt(sub.Buffer.length) || n !== BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
+      if (!nok || n > globalThis.BigInt(sub.Buffer.length) || n !== globalThis.BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
       let limit = v.MaxBytes;
       if (!limit) { limit = 64 * 1024; }
-      if (n > BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      if (n > globalThis.BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
       words = sub.Buffer.subarray(sub.Offset);
       wordsCount++;
     } else {
@@ -399,7 +399,7 @@ function TableAnnounceRead(v, data, report) {
       if (!r.Skip(kind)) { report.Damaged = true; return false; }
     }
   }
-  if (versionCount !== 1 || wordsCount !== 1 || (report.Unknown === 0 && Number(nextRef - 1n) !== Math.floor(r.Ids.length / 8))) { report.Damaged = true; return false; }
+  if (versionCount !== 1 || wordsCount !== 1 || (report.Unknown === 0 && globalThis.Number(nextRef - 1n) !== globalThis.Math.floor(r.Ids.length / 8))) { report.Damaged = true; return false; }
   if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
     report.BuildVersionRemote = v.BuildVersion;
     report.BuildVersionOwn = v.BuildVersionOwn;
@@ -430,7 +430,7 @@ function TableAnnounceRead(v, data, report) {
     v.Entries[i] = e;
   }
   v.Count = count;
-  v.RefBits = TableMessageBits(BigInt(count));
+  v.RefBits = TableMessageBits(globalThis.BigInt(count));
   if (v.RefBits === 0) { v.RefBits = 1; }
   v.Announced = true;
   return true;
