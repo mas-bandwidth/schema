@@ -2353,7 +2353,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Luau | none | every build | `nil, { name = "invalid_value", field = "<Owner>.<field>" }` |
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
-| Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
+| Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name`; a packet `Write` returns a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8, embedded NUL) |
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
@@ -2537,7 +2537,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build; 11 unrepresentable (the storage is `iN`/`uN`)
+  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
 
 - **Lobster**
 
@@ -2545,7 +2545,15 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1–6 and 10 debug; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+  - packet `Write`: 1 and 3–6 and 10 debug; 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+
+- **Python**
+
+  - packet `Write`: 1–6 and 8 every build, raising `InvalidValue`; held by `write-refusal-packet`
+
+- **Ruby**
+
+  - packet `Write`: 1–6 and 8 every build, raising `Packetrefusal::InvalidValue` (the generated module's `InvalidValue`); held by `write-refusal-packet`
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in
