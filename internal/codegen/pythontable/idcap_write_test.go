@@ -25,7 +25,8 @@ func TestPythonWriterRefusesMoreThan4096Ids(t *testing.T) {
 	probe := pyrun.ImportPrelude + `import idcap
 def value(x, y):
     v = idcap.Root()
-    v.keys = [1] * 4094
+    for k in range(1, 4095):
+        v.keys[k] = 1
     v.x = x
     v.y = y
     return v
