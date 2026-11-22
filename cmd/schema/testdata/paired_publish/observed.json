@@ -1,0 +1,8 @@
+[
+  {"name": "pack pair over the prior pair", "verb": "pack", "fail": "", "expected": "expected"},
+  {"name": "pack pair, payload rename fails", "verb": "pack", "fail": "payload", "expected": "initial"},
+  {"name": "pack pair, side rename fails", "verb": "pack", "fail": "side", "expected": "initial"},
+  {"name": "cook pair over the prior pair", "verb": "cook", "fail": "", "expected": "expected"},
+  {"name": "cook pair, payload rename fails", "verb": "cook", "fail": "payload", "expected": "initial"},
+  {"name": "cook pair, side rename fails", "verb": "cook", "fail": "side", "expected": "initial"}
+]

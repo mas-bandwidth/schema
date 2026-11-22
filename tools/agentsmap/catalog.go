@@ -83,6 +83,7 @@ var catalog = []Entry{
 
 	// internal/
 	e("internal/ast", "parsed *.schema form", "go test ./internal/parser", "go test ./internal/parser"),
+	e("internal/atomicfile", "the one publisher every CLI write goes through", "go test ./internal/atomicfile", "go test ./internal/atomicfile"),
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
@@ -103,6 +104,7 @@ var catalog = []Entry{
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
 	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
+	e("internal/pathid", "where a path lands, by the file system's identity", "go test ./internal/pathid", "go test ./internal/pathid"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
 	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),

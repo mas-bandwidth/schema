@@ -6999,7 +6999,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 
 # The corpus is written beside the live one and swapped in whole, so a reader
 # never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf build/fixedform-corpus.next
 	@mkdir -p build/fixedform-corpus.next
 	./build/schema_test_fixedform_dump build/fixedform-corpus.next
@@ -7477,8 +7477,12 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
+# The version is past every tag but keeps the current major: releasetag refuses
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
+# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
@@ -7492,7 +7496,7 @@ release-refuses-on-differential:
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+	@grep -q '^release: would tag $(RELEASE_GATE_VERSION) ' $(RELEASE_GATE_TEST)/guard.out || \
 		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
 	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
 		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \

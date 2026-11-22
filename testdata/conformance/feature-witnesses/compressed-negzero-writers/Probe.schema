@@ -1,0 +1,24 @@
+// Probe.schema — a compressed float's -0 on the writers (docs/SPEC-TABLES.md
+// §3.3, ruled 2026-11-10 fixed-compressed-negzero): the writer stores +0 for
+// it, the same bits it stores for +0. cases.tsv beside it names the rows.
+//
+// `a` is a compressed leaf under a non-zero default (its +0 rides), `z` one
+// under a +0 default (its -0 is the default and elides by value), `xs` an
+// array whose second element rides at 0.05 so the first is stored, and `p` a
+// PLAIN float, which keeps its -0 bit-exact (the control). Fix carries `a`
+// again in a fixed table, whose variable-form save is a typed writer where
+// the variable table's is a descriptor walk.
+package nzw
+
+table Var
+{
+    a  float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
+    z  float32 | min = 0, max = 0.1, resolution = 0.01
+    xs [2]float32 | min = 0, max = 0.1, resolution = 0.01
+    p  float32
+}
+
+fixed table Fix
+{
+    a  float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
+}
