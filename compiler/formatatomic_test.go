@@ -16,7 +16,7 @@ const unformattedSource = "package p\ntype T {\n  a int32\n}\n"
 
 func TestFormatFileWritesThroughATemporary(t *testing.T) {
 	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+		t.Skip("root writes through a read-only directory: the atomic rewrite cannot be refused")
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "T.schema")
