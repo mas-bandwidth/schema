@@ -9,24 +9,24 @@
 package bench;
 
 public final class TableTypeInfo {
-    public String name;
+    public java.lang.String name;
 
     /** true for a table, false for a type (docs/SPEC-TABLES.md §8.2). */
     public boolean table;
 
     public TableFieldInfo[] fields;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
     /**
      * a fresh instance at its declared defaults (<Name>Variable.Value); null on a type no table
      * reaches.
      */
-    public java.util.function.Supplier<Object> create;
+    public java.util.function.Supplier<java.lang.Object> create;
 
     /**
      * THE RESET HOOK (§8.1): puts one instance back at its declared defaults, in place, one member
      * at a time; null on a type no table reaches.
      */
-    public java.util.function.Consumer<Object> reset;
+    public java.util.function.Consumer<java.lang.Object> reset;
 }
