@@ -441,7 +441,7 @@ static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind 
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36; /* 31 is held by name and never written (R17): an announcement naming it is malformed, as one naming 33 or 34 is */
 }
 
 `

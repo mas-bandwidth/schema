@@ -187,9 +187,7 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
   if(!table_wire_utf8(text,n))return 0;
   r->bits.offset+=(int64_t)n*8;
   return 1;
- case 31:
-  if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
-  return table_message_skip_run(r,n,8);
+ case 31:return 0; /* held by name and never written (R17): no announcement names it */
  case 10:
   /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
      (§3.3): the same raw-bits rule a named float read applies. */
