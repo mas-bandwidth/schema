@@ -605,6 +605,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsCheck(f, name, ind)
 		if f.Type.Width <= 32 {
 			scratch := g.numScratch()
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
@@ -724,6 +725,23 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	scratch := g.numScratch()
 	g.pf("%s%s.value = %s;\n", ind, scratch, fmtNumCast(f, name))
 	g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, f.Type.Width), "")
+}
+
+// emitBitsCheck refuses a bits(N) value its width cannot carry (SPEC §5.1 row
+// 2), before the runtime bit writer sees it: a Number that is an integer in
+// [0, 2^N-1] up to 32 bits, a BigInt in that range above 32. The stream's own
+// width check is no substitute: the checked build throws on it and the
+// production build masks the value silently. The flat tier's guard twin.
+func (g *gen) emitBitsCheck(f *ir.Field, name, ind string) {
+	max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+	if f.Type.Width > 32 {
+		g.pf("%sif (typeof %s !== \"bigint\" || %s < 0n || %s > %s) { // a bits(N) value must fit its width\n",
+			ind, name, name, name, bigLit(max))
+	} else {
+		g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < 0 || %s > %s) { // a bits(N) value must fit its width\n",
+			ind, name, name, name, max.String())
+	}
+	g.pf("%s  return false;\n%s}\n", ind, ind)
 }
 
 // emitBareIntCheck refuses a bare integer its declared width cannot carry,

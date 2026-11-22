@@ -885,7 +885,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	}
 	if surfaceCarries(surfaces, st, "json") {
 		b.WriteString("\n    @classmethod\n")
-		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
+		b.WriteString("    def from_json(cls, text: str | bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
 		if scalarOnly(st) {
 			fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
 		} else {
