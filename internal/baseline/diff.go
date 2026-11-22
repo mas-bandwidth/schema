@@ -106,6 +106,12 @@ const (
 	// RuleCountMin — a counted array's MINIMUM COUNT. Any move refuses, and a
 	// line that carries no token holds a minimum of zero: see countMinFinding.
 	RuleCountMin
+	// RuleWidenOnly — the token is a WIDENING when added and a NARROWING when
+	// removed: adding it passes and removing it refuses. It is presence's rule
+	// (`?T`, docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2): `T` to `?T`
+	// widens and passes, and `?T` to `T` narrows and is refused, naming the
+	// field. Once a field is optional it stays optional (R16, 2026-11-22).
+	RuleWidenOnly
 )
 
 // DefaultTokenPolicy is the WHOLE compatibility policy, one row per fact.
@@ -152,9 +158,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
-	// Variable T and ?T share framing; presence changes are absorbed both
-	// ways, including explicit defaults (§2.3, §4, §18.2).
-	"optional": RulePass,
+	// PRESENCE IS A WIDENING, AND IT RUNS ONE WAY (R16, 2026-11-22: "once a
+	// field is optional, it must stay optional forever"). `T` to `?T` passes:
+	// every old value lands present. `?T` to `T` is a narrowing and refuses,
+	// naming the field (docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
+	"optional": RuleWidenOnly,
 	// `| required` ADDED to a shipped field: old records never wrote it and a
 	// newer reader refuses them as missing_required. Removed, the writer just
 	// starts eliding again, so removal passes (docs/SPEC-TABLES.md §2.3).
@@ -847,6 +855,10 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleCountMin:
 			// a minimum that vanished is a minimum of zero now
 			out = append(out, countMinFinding(where, bf, lf)...)
+		case RuleWidenOnly:
+			if !present {
+				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s removed: `?T` to `T` narrows the field, and once a field is optional it stays optional (docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2)", tokenNoun(bt.Key))})
+			}
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:

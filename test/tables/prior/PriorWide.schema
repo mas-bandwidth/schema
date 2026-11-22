@@ -7,8 +7,13 @@
 // hold refuses the read `out_of_range`; no reader clamps it. Three fields
 // change KIND instead: the writer's int32 is the reader's int16 (`narrowed`)
 // and string(16) (`retyped`), which refuse `kind_mismatch`, and its int64
-// (`widened`), the lawful widening, which reads. The two files differ in
-// these declarations and nothing else, which
+// (`widened`), the lawful widening, which reads. R14 adds two more that
+// refuse, the writer's int64 as the reader's string(16) (`restring`) and as
+// its timestamp (`stamp`), each beside a lawful twin of the same type
+// (`kept64`, `stamped`). R15 adds `band`, uint8 200..250 to the writer and
+// 200..240 to the reader: the writer's announcement is lawful though its top
+// offsets pass 255, and each value is held on the body. The two files differ
+// in these declarations and nothing else, which
 // TestMessagePriorWriterIsRangesApart holds.
 package tblprior
 
@@ -49,4 +54,9 @@ fixed table Prior
     narrowed int32
     retyped  int32
     widened  int32
+    restring int64
+    kept64   int64
+    stamp    int64
+    stamped  timestamp
+    band     uint8 = 200 | min = 200, max = 250
 }

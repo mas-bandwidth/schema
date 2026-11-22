@@ -26,9 +26,13 @@ tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
 guarded by the protocol id: same-or-refuse. Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
-belongs there. The table wire is the opposite contract: **a reader reads
-another build's data across every lawful edit**, and the differences are
-reported; what it cannot read whole it refuses whole, by name (§4).
+belongs there. The table wire is the opposite contract: **any lawful lineage
+reads, and a breaking edit refuses by name.** A reader reads another build's
+data across every lawful edit and reports the differences; an edit that is not
+lawful, a field whose type changed among them, refuses the whole load by name
+and is never defaulted, counted and read on (§4, THE ONE WIDENING RULE). The
+principle is the owner's (2026-11-22): *"If it is a user error, or an
+incorrect use, refuse."*
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
@@ -1178,8 +1182,12 @@ defaults.
 
 The framing is exactly the non-optional field's, which makes `?T` and a
 plain `T` nesting **one framing with two spellings**: for any value that is
-not entirely default, a schema may move a field between the two and no byte
-moves, in either direction.
+not entirely default, no byte moves between the two, in either direction.
+**The LINEAGE runs one way** (R16, 2026-11-22: *"once a field is optional, it
+must stay optional forever"*): `T` to `?T` is a WIDENING, and every old value
+lands present; `?T` to `T` is a NARROWING, refused at check time by the
+baseline, naming the field (§18.2), by the lock (§21.1) and at read by the
+fixed form (§3.4). The one rule is §4's, THE ONE WIDENING RULE.
 
 **`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
 rides as a node index under its own kind `17` (§3.1), because a body that may
@@ -1978,7 +1986,7 @@ each the one it inherits, and §3 states them: a `None` element is the arm id
 `0` in its place; elision is the by-value array's — an empty counted array and
 a fixed array of `None` elide, and a live `None` element rides; and element
 kind `15` is held apart from `13` by the element-kind rule, so `[N]Body` ⇄
-`[N]Table` is a reported edit. The arms may be types, tables or a mix, and a
+`[N]Table` is refused by name, `kind_mismatch`. The arms may be types, tables or a mix, and a
 VARIABLE arm makes the holder variable through an array exactly as through a
 field. The enum-KEYED spelling `[E]Body` is a named follow-on (§15): a keyed
 body elides slots by name (§3.2), and a `None` slot there wants its rule
@@ -2809,7 +2817,7 @@ binary-searching it. Row by row, with the section that holds each:
 |---|---|---|---|
 | enum keys | `[E]T`, complete, positional, fixed class, refuses `None` (§2.4) — better than a map, so the map refuses them by name | refused, ride as the number | a sorted vector on the ordinal |
 | bounded-string and integer keys | `string(N)` and every integer kind, fixed storage, byte order (§2.8) | string and integral | string and scalar `(key)` fields |
-| evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
+| evolution by name | a key or value type change refuses the whole load by name, `kind_mismatch`, never misdecoded (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
 | a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
 | zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
@@ -3097,9 +3105,9 @@ to see it. **Editing a VALUE in place invalidates nothing.** A list gets no
 exemption here and asks for none.
 
 **§4.1'S SILENT CLASS STAYS AT FOUR, and the construct adds nothing to it.**
-Changing the element's TYPE moves the element kind and is reported. Changing
-its POINTER-NESS moves the element kind between `13` and `17` and is reported,
-which is what kind `17` was spent for (§3.1). Removing or adding the BOUND
+Changing the element's TYPE moves the element kind and refuses the whole load
+`kind_mismatch`. Changing its POINTER-NESS moves the element kind between `13`
+and `17` and refuses the same way, which is what kind `17` was spent for (§3.1). Removing or adding the BOUND
 moves no byte and loses no value, so it is not silent, it is nothing. What is
 silent about a `[]T` is exactly what is silent about any array: the element's
 REFERENT swapped for a twin that carries the same field ids under different
@@ -3420,7 +3428,7 @@ each:
 | zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
 | a cook read in place | `Open` is O(1) and the elements are the mapped bytes (§7) | none, parse first | yes, the vector is the buffer |
 | a shared node as an element | `[]*T`: two slots, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only, a message is copied per slot | an `Offset` may be reused by the builder, nothing preserves it through text |
-| element evolution by name | an element's type change is reported, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
+| element evolution by name | an element's type change refuses the whole load by name, `kind_mismatch`, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
 | byte-stable output | `measure == save`, index order, one image from one value (§9) | field order is the writer's | the builder's order |
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
@@ -3932,8 +3940,9 @@ still wins.
 **Its kind is its own and it widens into nothing.** On the variable wire a
 field respelled between `int64` and `timestamp` is a kind mismatch in both
 directions: the whole load refuses `kind_mismatch` (§4; the old skip-and-count
-rule is overturned, §4's strict read), and the widening family is closed to the
-pair: refused, by name, until it is ruled. What the kind buys over the bare
+rule is overturned, §4's strict read). Neither spelling is a widening of the
+other, so the pair is refused by name (R14, 2026-11-22; §4, THE ONE WIDENING
+RULE). What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
 name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
@@ -4148,8 +4157,8 @@ declaration `?string(N)` stays the follow-on §15 names.
   the zero reference when it is ABSENT. That is exactly the bytes of a bounded
   array of a one-field table, so it needs no rule at all.
 - Respelling an element between `string(M)` and `?string(M)` moves the element
-  kind between `12` and `13` and is a reported edit under §4's element-kind rule
-  (§3), never a silent one.
+  kind between `12` and `13` and refuses the whole load `kind_mismatch` under
+  §4's element-kind rule (§3), never a silent one.
 
 **BOUNDS, on the write side.** The Go builder and `Save` hold the count to `N`
 and each element to `M` exactly as a bounded array of tables and a `string(N)`
@@ -4898,7 +4907,7 @@ one document rather than two.
   | `30` enum | the VARIANT ID reference, `0` for `None` |
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the load, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
@@ -4934,8 +4943,8 @@ one document rather than two.
   its sixteen bytes, low half first. **The kinds are distinct from the
   integers' for the reason kind `17` is distinct from `8`**: a `fixed(16, 16)`
   and an `int32` are the same four bytes and not the same number, so a field
-  moved between them is a reported edit, `kind_mismatch` (§4), rather than a
-  value read at the wrong scale. There is one kind per storage width and
+  moved between them refuses the whole load by name, `kind_mismatch` (§4),
+  rather than a value read at the wrong scale. There is one kind per storage width and
   signedness because a skipper knows a scalar's width from its kind byte
   alone (below), and nothing about `F` rides. `F` is a declaration-side fact,
   invisible on the wire like a compressed float's resolution, and the
@@ -5097,8 +5106,9 @@ one document rather than two.
   are ONE FRAMING under two declaration spellings. **`*T` naming a TABLE is
   the exception**: it rides as a node index under its own kind `17` (§3.1),
   because a body that may be named twice cannot also sit inline at one of its
-  names. The distinct kind is what makes moving a field to or from `*T` a
-  REPORTED edit rather than a quiet one, for the same reason kind `16` exists
+  names. The distinct kind is what makes moving a field to or from `*T` an
+  edit REFUSED BY NAME, `kind_mismatch` on the whole load (R14), rather than a
+  quiet one, for the same reason kind `16` exists
   (§3.2): a node index and a plain `uint32` are two different things, and
   only the kind can tell a reader which it is holding.
 
@@ -5370,7 +5380,8 @@ twenty unnameable entries counts nothing at all if no body references them.
   Elision makes the DECLARED DEFAULT part of the wire contract: see §4.
   **Elision is the writer's rule, not a variable-file read predicate.** A
   file carries neither the writer's build nor its Required/optional declaration.
-  Removing `required` or moving between `T` and `?T` is lawful (§2.3, §4),
+  Removing `required` or moving from `T` to `?T` is lawful (§2.3, §4; the
+  reverse, `?T` to `T`, is refused by the baseline, not by this read),
   so a field stored at its declared default may come from an older Required
   writer or a present optional. It reads, including empty collections,
   all-default fixed arrays and nested bodies. A current plain declaration
@@ -6112,7 +6123,7 @@ as every enum-extent array would, is ruled on schema#606.
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
 same silent corruption in a different costume — so the distinct kind is
-what makes changing spelling a REPORTED edit (§4) rather than a quiet one.
+what makes changing spelling an edit REFUSED BY NAME (§4) rather than a quiet one.
 A reader meeting the other kind refuses `kind_mismatch`.
 
 The same bytes serve every use: a file on disk, a blob in memory, a
@@ -6655,6 +6666,16 @@ stated once: file to message to file reproduces a compressed float only when
 the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value and a
 rounding tie each come back as the grid point the rule chose (the round-trip paragraph, below).
+
+**A RANGED ANNOUNCEMENT IS CHECKED PER VALUE** (R15, 2026-11-22). The BASE is
+held at the announcement: it lies inside the announced kind, and nothing more is
+asked of the entry, so `uint8 | min = 200, max = 250`, whose six-bit width
+spells offsets past 255, announces lawfully. EACH VALUE is held on the body:
+`base + offset` is held to the announced kind and to the declared `min` and
+`max`, the writer's on write and the reader's on read, and a value outside
+them refuses by name and is never clamped or wrapped. An incorrect value is the
+error, not the lawful range that could spell it (the owner: *"If it is a user
+error, or an incorrect use, refuse."*).
 
 **A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW.** A ranged
 value's `bits` can spell offsets above the writer's declared maximum whenever
@@ -9224,8 +9245,9 @@ diagnostic name, which is not normative and is never compared:
   with arm reference `0` at a message field also refuses, since message
   closures prohibit Required and optional unions (§2.3).
   **Variable files cannot establish the writer's elision policy.** Removing
-  `required` is free and moving between `T` and `?T` reads correctly in both
-  directions (§2.3). A current non-required declaration therefore does not
+  `required` is free and a field moved between `T` and `?T` reads correctly
+  in both directions (§2.3; the lineage itself runs one way, `T` to `?T`, and
+  the baseline refuses `?T` to `T`, §18.2). A current non-required declaration therefore does not
   establish that an older lawful writer was non-required. An explicit null
   pointer, a union written with arm reference `0`, or a field stored at its
   declared default reads, including after widening. Unknown and deprecated
@@ -9241,7 +9263,27 @@ diagnostic name, which is not normative and is never compared:
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
 - **A COUNT PAST THE STORAGE CAP — `count_over_extent_cap`** (§2.9).
 - **KIND MISMATCH — `kind_mismatch`** (a field changed type between builds
-  and the pair is not a widening). The kinds are a coarser vocabulary than
+  and the pair is not a widening). **THE ONE WIDENING RULE**, stated here
+  once and cited by §2.3, §2.11, §3.3, §4.1, §18.2, §21.1 and VERSIONING.md
+  (R14 and R16, the owner, 2026-11-22: *"think of optional like a widening. we
+  only allow widening, not narrowing."* and *"If it is a user error, or an
+  incorrect use, refuse."*): **a lineage may WIDEN what a field holds and
+  never NARROW or RETYPE it.** The widenings are an integer kind to a wider
+  one of the SAME signedness, `f32` to `f64`, and `T` to `?T` (every old value
+  lands present); a bound, a capacity or a range moved outward is the same
+  rule at an extent (§18.1, §21.1). The reverse of each is a narrowing, and
+  every other change of a field's type is a RETYPE: `int64` to `string`, a
+  field moved to or from `*T`, `int64` to `timestamp` or back, an enum to its
+  raw integer, a float to an integer. **A retype or a narrowing the wire can
+  see REFUSES THE WHOLE LOAD `kind_mismatch`**, in every form and every port;
+  the field is never defaulted, counted and read past. `?T` to `T` is the one
+  narrowing the variable form cannot see, because both spellings share one
+  framing (§2.3), so the baseline check refuses it at check time, naming the
+  field (§18.2); the lock refuses it for a fixed table (§21.1) and the fixed
+  form refuses it at read (§3.4). The baseline also refuses a KIND widening
+  (the table below): the newer reader accepts it, but on a mixed fleet the
+  older reader meets the narrowing, while `T` to `?T` leaves every older plain
+  reader reading the newer file. The kinds are a coarser vocabulary than
   the declaration side, so this catches a change of KIND, not every change of
   type. **The reverse of every widening is a kind mismatch**: a narrowing
   loses what does not fit. Across the ladders, signed into unsigned or
@@ -9437,7 +9479,8 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
-change from `?T` to `T` — all of it either invisible to the wire or
+change from `T` to `?T`, the widening (`?T` to `T` is the narrowing the
+baseline refuses, §4 THE ONE WIDENING RULE) — all of it either invisible to the wire or
 answered by the read: counted as evolution or refused by name. Moving a field
 to or from `*T` is a kind change and is refused `kind_mismatch` (§3.1).
 
@@ -9536,9 +9579,9 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — both presence spellings share variable framing | **moves** — the presence companion is storage |
-| a field moved from `?T` to `T` | silent — no byte moves for non-default content | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | refuses `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
+| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — a widening (§4, THE ONE WIDENING RULE): every old value lands present | **moves** — the presence companion is storage |
+| a field moved from `?T` to `T` | silent on the variable form — no byte moves for non-default content; the fixed form refuses it at read (§3.4) | **refuses**, naming the field — a narrowing (R16; §4, THE ONE WIDENING RULE) | **moves** — the presence companion is storage |
+| a field moved to or from `*T` | refuses the whole load `kind_mismatch` (R14) | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
@@ -18570,13 +18613,14 @@ tightened total is a data edit exactly as a tightened range is. A list that
 declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
-**Presence is RECORDED but is absorbed in both variable-wire directions.**
-A field moved between `T` and `?T` passes: a present optional default is a
-lawful payload for the plain reader, and an elided plain field reads as absent
-through the optional declaration (§2.3, §4). A field moved to or from `*T`
-is a kind change and is refused (§4.1). This restores the pre-existing
-presence evolution contract rather than adding a ban to justify read-side
-elision.
+**Presence is RECORDED, and it runs ONE WAY** (R16, 2026-11-22: *"once a
+field is optional, it must stay optional forever"*). A field moved from `T` to
+`?T` passes: it is a widening, every old value lands present, and a present
+optional default is a lawful payload for an older plain reader (§2.3, §4). A
+field moved from `?T` to `T` is a narrowing and is REFUSED, naming the field
+(§4, THE ONE WIDENING RULE), although the variable wire cannot see it: the
+baseline is what holds it. A field moved to or from `*T` is a kind change and
+is refused (§4.1).
 
 It carries no protocol id, and ONE packet fact: the type wire, the
 wire-shape projection and the protocol id are untouched by all of it (§10).
@@ -18629,7 +18673,8 @@ committed file whenever one is there, and:
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
-  changed; a `| required` marker added to a shipped field (`required=true`),
+  changed; a field moved from `?T` to `T` (`optional=true` removed), the
+  narrowing of THE ONE WIDENING RULE (§4; R16); a `| required` marker added to a shipped field (`required=true`),
   or a new field carrying it — records written before it lack the field and a
   newer reader refuses them as `missing_required` — while removing it passes;
   a byte buffer's `type=string` or `type=bytes` moved between the two, or
@@ -18696,8 +18741,9 @@ committed file whenever one is there, and:
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array that declares no
   minimum made fixed, or the reverse; an enum variant's `deprecated` marker
-  taken off; a field moved between `T` and `?T` (a field moved to or from `*T` is a
-  kind change and is refused above, because a pointer is kind 17).
+  taken off; a field moved from `T` to `?T`, the widening (its reverse is the
+  narrowing refused above, and a field moved to or from `*T` is a kind change
+  refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to
@@ -18910,8 +18956,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineAllowsOptionalEvolution` holds the optional edit in both
-directions and a new optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineOptionalIsOneWay` holds the optional edit one way: `T` to `?T`
+and a new optional field pass, and `?T` to `T` refuses naming the field (R16). The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
@@ -20613,8 +20659,8 @@ widening.
 | a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD or REMOVED like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward, or ADDED where none was; a resolution COARSENED (the old values are off this reader's grid); anything else |
 | `bits(N)` | a larger N | smaller |
 | `fixed(I,F)` | a larger I | F changed |
-| an optional | `T` to `?T` (old values land present) | `?T` to `T` |
-| a field's kind | — | changed |
+| an optional | `T` to `?T` (old values land present): §4's ONE WIDENING RULE, the same rule the baseline holds on the variable form (§18.2) | `?T` to `T`, refused by `schema check` naming the field (`TestLockOptionalAddRefuses`) |
+| a field's kind | — | changed: a retype, `int64` to `string`, to or from `*T` (refused by §2.2 in this closure), `int64` to `timestamp` (R14) |
 | a specified default | — | changed (§18: it defines what every old file means) |
 | the `fixed` keyword | — | added or removed (a different form, not a version) |
 | a reader-side limit a table declares (RESERVED: no table spelling of one exists yet, and a compiler flag is outside the law) | larger | smaller |

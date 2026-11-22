@@ -8081,7 +8081,7 @@ static void test_union_arrays_elision()
 
 // the element-kind separation (§3): `history` arriving as an array of TABLES —
 // element kind 13 where this reader declares 15 — is a kind mismatch that
-// refuses the load; `[N]Body` ⇄ `[N]Table` is a reported edit. The
+// refuses the load; `[N]Body` ⇄ `[N]Table` is refused by name. The
 // wire is pinned as a shared report row every leg reads.
 static void test_union_arrays_element_kind_mismatch()
 {

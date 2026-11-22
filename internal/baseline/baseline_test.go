@@ -443,6 +443,16 @@ func TestRefusals(t *testing.T) {
 			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
+		{
+			// R16: optional is one-way. `?T` to `T` narrows; the control is
+			// the widening of the same shape, `T` to `?T`, which passes.
+			name:    "an optional field made plain",
+			edited:  replace(t, "    gunner ?Buff", "    gunner Buff"),
+			where:   "Config.gunner",
+			what:    "presence removed",
+			token:   "optional",
+			control: replace(t, "    boost   Buff", "    boost   ?Buff"),
+		},
 	}
 
 	for _, tc := range cases {
@@ -867,11 +877,21 @@ func TestVanishedMemberWithNoSuccessor(t *testing.T) {
 	}
 }
 
-func TestBaselineAllowsOptionalEvolution(t *testing.T) {
+// TestBaselineOptionalIsOneWay holds R16 (2026-11-22, Glenn: "once a field is
+// optional, it must stay optional forever"; "think of optional like a
+// widening"): `T` to `?T` is a widening and passes, a new optional field
+// passes, and `?T` to `T` is a narrowing the check refuses, naming the field
+// (docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
+func TestBaselineOptionalIsOneWay(t *testing.T) {
 	t.Parallel()
+	t.Run("optional to plain refuses", func(t *testing.T) {
+		got := diff(t, replace(t, "    gunner ?Buff", "    gunner Buff"), baseline.DefaultTokenPolicy)
+		if !find(got, baseline.Refuse, "Config.gunner", "presence removed") {
+			t.Fatalf("?T to T must refuse naming Config.gunner, got:%s", summary(got))
+		}
+	})
 	for _, tc := range []struct{ name, edited string }{
 		{"plain to optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
-		{"optional to plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
 		{"new optional field", replace(t, "    hits    int32", "    hits    int32\n    added   ?Buff")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -901,8 +921,8 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
 		{"a field moved under a guard", replace(t, "    hits    int32", "    gate    bool\n    if gate\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
-		// Removing optional passes: a plain writer elides its default (§4.1).
-		{"an optional field made plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
+		// Adding optional passes: `T` to `?T` is a widening (R16, §4).
+		{"a plain field made optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
 		// a keyed array's bound is its enum's size: growing the enum grows the
 		// array, and the slots ride by variant NAME, so nothing moves
 		{"a keyed array's enum grown", replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Gold, Platinum }")},

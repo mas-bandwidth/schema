@@ -50,9 +50,10 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 	want := strings.NewReplacer(
 		"max = 50", "max = 100", "bits(5)", "bits(7)",
 		"narrowed int16", "narrowed int32", "retyped  string(16)", "retyped  int32", "widened  int64", "widened  int32",
+		"restring string(16)", "restring int64", "stamp    timestamp", "stamp    int64", "max = 240", "max = 250",
 	).Replace(narrow)
 	if wide != want {
-		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7) and the three kind fields int32")
+		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7), the three kind fields int32, restring and stamp int64 (R14) and band max = 250 (R15)")
 	}
 }
 
