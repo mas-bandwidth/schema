@@ -1983,6 +1983,18 @@ func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lin
 		for _, cond := range messageScalarBounds(f, expr) {
 			*lines = append(*lines, ind+"assert "+cond+";\n")
 		}
+		// ROW 10: a finite ranged or compressed float off its range, held at
+		// the reader's own ends (float32 nearest each end for a float32), so
+		// the quantizer never clamps a caller's value silently onto an end.
+		// A NaN or an infinity is row 7's, refused in every build.
+		if lo, hi, ok := fixedFloatRange(f); ok {
+			finite := "java.lang.Float.isFinite"
+			if f.Type.Kind == ir.TFloat64 {
+				finite = "java.lang.Double.isFinite"
+			}
+			*lines = append(*lines, fmt.Sprintf("%sassert !%s(%s) || (%s >= %s && %s <= %s);\n",
+				ind, finite, expr, expr, lo, expr, hi))
+		}
 	}
 }
 

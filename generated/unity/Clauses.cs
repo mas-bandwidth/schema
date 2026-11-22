@@ -1416,6 +1416,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.S.AsSpan().Slice(0, value.SLength)), "value.S holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.S.AsSpan().Slice(0, value.SLength)))
             {
                 return false;
