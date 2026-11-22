@@ -1136,10 +1136,10 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 	// before this reader's own bound is consulted (§3.3; the engine's array
 	// and keyed reads)
 	g.pf("%s  if (n > globalThis.BigInt(%s.Max)) { %s; }\n", ind, shape, over)
-	if f.KeyEnum == "" {
+	if f.KeyEnum == "" { // a keyed array walks n itself and keeps no count
 		g.pf("%s  if (%s.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, elemExpr, bad)
+		g.pf("%s  const keep = globalThis.Number(n);\n", ind)
 	}
-	g.pf("%s  const keep = globalThis.Number(n);\n", ind)
 	if elideEmpty {
 		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
 	}
