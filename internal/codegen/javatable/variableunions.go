@@ -330,7 +330,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// §3, §4); only an unbounded count past what a list can hold is refused.
 	countCheck := "else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}%s", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "count", "count_over_bound"))
 	}
 	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
 	if retain {

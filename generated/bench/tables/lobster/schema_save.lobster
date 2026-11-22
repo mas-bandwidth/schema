@@ -652,12 +652,12 @@ def save_keyed(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         return
     so_leb(w, ref)
     so_u8(w, 16)
-    let inner = SaveOut {}
-    so_u8(inner, f.ek)
-    so_leb(inner, pairs)
-    so_bytes(inner, so_take(body))
-    so_leb(w, inner.n)
-    so_bytes(w, so_take(inner))
+    let sub_out = SaveOut {}
+    so_u8(sub_out, f.ek)
+    so_leb(sub_out, pairs)
+    so_bytes(sub_out, so_take(body))
+    so_leb(w, sub_out.n)
+    so_bytes(w, so_take(sub_out))
 
 // encode_field writes one field's line, in declaration order (§3).
 def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:

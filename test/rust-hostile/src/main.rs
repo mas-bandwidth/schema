@@ -67,11 +67,18 @@ mod sha256;
 
 const CASE_STACK: usize = 512 * 1024;
 
+// One table's readers, each bound on its own: a table outside the Rust
+// variable class has no variable codec and still has its fixed and message
+// reads.
 pub struct TableOps {
-    pub wire: fn(&[u8], bool) -> String,
-    pub text: fn(&[u8]) -> String,
+    pub variable: Option<VariableOps>,
     pub message: Option<fn(&[u8], bool) -> String>,
     pub fixed: Option<fn(&[u8]) -> String>,
+}
+
+pub struct VariableOps {
+    pub wire: fn(&[u8], bool) -> String,
+    pub text: fn(&[u8]) -> String,
 }
 
 pub struct VocabularyOps {
@@ -180,6 +187,15 @@ fn text_digest(text: Option<String>) -> String {
     }
 }
 
+// An accepted read of a table this port has no canonical text for: its closure
+// is outside the Rust variable class (a construct
+// internal/codegen/rusttable/variablerefusal.go names), so the crate has no
+// variable value, no checked row-to-value bridge and no text writer to digest
+// the decoded row with. The verdict was the port's; the digest cannot be.
+fn no_value(table: &str) -> String {
+    format!("runner error: {table} was read, and the Rust port has no text writer to digest it (its closure is outside the Rust variable class)")
+}
+
 // A read's verdict off its report: a named refusal is its reason, a malformed
 // read (no name) is the corpus's `damaged`.
 fn refusal(refused: bool, damaged: bool, reason: &str, landed: bool) -> Option<String> {
@@ -194,10 +210,10 @@ fn refusal(refused: bool, damaged: bool, reason: &str, landed: bool) -> Option<S
 }
 
 #[allow(unused_macros)]
-macro_rules! table_ops {
+macro_rules! variable_ops {
     ($k:ident, $load:ident, $load_retain:ident, $save_checked:ident, $save_retain:ident,
-     $load_measure:ident, $to_json:ident, $from_json:ident, $message:expr, $fixed:expr) => {
-        $crate::TableOps {
+     $load_measure:ident, $to_json:ident, $from_json:ident) => {
+        $crate::VariableOps {
             wire: |input, retaining| {
                 let mut report = $k::TableReport::default();
                 let mut store = $k::TableRetain {
@@ -239,19 +255,19 @@ macro_rules! table_ops {
                 }
                 verdict
             },
-            message: $message,
-            fixed: $fixed,
         }
     };
 }
 
 // A FIXED ROOT's form-3 file (docs/SPEC-TABLES.md §3.4), read through its
 // fixed codec by the form byte, as the C++ runner does. Check its canonical
-// write-back, then use the generated checked Row-to-value bridge to compute
-// the same canonical decoded text digest as every other accepted table.
+// write-back, then digest the row: build.rs hands the generated checked
+// Row-to-value bridge and the value's text writer, the same canonical decoded
+// text digest as every other accepted table, or, for a table outside the Rust
+// variable class, the reason there is none (no_value).
 #[allow(unused_macros)]
 macro_rules! fixed_ops {
-    ($k:ident, $load:ident, $save:ident, $row:ident, $value:ident, $to_json:ident) => {
+    ($k:ident, $load:ident, $save:ident, $row:ident, $digest:expr) => {
         |input: &[u8]| -> String {
             let mut values = vec![$k::$row::default(); 1];
             let mut plan = vec![$k::TableFixedEntry::default(); 1 << 14];
@@ -266,13 +282,7 @@ macro_rules! fixed_ops {
             }
             let mut buffer = vec![0u8; input.len() + 4096];
             match $k::$save(&values, &mut buffer) {
-                Some(n) if &buffer[..n] == input => {
-                    let value = match $k::$value::try_from(&values[0]) {
-                        Ok(value) => value,
-                        Err(()) => return "error: the decoded fixed row did not convert to its value".to_string(),
-                    };
-                    $crate::text_digest($k::$to_json(&value))
-                }
+                Some(n) if &buffer[..n] == input => ($digest)(&values[0]),
                 Some(_) => "error: the fixed row did not write the input back".to_string(),
                 None => "error: the fixed save refused the decoded row".to_string(),
             }
@@ -283,7 +293,7 @@ macro_rules! fixed_ops {
 #[allow(unused_macros)]
 macro_rules! message_ops {
     ($k:ident, $load_messages:ident, $measure_messages:ident, $save_messages:ident,
-     $message_default:ident, $write_body:ident, $from_json:ident, $to_json:ident) => {
+     $message_default:ident, $write_body:ident, $digest:expr, $defaults:expr) => {
         |input: &[u8], announced: bool| -> String {
             let mut entries = vec![$k::TableMessageEntry::default(); 4096];
             let mut vocab = $k::TableVocabulary::new(&mut entries);
@@ -318,19 +328,16 @@ macro_rules! message_ops {
             // takes the variable value. A body that sets no field decodes to
             // the table's defaults, and from_json("{}") is where the port
             // states them: the runner compares the decoded row's bytes with a
-            // default row's.
+            // default row's. A body that sets a field is digested through the
+            // generated checked Row-to-value bridge, as a form-3 record is.
             let mut a = vec![0u8; 1 << 16];
             let mut b = vec![0u8; 1 << 16];
             $k::$write_body(&mut a, &rows[0]);
             $k::$write_body(&mut b, &$k::$message_default());
             if a != b {
-                return "unhandled decoded value: the body sets a field".to_string();
+                return ($digest)(&rows[0]);
             }
-            let mut dr = $k::TableReport::default();
-            match $k::$from_json(b"{}", &mut dr) {
-                Some(defaults) => $crate::text_digest($k::$to_json(&defaults)),
-                None => "error: the port refused {}".to_string(),
-            }
+            ($defaults)()
         }
     };
 }
@@ -399,11 +406,16 @@ fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
             let Some(ops) = dispatch::table(schema, table) else {
                 return format!("runner error: no Rust table binding for {schema} {table}");
             };
+            // a carrier whose reader the port does not emit for this table
+            // fails by name, never as a SKIP: the row is owed an answer
+            let no_variable = || format!("runner error: {table} in {schema} has no variable codec in the Rust port (its closure is outside the Rust variable class)");
             match carrier {
                 "wire" | "wire_retain" if input.first() == Some(&3) && ops.fixed.is_some() => (ops.fixed.expect("fixed"))(input),
-                "wire" => (ops.wire)(input, false),
-                "wire_retain" => (ops.wire)(input, true),
-                "text" => (ops.text)(input),
+                "wire" | "wire_retain" | "text" => match ops.variable {
+                    Some(v) if carrier == "text" => (v.text)(input),
+                    Some(v) => (v.wire)(input, carrier == "wire_retain"),
+                    None => no_variable(),
+                },
                 _ => match ops.message {
                     Some(m) => m(input, carrier == "message"),
                     None => format!("SKIP {table} in {schema} has no message form in the Rust port"),
