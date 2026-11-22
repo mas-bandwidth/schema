@@ -15,7 +15,7 @@ import (
 //
 //  1. A ranged integer's base plus offset is held to the ANNOUNCED kind's
 //     domain, exactly and never wrapped, on the named read and on the skip
-//     path, before the reader's own range: out_of_range.
+//     path, before the reader's own range.
 //  2. A ranged array element is walked on the skip path, so each one is held
 //     by rule 1.
 //  3. A union FIELD written with arm reference 0 is damage on the skip path,
@@ -27,7 +27,8 @@ import (
 // batch by hand under an announcement whose entry the row reshapes, the way
 // a sender with another declaration would announce it; a row under the
 // foreign vocabulary carries another build version, so a field Root does not
-// declare is unknown and skipped by its announced entry alone.
+// declare is unknown and skipped by its announced entry alone. Each row is
+// compared by its verdict alone (docs/rulings.json refusal-verdict-only).
 func TestLobsterMessageFormAcrossLegRules(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Lobster toolchain")
@@ -39,7 +40,7 @@ func TestLobsterMessageFormAcrossLegRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "rules.lobster", nil)))
-	if got != messageRulesWant {
+	if probeVerdicts(got) != messageRulesWant {
 		t.Fatalf("message form rules:\n%s\nwant:\n%s", got, messageRulesWant)
 	}
 }
@@ -69,18 +70,18 @@ fixed table Other
 `
 
 const messageRulesWant = `named-ranged-top:read 127
-named-ranged-past-kind:refused out_of_range
-named-u64-wraps:refused out_of_range
+named-ranged-past-kind:refused
+named-u64-wraps:refused
 named-u64-top:read -1
 skip-ranged-top:read
-skip-ranged-past-kind:refused out_of_range
+skip-ranged-past-kind:refused
 skip-element-top:read
-skip-element-past-kind:refused out_of_range
-skip-union-field-arm-zero:refused wire_damaged
+skip-element-past-kind:refused
+skip-union-field-arm-zero:refused
 skip-union-element-none:read
-named-union-field-arm-zero:refused wire_damaged
+named-union-field-arm-zero:refused
 bytes-from-min:read abc
-bytes-past-max:refused wire_damaged`
+bytes-past-max:refused`
 
 const messageRulesProbe = `import .ProbeTable
 

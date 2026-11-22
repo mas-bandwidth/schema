@@ -52,7 +52,8 @@ table Root
 
 // A large object reads through the set: tens of thousands of distinct keys
 // are admitted, and one repeat anywhere among them, in the table's own keys
-// or in a skipped object's, is refused as Go refuses it.
+// or in a skipped object's, is refused as Go refuses it. The verdict is
+// compared, never the reason (docs/rulings.json refusal-verdict-only).
 func TestLobsterJsonLargeObjectKeys(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Lobster toolchain")
@@ -86,7 +87,7 @@ func TestLobsterJsonLargeObjectKeys(t *testing.T) {
 		{"keyed_distinct", `{"need":1,"keyed":{"alpha":1,"beta":2,"gamma":3}}`, true},
 		{"keyed_repeat", `{"need":1,"keyed":{"alpha":1,"beta":2,"alpha":3}}`, false},
 		{"keyed_unknown_repeat", `{"need":1,"keyed":{"delta":1,"delta":2}}`, false},
-		// the repeat is refused AT the repeated key, so damage after it is never reached
+		// a repeat followed by damage is refused, whichever the reader meets first
 		{"repeat_then_damage", `{"need":1,"k":1,"k":2,`, false},
 		{"skipped_repeat_then_damage", `{"need":1,"future":{"x":1,"x":2,`, false},
 	}
@@ -123,9 +124,9 @@ row%d()
 	for i, row := range rows {
 		want := row.name + " read"
 		if !row.read {
-			want = row.name + " refused duplicate_key"
+			want = row.name + " refused"
 		}
-		if out[i] != want {
+		if probeVerdict(out[i]) != want {
 			t.Errorf("%s: %q, want %q", row.name, out[i], want)
 		}
 	}
@@ -140,11 +141,11 @@ table Root
 }
 `
 
-// A MAP'S REPEATED KEY IS REFUSED IN TEXT ORDER: the repeat is tested once
-// its value is read and before the next entry is, as Go's readMap tests it,
-// so a later entry's damage never changes the verdict. A valid map still
-// lands in canonical key order whatever order the text spells.
-func TestLobsterJsonMapRepeatRefusedInTextOrder(t *testing.T) {
+// A MAP'S REPEATED KEY IS REFUSED, alone or beside a wrong value or damage in
+// either order, as Go refuses it; a valid map lands in canonical key order
+// whatever order the text spells. The verdict is compared, never the reason
+// or which check fired first (docs/rulings.json refusal-verdict-only).
+func TestLobsterJsonMapVerdicts(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Lobster toolchain")
 	path := writeSchema(t, "Probe", jsonMapOrderSchema)
@@ -155,16 +156,15 @@ func TestLobsterJsonMapRepeatRefusedInTextOrder(t *testing.T) {
 	m := tabletext.NewModel(g.u)
 	rows := []struct {
 		name, text, want string
-		goRepeat         bool
 	}{
-		{"distinct", `{"m":{"b":2,"a":1,"c":3},"n":{"9":1,"2":2}}`, "read a,b,c 2,9", false},
-		{"repeat", `{"m":{"a":1,"a":2}}`, "refused duplicate_key", true},
-		{"wrong_value", `{"m":{"a":1,"b":"x"}}`, "refused kind_mismatch", false},
-		{"repeat_then_wrong_value", `{"m":{"a":1,"a":2,"b":"x"}}`, "refused duplicate_key", true},
-		{"repeat_then_true", `{"m":{"one":1,"one":2,"two":true}}`, "refused duplicate_key", true},
-		{"wrong_value_then_repeat", `{"m":{"b":"x","a":1,"a":2}}`, "refused kind_mismatch", false},
-		{"integer_repeat_then_wrong_value", `{"n":{"1":1,"1":2,"3":"x"}}`, "refused duplicate_key", true},
-		{"repeat_then_damage", `{"m":{"a":1,"a":2,`, "refused duplicate_key", true},
+		{"distinct", `{"m":{"b":2,"a":1,"c":3},"n":{"9":1,"2":2}}`, "read a,b,c 2,9"},
+		{"repeat", `{"m":{"a":1,"a":2}}`, "refused"},
+		{"wrong_value", `{"m":{"a":1,"b":"x"}}`, "refused"},
+		{"repeat_then_wrong_value", `{"m":{"a":1,"a":2,"b":"x"}}`, "refused"},
+		{"repeat_then_true", `{"m":{"one":1,"one":2,"two":true}}`, "refused"},
+		{"wrong_value_then_repeat", `{"m":{"b":"x","a":1,"a":2}}`, "refused"},
+		{"integer_repeat_then_wrong_value", `{"n":{"1":1,"1":2,"3":"x"}}`, "refused"},
+		{"repeat_then_damage", `{"m":{"a":1,"a":2,`, "refused"},
 	}
 	var program strings.Builder
 	for _, mod := range g.mods {
@@ -187,9 +187,6 @@ def keys(rec:schema_rt.Record, at:int, text:bool) -> string:
 		if read != strings.HasPrefix(row.want, "read") {
 			t.Fatalf("%s: Go read %t (%s)", row.name, read, report.Reason)
 		}
-		if repeat := strings.Contains(report.Reason, "repeated map key"); repeat != row.goRepeat {
-			t.Fatalf("%s: Go's reason %q, want a repeated map key: %t", row.name, report.Reason, row.goRepeat)
-		}
 		name := fmt.Sprintf("in%d.json", i)
 		inputs[name] = []byte(row.text)
 		fmt.Fprintf(&program, `def row%d():
@@ -209,7 +206,7 @@ row%d()
 		t.Fatalf("got %d lines, want %d: %q", len(out), len(rows), out)
 	}
 	for i, row := range rows {
-		if out[i] != row.want {
+		if probeVerdict(out[i]) != row.want {
 			t.Errorf("%s: %q, want %q", row.name, out[i], row.want)
 		}
 	}

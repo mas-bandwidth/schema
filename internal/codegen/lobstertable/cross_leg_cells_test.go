@@ -365,20 +365,20 @@ func TestLobsterCrossLegCells(t *testing.T) {
 		{"variable_write_below_min", "refused"},
 		{"json_write_below_min", "refused"},
 		{"message_write_below_min", "refused"},
-		{"fixed_write_below_min", "refused invalid_value"},
-		{"json_read_below_min", "refused count_over_bound"},
+		{"fixed_write_below_min", "refused"},
+		{"json_read_below_min", "refused"},
 		{"json_read_at_min", "read 3F800000"},
 		{"json_read_negzero", "read 00000000"},
-		{"message_read_below_min", "refused count_over_bound"},
+		{"message_read_below_min", "refused"},
 		{"message_read_at_min", "read"},
 		{"variable_read_negzero", "read 00000000"},
-		{"fixed_read_below_min", "refused wire_damaged"},
+		{"fixed_read_below_min", "refused"},
 		{"fixed_read_at_min", "read"},
 		{"fixed_float32_at_end", "read 3DCCCCCD"},
-		{"fixed_float32_past_end", "refused invalid_value"},
+		{"fixed_float32_past_end", "refused"},
 		{"message_float32_at_end", "read 3DCCCCCD"},
 		{"message_float32_past_end", "refused"},
-		{"message_read_birth_spelled_out", "refused wire_damaged"},
+		{"message_read_birth_spelled_out", "refused"},
 		{"text_read_below_min", "refused"},
 		{"text_read_at_min", "read"},
 	} {
@@ -387,9 +387,29 @@ func TestLobsterCrossLegCells(t *testing.T) {
 			if !ran {
 				t.Fatalf("the row did not run; the probe printed %q then %q", out, reads)
 			}
-			if got != row.want {
+			if probeVerdict(got) != row.want {
 				t.Errorf("%q, want %q", got, row.want)
 			}
 		})
 	}
+}
+
+// probeVerdict is a probe row as the across-legs contract compares it: a read, a
+// write, or a refusal. Why a read or write refused is the leg's own
+// diagnostic (docs/rulings.json refusal-verdict-only), so the reason the
+// probe prints after "refused" is shown on failure but never compared.
+func probeVerdict(row string) string {
+	if i := strings.Index(row, "refused"); i >= 0 {
+		return row[:i+len("refused")]
+	}
+	return row
+}
+
+// probeVerdicts is probeVerdict on every line of a probe's output.
+func probeVerdicts(out string) string {
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		lines[i] = probeVerdict(line)
+	}
+	return strings.Join(lines, "\n")
 }
