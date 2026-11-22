@@ -90,7 +90,7 @@ export function ZeroFixedProbe(value) {
 }
 
 export function WriteFixedProbe(stream, value) {
-  if (!Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return false;
   }
   NUMBER_SCRATCH.value = value.angle;
@@ -111,7 +111,7 @@ export function WriteFixedProbe(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, -1000000n, 1000000n)) {
     return false;
   }
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ticks;
@@ -119,7 +119,7 @@ export function WriteFixedProbe(stream, value) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    if (!Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
+    if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < -524288 || value.samples[i] > 524288) {
       return false;
     }
     NUMBER_SCRATCH.value = value.samples[i];
@@ -197,7 +197,7 @@ export function ZeroUnsignedProbe(value) {
 }
 
 export function WriteUnsignedProbe(stream, value) {
-  if (!Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return false;
   }
   NUMBER_SCRATCH.value = value.angle;
@@ -218,7 +218,7 @@ export function WriteUnsignedProbe(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, 0n, 2000000n)) {
     return false;
   }
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ticks;
@@ -226,7 +226,7 @@ export function WriteUnsignedProbe(stream, value) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    if (!Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 1048576) {
+    if (!globalThis.Number.isInteger(value.samples[i]) || value.samples[i] < 0 || value.samples[i] > 1048576) {
       return false;
     }
     NUMBER_SCRATCH.value = value.samples[i];
@@ -663,28 +663,28 @@ export function ZeroFixedQuat(value) {
 }
 
 export function WriteFixedQuat(stream, value) {
-  if (!Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
+  if (!globalThis.Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
     return false;
   }
   NUMBER_SCRATCH.value = value.w;

@@ -443,21 +443,21 @@ export function ZeroTrio(value) {
 }
 
 export function WriteTrio(stream, value) {
-  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
     return false;
   }
   NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
     return false;
   }
   NUMBER_SCRATCH.value = value.c;
@@ -584,7 +584,7 @@ export function WriteTrioFirst(stream, value) {
   if (!WriteTrio(stream, value.inner)) {
     return false;
   }
-  if (!Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
+  if (!globalThis.Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.trailer;
@@ -681,7 +681,7 @@ export function WriteTrioStraddle(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+  if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
     return false;
   }
   NUMBER_SCRATCH.value = value.pad5;
