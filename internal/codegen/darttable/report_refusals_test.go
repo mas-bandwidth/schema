@@ -46,7 +46,6 @@ table Needs {
 table Lists {
     names [..2]string(4)
     open []string
-    by map[string]int32
 }
 
 fixed table Msg {
@@ -67,6 +66,9 @@ import 'ProbeWire.dart' as w;
 import 'ProbeFixed.dart' as f;
 
 void check(bool b, String s) { if (!b) throw StateError(s); }
+
+// a write check is a debug assert: only an assert run sees it, and a release run never throws
+final dbg = () { var on = false; assert(on = true); return on; }();
 
 void main() {
   // 1. the text report is zeroed in full by every read
@@ -127,20 +129,20 @@ void main() {
   {
     var asserted = false;
     try { w.rangedToJson(w.Ranged()..plain = 11); } on AssertionError { asserted = true; }
-    check(asserted, 'plain ToJson off range must assert');
+    check(asserted || !dbg, 'plain ToJson off range must assert');
     asserted = false;
     try { w.rangedWireSave(w.Ranged()..plain = 11); } on AssertionError { asserted = true; }
-    check(asserted, 'plain WireSave off range must assert');
+    check(asserted || !dbg, 'plain WireSave off range must assert');
     asserted = false;
     try { w.rangedWireSave(w.Ranged()..req = 11); } on AssertionError { asserted = true; }
-    check(asserted, 'required WireSave off range must assert');
+    check(asserted || !dbg, 'required WireSave off range must assert');
     asserted = false;
     try { w.rangedToJson(w.Ranged()..req = 11); } on AssertionError { asserted = true; }
-    check(asserted, 'required ToJson off range must assert');
+    check(asserted || !dbg, 'required ToJson off range must assert');
     // a PRESENT optional is held to its range; an absent one is not
     asserted = false;
     try { w.rangedToJson(w.Ranged()..hasOpt = true..opt = 11); } on AssertionError { asserted = true; }
-    check(asserted, 'present optional ToJson off range must assert');
+    check(asserted || !dbg, 'present optional ToJson off range must assert');
     w.rangedToJson(w.Ranged()..hasOpt = false..opt = 11);
     w.rangedToJson(w.Ranged()..hasOpt = true..opt = 10);
   }
@@ -175,10 +177,19 @@ void main() {
   {
     var asserted = false;
     try { w.listsWireSave(w.Lists()..names = [w.ListsNamesText()..value = 'toolong']); } on AssertionError { asserted = true; }
-    check(asserted, 'text list WireSave must assert');
+    check(asserted || !dbg, 'text list WireSave must assert');
     asserted = false;
-    try { w.listsWireSave(w.Lists()..by = {'a\u0000b': 1}); } on AssertionError { asserted = true; }
-    check(asserted, 'unbounded text WireSave must assert');
+    try { w.listsWireSave(w.Lists()..open = [w.ListsOpenText()..value = 'a\u0000b']); } on AssertionError { asserted = true; }
+    check(asserted || !dbg, 'unbounded text WireSave must assert');
+    // a release build carries no write check: nothing throws
+    if (!dbg) {
+      try {
+        w.listsWireSave(w.Lists()..names = [w.ListsNamesText()..value = 'toolong']);
+        w.listsWireSave(w.Lists()..open = [w.ListsOpenText()..value = 'a\u0000b']);
+      } on StateError catch (e) {
+        throw StateError('release build threw: ${e.message}');
+      }
+    }
   }
   print('OK');
 }
@@ -186,10 +197,12 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil || !strings.HasSuffix(strings.TrimSpace(string(out)), "OK") {
-		t.Fatalf("dart probe: %v\n%s", err, out)
+	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
+		cmd := testproc.Command(t, dartBinary(t), args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil || !strings.HasSuffix(strings.TrimSpace(string(out)), "OK") {
+			t.Fatalf("dart probe %v: %v\n%s", args, err, out)
+		}
 	}
 }
