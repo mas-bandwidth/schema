@@ -14,7 +14,7 @@ fixed table Leaf
 
 union Choice
 {
-    none
+    empty
     leaf Leaf | was = "old_leaf"
     small [..2]int8
 }
@@ -35,10 +35,10 @@ table Root | was = "OldRoot"
     texts   []string
     names   [..4]?string(8)
     lookup  map[string(16)]?Leaf
-    byid    map[uint32]string
+    byid    map[uint32]string(8)
     blob    *bytes
     note    *string
-    node    *Node
+    link    *Node
     choice  Choice
     renamed int32 | was = "older"
 }

@@ -11,7 +11,7 @@ table Guarded
     {
         resting int32
     }
-    after int32
+    past int32
     if !at_rest
     {
         moving int32
@@ -22,7 +22,7 @@ table Guarded
     }
     tail int32
     if at_rest {
-        inline int32
+        within int32
     } else {
         other int32
     }

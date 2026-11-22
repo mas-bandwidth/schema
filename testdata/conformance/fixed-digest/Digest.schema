@@ -15,8 +15,8 @@ flags Caps | max = 12 { Jump, Crouch, Dash }
 
 fixed table Inner
 {
-    level  uint8 | min = 1, max = 9
-    amount fixed(4, 4)
+    level  uint8 = 1 | min = 1, max = 9
+    amount fixed(4, 4) | min = -2, max = 2
 }
 
 union Pick
