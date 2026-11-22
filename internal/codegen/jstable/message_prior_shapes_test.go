@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // priorShapeRow is one `message-prior` row of the conformance manifest
@@ -167,7 +167,7 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
 	if err := os.WriteFile(probePath, []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, probePath)
+	cmd := testproc.Command(t, node, probePath)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -277,7 +277,7 @@ func TestJsMessageBatchRefusedWhole(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "probe.mjs")
+	cmd := testproc.Command(t, node, "probe.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

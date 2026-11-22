@@ -4475,6 +4475,7 @@ that does (or only reads the construct's metadata) says so by implementing
 `compiler.ConstructCarrier`; `compiler.UnitConstructs(unit)` names what a unit
 uses:
 
+<!-- example: fragment -->
 ```go
 func (docs) Carries() []string { return []string{"timestamp"} } // read once, at Register
 ```

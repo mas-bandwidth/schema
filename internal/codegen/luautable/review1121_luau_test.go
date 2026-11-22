@@ -181,7 +181,7 @@ func review1121Files(t *testing.T, sources map[string]string) (string, []string)
 // generator's own locals (the module table _M and the runtime _Rt) and is a
 // Luau identifier for any file name schema check admits. Each unit of the
 // committed corpus testdata/review1121/require-alias (files named M, Rt and
-// a-b beside a plain-named control) declares a type and a table another
+// _M beside a plain-named control; a-b is refused by schema check, SPEC §4.6) declares a type and a table another
 // file's type and table reach, so the type module, the table module and the
 // cross-file requires all bind those names; every module loads, the check
 // holds, and every module passes luau-analyze.

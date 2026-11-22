@@ -3,7 +3,6 @@ package jstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // scalarRangeFields is one field set at two declarations: the WRITER's wide
@@ -175,7 +175,7 @@ console.log("JS json loaded=" + (j !== null) + "|reason=" + (jrep.err() ?? ""));
 			if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(node, probePath)
+			cmd := testproc.Command(t, node, probePath)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {
