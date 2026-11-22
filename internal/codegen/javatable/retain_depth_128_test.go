@@ -1,13 +1,14 @@
 package javatable
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaRetainKeepsDepth128 holds the retaining walk to §4's one nesting
@@ -39,7 +40,7 @@ func TestJavaRetainKeepsDepth128(t *testing.T) {
 	for _, name := range refused {
 		args = append(args, filepath.Join(framing, name+".bin"))
 	}
-	out, err := exec.Command(javaBin, args...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the retaining depth probe failed: %v\n%s", err, out)
 	}

@@ -705,7 +705,7 @@ func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Penetration = int32(v)
+						value.Penetration = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Penetration != 1) {
@@ -764,7 +764,7 @@ func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Channel = uint32(v)
+						value.Channel = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Channel != 0) {
@@ -1986,7 +1986,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					}
 					{
 						v := payload36.Unsigned(entry.Shape.Kind)
-						value.Experience = uint32(v)
+						value.Experience = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Experience != 0) {
@@ -2040,7 +2040,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					}
 					{
 						v := payload37.Signed(entry.Shape.Kind)
-						value.Tilt = int8(v)
+						value.Tilt = int8(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int8
 					}
 				}
 				if exact && !(value.Tilt != 0) {
@@ -2094,7 +2094,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					}
 					{
 						v := payload38.Signed(entry.Shape.Kind)
-						value.Heading = int16(v)
+						value.Heading = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				if exact && !(value.Heading != 0) {
@@ -2202,7 +2202,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					}
 					{
 						v := payload40.Unsigned(entry.Shape.Kind)
-						value.Badge = uint8(v)
+						value.Badge = uint8(v & 0xff)
 					}
 				}
 				if exact && !(value.Badge != 0) {
@@ -2256,7 +2256,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					}
 					{
 						v := payload41.Unsigned(entry.Shape.Kind)
-						value.Port = uint16(v)
+						value.Port = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.Port != 0) {
@@ -2705,7 +2705,7 @@ func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, sta
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Slot = int32(v)
+						value.Slot = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Slot != 0) {
@@ -2985,7 +2985,7 @@ func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []ui
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Amount != 0) {

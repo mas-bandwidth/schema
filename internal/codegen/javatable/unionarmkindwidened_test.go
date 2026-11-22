@@ -3,7 +3,6 @@ package javatable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A union arm whose wire kind is changed from 4 to 2: the arm is declared
@@ -83,14 +84,14 @@ func TestJavaFixUnionArmKindWidened(t *testing.T) {
 	sources = append(sources, driver)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	wirePath := filepath.Join(dir, "mutant.bin")
 	if err := os.WriteFile(wirePath, mutant, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", wirePath).CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", classes, "Driver", wirePath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

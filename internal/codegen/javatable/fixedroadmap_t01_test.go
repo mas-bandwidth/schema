@@ -16,11 +16,12 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const (
@@ -61,7 +62,7 @@ func t01Deep(t *testing.T, classes, file string) probeRun {
 
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_reads %s deep: %v\n%s", filepath.Base(file), err, out)
 	}

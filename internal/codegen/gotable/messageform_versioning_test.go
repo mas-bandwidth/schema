@@ -23,13 +23,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // runMessagePair generates the WRITER unit and the READER unit into one module
@@ -106,7 +107,7 @@ func TestRemote(t *testing.T) {
 	}
 	writeFiles(t, dir, root)
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated endpoint pair)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

@@ -1,0 +1,13 @@
+package fixture
+
+import (
+	"os/exec"
+	"testing"
+)
+
+func TestRunsTheInterpreter(t *testing.T) {
+	out, err := exec.Command("luau", "probe.luau").CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

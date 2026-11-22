@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestOneSidedRangeCSharp(t *testing.T) {
@@ -201,7 +202,7 @@ class CarryProbe {
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
@@ -210,7 +211,7 @@ class CarryProbe {
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(csDotnet(), append([]string{"exec", filepath.Join(dir, "probe.dll")}, cases...)...)
+	cmd = testproc.Command(t, csDotnet(), append([]string{"exec", filepath.Join(dir, "probe.dll")}, cases...)...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
