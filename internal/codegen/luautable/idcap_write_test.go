@@ -51,13 +51,14 @@ func TestLuauWriterRefusesMoreThan4096Ids(t *testing.T) {
 	}
 	main := `local save = require("./schema_save")
 local refusal = require("./schema_refusal")
-local T = require("./IdcapTable")
+local T = require("./idcapTable")
+local Root = require("./schema_tables").lookup("Root")
 for _, row in {{0, 0}, {1, 0}, {1, 1}} do
 	local keys = buffer.create(` + "4094" + `)
 	buffer.fill(keys, 0, 1)
 	local v = { Keys = keys, X = row[1], Y = row[2] }
-	local out, why = save.save(T and require("./schema_tables").lookup("Root"), v)
-	local m = save.measure(require("./schema_tables").lookup("Root"), v)
+	local out, why = save.save(Root, v)
+	local m = save.measure(Root, v)
 	if out == nil then
 		print(row[1] .. row[2] .. " refused " .. tostring(why and why.name) .. " measure " .. tostring(m))
 	else
