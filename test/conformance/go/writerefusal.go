@@ -157,6 +157,10 @@ func mutateWriteRefusalGo(value any, path, kind, text string) error {
 		if err != nil {
 			return err
 		}
+	} else if fv.Kind() == reflect.Struct && fv.FieldByName("Value").IsValid() {
+		// a union arm payload (the accessor struct): the value and its
+		// count or length companion live inside it, beside Value
+		return writeRefusalGoSet(fv, fv.FieldByName("Value"), "value", kind, text)
 	}
 	return writeRefusalGoSet(cur, fv, name, kind, text)
 }
