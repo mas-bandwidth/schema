@@ -65,6 +65,10 @@ func messageModule(u *ir.Unit, mod string) string {
 	b.WriteString("require_relative '_table/message'\n\n")
 	fmt.Fprintf(&b, "module %s\n", mod)
 	fmt.Fprintf(&b, "  ANNOUNCEMENT = %s.b.freeze\n\n", rbBytesLiteral(raw))
+	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
+	fmt.Fprintf(&b, "  ANNOUNCE_ENTRIES = %d\n  ANNOUNCE_TOO_LARGE = %t\n\n", len(ir.TableVocabulary(u)), len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	b.WriteString("  def self.announce_measure\n    raise Refused, 'vocabulary_too_large' if ANNOUNCE_TOO_LARGE\n\n    ANNOUNCEMENT.bytesize\n  end\n\n")
+	b.WriteString("  def self.announce\n    raise Refused, 'vocabulary_too_large' if ANNOUNCE_TOO_LARGE\n\n    ANNOUNCEMENT\n  end\n\n")
 	b.WriteString("  class MessageVocabulary < SchemaTable::MessageVocabulary\n")
 	b.WriteString("    def initialize(strict: false)\n")
 	b.WriteString("      super(BUILD_VERSION, strict: strict)\n")
@@ -131,7 +135,7 @@ func messageModule(u *ir.Unit, mod string) string {
 	}
 	b.WriteString("    MSG_RECORDS.freeze\n\n")
 	b.WriteString("    MSG_LOCAL = MessageVocabulary.new\n")
-	b.WriteString("    SchemaTable.announce_read_raw(MSG_LOCAL, ANNOUNCEMENT)\n")
+	b.WriteString("    SchemaTable.announce_read_raw(MSG_LOCAL, ANNOUNCEMENT, max_bytes: ANNOUNCEMENT.bytesize, max_entries: ANNOUNCE_ENTRIES)\n")
 	b.WriteString("  end\n\n")
 	b.WriteString("  def self.announce_read(vocab, data, max_bytes: 65_536, max_entries: 4096)\n")
 	b.WriteString("    SchemaTable.announce_read_raw(vocab, data, max_bytes: max_bytes, max_entries: max_entries)\n")

@@ -70,8 +70,11 @@ func messageModule(m *Module) {
 	for i, b := range ann {
 		m.Printf("_M.TableMessageAnnouncement[%d] = 0x%02x;\n", i, b)
 	}
-	m.Printf("_M.AnnounceMeasure <- function() { return _M.TableMessageAnnouncement.len(); };\n")
+	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
+	tooLarge := len(ir.TableVocabulary(m.Unit)) > ir.TableVocabularyMaxEntries
+	m.Printf("_M.AnnounceMeasure <- function() { if (%t) return -1; return _M.TableMessageAnnouncement.len(); };\n", tooLarge)
 	m.Printf("_M.Announce <- function(out) {\n")
+	m.Printf("  if (%t) return -1;\n", tooLarge)
 	m.Printf("  if (out.len() < _M.TableMessageAnnouncement.len()) return -1;\n")
 	m.Printf("  for (local i = 0; i < _M.TableMessageAnnouncement.len(); i++) out[i] = _M.TableMessageAnnouncement[i];\n")
 	m.Printf("  return _M.TableMessageAnnouncement.len();\n};\n")

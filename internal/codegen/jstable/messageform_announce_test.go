@@ -69,7 +69,7 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 				// length, not a walk's — "a constant byte array and its length
 				// rather than as a walk" (docs/SPEC-TABLES.md §3.3).
 				if !strings.Contains(src, "export function Announce(buffer) {") ||
-					!strings.Contains(src, "export function AnnounceMeasure() { return TableMessageAnnouncement.length; }") {
+					!strings.Contains(src, "export function AnnounceMeasure() { return TableAnnounceTooLarge ? -1 : TableMessageAnnouncement.length; }") {
 					t.Fatal("Announce and AnnounceMeasure must ride as the constant array and its length")
 				}
 			})
@@ -254,6 +254,14 @@ if (AnnounceRead(keep, new Uint8Array(readFileSync("./keep.bin")), keepReport) |
 // surface from the emitted home module and calls `fail(why)` on any breach; the
 // process exits non-zero, and the combined output names the clause.
 func jsRunAnnounceProbe(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string) ([]byte, error) {
+	t.Helper()
+	return jsRunAnnounceProbeChecked(t, node, u, extra, probe, true)
+}
+
+// jsRunAnnounceProbeChecked is jsRunAnnounceProbe with the "AnnounceMeasure is
+// the constant array's length" preamble optional: a unit past the writer's
+// 4096-entry maximum refuses instead (R8 follow-up).
+func jsRunAnnounceProbeChecked(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string, measureIsLength bool) ([]byte, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -294,11 +302,11 @@ import { readFileSync } from "node:fs";
 import { TableVocabulary, Announce, AnnounceMeasure, TableMessageAnnouncement, AnnounceRead } from "./%s";
 let failures = 0;
 function fail(why) { console.error("FAIL: " + why); failures++; }
-if (AnnounceMeasure() !== TableMessageAnnouncement.length) { fail("AnnounceMeasure is not the constant array's length"); }
+if (%t && AnnounceMeasure() !== TableMessageAnnouncement.length) { fail("AnnounceMeasure is not the constant array's length"); }
 %s
 if (failures !== 0) { process.exit(1); }
 console.log("ok");
-`, home, probe)
+`, home, measureIsLength, probe)
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}

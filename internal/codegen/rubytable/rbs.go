@@ -281,6 +281,8 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 		b.WriteString("  class MessageVocabulary < SchemaTable::MessageVocabulary\n")
 		b.WriteString("    def initialize: (?strict: bool) -> void\n")
 		b.WriteString("  end\n")
+		b.WriteString("  def self.announce: () -> String\n")
+		b.WriteString("  def self.announce_measure: () -> Integer\n")
 		b.WriteString("  def self.announce_read: (untyped vocab, untyped data, ?max_bytes: Integer, ?max_entries: Integer) -> untyped\n")
 		b.WriteString("  def self.save_messages: (untyped root, untyped values) -> String\n")
 		b.WriteString("  def self.measure_messages: (untyped root, untyped values) -> Integer\n")
