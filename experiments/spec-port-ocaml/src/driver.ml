@@ -35,7 +35,7 @@ let schema_files path =
 
 (* the gated keys (SPEC-TABLES §11) this port does not declare: a case
    whose unit uses one is an absence, never a guess *)
-let undeclared = [ "required"; "forms"; "integrity" ]
+let undeclared = [ "required"; "forms"; "integrity"; "text-list-total" ]
 
 let load_unit key : (loaded, string) result =
   match Hashtbl.find_opt cache key with
