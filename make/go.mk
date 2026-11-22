@@ -245,6 +245,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
+	# THE SAME TWIN FOR listdemo Bounded, the battery's other fixed root: its
+	# array vectors (array_elem_*) are form-1 files read as the variable class,
+	# and without this twin the Go leg refused them as previous_form before any
+	# array rule ran, which the lawful twin twin_listdemo_bounded_empty exposed
+	# (test/conformance/harness/discriminate.go). Migrate.schema declares Unit
+	# and Bounded alone, so it generates on its own.
+	@mkdir -p build/tables-lists-variable
+	sed 's/^fixed table Bounded$$/table Bounded/' tables/lists/Migrate.schema > build/tables-lists-variable/Migrate.schema
+	@grep -q '^table Bounded$$' build/tables-lists-variable/Migrate.schema || { echo "lists variable twin: the sed did not turn Bounded variable"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/listsvariable build/tables-lists-variable/Migrate.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/listsvariable,listdemovariable)
 	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
 	# lineage, two generations. The old side is generated from its schema alone
 	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit
