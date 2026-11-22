@@ -2916,6 +2916,13 @@ fn wref_loadout_config_row(v: &mut tabledemo::LoadoutConfigRow, path: &str, kind
     }
 }
 
+fn wref_moods_row(v: &mut tabledemo::MoodsRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("row[0]", "ordinal") if v.row_count >= 1 => wref_int(value, &mut v.row[0]),
+        _ => fail(&format!("write-refusal: Moods names no {kind} path {path}")),
+    }
+}
+
 fn wref_store_purchase_row(v: &mut backenddemo::StorePurchaseRow, path: &str, kind: &str, value: &str) -> Mutation {
     match (path, kind) {
         ("quantity", "int") => wref_int(value, &mut v.quantity),
@@ -3088,6 +3095,7 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
             let answer = match (unit, root) {
                 ("tabledemo", "RootConfig") => fixed_json_case!(tabledemo, root_config_fixed_load, RootConfigRow, RootConfig, wref_root_config_row, root_config_to_json_checked),
                 ("tabledemo", "LoadoutConfig") => fixed_json_case!(tabledemo, loadout_config_fixed_load, LoadoutConfigRow, LoadoutConfig, wref_loadout_config_row, loadout_config_to_json_checked),
+                ("tabledemo", "Moods") => fixed_json_case!(tabledemo, moods_fixed_load, MoodsRow, Moods, wref_moods_row, moods_to_json_checked),
                 ("scalars", "SimState") => fixed_json_case!(scalars, sim_state_fixed_load, SimStateRow, SimState, wref_sim_state_row, sim_state_to_json_checked),
                 ("cooktorture", "TortureFixedWref") => fixed_json_case!(cooktorture, torture_fixed_wref_fixed_load, TortureFixedWrefRow, TortureFixedWref, wref_torture_fixed_wref_row, torture_fixed_wref_to_json_checked),
                 _ => fail(&format!("write-refusal-json: no fixed root {unit} {root}")),

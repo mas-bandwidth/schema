@@ -13546,6 +13546,14 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // a count below the declared min A = 1 is refused (SPEC.md §5.1)
+                    if ( counted_ok && count < 1 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = out_of_range;
+                        r.offset = body_end;
+                        break;
+                    }
                     // THE ELEMENT KIND IS CLOSED, judged under any count before the
                     // reader's declaration (§3, §4).
                     if ( !TableArrayElementKind( elem_kind ) )

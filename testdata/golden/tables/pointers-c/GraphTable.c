@@ -960,6 +960,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
+        /* A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+           a write-side check, so a debug assert in this language (SPEC.md §5.1) */
+        schema_assert( f->enum_deprecated == NULL || f->enum_deprecated[value] == 0 );
         if ( value != 0 && graphdemo_table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = graphdemo_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }

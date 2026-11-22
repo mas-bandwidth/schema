@@ -9924,6 +9924,7 @@ static SCHEMA_UNUSED int tabledemo_counted_min_load_body( tabledemo_table_reader
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 5 ) { kept = 5; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+                        if ( count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* below the declared min (SPEC.md §5.1) */
                         int32_t previous_count = value->few_count;
                         value->few_count = 0;
                         for ( i = 0; i < kept; i++ )
@@ -19241,6 +19242,8 @@ static SCHEMA_UNUSED int tabledemo_counted_min_load_body_retain( tabledemo_table
                         if ( kept > 5 ) { kept = 5;
                         r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
                         }
+                        if ( count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                        } /* below the declared min (SPEC.md §5.1) */
                         int32_t previous_count = value->few_count;
                         value->few_count = 0;
                         for ( i = 0; i < kept; i++ )

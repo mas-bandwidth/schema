@@ -1888,3 +1888,10 @@ json-hostile sp-f32-bound-narrows               tabledemo        FloatBound   te
 json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-array read
 framing sp_count_min_below                      tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below.bin refused -
 framing sp_count_min_zero                       tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero.bin refused -
+# the same minimum on the VARIABLE form (form 1): a count of 1 and of 0, the elements and L trimmed to
+# match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
+framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
+framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero_form1.bin refused -
+# a deprecated variant is never written (docs/SPEC-TABLES.md §2.15): Old (2) refused, Fierce (3) the lawful twin
+write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote

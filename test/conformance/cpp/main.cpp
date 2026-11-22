@@ -2112,6 +2112,11 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
         if ( path == "grade" && kind == "ordinal" ) { v.grade = (tabledemo::Grade) n; return true; }
     }
+    if ( root == "Moods" )
+    {
+        tabledemo::Moods & v = *(tabledemo::Moods *) value;
+        if ( path == "row[0]" && kind == "ordinal" && v.row_count >= 1 ) { v.row[0] = (tabledemo::Mood) n; return true; }
+    }
     if ( root == "SimState" )
     {
         scalardemo::SimState & v = *(scalardemo::SimState *) value;

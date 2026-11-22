@@ -2596,6 +2596,12 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
 		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
 		g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+			// docs/SPEC-TABLES.md §4), before any element is placed — the
+			// Go oracle's rule for the same count
+			g.pf("%[1]s    // a count below the declared min A = %[2]d is refused (SPEC.md §5.1)\n%[1]s    if ( counted_ok && count < %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, f.ArrayMin)
+		}
 		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
 		g.pf("%s    // reader's declaration (§3, §4).\n", ind)
 		g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)

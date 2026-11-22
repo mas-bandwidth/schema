@@ -7064,6 +7064,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8 ) { kept = 8; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        if ( count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; } /* below the declared min (SPEC.md §5.1) */
                         int32_t previous_count = value->entities_count;
                         value->entities_count = 0;
                         for ( i = 0; i < kept; i++ )
