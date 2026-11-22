@@ -284,6 +284,9 @@ pub enum TableFixedReason {
     /// declared range (docs/SPEC-TABLES.md §4, strict-only): the whole batch
     /// is refused and nothing lands.
     OutOfRange,
+    /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD (rulings 2026-11-22, R2):
+    /// the reader cannot hold an absent value, so the lineage refuses by name.
+    KindMismatch,
 }
 
 impl TableFixedReason {
@@ -311,6 +314,7 @@ impl TableFixedReason {
             Self::NonFiniteFloat => "non_finite_float",
             Self::IntegrityMismatch => "integrity_mismatch",
             Self::OutOfRange => "out_of_range",
+            Self::KindMismatch => "kind_mismatch",
         }
     }
 }
@@ -1418,6 +1422,7 @@ struct Compiler<'a> {
     // too_large is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
     // WHOLE under layout_record_too_large and never lands a short read.
     too_large: bool,
+    kind_mismatch: bool,
     // record is the WRITER's declared root size, the bound every entry's
     // source extent is held to.
     record: u32,
@@ -1568,6 +1573,7 @@ pub fn table_fixed_compile(
         remap_used: 0,
         overflow: false,
         too_large: false,
+        kind_mismatch: false,
         // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
         // declared size, taken from the layout this plan is compiled against.
         record: theirs.entry(0).size,
@@ -1577,6 +1583,9 @@ pub fn table_fixed_compile(
     // name: the report carries layout_record_too_large and no plan runs.
     if c.too_large {
         return report.refuse(TableFixedReason::LayoutRecordTooLarge);
+    }
+    if c.kind_mismatch {
+        return report.refuse(TableFixedReason::KindMismatch);
     }
     if c.overflow {
         return None;
@@ -1727,6 +1736,10 @@ fn compile_entry(
     // TWO READINGS COINCIDE: the guard a root field inherits is the empty one,
     // which is the unguarded case the bill names, so the readings part only
     // under a union arm — where the guarded one is right.)
+    if te.kind == 35 && me.kind != 35 {
+        c.kind_mismatch = true;
+        return;
+    }
     if me.kind == 35 && te.kind != 35 {
         c.push(TableFixedEntry {
             src: their_at,

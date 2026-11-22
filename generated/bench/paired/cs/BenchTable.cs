@@ -4595,7 +4595,7 @@ namespace Bench
                     else if (id == ulong.MaxValue - 2)
                     {
                         if (kind != 14 || !r.Slice(out Reader a) || !a.Has(1) || a.Byte() != 6 || !a.Var(out ulong n) || n != (ulong)(a.Buffer.Length - a.Offset)) { break; }
-                        if (n > (ulong)(v.MaxBytes > 0 ? v.MaxBytes : 65536)) { return Refuse(report, "vocabulary_too_large"); }
+                        if (n > (ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)) { return Refuse(report, "vocabulary_too_large"); }
                         payload = new Reader(a.Buffer.Slice(a.Offset), default); vocabularies++;
                     }
                     else { report.Unknown++; if (!r.Skip(kind)) { break; } }

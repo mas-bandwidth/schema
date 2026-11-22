@@ -179,35 +179,40 @@ def region_size(st:LoadState, d:TableDescriptor, lo:int, hi:int) -> int, bool:
 
 // Validate with the single read before measuring the accepted value. A
 // refusal never supplies a usable region; diagnostics remain local.
-def load_measure(root:string, data:string) -> int, bool, bool, string:
+// load_measure_parts answers the DATA bytes and the ATTRIBUTION bytes apart,
+// as C and C++ report them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is
+// the directory of one 16-byte entry per node record plus the root, which a
+// caller may place apart and release once Load returns. A refusal answers
+// data -1 or 0 and attribution 0, as load_measure does.
+def load_measure_parts(root:string, data:string) -> int, int, bool, bool, string:
     let report = LoadReport {}
     let value = load(root, data, report)
     if not value:
-        return -1, false, true, strict_reason(report)
+        return -1, 0, false, true, strict_reason(report)
     release(value)
     if length(data) == 0:
-        return 0, false, false, "wire_damaged"
+        return 0, 0, false, false, "wire_damaged"
     if data[0] != 1:
-        return 0, false, false, "unknown_form"
+        return 0, 0, false, false, "unknown_form"
     let d = table_of(root)
     let wire, intact = wire_integrity_body(d, data)
     if not intact:
-        return -1, false, true, "integrity_mismatch"
+        return -1, 0, false, true, "integrity_mismatch"
     let ids, first, ok = trailer(wire)
     if not ok:
-        return 0, false, false, "wire_damaged"
+        return 0, 0, false, false, "wire_damaged"
     let st = LoadState { data: wire, ids: ids, report: LoadReport {}, variable: false, good: false, root: nil, nodes: [], named: [], count_refused: false }
     var total, rok = region_size(st, d, 1, first)
     if not rok:
-        return -1, true, true, "count_over_extent_cap"
+        return -1, 0, true, true, "count_over_extent_cap"
     let plo, phi, present, framed = node_table_bytes(st, first)
     if present and not framed:
-        return 0, false, false, "wire_damaged"
+        return 0, 0, false, false, "wire_damaged"
     var records:[NodeRecord] = []
     if present:
         let scanned, _, sok = scan_node_records(st, plo, phi)
         if not sok:
-            return 0, false, false, "wire_damaged"
+            return 0, 0, false, false, "wire_damaged"
         records = scanned
     for(records) rec:
         var placed:TableDescriptor? = nil
@@ -218,14 +223,19 @@ def load_measure(root:string, data:string) -> int, bool, bool, string:
         if placed:
             let n, nok = region_size(st, placed, rec.lo, rec.hi)
             if not nok:
-                return -1, true, true, "count_over_extent_cap"
+                return -1, 0, true, true, "count_over_extent_cap"
             total += n
         elif (rec.tid == bytes_blob_id and d.place_bytes) or (rec.tid == string_blob_id and d.place_str):
             let size = rec.hi - rec.lo
             if size > 0xFFFFFFFF:
-                return -1, true, true, "blob_over_size_cap"
+                return -1, 0, true, true, "blob_over_size_cap"
             var n = 8 + size
             if rec.tid == string_blob_id:
                 n++
             total += region_round(n, d.ralign)
-    return total + (length(records) + 1) * 16, true, false, ""
+    return total, (length(records) + 1) * 16, true, false, ""
+
+// load_measure answers the sum of load_measure_parts.
+def load_measure(root:string, data:string) -> int, bool, bool, string:
+    let d, a, x, y, z = load_measure_parts(root, data)
+    return d + a, x, y, z

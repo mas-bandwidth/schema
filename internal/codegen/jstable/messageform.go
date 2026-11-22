@@ -389,9 +389,7 @@ function TableAnnounceRead(v, data, report) {
       if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Damaged = true; return false; }
       const [n, nok] = sub.Leb();
       if (!nok || n > globalThis.BigInt(sub.Buffer.length) || n !== globalThis.BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
-      let limit = v.MaxBytes;
-      if (!limit) { limit = 64 * 1024; }
-      if (n > globalThis.BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      if (n > globalThis.BigInt(v.MaxBytes)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
       words = sub.Buffer.subarray(sub.Offset);
       wordsCount++;
     } else {

@@ -2216,18 +2216,36 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 			lists = append(lists, f)
 		}
 	}
-	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
-	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
-	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	// THE WALK answers the sum and writes its attribution term to `attr`: the
+	// directory of one 16-byte entry per node record plus the root (§6.3). The
+	// public names are its two answers: the sum, and the two parts apart.
+	fmt.Fprintf(b, "/// %s_load_measure_parts — the DATA bytes and the ATTRIBUTION bytes\n", fnName)
+	fmt.Fprintf(b, "/// separately, (data, attribution), as C and C++ report them (§6.3, §6.5); the\n")
+	fmt.Fprintf(b, "/// sum is `%s_load_measure`'s. A refusal answers (-1, 0).\n", fnName)
 	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "pub fn %s_load_measure_parts(wire: &[u8]) -> (i64, i64) {\n", fnName)
+		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return (-1, 0); }\n")
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return (-1, 0); };\n")
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    let total = %s_load_measure_walk(wire, &mut attr);\n", fnName)
+		fmt.Fprintf(b, "    if total < 0 { (-1, 0) } else { (total - attr, attr) }\n}\n\n")
+		fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
+		fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
 		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return -1; };\n")
 		fmt.Fprintf(b, "    %s_load_measure_body(wire)\n}\n\n", fnName)
-		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n    let mut attr = 0i64;\n    %s_load_measure_walk(wire, &mut attr)\n}\n\n", fnName, fnName)
 	} else {
+		fmt.Fprintf(b, "pub fn %s_load_measure_parts(wire: &[u8]) -> (i64, i64) {\n", fnName)
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    let total = %s_load_measure_walk(wire, &mut attr);\n", fnName)
+		fmt.Fprintf(b, "    if total < 0 { (-1, 0) } else { (total - attr, attr) }\n}\n\n")
+		fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
+		fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    %s_load_measure_walk(wire, &mut attr)\n}\n\n", fnName)
 	}
+	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	fmt.Fprintf(b, "fn %s_load_measure_walk(wire: &[u8], attr: &mut i64) -> i64 {\n", fnName)
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")
@@ -2412,7 +2430,8 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let root_at = nested_measure(0x%016x, &wire[1..end], ids, 0);\n", ir.TableWireId(st.WireName()))
 	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
-	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
+	fmt.Fprintf(b, "    *attr = (records + 1) * 16;\n")
+	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + *attr\n", rootSize)
 	fmt.Fprintf(b, "}\n\n")
 }
 

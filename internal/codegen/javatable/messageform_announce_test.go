@@ -647,6 +647,14 @@ func refusalsMain(u *ir.Unit) string {
         if (TableVocabulary.announceRead(smallBytes, ann, e2) || !e2.refused || !"vocabulary_too_large".equals(e2.reason) || e2.damaged || smallBytes.announced) {
             fail("vocabulary byte bound was not refused by name");
         }
+        // A caller's maxBytes of 0 refuses and never means the default (R9).
+        final TableVocabulary zeroBytes = new TableVocabulary();
+        zeroBytes.reset(4096);
+        zeroBytes.maxBytes = 0;
+        final TableVocabulary.Report e4 = new TableVocabulary.Report();
+        if (TableVocabulary.announceRead(zeroBytes, ann, e4) || !e4.refused || !"vocabulary_too_large".equals(e4.reason) || zeroBytes.announced) {
+            fail("a maxBytes of 0 was not refused by name");
+        }
 
         // "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ...
         // A FAILED STRICT CHECK IS MALFORMED, not a refusal." (§3.3)

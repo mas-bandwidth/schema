@@ -21,6 +21,7 @@ func emitTableSurfaces(b *strings.Builder, u *ir.Unit, st *ir.Struct, msgStructs
 		if variable {
 			fmt.Fprintf(b, "public static long %sLoadMeasure(ReadOnlySpan<byte> bytes)\n{\n    return TableWire.LoadMeasure(%sTableType, bytes, out _);\n}\n\n", st.Name, st.Name)
 			fmt.Fprintf(b, "public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason)\n{\n    long size = TableWire.LoadMeasure(%sTableType, bytes, out string why);\n    reason = _ParseRefuseReason(why);\n    return size;\n}\n\n", st.Name, st.Name)
+			fmt.Fprintf(b, "public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out TableRefuseReason reason)\n{\n    long size = TableWire.LoadMeasureParts(%sTableType, bytes, out dataBytes, out attributionBytes, out string why);\n    reason = _ParseRefuseReason(why);\n    return size;\n}\n\n", st.Name, st.Name)
 		}
 
 		if fixed {

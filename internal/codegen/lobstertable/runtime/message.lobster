@@ -463,10 +463,7 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
             if not nok or n != sr.hi - sr.off:
                 rep.malformed = true
                 return false
-            var limit = v.max_bytes
-            if limit == 0:
-                limit = message_vocabulary_max_bytes
-            if n > limit:
+            if n > v.max_bytes:
                 return message_refuse(rep, "vocabulary_too_large")
             words_lo = sr.off
             words_n = n

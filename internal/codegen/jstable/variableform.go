@@ -1261,6 +1261,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
 	g.pf("  void bytes;\n  return -1;\n")
 	g.pf("}\n\n")
+	g.pf("export function %sLoadMeasureParts(bytes) {\n", st.Name)
+	g.pf("  void bytes;\n  return { data: -1, attribution: 0 };\n")
+	g.pf("}\n\n")
 }
 
 // emitRootLoadMeasure emits <T>LoadMeasure: the region size a caller owes a
@@ -1280,7 +1283,11 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	if !g.variable[st.Name] {
 		refused = fmt.Sprintf("%d", rootSize+16)
 	}
-	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	// The walk answers the SUM; `out.attribution` is its attribution term, the
+	// directory of one 16-byte entry per node record plus the root (§6.3), which
+	// a caller may place apart and release once Load returns. A fixed-class root
+	// that is refused its framing answers its root's region plus that one entry.
+	g.pf("function %sLoadMeasureWalk(bytes, out) {\n", st.Name)
 	if st.Integrity != "" {
 		g.pf("  if (bytes.length > 0 && bytes[0] === 1) { if (!TableIntegrityHolds(bytes, 1)) { return -1; } bytes = bytes.subarray(0, bytes.length - 4); }\n")
 	}
@@ -1360,6 +1367,19 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    payload.at += tlen;\n")
 	g.pf("    records++;\n")
 	g.pf("  }\n")
-	g.pf("  return data + (records + 1) * 16;\n")
+	g.pf("  out.attribution = (records + 1) * 16;\n")
+	g.pf("  return data + out.attribution;\n")
+	g.pf("}\n\n")
+	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	g.pf("  return %sLoadMeasureWalk(bytes, { attribution: 16 });\n", st.Name)
+	g.pf("}\n\n")
+	g.pf("// %sLoadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes separately\n", st.Name)
+	g.pf("// (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum.\n")
+	g.pf("// A refusal answers { data: -1, attribution: 0 }.\n")
+	g.pf("export function %sLoadMeasureParts(bytes) {\n", st.Name)
+	g.pf("  const out = { attribution: 16 };\n")
+	g.pf("  const total = %sLoadMeasureWalk(bytes, out);\n", st.Name)
+	g.pf("  if (total < 0) { return { data: -1, attribution: 0 }; }\n")
+	g.pf("  return { data: total - out.attribution, attribution: out.attribution };\n")
 	g.pf("}\n\n")
 }

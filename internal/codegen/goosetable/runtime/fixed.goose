@@ -53,6 +53,7 @@ let FixedRefuseBatchTooLarge: i64 = 41;
 let FixedRefuseTextIllFormed: i64 = 42;
 let FixedRefuseCountOverBound: i64 = 43;
 let FixedRefuseLengthOverBound: i64 = 44;
+let FixedRefuseKindMismatch: i64 = 45;
 
 // fixed_refusal_name is a refusal's name, the string Go's Error() gives.
 fn fixed_refusal_name(code: i64) -> const u8[:] {
@@ -85,6 +86,7 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         42 => "text_ill_formed",
         43 => "count_over_bound",
         44 => "length_over_bound",
+        45 => "kind_mismatch",
         _ => "???",
     }
 }

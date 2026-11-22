@@ -5693,7 +5693,7 @@ export function FixedTableFromJsonBytes(bytes, report) {
   return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
 }
 
-export function FixedTableLoadMeasure(bytes) {
+function FixedTableLoadMeasureWalk(bytes, out) {
   if (bytes.length < 9) { return 1392; }
   if (bytes[0] !== TableVariableForm) { return 1392; }
   const dv = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -5770,7 +5770,22 @@ export function FixedTableLoadMeasure(bytes) {
     payload.at += tlen;
     records++;
   }
-  return data + (records + 1) * 16;
+  out.attribution = (records + 1) * 16;
+  return data + out.attribution;
+}
+
+export function FixedTableLoadMeasure(bytes) {
+  return FixedTableLoadMeasureWalk(bytes, { attribution: 16 });
+}
+
+// FixedTableLoadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes separately
+// (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum.
+// A refusal answers { data: -1, attribution: 0 }.
+export function FixedTableLoadMeasureParts(bytes) {
+  const out = { attribution: 16 };
+  const total = FixedTableLoadMeasureWalk(bytes, out);
+  if (total < 0) { return { data: -1, attribution: 0 }; }
+  return { data: total - out.attribution, attribution: out.attribution };
 }
 
 export function FixedTableLoadRetain(bytes, retain, report) {

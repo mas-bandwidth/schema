@@ -554,14 +554,16 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: byteCount - 1}
+		var bytesBound tablewire.Vocabulary
+		bytesBound.SetMaxBytes(byteCount - 1)
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: byteCount}
+		var bytesExact tablewire.Vocabulary
+		bytesExact.SetMaxBytes(byteCount)
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}

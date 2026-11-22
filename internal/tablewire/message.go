@@ -119,10 +119,16 @@ func (e *MessageRefusal) Error() string {
 type Vocabulary struct {
 	// THE BOUND IS TWO NUMBERS, because an entry is no longer a fixed width:
 	// an announcement above either is refused by name before an entry is
-	// touched. Zero means the conforming default of each
-	// ([ir.TableVocabularyMaxEntries], [ir.TableVocabularyMaxBytes]).
+	// touched. A zero MaxEntries means the conforming default
+	// ([ir.TableVocabularyMaxEntries]). The byte bound is set by
+	// [Vocabulary.SetMaxBytes] and a caller's 0 there refuses every
+	// non-empty vocabulary: it never means the default (R9, 2026-11-22). A
+	// vocabulary whose bound was never set holds the conforming default,
+	// [ir.TableVocabularyMaxBytes].
 	MaxEntries int
-	MaxBytes   int
+
+	maxBytes    int
+	maxBytesSet bool
 
 	entries      []ir.TableVocabularyEntry
 	buildVersion uint64
@@ -160,12 +166,17 @@ func (v *Vocabulary) bound() int {
 	return ir.TableVocabularyMaxEntries
 }
 
-// MaxBytes is the receiver's second declared bound: the vocabulary field's own
-// byte length, checked from that length before an entry is touched. Zero means
-// the conforming default, [ir.TableVocabularyMaxBytes].
+// SetMaxBytes declares the receiver's second bound: the vocabulary field's own
+// byte length, checked from that length before an entry is touched. A caller's
+// 0 refuses every non-empty vocabulary and never means the default.
+func (v *Vocabulary) SetMaxBytes(n int) {
+	v.maxBytes = n
+	v.maxBytesSet = true
+}
+
 func (v *Vocabulary) byteBound() int {
-	if v.MaxBytes > 0 {
-		return v.MaxBytes
+	if v.maxBytesSet {
+		return v.maxBytes
 	}
 	return ir.TableVocabularyMaxBytes
 }

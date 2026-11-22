@@ -146,6 +146,15 @@ func TestVocabularyTooLarge(t *testing.T) {
 	if AnnounceRead(bytes, ann, &byteReport) || byteReport.Verdict != TableOpenRefused || byteReport.Reason != "vocabulary_too_large" || (byteReport.Refusal.Error() == "wire_damaged" || byteReport.Refusal.Error() == "malformed") || bytes.Announced {
 		t.Fatalf("vocabulary byte bound: %+v", byteReport)
 	}
+	// A CALLER'S MaxBytes OF 0 REFUSES and never means the 64 KiB default
+	// (rulings 2026-11-22, R9).
+	zero := new(TableVocabulary)
+	zero.Init(make([]TableMessageEntry, TableMessageEntriesHere))
+	zero.MaxBytes = 0
+	var zeroReport TableReport
+	if AnnounceRead(zero, ann, &zeroReport) || zeroReport.Verdict != TableOpenRefused || zeroReport.Reason != "vocabulary_too_large" || zero.Announced {
+		t.Fatalf("a MaxBytes of 0 must refuse: %+v", zeroReport)
+	}
 }
 `
 

@@ -2160,6 +2160,11 @@ public final class TableVariable {
         public long nodeRecords;
         public long nodeBlobBytes;
         public long nodeTableBytes;
+        // dataBytes and attributionBytes are the last successful loadMeasure's
+        // two parts (docs/SPEC-TABLES.md §6.3, §6.5): the region's data and the
+        // node directory a caller may place apart; the answer is their sum.
+        public long dataBytes;
+        public long attributionBytes;
         // nodeSizer is the generated root's answer for a record's type id. It
         // is installed once per root class, never allocated per call.
         public NodeSizer nodeSizer;

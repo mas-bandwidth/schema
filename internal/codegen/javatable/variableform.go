@@ -2171,6 +2171,11 @@ public final class TableVariable {
         public long nodeRecords;
         public long nodeBlobBytes;
         public long nodeTableBytes;
+        // dataBytes and attributionBytes are the last successful loadMeasure's
+        // two parts (docs/SPEC-TABLES.md §6.3, §6.5): the region's data and the
+        // node directory a caller may place apart; the answer is their sum.
+        public long dataBytes;
+        public long attributionBytes;
         // nodeSizer is the generated root's answer for a record's type id. It
         // is installed once per root class, never allocated per call.
         public NodeSizer nodeSizer;
@@ -4808,6 +4813,14 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data) {\n")
 	fmt.Fprintf(b, "        return loadMeasure(data, new TableVariable.Measure());\n")
 	fmt.Fprintf(b, "    }\n\n")
+	b.WriteString("    // loadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes\n")
+	b.WriteString("    // separately, {data, attribution}; a refusal answers {-1, 0}.\n")
+	fmt.Fprintf(b, "    public static long[] loadMeasureParts(byte[] data) {\n")
+	fmt.Fprintf(b, "        TableVariable.Measure m = new TableVariable.Measure();\n")
+	fmt.Fprintf(b, "        long total = loadMeasure(data, m, true);\n")
+	fmt.Fprintf(b, "        if (total < 0) { return new long[] {-1, 0}; }\n")
+	fmt.Fprintf(b, "        return new long[] {m.dataBytes, m.attributionBytes};\n")
+	fmt.Fprintf(b, "    }\n\n")
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data, TableVariable.Measure m) {\n")
 	fmt.Fprintf(b, "        return loadMeasure(data, m, true);\n")
 	fmt.Fprintf(b, "    }\n\n")
@@ -4837,7 +4850,9 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            records = m.nodeRecords;\n")
 	fmt.Fprintf(b, "            total += m.nodeBlobBytes + m.nodeTableBytes;\n")
 	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "        total += (records + 1) * 16;\n")
+	fmt.Fprintf(b, "        m.attributionBytes = (records + 1) * 16;\n")
+	fmt.Fprintf(b, "        total += m.attributionBytes;\n")
+	fmt.Fprintf(b, "        m.dataBytes = total - m.attributionBytes;\n")
 	fmt.Fprintf(b, "        return total;\n")
 	fmt.Fprintf(b, "    }\n\n")
 

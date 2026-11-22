@@ -7935,18 +7935,30 @@ defmodule Bench.Table do
   # list count past the storage cap, answers -1.
 
   def load_measure(table, data) when is_binary(data) do
+    case load_measure_parts(table, data) do
+      {-1, 0} -> -1
+      {data_bytes, attribution_bytes} -> data_bytes + attribution_bytes
+    end
+  end
+
+  # load_measure_parts/2 answers {data, attribution} apart, as C and C++ report
+  # them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the directory of
+  # one 16-byte entry per node record plus the root, which a caller may place
+  # apart and release once Load returns. The sum is load_measure/2's. A refusal
+  # answers {-1, 0}.
+  def load_measure_parts(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
       {:error, _} ->
-        -1
+        {-1, 0}
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
              {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+          {region_round(region_round(desc.size) + at) + blobs, (count + 1) * 16}
         else
-          _ -> -1
+          _ -> {-1, 0}
         end
     end
   end

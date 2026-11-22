@@ -212,3 +212,53 @@ fixed table Cfg
 		t.Fatal("128-bit integer kinds must not sit on the fixed-form widening ladder")
 	}
 }
+
+// A WRITER'S ?T READ INTO A READER'S BARE T REFUSES kind_mismatch (rulings
+// 2026-11-22, R2): the reader cannot hold an absent value, so the file is not
+// read, present or absent.
+func TestFixedLineageOptionalIntoBareRefusesKindMismatch(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Lin.schema")
+	oldSrc := "package lin\n\nfixed table Cfg\n{\n    n ?int32\n    k int32\n}\n"
+	newSrc := "package lin\n\nfixed table Cfg\n{\n    n int32\n    k int32\n}\n"
+	old := lineageUnit(t, dir, oldSrc)
+	if _, _, err := lockfile.Update(old.Unit, []string{path}); err != nil {
+		t.Fatal(err)
+	}
+	// the lock refuses to record ?T -> T (it is not an append, §2.10), so the
+	// reader is declared over a lock that holds only the old layout, the way a
+	// hand-edited lineage entry reaches it
+	now := lineageUnit(t, dir, newSrc)
+	writer := lineageUnit(t, t.TempDir(), oldSrc)
+	for _, text := range []string{`{"n": 7, "k": 1}`, `{"k": 1}`} {
+		wire := lineageWrite(t, writer, text)
+		var report tabletext.Report
+		ok, err := tablewire.Decode(now, now.New(now.Lookup("Cfg")), wire, &report)
+		var refusal *tablewire.FixedRefusal
+		if ok || !errors.As(err, &refusal) || refusal.Reason != tablewire.FixedReasonKindMismatch {
+			t.Fatalf("?T read into T (%s): ok=%v err=%v, want %s", text, ok, err, tablewire.FixedReasonKindMismatch)
+		}
+	}
+}
+
+// A CALLER'S MaxBytes OF 0 REFUSES and never means the 64 KiB default (rulings
+// 2026-11-22, R9); a vocabulary whose bound was never set keeps the default.
+func TestVocabularyMaxBytesZeroRefuses(t *testing.T) {
+	t.Parallel()
+	m := lineageUnit(t, t.TempDir(), lineageOld)
+	announcement := tablewire.Announce(m.Unit)
+
+	var unset tablewire.Vocabulary
+	if err := unset.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !unset.Announced() {
+		t.Fatalf("an unset bound keeps the default: %v", err)
+	}
+	var zero tablewire.Vocabulary
+	zero.SetMaxBytes(0)
+	var report tabletext.Report
+	err := zero.AnnounceRead(announcement, &report)
+	var refusal *tablewire.MessageRefusal
+	if err == nil || !errors.As(err, &refusal) || refusal.Reason != tablewire.ReasonVocabularyTooLarge || zero.Announced() {
+		t.Fatalf("a MaxBytes of 0 must refuse vocabulary_too_large: %v", err)
+	}
+}

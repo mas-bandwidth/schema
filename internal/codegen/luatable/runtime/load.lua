@@ -2993,7 +2993,7 @@ measure_union = function(T, ids, scan, un, r)
   return true
 end
 
-function L.LoadMeasure(T, name, bytes)
+local function measure_parts(T, name, bytes)
   local desc = T.Tables[name]
   if desc == nil then return nil end
   -- THE TRAILER IS OUTSIDE THE REGION MEASURE (§2.14, §3.4): a declaring
@@ -3033,7 +3033,24 @@ function L.LoadMeasure(T, name, bytes)
       total = total + round_region(n, align)
     end
   end
-  return total + (#raw + 1) * 16
+  return total, (#raw + 1) * 16
+end
+
+-- LoadMeasureParts answers the DATA bytes and the ATTRIBUTION bytes apart, as C
+-- and C++ report them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the
+-- directory of one 16-byte entry per node record plus the root, which a caller
+-- may place apart and release once Load returns. nil on a refusal.
+function L.LoadMeasureParts(T, name, bytes)
+  local data, attribution = measure_parts(T, name, bytes)
+  if data == nil then return nil end
+  return data, attribution
+end
+
+-- LoadMeasure answers their sum, or nil on a refusal.
+function L.LoadMeasure(T, name, bytes)
+  local data, attribution = measure_parts(T, name, bytes)
+  if data == nil then return nil end
+  return data + attribution
 end
 
 return L

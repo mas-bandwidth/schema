@@ -328,6 +328,10 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 				emitFixedPlanDecodeValue(m, f, child, cAt, fExpr, ind+"  ", dyn, false)
 				m.Printf("%s}\n", ind)
 			}
+		} else if child.kind == fixedKindOptional {
+			// A WRITER'S ?T READ INTO A READER'S BARE T refuses by name: the
+			// reader cannot hold an absent value (rulings 2026-11-22, R2).
+			m.Printf("%sreturn \"kind_mismatch\";\n", ind)
 		} else if fixedPlanCompat(f, child) {
 			off := fmt.Sprintf("%d", cAt)
 			if dyn != "0" {

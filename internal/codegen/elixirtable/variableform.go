@@ -878,6 +878,7 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 // `table` as unused). Such a unit is emitted without them.
 var uncarriedClauses = []string{
 	"  def load_measure(table, _data) when table in @uncarried, do: -1\n\n",
+	"  def load_measure_parts(table, _data) when table in @uncarried, do: {-1, 0}\n\n",
 }
 
 // withoutUncarriedClauses is the runtime source for a unit whose @uncarried is
@@ -885,7 +886,10 @@ var uncarriedClauses = []string{
 // that moves it fails the emitter's tests rather than silently shipping the
 // guard.
 func withoutUncarriedClauses(runtime string) string {
-	return replaceOnce(runtime, uncarriedClauses[0], "")
+	for _, clause := range uncarriedClauses {
+		runtime = replaceOnce(runtime, clause, "")
+	}
+	return runtime
 }
 
 // replaceOnce replaces the one occurrence of old, and panics when old is not
@@ -6383,18 +6387,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   def load_measure(table, _data) when table in @uncarried, do: -1
 
   def load_measure(table, data) when is_binary(data) do
+    case load_measure_parts(table, data) do
+      {-1, 0} -> -1
+      {data_bytes, attribution_bytes} -> data_bytes + attribution_bytes
+    end
+  end
+
+  # load_measure_parts/2 answers {data, attribution} apart, as C and C++ report
+  # them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the directory of
+  # one 16-byte entry per node record plus the root, which a caller may place
+  # apart and release once Load returns. The sum is load_measure/2's. A refusal
+  # answers {-1, 0}.
+  def load_measure_parts(table, _data) when table in @uncarried, do: {-1, 0}
+
+  def load_measure_parts(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
       {:error, _} ->
-        -1
+        {-1, 0}
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
              {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+          {region_round(region_round(desc.size) + at) + blobs, (count + 1) * 16}
         else
-          _ -> -1
+          _ -> {-1, 0}
         end
     end
   end

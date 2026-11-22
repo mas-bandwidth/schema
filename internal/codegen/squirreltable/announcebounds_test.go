@@ -33,7 +33,10 @@ func TestSquirrelAnnounceHonorsReceiverBounds(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		gv := &tablewire.Vocabulary{MaxBytes: c.b.maxBytes, MaxEntries: c.b.maxEntries}
+		gv := &tablewire.Vocabulary{MaxEntries: c.b.maxEntries}
+		if c.b.maxBytes > 0 {
+			gv.SetMaxBytes(c.b.maxBytes) // unset keeps the default; a caller's 0 would refuse (R9)
+		}
 		gerr := gv.AnnounceRead(ann, &tabletext.Report{})
 		var ref *tablewire.MessageRefusal
 		gotRefused := errors.As(gerr, &ref) && ref.Reason == tablewire.ReasonVocabularyTooLarge

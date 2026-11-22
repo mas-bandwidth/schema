@@ -169,6 +169,9 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // §4, §6.5, §4.5): no writer emits one, and 0x02 is neither stored verbatim
   // nor normalized to true. It is a check-loop refusal, not a bounds-pass one.
   WireDamaged: 23,
+  // A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses the lineage by
+  // name: the reader cannot hold an absent value (rulings 2026-11-22, R2).
+  KindMismatch: 24,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -198,6 +201,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LengthOverBound: return "length_over_bound";
     case TableFixedRefusal.OutOfRange: return "out_of_range";
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
+    case TableFixedRefusal.KindMismatch: return "kind_mismatch";
     default: return "???";
   }
 }
@@ -268,6 +272,7 @@ export class TableFixedPlan {
     this.ready = false;
     this.overflow = false;
     this.hostile = false;
+    this.kindMismatch = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
@@ -1176,6 +1181,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   // constant in its VALUE and still carrying the row's own guard/arg (§5.9 #13),
   // and the payload is compiled against the writer's own entry under the same
   // guard and ordinal. It is not a kind that moved.
+  if (theirKind === 35 && myKind !== 35) {
+    plan.kindMismatch = true;
+    return;
+  }
   if (myKind === 35 && theirKind !== 35) {
     TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, 1, 1, guard, arg, 0);
     TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg, report);
@@ -1546,6 +1555,11 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
         lane.why = TableFixedRefusal.LayoutRecordTooLarge;
         break;
       }
+      if (made === -3) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.KindMismatch;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1575,6 +1589,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
+  plan.kindMismatch = false;
   plan.argw = 1;
   // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
@@ -1592,6 +1607,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
+  if (plan.kindMismatch) { return -3; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }

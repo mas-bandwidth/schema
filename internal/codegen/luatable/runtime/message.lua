@@ -1609,7 +1609,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
     vocab.refused = true
     return false
   end
-  if maxBytes == nil or maxBytes == 0 then maxBytes = 64 * 1024 end
+  if maxBytes == nil then maxBytes = 64 * 1024 end -- a caller 0 refuses, never the default (R9)
   if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
   local function damage()
     report.damaged = true

@@ -200,6 +200,10 @@ abstract final class TableFixedRefusal {
   static const int countOverBound = 22; // a count past its bound (§4)
   static const int lengthOverBound = 23; // a length past its bound (§4)
 
+  /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses by name: the
+  /// reader cannot hold an absent value (rulings 2026-11-22, R2).
+  static const int wrongKind = 24;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -251,6 +255,8 @@ abstract final class TableFixedRefusal {
         return 'count_over_bound';
       case lengthOverBound:
         return 'length_over_bound';
+      case wrongKind:
+        return 'kind_mismatch';
       default:
         return '???';
     }
@@ -811,6 +817,10 @@ final class TableFixedPlan {
   /// layout_record_too_large (§5.2) and never lands a short read
   bool tooLarge = false;
 
+  /// A WRITER'S OPTIONAL READ INTO A BARE FIELD: refuses the plan whole as
+  /// kind_mismatch (rulings 2026-11-22, R2)
+  bool optionalIntoBare = false;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -977,6 +987,18 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           TableFixedRefusal.layoutRecordTooLarge,
+        );
+        break;
+      }
+      if (made == -4) {
+        lane = TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          TableFixedRefusal.wrongKind,
         );
         break;
       }
@@ -1588,6 +1610,10 @@ abstract final class TableFixedCompiler {
     // still carrying the row's own guard and ordinal (§5.9 #13), so an optional
     // under a union arm never reports present for an arm the tag did not name —
     // and then the payload lands under that same guard.
+    if (theirKind == 35 && myKind != 35) {
+      plan.optionalIntoBare = true;
+      return;
+    }
     if (myKind == 35 && theirKind != 35) {
       push(plan, TableFixedOp.present, theirAt, auxAt, 1, 0, guard, arg, 0);
       compileEntry(
@@ -2129,6 +2155,7 @@ abstract final class TableFixedCompiler {
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.tooLarge = false;
+    plan.optionalIntoBare = false;
     // THE WRITER'S DECLARED RECORD (§5.2's record := x.root.size): every
     // entry this compile pushes is bounded by it and by nothing the file
     // said. theirs is parsed by the caller, from the lock's own bytes.
@@ -2164,6 +2191,9 @@ abstract final class TableFixedCompiler {
     // caller names the entry's lane rather than growing and retrying.
     if (plan.tooLarge) {
       return -3;
+    }
+    if (plan.optionalIntoBare) {
+      return -4;
     }
     if (plan.overflow) {
       return -1;

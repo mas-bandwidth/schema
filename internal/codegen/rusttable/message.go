@@ -408,12 +408,9 @@ fn announce_read_once(
             // "A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
             // ALLOCATED" (§3.3): the byte bound is checked from the field's own
             // length before an entry is touched.
-            let limit = if vocabulary.max_bytes == 0 {
-                TABLE_MESSAGE_MAX_BYTES
-            } else {
-                vocabulary.max_bytes
-            };
-            if length > limit as u64 {
+            // A caller bound of 0 refuses every non-empty vocabulary: it never
+            // means the default (rulings 2026-11-22, R9).
+            if length > vocabulary.max_bytes as u64 {
                 return report.refuse(TableReason::VocabularyTooLarge);
             }
             vocabulary_bytes = &body[vat..vat + length as usize];

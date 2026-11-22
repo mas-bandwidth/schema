@@ -384,7 +384,8 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 			return fail(rreason)
 		}
 	case "announce_bytes":
-		v := &tablewire.Vocabulary{MaxBytes: 8}
+		v := &tablewire.Vocabulary{}
+		v.SetMaxBytes(8)
 		var r tabletext.Report
 		if err := v.AnnounceRead(payload, &r); err == nil {
 			return "", "", "", errors.New("announcement over the byte bound was accepted")

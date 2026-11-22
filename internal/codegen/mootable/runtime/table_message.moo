@@ -566,7 +566,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = DEFAULT_MAX_BYTES, maxEntries = 0 }
 end
 
 local function resetReport(report: any)
@@ -631,7 +631,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local versions, vocabs = 0, 0
 	local version: string? = nil
 	local words: buffer? = nil
-	local maxBytes = if v.maxBytes ~= nil and v.maxBytes > 0 then v.maxBytes else DEFAULT_MAX_BYTES
+	local maxBytes = if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES -- a caller 0 refuses (R9)
 	while true do
 		local ref, next = V.leb(data, at, start)
 		if ref == nil then

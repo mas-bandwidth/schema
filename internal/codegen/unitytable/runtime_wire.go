@@ -1152,6 +1152,18 @@ internal static partial class TableWire
     {
         return LoadMeasureWalk(type, bytes, out reason, out _);
     }
+    // LoadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes apart, as
+    // C and C++ do (docs/SPEC-TABLES.md §6.3, §6.5); the answer is their sum.
+    public static long LoadMeasureParts(TableTypeInfo type, ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out string reason)
+    {
+        dataBytes = attributionBytes = 0;
+        long total = LoadMeasureWalk(type, bytes, out reason, out _); if (total < 0) { return -1; }
+        if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
+        int idsCount = (int)Read64(bytes, bytes.Length - 8), end = bytes.Length - 8 - idsCount * 8;
+        Reader root = new Reader(bytes.Slice(1, end - 1), bytes.Slice(end, idsCount * 8));
+        if (!NodeFrames(root, out _, out int nodes)) { nodes = 0; }
+        attributionBytes = (nodes + 1L) * 16; dataBytes = total - attributionBytes; return total;
+    }
     static long LoadMeasureWalk(TableTypeInfo type, ReadOnlySpan<byte> bytes, out string reason, out bool nonFinite)
     {
         reason = null;
@@ -1404,7 +1416,7 @@ internal static partial class TableWire
             else if (id == ulong.MaxValue - 2)
             {
                 if (kind != 14 || !r.Slice(out Reader a) || !a.Has(1) || a.Byte() != 6 || !a.Var(out ulong n) || n != (ulong)(a.Buffer.Length - a.Offset)) { break; }
-                if (n > (ulong)(v.MaxBytes > 0 ? v.MaxBytes : 65536)) { return Refuse(report, "vocabulary_too_large"); }
+                if (n > (ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)) { return Refuse(report, "vocabulary_too_large"); }
                 payload = new Reader(a.Buffer.Slice(a.Offset), default); vocabularies++;
             }
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }

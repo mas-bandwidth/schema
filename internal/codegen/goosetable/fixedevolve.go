@@ -118,6 +118,7 @@ const (
 	evolveRefuseLayoutMalformed      int64 = 31
 	evolveRefuseLayoutRecordTooLarge int64 = 38
 	evolveRefusePlanTooLarge         int64 = 39
+	evolveRefuseKindMismatch         int64 = 45
 )
 
 func layoutKindKnown(kind int) bool {
@@ -672,6 +673,9 @@ type evolveCompiler struct {
 	baseOff        int64
 	tooLarge       bool
 	overflow       bool
+	// optionalIntoBare: a writer's ?T read into a bare T refuses kind_mismatch
+	// (rulings 2026-11-22, R2).
+	optionalIntoBare bool
 }
 
 func (c *evolveCompiler) checkSrc(oldOff, size int64) bool {
@@ -722,6 +726,10 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 	// `T` read into `?T` (optional_add): the writer carried no present byte,
 	// so the plan lands present := 1 and compiles the payload against the
 	// wrapper's child. A `?T` read into `?T` copies the present byte.
+	if te.kind == 35 && me.kind != 35 {
+		c.optionalIntoBare = true
+		return nil
+	}
 	if me.kind == 35 {
 		if te.kind == 35 {
 			c.checkSrc(oldOff, te.size)
@@ -1003,6 +1011,9 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	plan.nodes = c.match(0, 0, 0, 0, true, 0)
 	if c.tooLarge {
 		return evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
+	}
+	if c.optionalIntoBare {
+		return evolvePlan{refuse: evolveRefuseKindMismatch}
 	}
 	if c.overflow || hasEnumOverflow(st, map[string]bool{}) {
 		return evolvePlan{refuse: evolveRefusePlanTooLarge}

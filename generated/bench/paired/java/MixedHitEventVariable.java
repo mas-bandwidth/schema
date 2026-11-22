@@ -785,6 +785,17 @@ public final class MixedHitEventVariable {
         return loadMeasure(data, new TableVariable.Measure());
     }
 
+    // loadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes
+    // separately, {data, attribution}; a refusal answers {-1, 0}.
+    public static long[] loadMeasureParts(byte[] data) {
+        TableVariable.Measure m = new TableVariable.Measure();
+        long total = loadMeasure(data, m, true);
+        if (total < 0) {
+            return new long[] {-1, 0};
+        }
+        return new long[] {m.dataBytes, m.attributionBytes};
+    }
+
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
         return loadMeasure(data, m, true);
     }
@@ -817,7 +828,9 @@ public final class MixedHitEventVariable {
             records = m.nodeRecords;
             total += m.nodeBlobBytes + m.nodeTableBytes;
         }
-        total += (records + 1) * 16;
+        m.attributionBytes = (records + 1) * 16;
+        total += m.attributionBytes;
+        m.dataBytes = total - m.attributionBytes;
         return total;
     }
 

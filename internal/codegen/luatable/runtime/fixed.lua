@@ -652,6 +652,10 @@ local function decode_old_table(T, name, node, buf, pos, rep)
           v[f.name .. "_present"] = true
           v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
         end
+      elseif child.kind == 35 then
+        -- A WRITER'S ?T READ INTO A READER'S BARE T refuses by name: the
+        -- reader cannot hold an absent value (rulings 2026-11-22, R2)
+        error("kind_mismatch", 0)
       elseif compat_old(f, child) then
         v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
       end
