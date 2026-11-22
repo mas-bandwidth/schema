@@ -29,6 +29,10 @@ fixed table Root {
 table Var {
     few [2..4]int32
 }
+
+fixed table OptRoot {
+    few ?[2..4]int32
+}
 `
 
 // countedBirthModule is the basename of the generated module whose text
@@ -48,6 +52,7 @@ const countedBirthProbe = `import * as H from "./%s.js";
 import * as F from "./%s.js";
 import * as M from "./%s.js";
 import * as V from "./%s.js";
+import * as O from "./%s.js";
 
 const hex = (b) => Buffer.from(b).toString("hex");
 function msg(f) {
@@ -98,6 +103,20 @@ console.log("msg_live " + msg(f));
   console.log("forge_byte " + w[6]);
   w[6] = 0;
   console.log("load_forged " + M.RootLoadMessages([new H.Root()], voc, w, {}));
+  // ONLY THE ELIDING FORM IS JUDGED (ir.Field.ElidesAtBirth): a present
+  // ?[M..N]T rides by presence, so one at its birth value is a lawful batch
+  // that reads back whole. (A required [M..N]T, the other form that never
+  // elides, has no message form: a fixed table refuses "| required", §2.3.)
+  const o = new H.OptRoot();
+  o.fewPresent = true;
+  o.fewCount = 2;
+  o.few[0] = 0;
+  o.few[1] = 0;
+  const on = O.OptRootMeasureMessages([o], rep);
+  const ow = new Uint8Array(on);
+  if (O.OptRootSaveMessages([o], ow, rep) !== on) { throw new Error("OptRoot SaveMessages"); }
+  const ob = [new H.OptRoot()];
+  console.log("load_optional " + (on > 3) + "," + O.OptRootLoadMessages(ob, voc, ow, {}) + "," + ob[0].fewPresent + "," + ob[0].fewCount + "," + ob[0].few[0] + "," + ob[0].few[1]);
 }
 r.few[1] = 7;
 console.log("root_live " + hex(V.RootSave(r)));
@@ -151,6 +170,7 @@ func countedBirthWant(t *testing.T, u *ir.Unit) map[string]string {
 	want["load_live"] = "1,2,7"
 	want["forge_byte"] = "56"
 	want["load_forged"] = "0"
+	want["load_optional"] = "true,1,true,2,0,0"
 	if want["msg_birth"] != "020000" || len(want["root_birth"]) != 20 {
 		t.Fatalf("the reference moved: message %s, variable %s (want 020000 and 10 bytes)", want["msg_birth"], want["root_birth"])
 	}
@@ -169,6 +189,7 @@ func TestJSCountedBirthElides(t *testing.T) {
 		countedBirthModule(t, u, "export function RootFixedWriteBody("),
 		messageRootBase(u, findTable(t, u, "Root")),
 		countedBirthModule(t, u, "export function VarSaveRetain("),
+		messageRootBase(u, findTable(t, u, "OptRoot")),
 	)
 	out, err := jsRunMessageProbe(t, node, u, nil, probe)
 	if err != nil {

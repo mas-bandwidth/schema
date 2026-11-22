@@ -124,7 +124,7 @@ func (g *tableGen) emitMessageReadField(f *ir.Field, gate string) {
 		g.emitMessageReadTextFromChecked(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry", gate)
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFromChecked(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false, gate)
-		if gate != "" && f.CountedOnWire() && f.BornCount() > 0 && !f.Required {
+		if gate != "" && f.CountedOnWire() && f.ElidesAtBirth() {
 			// A STORED BIRTH VALUE IS DAMAGE at this build's own shape
 			// (docs/SPEC-TABLES.md §22.2, §3.3): a [Min..N]T holding Min
 			// default elements elides, so a writer of this build never spells

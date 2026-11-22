@@ -698,7 +698,7 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
-		if f.BornCount() > 0 && !f.Required {
+		if f.ElidesAtBirth() {
 			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
 			// form's "Elision, defaults"; internal/tablewire messageElides): a
 			// `[M..N]T` is born holding M default elements, so exactly that
@@ -1007,7 +1007,7 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	// A STORED BIRTH VALUE IS DAMAGE at this build's own shape (docs/SPEC-TABLES.md
 	// §22.2, §3.3): a [Min..N]T holding Min default elements elides, so a
 	// writer of this build never spells it; messageRides is that elision
-	checkCountedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.BornCount() > 0
+	checkCountedRides := cond == "" && f.KeyEnum == "" && f.ElidesAtBirth()
 	if cond != "" || checkFixedRides || checkCountedRides {
 		g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
 	}

@@ -2128,7 +2128,7 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
 	if f.Array == ir.ArrayCounted {
-		if f.BornCount() > 0 && !f.Required {
+		if f.ElidesAtBirth() {
 			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
 			// form's "Elision, defaults"; internal/tablewire messageElides): a
 			// `[M..N]T` is born holding M default elements, so exactly that

@@ -890,10 +890,10 @@ func (g *tableGen) countAssert(ind string, f *ir.Field) {
 // nothing behind.
 func (g *tableGen) emitCountedRides(f *ir.Field, ind string, tableAtDefault func(expr, ind string)) {
 	g.pf("%sbool rides_%s = value.%s_count > 0;\n", ind, f.Name, f.Name)
-	born := f.BornCount()
-	if born <= 0 || f.Required || f.Type.Optional {
+	if !f.ElidesAtBirth() {
 		return
 	}
+	born := f.BornCount()
 	elem := fmt.Sprintf("value.%s[birth_i]", f.Name)
 	g.pf("%sif ( value.%s_count == %d ) // the birth value elides (§22.2)\n%s{\n", ind, f.Name, born, ind)
 	g.pf("%s    rides_%s = false;\n", ind, f.Name)
