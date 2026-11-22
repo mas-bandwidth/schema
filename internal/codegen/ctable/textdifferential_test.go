@@ -39,6 +39,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cTextDifferentialSchema = `package probe
@@ -208,7 +210,7 @@ func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	exe := filepath.Join(src, "probe")
 	args := append([]string{"-std=c99", "-O1", "-I" + src, probe}, sources...)
 	args = append(args, "-o", exe, "-lm")
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
 	outDir := filepath.Join(src, "out")
@@ -217,7 +219,7 @@ func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe)
+	cmd := testproc.CommandContext(t, ctx, exe)
 	cmd.Env = append(os.Environ(),
 		"SCHEMA_TEXT_DIFF_DIR="+outDir,
 		"SCHEMA_TEXT_DIFF_SEED="+strconv.FormatUint(cTextDifferentialSeed, 10),

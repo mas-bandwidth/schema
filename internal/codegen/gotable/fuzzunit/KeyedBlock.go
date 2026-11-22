@@ -44,11 +44,33 @@ const TableBlockMagic uint64 = 0x4b4c42414d484353
 var TableBlockByteOrder = tableBlockNativeOrder()
 
 func tableBlockNativeOrder() uint64 {
-	probe := uint16(1)
-	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
+	if binary.NativeEndian.Uint16([]byte{1, 0}) == 1 {
 		return 1 // little
 	}
 	return 2 // big
+}
+
+// tableBlockOpenHeader is every <Name>Block.Open's SPEC §19.2 prologue match, once per package.
+func tableBlockOpenHeader(base unsafe.Pointer, bytes, projection int64) ([]byte, error) {
+	if base == nil {
+		return nil, TableRefuseUnalignedBase
+	}
+	if bytes < projection {
+		return nil, TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), projection)
+	if magic := binary.NativeEndian.Uint64(header); magic == 0x5343484d41424c4b {
+		return nil, TableRefuseForeignOrder
+	} else if magic != TableBlockMagic {
+		return nil, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return nil, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return nil, TableRefuseWrongBuildVersion
+	}
+	return header, nil
 }
 
 // TableBlockTriple is what a table knows about ONE of its out-of-line arrays:
@@ -156,6 +178,11 @@ func TableBlockDefaultAllocator() TableBlockAllocator {
 		}
 		return make([]byte, int(n))
 	}, Free: func([]byte) {}}
+}
+
+// tableBlockAlign64 is raw's first 64-aligned byte, every block storage's base.
+func tableBlockAlign64(raw []byte) unsafe.Pointer {
+	return unsafe.Pointer(&raw[(-uintptr(unsafe.Pointer(&raw[0])))&63])
 }
 
 // TableBlockRefusal names the producer count that violates its declared bound.
@@ -810,25 +837,8 @@ func TeamConfigBlockOpen(block *TeamConfigBlock, base unsafe.Pointer, bytes int6
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *TeamConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TeamConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 56 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 56)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 56); err != nil {
+		return err
 	}
 	used := int64(56)
 	padding := (64 - (used % 64)) % 64
@@ -869,8 +879,7 @@ func (s *TeamConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *TeamConfigBlockStorage) Destroy() {
@@ -950,25 +959,8 @@ func GunnerConfigBlockOpen(block *GunnerConfigBlock, base unsafe.Pointer, bytes 
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *GunnerConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = GunnerConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 32 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 32)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 32); err != nil {
+		return err
 	}
 	used := int64(32)
 	padding := (64 - (used % 64)) % 64
@@ -1009,8 +1001,7 @@ func (s *GunnerConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *GunnerConfigBlockStorage) Destroy() {
@@ -1090,25 +1081,8 @@ func TurretConfigBlockOpen(block *TurretConfigBlock, base unsafe.Pointer, bytes 
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *TurretConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TurretConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 48 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 48)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 48); err != nil {
+		return err
 	}
 	used := int64(48)
 	padding := (64 - (used % 64)) % 64
@@ -1149,8 +1123,7 @@ func (s *TurretConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *TurretConfigBlockStorage) Destroy() {
@@ -1230,25 +1203,8 @@ func HullConfigBlockOpen(block *HullConfigBlock, base unsafe.Pointer, bytes int6
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *HullConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = HullConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 96 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 96)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 96); err != nil {
+		return err
 	}
 	used := int64(96)
 	padding := (64 - (used % 64)) % 64
@@ -1289,8 +1245,7 @@ func (s *HullConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *HullConfigBlockStorage) Destroy() {
@@ -1370,25 +1325,8 @@ func KeyedConfigBlockOpen(block *KeyedConfigBlock, base unsafe.Pointer, bytes in
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *KeyedConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = KeyedConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 328 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 328)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 328); err != nil {
+		return err
 	}
 	used := int64(328)
 	padding := (64 - (used % 64)) % 64
@@ -1429,8 +1367,7 @@ func (s *KeyedConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *KeyedConfigBlockStorage) Destroy() {

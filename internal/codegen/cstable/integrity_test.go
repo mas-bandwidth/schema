@@ -13,10 +13,11 @@ import (
 	"hash/crc32"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const integrityCSSchema = `package probe
@@ -184,7 +185,7 @@ func TestIntegrityOracle(t *testing.T){
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestIntegrityOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestIntegrityOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("independent Go integrity oracle: %v\n%s", err, out)

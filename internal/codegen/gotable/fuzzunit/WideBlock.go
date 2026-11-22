@@ -22,7 +22,6 @@
 package tabledemo
 
 import (
-	"encoding/binary"
 	"unsafe"
 )
 
@@ -91,25 +90,8 @@ func WideBlobBlockOpen(block *WideBlobBlock, base unsafe.Pointer, bytes int64) b
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *WideBlobBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = WideBlobBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 280040 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 280040)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 280040); err != nil {
+		return err
 	}
 	used := int64(280040)
 	padding := (64 - (used % 64)) % 64
@@ -150,8 +132,7 @@ func (s *WideBlobBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *WideBlobBlockStorage) Destroy() {

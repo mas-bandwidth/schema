@@ -19,6 +19,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestRustFixedBatchHoldsARecord(t *testing.T) {
@@ -141,7 +143,7 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-C", "debug-assertions=on", "-A", "warnings", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-C", "debug-assertions=on", "-A", "warnings", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
@@ -153,7 +155,7 @@ func runRustFixedBatchMode(t *testing.T, bin, mode string) (string, error) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, mode)
+	cmd := testproc.CommandContext(t, ctx, bin, mode)
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		t.Fatalf("%s probe did not finish: %v\n%s", mode, ctx.Err(), out)

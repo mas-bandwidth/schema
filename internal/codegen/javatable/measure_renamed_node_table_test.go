@@ -3,7 +3,6 @@ package javatable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaFixMeasureRenamedNodeTable holds the generated loadMeasure to
@@ -156,14 +157,14 @@ public final class MeasureDriver {
 	}
 	sources = append(sources, driverPath)
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	wirePath := filepath.Join(build, "mutant.bin")
 	if err := os.WriteFile(wirePath, wire, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "MeasureDriver", wirePath).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "MeasureDriver", wirePath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

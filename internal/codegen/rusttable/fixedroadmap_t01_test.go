@@ -3,13 +3,14 @@ package rusttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE ROADMAP'S FRAMING TASKS ON THE RUST LEG (docs/roadmap.sexp node
@@ -316,7 +317,7 @@ func t01Run(t *testing.T) string {
 		older:  []string{"VOLD_field_append"},
 		src:    versionProbeSource(t01Probes(corpus)),
 	})
-	cmd := exec.Command("cargo", "test")
+	cmd := testproc.Command(t, "cargo", "test")
 	cmd.Dir = filepath.Join(root, "probe_t01_framing")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

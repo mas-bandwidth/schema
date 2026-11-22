@@ -215,11 +215,33 @@ const TableBlockMagic uint64 = 0x%016x
 var TableBlockByteOrder = tableBlockNativeOrder()
 
 func tableBlockNativeOrder() uint64 {
-	probe := uint16(1)
-	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
+	if binary.NativeEndian.Uint16([]byte{1, 0}) == 1 {
 		return 1 // little
 	}
 	return 2 // big
+}
+
+// tableBlockOpenHeader is every <Name>Block.Open's SPEC §19.2 prologue match, once per package.
+func tableBlockOpenHeader(base unsafe.Pointer, bytes, projection int64) ([]byte, error) {
+	if base == nil {
+		return nil, TableRefuseUnalignedBase
+	}
+	if bytes < projection {
+		return nil, TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), projection)
+	if magic := binary.NativeEndian.Uint64(header); magic == 0x%016x {
+		return nil, TableRefuseForeignOrder
+	} else if magic != TableBlockMagic {
+		return nil, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return nil, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return nil, TableRefuseWrongBuildVersion
+	}
+	return header, nil
 }
 
 // TableBlockTriple is what a table knows about ONE of its out-of-line arrays:
@@ -312,7 +334,7 @@ type TableBlockInfo struct {
 	Fields       []TableBlockFieldInfo
 }
 
-`, ir.BlockMagic)
+`, ir.BlockMagic, bits.ReverseBytes64(ir.BlockMagic))
 }
 
 // ---- the blittable records ----
@@ -606,21 +628,20 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 
 func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	name := bl.Table.Name
+	// only an out-of-line array reads its triple from the projection's bytes
+	open := fmt.Sprintf("if _,err:=tableBlockOpenHeader(base,bytes,%d);err!=nil{return err}", bl.Projection.Size)
+	if len(bl.Arrays) > 0 {
+		open = fmt.Sprintf("header,err:=tableBlockOpenHeader(base,bytes,%d)\n if err!=nil{return err}", bl.Projection.Size)
+	}
 	g.hf(`// %sBlockOpen is the bool convenience for the handle's typed Open error.
 func %sBlockOpen(block *%sBlock,base unsafe.Pointer,bytes int64)bool{return block.Open(base,bytes)==nil}
 // Open reads all prologue and layout words bytewise before the final base
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func(block *%sBlock)Open(base unsafe.Pointer,bytes int64)error{
  *block=%sBlock{}
- if base==nil{return TableRefuseUnalignedBase}
- if bytes<%d{return TableRefuseTruncated}
- header:=unsafe.Slice((*byte)(base),%d)
- magic:=binary.NativeEndian.Uint64(header)
- if magic!=TableBlockMagic {if magic==0x%016x{return TableRefuseForeignOrder};return TableRefuseNotACook}
- if binary.NativeEndian.Uint64(header[16:])!=TableBlockByteOrder{return TableRefuseNotACook}
- if binary.NativeEndian.Uint64(header[8:])!=BuildVersion{return TableRefuseWrongBuildVersion}
+ %s
  used:=int64(%d)
-`, name, name, name, name, name, bl.Projection.Size, bl.Projection.Size, bits.ReverseBytes64(ir.BlockMagic), bl.Projection.Size)
+`, name, name, name, name, name, open, bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := goname.Member(a.Field.Name)
 		g.hf("\t{\n")

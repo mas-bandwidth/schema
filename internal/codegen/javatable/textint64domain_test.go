@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaTextInt64DomainBeforeCast holds exact integer-string boundaries to
@@ -56,7 +57,7 @@ table T
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -81,7 +82,7 @@ table T
 	for _, c := range cases {
 		fmt.Fprintf(&in, "{\"i64\":%s}\n", c.token)
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver")
 	cmd.Stdin = strings.NewReader(in.String())
 	out, err := cmd.CombinedOutput()
 	if err != nil {

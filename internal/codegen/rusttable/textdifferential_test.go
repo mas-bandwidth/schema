@@ -42,6 +42,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const rustTextDifferentialVariableSchema = `package probe
@@ -247,7 +249,7 @@ func runRustTextDifferential(t *testing.T, schema string, rows bool, seeds []uin
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
@@ -270,7 +272,7 @@ func runRustTextDifferential(t *testing.T, schema string, rows bool, seeds []uin
 			"SCHEMA_TEXT_DIFF_SEED="+strconv.FormatUint(seed, 10),
 			"SCHEMA_TEXT_DIFF_N="+strconv.Itoa(n))
 		runProbe := func(mode string) ([]byte, error) {
-			cmd := exec.Command(bin, mode, dir)
+			cmd := testproc.Command(t, bin, mode, dir)
 			cmd.Env = env
 			return cmd.CombinedOutput()
 		}
@@ -302,7 +304,7 @@ func runRustTextDifferential(t *testing.T, schema string, rows bool, seeds []uin
 			}
 		}
 	}
-	if out, err := exec.Command(bin, "refuse", root).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin, "refuse", root).CombinedOutput(); err != nil {
 		msgs = append(msgs, fmt.Sprintf("probe refuse: %v\n%s", err, out))
 	}
 	t.Logf("text differential (Rust): %d instances at each of %d seed(s), both directions and the engine text read back through from_json", n, len(seeds))

@@ -20,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppTextFixedExactSchema = `package fixedexact
@@ -161,7 +163,7 @@ func TestCppTextFixedPointTokenExact(t *testing.T) {
 	exe := filepath.Join(src, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-fsanitize=undefined", "-fno-sanitize-recover=undefined", "-I" + src, "-I" + serialize, probe}, sources...)
 	args = append(args, "-o", exe)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
 	outDir := filepath.Join(src, "out")
@@ -170,7 +172,7 @@ func TestCppTextFixedPointTokenExact(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe)
+	cmd := testproc.CommandContext(t, ctx, exe)
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXED_EXACT_DIR="+outDir)
 	probeOut, err := cmd.CombinedOutput()
 	if err != nil {

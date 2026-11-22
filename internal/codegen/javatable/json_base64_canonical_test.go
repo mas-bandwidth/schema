@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaJsonBase64Canonical holds the Java JSON read of a bytes(N) field to
@@ -184,11 +185,11 @@ public final class Base64CanonicalProbe {
 
 	javac, javaBin := javaToolsRequired(t)
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	runArgs := append([]string{"-ea", "-cp", dir, "Base64CanonicalProbe"}, caseFiles...)
-	out, err := exec.Command(javaBin, runArgs...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, runArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

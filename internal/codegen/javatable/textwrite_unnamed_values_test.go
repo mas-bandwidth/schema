@@ -15,7 +15,6 @@ package javatable
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +22,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const namedValuesSchema = `package probe
@@ -225,7 +226,7 @@ func TestJavaToJsonAssertsNamedValues(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -236,7 +237,7 @@ func TestJavaToJsonAssertsNamedValues(t *testing.T) {
 		}
 		cmdArgs = append(cmdArgs, "NamedValuesProbe", mode)
 		cmdArgs = append(cmdArgs, extra...)
-		return exec.Command(javaBin, cmdArgs...).CombinedOutput()
+		return testproc.Command(t, javaBin, cmdArgs...).CombinedOutput()
 	}
 
 	if out, err := run(true, "assert"); err != nil {

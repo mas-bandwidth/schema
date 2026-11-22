@@ -1,0 +1,17 @@
+package fixture
+
+import (
+	"errors"
+	"os/exec"
+)
+
+// os/exec for its types only: no child is started here
+func exitCode(c interface{ Run() error }) int {
+	var e *exec.ExitError
+	if errors.As(c.Run(), &e) {
+		return e.ExitCode()
+	}
+	return 0
+}
+
+func describe(c *exec.Cmd) string { return c.String() }

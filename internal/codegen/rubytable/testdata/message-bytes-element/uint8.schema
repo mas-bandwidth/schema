@@ -1,0 +1,7 @@
+package mbytes
+
+// A writer whose b is an array of element kind uint8: the kind bytes(8) reads.
+fixed table M
+{
+    b [..8]uint8
+}

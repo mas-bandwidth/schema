@@ -27,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapCSharpT06Bounds(t *testing.T) {
@@ -468,11 +470,11 @@ func t06WideRun(t *testing.T) ([]byte, error) {
 		}
 		t.Skip(missing)
 	}
-	t06WideOnce.Do(func() { t06WideOut, t06WideErr = t06WideBuildAndRun(runtime, dotnet) })
+	t06WideOnce.Do(func() { t06WideOut, t06WideErr = t06WideBuildAndRun(t, runtime, dotnet) })
 	return t06WideOut, t06WideErr
 }
 
-func t06WideBuildAndRun(runtime, dotnet string) ([]byte, error) {
+func t06WideBuildAndRun(t testing.TB, runtime, dotnet string) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "t06wide")
 	if err != nil {
 		return nil, err
@@ -667,7 +669,7 @@ static class ProbeMain
 	if err := os.WriteFile(filepath.Join(dir, "cswide.csproj"), []byte(proj), 0o600); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+	cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1")
 	return cmd.CombinedOutput()

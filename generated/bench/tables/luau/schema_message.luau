@@ -223,6 +223,40 @@ local function rLeb(r: any): number
 	return 0
 end
 
+-- lebBits16 is the exact value of the LEB128 bytes b[from, to) as a 16-byte
+-- little-endian buffer, with a zigzag decode when zigzag is set. rLeb answers
+-- a double, which cannot hold a 64-bit base exactly (9223372036854775802
+-- rounds to 2^63), so the base a ranged sum adds is built from the bytes.
+local function lebBits16(b: buffer, from: number, to: number, zigzag: boolean): buffer
+	local out = buffer.create(16)
+	local bit = 0
+	for i = from, to - 1 do
+		local x = buffer.readu8(b, i) % 0x80
+		for j = 0, 6 do
+			if bit < 64 and bit32.band(x, bit32.lshift(1, j)) ~= 0 then
+				local bi = bit // 8
+				buffer.writeu8(out, bi, bit32.bor(buffer.readu8(out, bi), bit32.lshift(1, bit % 8)))
+			end
+			bit = bit + 1
+		end
+	end
+	if zigzag then
+		local neg = bit32.band(buffer.readu8(out, 0), 1) == 1
+		-- the magnitude: the 64 bits shifted right by one
+		for bi = 0, 7 do
+			local cur = buffer.readu8(out, bi)
+			local nxt = if bi < 7 then buffer.readu8(out, bi + 1) else 0
+			buffer.writeu8(out, bi, bit32.bor(bit32.rshift(cur, 1), bit32.band(bit32.lshift(nxt, 7), 0xFF)))
+		end
+		if neg then
+			-- -(mag + 1) == ~mag in two's complement
+			for bi = 0, 7 do buffer.writeu8(out, bi, bit32.band(bit32.bnot(buffer.readu8(out, bi)), 0xFF)) end
+			buffer.fill(out, 8, 0xFF, 8)
+		end
+	end
+	return out
+end
+
 
 local function kindBits(k: number): number
 	if k == 1 then return 1 end
@@ -298,35 +332,24 @@ local function shapeRead(r: any, k: number): any
 					end
 				end
 			else
+				local at0 = r.at
 				local raw = rLeb(r)
 				s.base = raw
-				if (k >= 2 and k <= 5) or k == 36 then
-					local neg = (raw % 2) == 1
+				if r.bad then return s end
+				local zigzag = (k >= 2 and k <= 5) or k == 36
+				if zigzag then
 					local mag = math.floor(raw / 2)
 					if k < 5 then
 						local dom = kindBits(k)
 						local lim = 2 ^ (dom - 1)
-						if (neg and mag >= lim) or (not neg and mag >= lim) then r.bad = true; return s end
+						if mag >= lim then r.bad = true; return s end
 					end
-					if neg then
-						-- -(mag + 1) == ~mag in two's complement!
-						local lo = bit32.bnot(mag % 2 ^ 32)
-						local hi = bit32.bnot(math.floor(mag / 2 ^ 32) % 2 ^ 32)
-						buffer.writeu32(b16, 0, lo)
-						buffer.writeu32(b16, 4, hi)
-						buffer.fill(b16, 8, 0xFF, 8)
-					else
-						buffer.writeu32(b16, 0, mag % 2 ^ 32)
-						buffer.writeu32(b16, 4, math.floor(mag / 2 ^ 32) % 2 ^ 32)
-					end
-				else
-					if k < 9 then
-						local dom = kindBits(k)
-						if raw > (2 ^ dom) - 1 then r.bad = true; return s end
-					end
-					buffer.writeu32(b16, 0, raw % 2 ^ 32)
-					buffer.writeu32(b16, 4, math.floor(raw / 2 ^ 32) % 2 ^ 32)
+				elseif k < 9 then
+					local dom = kindBits(k)
+					if raw > (2 ^ dom) - 1 then r.bad = true; return s end
 				end
+				-- the base exact at every width, from the LEB bytes themselves
+				b16 = lebBits16(r.b, at0, r.at, zigzag)
 			end
 			s.base16 = b16
 			return s
@@ -573,7 +596,7 @@ end
 -- refusal names <Table>.<field> even when the deprecated value is an element.
 local function named(f: any, name: string): any
 	if f == nil or f.name ~= nil then return f end
-	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, fbits = f.fbits, ibits = f.ibits, bits = f.bits, signed = f.signed, kw = f.kw, name = name }
+	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, f32 = f.f32, fbits = f.fbits, ibits = f.ibits, bits = f.bits, signed = f.signed, kw = f.kw, name = name }
 end
 
 local function variantIndex(vs: any, id: integer): number
@@ -685,7 +708,43 @@ local function eq16(a: buffer, b: buffer): boolean
 	return true
 end
 
-local function readInt16FromWriter(r: any, shape: any): (buffer, boolean)
+-- A RANGED VALUE IS HELD TO THE ANNOUNCED KIND, NEVER WRAPPED
+-- (docs/SPEC-TABLES.md §3.3): the wire carries value - base, and base plus
+-- that offset is the value only where the announced kind can hold the sum.
+-- rangedHolds16 answers for the sum readInt16FromWriter built (sum16) from
+-- the offset it read (raw16): under a kind narrower than 128 bits the offset
+-- stays below 2^width and the sum sign- or zero-extends past the width; at
+-- 128 bits an unsigned sum must not wrap below its base, nor a signed one
+-- past the top. A sum the kind cannot hold is refused on the named read and
+-- is damage on the skip path, one verdict either way.
+local function rangedHolds16(shape: any, sum16: buffer, raw16: buffer): boolean
+	local w = kindBits(shape.kind)
+	if w == 0 then return true end
+	local signed = isSignedKind(shape.kind)
+	if w < 128 then
+		for i = w, 127 do
+			if bit16(raw16, i) ~= 0 then return false end
+		end
+		local top = if signed then bit16(sum16, w - 1) else 0
+		for i = w, 127 do
+			if bit16(sum16, i) ~= top then return false end
+		end
+		return true
+	end
+	local base = shape.base16
+	local hs, hb = bit16(sum16, 127), bit16(base, 127)
+	if signed and hs ~= hb then
+		-- a negative sum below a non-negative base wrapped past the top
+		return hs == 0
+	end
+	for bi = 15, 0, -1 do
+		local a, b = buffer.readu8(sum16, bi), buffer.readu8(base, bi)
+		if a ~= b then return a > b end
+	end
+	return true
+end
+
+local function readInt16FromWriter(r: any, shape: any): (buffer, boolean, buffer?)
 	local raw = buffer.create(16)
 	local bits = shape.bits or 0
 	if (shape.packing or 0) == 0 and bits == 0 then
@@ -693,18 +752,18 @@ local function readInt16FromWriter(r: any, shape: any): (buffer, boolean)
 	end
 	for i = 0, bits - 1 do
 		local bit, ok = get(r, 1)
-		if not ok then return raw, false end
+		if not ok then return raw, false, nil end
 		if bit ~= 0 then setBit16(raw, i, 1) end
 	end
 	if (shape.packing or 0) == 1 then
-		return add16(raw, shape.base16), true
+		return add16(raw, shape.base16), true, raw
 	end
 	if isSignedKind(shape.kind) and bits > 0 and bit16(raw, bits - 1) == 1 then
 		for i = bits, 127 do
 			setBit16(raw, i, 1)
 		end
 	end
-	return raw, true
+	return raw, true, nil
 end
 
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
@@ -991,8 +1050,17 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		end
 		-- kind 10 is also the quantized float, whose index is checked, so it
 		-- is walked element by element rather than skipped as a run.
-		if ik ~= 10 and not variable then
+		-- A ranged element carries a value condition (the announced kind holds
+		-- base plus offset), so it is walked too, unless it rides no bits.
+		local ranged = (element.packing or 0) == 1 and (element.bits or 0) > 0
+		if ik ~= 10 and not variable and not ranged then
 			return skip(r, n * element.bits)
+		end
+		if ranged then
+			for _ = 1, n do
+				if not skipShape(r, st, { shape = element }, ef, dep) then return false end
+			end
+			return true
 		end
 		for _ = 1, n do
 			if not walkOne() then return false end
@@ -1002,6 +1070,13 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		if not align(r) then return false end
 		local n, ok = get(r, 32)
 		return ok and skip(r, n * 8)
+	end
+	-- A SKIPPED RANGED VALUE IS HELD TO THE ANNOUNCED KIND as the named read
+	-- holds it (§3.3, SKIPPED IS NOT UNREAD): a sum the kind cannot hold is
+	-- damage here.
+	if (e.shape.packing or 0) == 1 and (e.shape.bits or 0) > 0 and ((k >= 2 and k <= 9) or (k >= 18 and k <= 29) or k == 36) then
+		local sum16, ok, raw16 = readInt16FromWriter(r, e.shape)
+		return ok and raw16 ~= nil and rangedHolds16(e.shape, sum16, raw16)
 	end
 	return skip(r, e.shape.bits)
 end
@@ -1358,8 +1433,14 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 		end
 	end
 	local oSigned = isSignedKind(okind)
-	local val16, ok = readInt16FromWriter(r, pe.shape)
+	local val16, ok, raw16 = readInt16FromWriter(r, pe.shape)
 	if not ok then return nil, false end
+	-- the announced kind holds base plus offset (rangedHolds16) before the
+	-- reader's own range and domain are asked
+	if raw16 ~= nil and not rangedHolds16(pe.shape, val16, raw16) then
+		rep.clamped = (rep.clamped or 0) + 1
+		return nil, false
+	end
 	if widens then rep.widened = (rep.widened or 0) + 1 end
 	if fd ~= nil then
 		if fd.lo ~= nil and fd.hi ~= nil then
@@ -1908,7 +1989,10 @@ local function mValidScalar(e: any, val: any): (boolean, string?)
 		else
 			if val ~= val or val == math.huge or val == -math.huge then return false, "non_finite_float" end
 		end
-		if e.lo ~= nil and (val < e.lo or val > e.hi) then return false, "invalid_value" end
+		-- the declared range is compared at float32 for a float32 field
+		-- (docs/SPEC.md §4.6)
+		local held = if e.f32 then asF32(val) else val
+		if e.lo ~= nil and (held < e.lo or held > e.hi) then return false, "invalid_value" end
 		return true, nil
 	elseif e.s == "int" then
 		local ty = typeof(val)
