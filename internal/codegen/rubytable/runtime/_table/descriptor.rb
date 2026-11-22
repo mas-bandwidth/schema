@@ -79,6 +79,26 @@ module SchemaRuntimeUnit
       cls.new
     end
 
+    # One fresh default element of the array field fd, whose element descriptor
+    # is elem: the value the constructor is born with in one slot. A read pads
+    # a fixed array stored short of its bound with one of these per missing
+    # slot (docs/SPEC-TABLES.md §21.1, a grown bound), never with the field's
+    # own default, which is the whole array. An array of unions and an array of
+    # pointers carry no element descriptor of their own, so fd answers for them.
+    def self.born_element(fd, elem)
+      return new_union_by_name(fd.target) if fd.codec == 'union_array'
+      return nil if fd.codec == 'pointer_array'
+
+      case elem.codec
+      when 'table'
+        new_by_name(elem.target)
+      when 'union'
+        new_union_by_name(elem.target)
+      else
+        elem.default_value
+      end
+    end
+
     # Enum-keyed array container (docs/PORT-RUBY.md, Tables: [E]T).
     # Keys are 1..key_max; any non-Integer or out-of-range key raises IndexError.
     class KeyedArray

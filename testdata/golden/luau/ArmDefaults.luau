@@ -7,19 +7,19 @@
 -- package example — protocol id 0x2bf51af687ac0abd — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
-local _Wire = require("./Wire")
+local _F_Wire = require("./Wire")
 
 local _M = {}
 
 -- type DefaultArm
 export type DefaultArm = {
-	Entries: {_Wire.ProbeConfig},
+	Entries: {_F_Wire.ProbeConfig},
 	EntriesCount: number,
 	Marker: number,
 }
 function _M.NewDefaultArm(): DefaultArm
 	local value: DefaultArm = {
-		Entries = _Rt.array(2, function() return _Wire.NewProbeConfig() end),
+		Entries = _Rt.array(2, function() return _F_Wire.NewProbeConfig() end),
 		EntriesCount = 0,
 		Marker = 0,
 	}
@@ -127,14 +127,14 @@ local BITS = { value = 0 }
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
 function _M.InitDefaultArm(value: any)
-  for i = 1, 2 do _Wire.InitProbeConfig(value.Entries[i]) end
+  for i = 1, 2 do _F_Wire.InitProbeConfig(value.Entries[i]) end
   value.EntriesCount = 0 -- the born count (SPEC §4.6)
   value.Marker = 0
 end
 
 -- ZeroDefaultArm resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroDefaultArm(value: any)
-  for i = 1, 2 do _Wire.ZeroProbeConfig(value.Entries[i]) end
+  for i = 1, 2 do _F_Wire.ZeroProbeConfig(value.Entries[i]) end
   value.EntriesCount = 0
   value.Marker = 0
 end
@@ -148,7 +148,7 @@ function _M.ReadDefaultArmBody(stream: any, value: any): boolean
   end
   value.EntriesCount = BITS.value
   for i = 1, value.EntriesCount do
-    if not _Wire.ReadProbeConfigBody(stream, value.Entries[i]) then
+    if not _F_Wire.ReadProbeConfigBody(stream, value.Entries[i]) then
       return false
     end
   end
@@ -322,11 +322,14 @@ _M.DefaultArmMaxBytes = 16
 -- WriteDefaultArm writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteDefaultArm(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.EntriesCount) ~= "number" or v.EntriesCount % 1 ~= 0 or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Entries) ~= "table" then return false end
   BITS.value = v.EntriesCount
   if not stream:serializeBits(BITS, 2) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.EntriesCount do
-    if not _Wire.WriteProbeConfig(stream, v.Entries[_i]) then return false end
+    if type(v.Entries[_i]) ~= "table" then return false end
+    if not _F_Wire.WriteProbeConfig(stream, v.Entries[_i]) then return false end
   end
   if type(v.Marker) ~= "number" or v.Marker % 1 ~= 0 or v.Marker < 0 or v.Marker > 7 then return false end
   BITS.value = v.Marker
@@ -341,13 +344,16 @@ _M.DefaultChoiceMaxBytes = 16
 
 -- WriteDefaultChoice writes union DefaultChoice (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteDefaultChoice(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 2 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.First) ~= "table" then return false end
     if not _M.WriteDefaultArm(stream, v.First) then return false end
   end
   if v.Type == 2 then
+    if type(v.Second) ~= "table" then return false end
     if not _M.WriteDefaultArm(stream, v.Second) then return false end
   end
   return true
@@ -361,6 +367,8 @@ _M.DefaultChoicePacketMaxBytes = 16
 -- WriteDefaultChoicePacket writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteDefaultChoicePacket(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Choice) ~= "table" then return false end
   if not _M.WriteDefaultChoice(stream, v.Choice) then return false end
   return true
 end
@@ -373,6 +381,8 @@ _M.DefaultBulkArmMaxBytes = 16
 -- WriteDefaultBulkArm writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteDefaultBulkArm(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Payload) ~= "table" then return false end
   if not _M.WriteDefaultArm(stream, v.Payload) then return false end
   if type(v.DataLength) ~= "number" or v.DataLength % 1 ~= 0 or v.DataLength < 0 or v.DataLength > 2 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Data) ~= "buffer" or buffer.len(v.Data) < v.DataLength then return false end
@@ -389,13 +399,16 @@ _M.DefaultBulkChoiceMaxBytes = 16
 
 -- WriteDefaultBulkChoice writes union DefaultBulkChoice (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteDefaultBulkChoice(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 2 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.First) ~= "table" then return false end
     if not _M.WriteDefaultBulkArm(stream, v.First) then return false end
   end
   if v.Type == 2 then
+    if type(v.Second) ~= "table" then return false end
     if not _M.WriteDefaultBulkArm(stream, v.Second) then return false end
   end
   return true

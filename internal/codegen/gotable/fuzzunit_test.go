@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
@@ -31,12 +32,12 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 		t.Fatalf("find repo root: %v", err)
 	}
 	out := t.TempDir()
-	cmd := exec.Command("go", "run", "./cmd/schema", "generate", "--lang", "go", "--out", out, "tables/examples")
+	cmd := testproc.Command(t, "go", "run", "./cmd/schema", "generate", "--lang", "go", "--out", out, "tables/examples")
 	cmd.Dir = root
 	if data, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go run ./cmd/schema generate: %v\n%s", err, data)
 	}
-	filter := exec.Command("go", "run", "./"+filepath.ToSlash(filepath.Join(goFuzzUnitDir, "filter_generate.go")), out)
+	filter := testproc.Command(t, "go", "run", "./"+filepath.ToSlash(filepath.Join(goFuzzUnitDir, "filter_generate.go")), out)
 	filter.Dir = root
 	if data, err := filter.CombinedOutput(); err != nil {
 		t.Fatalf("filter generated output: %v\n%s", err, data)

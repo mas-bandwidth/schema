@@ -1,0 +1,13 @@
+// The writer under another build: up to 4 elements, so it can lawfully send
+// the count 1 the reader's minimum excludes.
+package probe
+
+table P
+{
+    items [..4]int32
+}
+
+fixed table M
+{
+    items [..4]int32
+}

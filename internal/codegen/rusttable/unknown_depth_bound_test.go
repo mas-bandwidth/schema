@@ -26,6 +26,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const rustUnknownDepthSchema = `package depthprobe
@@ -207,14 +209,14 @@ func runUnknownDepthProbe(t *testing.T, u *ir.Unit, body string) (string, error)
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	build.Dir = dir
 	out, err := build.CombinedOutput()
 	if err != nil && strings.Contains(string(out), "could not exec the linker") {
 		// A sandbox that denies execvp of a bare linker name still reaches an
 		// absolute one; a normal host takes the plain build above.
 		if _, statErr := os.Stat("/usr/bin/gcc"); statErr == nil {
-			build = exec.Command("rustc", "--edition", "2024", "-C", "linker=/usr/bin/gcc", "-O", "-o", bin, "main.rs")
+			build = testproc.Command(t, "rustc", "--edition", "2024", "-C", "linker=/usr/bin/gcc", "-O", "-o", bin, "main.rs")
 			build.Dir = dir
 			out, err = build.CombinedOutput()
 		}
@@ -222,7 +224,7 @@ func runUnknownDepthProbe(t *testing.T, u *ir.Unit, body string) (string, error)
 	if err != nil {
 		return string(out), err
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	got, err := run.CombinedOutput()
 	return string(got), err

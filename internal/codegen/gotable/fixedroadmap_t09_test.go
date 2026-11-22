@@ -28,13 +28,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t09Field is one declared field's expected fixed-form facts: the layout entry's
@@ -196,7 +197,7 @@ func t09Run(t *testing.T, schema, probe string) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated fixed-table runtime: %v\n%s", err, b)

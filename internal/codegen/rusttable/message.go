@@ -1322,6 +1322,18 @@ impl TableReport {
         }
     }
 
+    /// Names a value read outside its declared range, a bits(N) value past
+    /// its width (§3.3). The read stops as on damage, and the message batch
+    /// refuses BY NAME as out_of_range. THE FIRST REFUSAL WINS, as in the Go
+    /// reference: a range miss after damage this read already met stays
+    /// damage, and the first name recorded is the one kept.
+    pub fn out_of_range(&mut self, field: &'static str) {
+        if self.oor_field.is_empty() && !self.damaged {
+            self.oor_field = field;
+        }
+        self.damaged = true;
+    }
+
     /// Names a RETAINED UNKNOWN float of a float kind whose bits are a NaN or
     /// an infinity (§3.3, §6.6): tested like a known field, refused alike.
     pub fn non_finite_unknown(&mut self, owner: &'static str, id: u64) {
