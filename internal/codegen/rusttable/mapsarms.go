@@ -1306,6 +1306,10 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "    let Some(key) = jr.read_name() else { jr.damaged = true; return; };\n")
 		fmt.Fprintf(b, "    if jr.peek() != b':' { jr.damaged = true; return; }\n")
 		fmt.Fprintf(b, "    jr.p += 1;\n")
+		// DEPTH (§16.2): the union's holder is at depth, the union object one
+		// level in, and the arm's value one past that, where it is read or
+		// skipped (internal/tabletext readUnion, depth+2)
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
 		fmt.Fprintf(b, "    match key.as_str() {\n")
 		for _, v := range un.Variants {
 			fmt.Fprintf(b, "        %q => {\n", v.Name)
@@ -1338,11 +1342,13 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 			fmt.Fprintf(b, "        }\n")
 		}
 		fmt.Fprintf(b, "        _ => {\n")
-		fmt.Fprintf(b, "            if key.starts_with('&') { jr.damaged = true; return; }\n")
-		fmt.Fprintf(b, "            jr.unknown += 1;\n")
-		fmt.Fprintf(b, "            jr.skip_value();\n")
+		fmt.Fprintf(b, "            if key.starts_with('&') { jr.damaged = true; } else {\n")
+		fmt.Fprintf(b, "                jr.unknown += 1;\n")
+		fmt.Fprintf(b, "                jr.skip_value();\n")
+		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 		fmt.Fprintf(b, "    }\n")
+		fmt.Fprintf(b, "    jr.depth -= 1;\n")
 		fmt.Fprintf(b, "    if jr.damaged || jr.missing_required != 0 { return; }\n")
 		fmt.Fprintf(b, "    let c = jr.peek();\n")
 		fmt.Fprintf(b, "    if c == b',' {\n")
@@ -1385,6 +1391,19 @@ func (g *gen) emitMapTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
+// mapKeyHashed reports a map key the text read indexes by hash: text and
+// integer keys, whose Rust storage is Hash + Eq. An enum key keeps the find.
+func mapKeyHashed(f *ir.Field) bool {
+	key := ir.MapKeyField(f)
+	switch classOf(key) {
+	case vString:
+		return true
+	case vScalar:
+		return isFlags(key) == nil && key.Type.Kind != ir.TFloat32 && key.Type.Kind != ir.TFloat64 && key.Type.Kind != ir.TBool
+	}
+	return false
+}
+
 // emitMapTextRead reads a JSON object into sorted entries (docs/SPEC-TABLES.md §16.2, §2.8).
 func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string) {
 	key := ir.MapKeyField(f)
@@ -1397,6 +1416,9 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
+	if mapKeyHashed(f) {
+		fmt.Fprintf(b, "%slet mut key_index = std::collections::HashSet::new();\n", in)
+	}
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
 	// a map key is bound for storage whatever its kind, so a U+0000 in it
@@ -1426,9 +1448,25 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 		fmt.Fprintf(b, "%s    };\n", in)
 		fmt.Fprintf(b, "%s    if !key_ok { jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
 	}
+	// the map object is a level (§16.2; internal/tabletext readMap reads each
+	// value at depth+1)
+	fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
+	fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)
-	fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.damaged = true; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
+	if mapKeyHashed(f) {
+		// THE KEYS PLACED SO FAR, hashed: a key new to the map appends
+		// without a linear find, so a map of n keys reads in O(n) in any key
+		// order; a repeat is damage (§16.2)
+		clone := ""
+		if classOf(ir.MapKeyField(f)) == vString {
+			clone = ".clone()"
+		}
+		fmt.Fprintf(b, "%s    if !key_index.insert(%s.%s%s) { jr.damaged = true; break; }\n", in, ent, keyName, clone)
+		fmt.Fprintf(b, "%s    %s.push(%s);\n", in, field, ent)
+	} else {
+		fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.damaged = true; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
+	}
 	fmt.Fprintf(b, "%s    let c = jr.peek();\n", in)
 	fmt.Fprintf(b, "%s    if c == b',' { jr.p += 1; continue; }\n", in)
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)

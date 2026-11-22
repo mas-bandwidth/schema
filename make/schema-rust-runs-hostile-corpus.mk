@@ -120,5 +120,33 @@ schema-rust-runs-hostile-corpus-negative-control: schema-rust-runs-hostile-corpu
 			{ echo "NEGATIVE CONTROL FAILED ($$profile): the runner went red without naming the planted case"; \
 			  cat $(RUST_HOSTILE_BUILD)/plant/log-$$profile; exit 1; }; \
 	done
+	@$(MAKE) --no-print-directory schema-rust-runs-hostile-corpus-registry-control
 	@$(MAKE) --no-print-directory schema-rust-runs-hostile-corpus
 	@echo 'rust hostile-corpus negative control: a changed committed verdict reds the corpus in both profiles; unplanted it is green'
+
+# THE REGISTRY CONTROL (F-240): a registered finding is checked against the
+# manifest the run actually carries. The committed fixture
+# test/rust-hostile/registry pairs one active finding with a manifest that
+# carries its (healthy) case, one that does not, and one with no cases; each
+# must exit 1 naming why, and the same no-finding manifest must be green.
+RUST_HOSTILE_REGISTRY := test/rust-hostile/registry
+
+.PHONY: schema-rust-runs-hostile-corpus-registry-control
+schema-rust-runs-hostile-corpus-registry-control: schema-rust-runs-hostile-corpus-build
+	@for arm in with-case without-case empty; do \
+		rm -rf $(RUST_HOSTILE_BUILD)/registry/$$arm && mkdir -p $(RUST_HOSTILE_BUILD)/registry/$$arm; \
+		ln -s "$(abspath $(RUST_HOSTILE_CORPUS))/inputs" $(RUST_HOSTILE_BUILD)/registry/$$arm/inputs; \
+		cp $(RUST_HOSTILE_REGISTRY)/manifest-$$arm.tsv $(RUST_HOSTILE_BUILD)/registry/$$arm/manifest.tsv; \
+	done
+	@for profile in $(RUST_HOSTILE_PROFILES); do \
+		run() { $(RUST_HOSTILE_TARGET)/$$profile/rust-hostile $(RUST_HOSTILE_BUILD)/registry/$$1 $(RUST_HOSTILE_REGISTRY)/$$2 $$profile > $(RUST_HOSTILE_BUILD)/registry/log-$$1-$$2-$$profile 2>&1; }; \
+		want_red() { if run $$1 $$2; then echo "REGISTRY CONTROL FAILED ($$profile): $$1 with $$2 stayed green"; cat $(RUST_HOSTILE_BUILD)/registry/log-$$1-$$2-$$profile; exit 1; fi; \
+			grep -q "$$3" $(RUST_HOSTILE_BUILD)/registry/log-$$1-$$2-$$profile || { echo "REGISTRY CONTROL FAILED ($$profile): $$1 with $$2 did not say: $$3"; cat $(RUST_HOSTILE_BUILD)/registry/log-$$1-$$2-$$profile; exit 1; }; }; \
+		want_red with-case findings.tsv '^STALE announce-newer-form: FIX-CARD registry-control no longer reproduces' || exit 1; \
+		want_red without-case findings.tsv '^STALE announce-newer-form: FIX-CARD registry-control names a case the manifest does not carry' || exit 1; \
+		want_red empty findings.tsv 'the manifest names no case' || exit 1; \
+		want_red empty no-findings.tsv 'the manifest names no case' || exit 1; \
+		run without-case no-findings.tsv || { echo "REGISTRY CONTROL FAILED ($$profile): the no-finding control is not green"; cat $(RUST_HOSTILE_BUILD)/registry/log-without-case-no-findings.tsv-$$profile; exit 1; }; \
+		grep -q '^PASS wire-valid$$' $(RUST_HOSTILE_BUILD)/registry/log-without-case-no-findings.tsv-$$profile || { echo "REGISTRY CONTROL FAILED ($$profile): the green control did not pass wire-valid"; exit 1; }; \
+	done
+	@echo 'rust hostile-corpus registry control: an orphaned or green finding and an empty manifest each red the run in both profiles; the no-finding control is green'

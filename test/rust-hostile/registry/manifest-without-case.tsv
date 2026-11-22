@@ -1,0 +1,3 @@
+# schema shared hostile-input corpus — line-oriented manifest
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+wire-valid	wire	tables/examples	ShipEntry	inputs/wire-valid.bin	hand-built accept case from the engine's own encode	accept	-	c319fe4163a51643f37f62a2cc18dd6c3bfea204a6e2f3313de8cc9dc0a37a30
