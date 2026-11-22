@@ -1331,6 +1331,20 @@ json-hostile rr-depth-skipped-union-arm-128     mapdemo    Depth       testdata/
 json-hostile rr-depth-skipped-union-arm-129     mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-union-arm-129 refused
 json-hostile rr-depth-skipped-keyed-slot-128    mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-keyed-slot-128 read
 json-hostile rr-depth-skipped-keyed-slot-129    mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-keyed-slot-129 refused
+json-hostile rr-depth-placed-table-map-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-table-map-128 read
+json-hostile rr-depth-placed-table-map-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-table-map-129 refused
+json-hostile rr-depth-placed-array-map-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-array-map-128 read
+json-hostile rr-depth-placed-array-map-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-array-map-129 refused
+json-hostile rr-depth-placed-list-map-128 listdemo Army testdata/conformance/tables/json-hostile/rr-depth-placed-list-map-128 read
+json-hostile rr-depth-placed-list-map-129 listdemo Army testdata/conformance/tables/json-hostile/rr-depth-placed-list-map-129 refused
+json-hostile rr-depth-skipped-table-key-array-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-array-128 read
+json-hostile rr-depth-skipped-table-key-array-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-array-129 refused
+json-hostile rr-depth-skipped-table-key-object-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-object-128 read
+json-hostile rr-depth-skipped-table-key-object-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-object-129 refused
+json-hostile rr-depth-placed-pointer-chain-128 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-chain-128 read
+json-hostile rr-depth-placed-pointer-chain-129 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-chain-129 refused
+json-hostile rr-depth-placed-pointer-array-128 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-array-128 read
+json-hostile rr-depth-placed-pointer-array-129 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-array-129 refused
 framing rr_map_key_repeated     listdemo    Squad   testdata/wire/tables/framing/rr_map_key_repeated.bin refused -
 framing rr_fixed_zero_records   tblfixedevo EvoRoot testdata/wire/tables/framing/rr_fixed_zero_records.bin refused -
 write-refusal      rr_wref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
