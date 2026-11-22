@@ -81,10 +81,10 @@ func TestListSaveLoadMeasureCoversFramingJavaScript(t *testing.T) {
 	script := filepath.Join(dir, "probe.mjs")
 	probe := `
 import { writeFileSync } from "node:fs";
-import { SaveLoadMeasure, SaveLoad } from "./%[1]sVariable.js";
+import { SaveLoadMeasure, SaveLoad, TableVariableReport } from "./%[1]sVariable.js";
 const wire = new Uint8Array(%[2]s);
 const m = SaveLoadMeasure(wire).toString();
-const report = { unknown:0, kindMismatch:0, widened:0, clamped:0, duplicate:0, malformed:false, reason:"" };
+const report = new TableVariableReport();
 const v = SaveLoad(wire, report);
 writeFileSync(process.argv[2], m + "\n" + (v === null ? "null" : "ok") + "\n");
 `
