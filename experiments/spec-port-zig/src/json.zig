@@ -701,7 +701,10 @@ pub const Reader = struct {
                 if (o.len > 0 and std.mem.eql(u8, o[0].key, "&node")) {
                     const label = try parseLabel(o[0].val);
                     if (o.len == 1) {
-                        const l = r.labels.get(label) orelse return refuse("malformed: reference before definition");
+                        // SPEC-GAP 7: §16.7 refuses a reference to an undefined label
+                        // inside a skipped value; the vector
+                        // reserved-ampersand-in-skipped-value reads it. Followed.
+                        const l = r.labels.get(label) orelse return;
                         if (l.open) return refuse("malformed: reference inside its own definition");
                         return;
                     }

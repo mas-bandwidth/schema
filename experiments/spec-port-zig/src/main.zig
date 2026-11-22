@@ -27,6 +27,8 @@ const Ctx = struct {
     unit_paths: std.StringHashMapUnmanaged([]const []const u8) = .empty,
     units: std.StringHashMapUnmanaged(?*schema.Unit) = .empty,
     refusal: []const u8 = "refused\n",
+    // SPEC-GAP 8: the wire surface scores a refusal only as `<case>.absent`
+    wire_absent: bool = false,
 
     fn readFile(c: *Ctx, a: Allocator, path: []const u8) ?[]u8 {
         return c.cwd.readFileAlloc(c.io, path, a, .unlimited) catch null;
@@ -112,7 +114,7 @@ pub fn main(init: std.process.Init) !u8 {
     const cwd = Io.Dir.cwd();
     try cwd.createDirPath(io, args[3]);
     var c: Ctx = .{ .a = a, .io = io, .cwd = cwd, .out = try cwd.openDir(io, args[3], .{}) };
-    if (std.mem.eql(u8, surface, "wire")) c.refusal = "refused";
+    if (std.mem.eql(u8, surface, "wire")) c.wire_absent = true;
     const manifest = c.readFile(a, args[1]) orelse return 3;
 
     var lines: std.ArrayList([]const []const u8) = .empty;
@@ -172,11 +174,11 @@ fn loadAt(c: *Ctx, a: Allocator, case: []const u8, r: Root, bytes: []const u8) !
             return null;
         }
         // SPEC-GAP 6: the framing battery reads form 1 at the fixed root `Cfg`
-        // and owes values, against "NEITHER CLASS BORROWS THE OTHER'S FORM".
-        if (!(bytes.len > 0 and bytes[0] == 1)) {
-            try c.put(case, c.refusal);
-            return null;
-        }
+        // and owes values; the report battery's previous_form rows refuse it.
+        // This port follows the rule text: form 1 at a fixed root refuses.
+        wire.last_reason = "previous_form";
+        try refused(c, case, error.Refused);
+        return null;
     }
     var rep: wire.Report = .{};
     return wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| {
@@ -201,6 +203,11 @@ fn surfWire(c: *Ctx, a: Allocator, f: []const []const u8) !void {
 
 fn refused(c: *Ctx, name: []const u8, e: anyerror) !void {
     if (e != error.Refused) return e;
+    if (c.wire_absent) {
+        std.debug.print("refused {s}: {s}\n", .{ name, wire.last_reason });
+        var buf: [512]u8 = undefined;
+        return c.put(std.fmt.bufPrint(&buf, "{s}.absent", .{name}) catch name, "");
+    }
     try c.put(name, c.refusal);
 }
 
