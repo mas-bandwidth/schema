@@ -207,8 +207,8 @@ func pageExamples(rel, text string) ([]Example, []Problem) {
 			}
 			continue
 		}
-		if run := fenceRun(trimmed); run != "" {
-			info := strings.ToLower(strings.TrimSpace(trimmed[len(run):]))
+		if run, rest := fenceRun(trimmed); run != "" {
+			info := strings.ToLower(strings.TrimSpace(rest))
 			inFence, fence = true, run
 			lang, isExample := exampleLangs[info]
 			switch {
@@ -277,18 +277,6 @@ func pageExamples(rel, text string) ([]Example, []Problem) {
 		bad(legLine, leg, "example-leg: the region is not closed")
 	}
 	return examples, problems
-}
-
-// fenceRun returns the run of three or more backticks or tildes a line opens
-// with, or "".
-func fenceRun(trimmed string) string {
-	for _, c := range []string{"`", "~"} {
-		if strings.HasPrefix(trimmed, c+c+c) {
-			n := len(trimmed) - len(strings.TrimLeft(trimmed, c))
-			return trimmed[:n]
-		}
-	}
-	return ""
 }
 
 // applyMark reads the words of an example marker onto the example.
