@@ -7,7 +7,7 @@
 # roots and is not carried here fails the gate, and so does a row whose arm
 # runs or whose unit is gone: a driver that stops presenting a unit's roots
 # reads red, never as one arm fewer. Measured 2026-11-21 on amd-2 with
-# `make tables-goose-wire-fuzz` (seed 1, N 2000): 64 such arms of 120.
+# `make tables-goose-wire-fuzz` (seed 1, N 2000): 67 such arms of 123 (widenboundpeer, a unit of 2026-11-21, added 2026-11-22).
 backenddemo	builder	its driver announces no variable-class file root (2026-11-21)
 backenddemo	retain	its driver announces no variable-class file root (2026-11-21)
 blobdemo	fixed	its driver announces no value-only root (2026-11-21)
@@ -72,3 +72,6 @@ vocab9demo	retain	its driver announces no variable-class file root (2026-11-21)
 vocabdemo	builder	its driver announces no variable-class file root (2026-11-21)
 vocabdemo	retain	its driver announces no variable-class file root (2026-11-21)
 widelist	fixed	its driver announces no value-only root (2026-11-21)
+widenboundpeer	builder	its driver announces no variable-class file root (2026-11-22)
+widenboundpeer	fixed	its driver announces no value-only root (2026-11-22)
+widenboundpeer	retain	its driver announces no variable-class file root (2026-11-22)
