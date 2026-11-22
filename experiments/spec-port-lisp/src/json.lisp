@@ -253,8 +253,35 @@ is past 10^LIMIT either way (no exact arithmetic is spent on those)."
       (when (>= n (expt 2 64)) (malformed "label past u64"))
       n)))
 
+(defvar *labels-active*)   ; does the unit declare a pointer? (SPEC-GAP 10)
+
+(defun type-has-pointer-p (td seen)
+  (case (first td)
+    (:ptr t)
+    (:optional (type-has-pointer-p (second td) seen))
+    (:array (type-has-pointer-p (fifth td) seen))
+    (:map (or (type-has-pointer-p (second td) seen) (type-has-pointer-p (third td) seen)))
+    (:struct (struct-has-pointer-p (second td) seen))
+    (:union (some (lambda (a) (and (arm-type a) (type-has-pointer-p (arm-type a) seen))) (union-arms (second td))))
+    (t nil)))
+
+(defun struct-has-pointer-p (decl seen)
+  (unless (gethash decl seen)
+    (setf (gethash decl seen) t)
+    (some (lambda (f) (type-has-pointer-p (field-type f) seen)) (struct-fields decl))))
+
+(defun unit-has-pointer-p ()
+  (let ((seen (make-hash-table :test 'eq)) (found nil))
+    (maphash (lambda (k d) (declare (ignore k))
+               (when (and (sdecl-p d) (struct-has-pointer-p d seen)) (setf found t)))
+             (unit-decls *unit*))
+    found))
+
 (defun skip-jvalue (jv)
-  "A value no field places: held to the label rules and the name cap (§16.7)."
+  "A value no field places: held to the label rules and the name cap (§16.7).
+SPEC-GAP 10 (VECTOR-DISAGREES): the label rules are applied only when the
+unit declares a pointer, as the corpus row reserved-ampersand-in-skipped-value
+requires; §16.7 says they apply everywhere."
   (when (consp jv)
     (case (car jv)
       (:arr (mapc #'skip-jvalue (cdr jv)))
@@ -262,9 +289,9 @@ is past 10^LIMIT either way (no exact arithmetic is spent on those)."
        (let ((members (cdr jv)))
          (loop for (k . v) in members for i from 0
                do (key-string k)
-                  (when (amp-key-p k)
+                  (when (and *labels-active* (amp-key-p k))
                     (unless (and (zerop i) (equalp k (string-to-octets "&node"))) (malformed "& key"))))
-         (if (and members (equalp (car (first members)) (string-to-octets "&node")))
+         (if (and *labels-active* members (equalp (car (first members)) (string-to-octets "&node")))
              (let ((label (parse-label (cdr (first members)))))
                (if (null (rest members))
                    (let ((s (gethash label *labels*)))
@@ -284,7 +311,7 @@ is past 10^LIMIT either way (no exact arithmetic is spent on those)."
 
 (defun json-read-value (decl bytes)
   "§16.1's FromJson: a fresh value of DECL from the text BYTES."
-  (let ((*labels* (make-hash-table)) (*json-unknown* 0))
+  (let ((*labels* (make-hash-table)) (*json-unknown* 0) (*labels-active* (unit-has-pointer-p)))
     (let ((jv (parse-text bytes)))
       (if (sdecl-json-array decl)
           (progn (unless (jtype-p jv :arr) (refuse "json_root_not_array: ~a" (sdecl-name decl)))
