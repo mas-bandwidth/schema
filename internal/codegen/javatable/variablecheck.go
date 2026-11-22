@@ -31,7 +31,7 @@ func writeVariableCheckWrite(b *strings.Builder, st *ir.Struct, tables []*ir.Str
 	b.WriteString("    static boolean checkWrite(Value v) {\n")
 	b.WriteString("        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();\n")
 	b.WriteString("        walk.point(v);\n")
-	b.WriteString("        for (Object o = walk.next(); o != null; o = walk.next()) {\n")
+	b.WriteString("        for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {\n")
 	for _, t := range tables {
 		fmt.Fprintf(b, "            if (o instanceof %sVariable.Value) {\n", t.Name)
 		fmt.Fprintf(b, "                assert %sVariable.checkWrite((%sVariable.Value) o, walk);\n", t.Name, t.Name)
@@ -122,7 +122,7 @@ func writeVariableFieldCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		count := expr + ".size()"
 		if f.Array == ir.ArrayFixed {
 			// a fixed array writes its first N slots and no others
-			count = fmt.Sprintf("Math.min(%s.size(), %d)", expr, f.ArrayBound)
+			count = fmt.Sprintf("java.lang.Math.min(%s.size(), %d)", expr, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%sfor (int i = 0, n = %s; i < n; i++) {\n", ind, count)
 		fmt.Fprintf(b, "%s    %s e = %s.get(i);\n", ind, variableValueType(one), expr)
@@ -196,7 +196,7 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 			// is the int's low 32 bits, never its sign
 			lower, upper = fmt.Sprintf("(%s & 0xffffffffL) >= %s", expr, min), fmt.Sprintf("(%s & 0xffffffffL) <= %s", expr, max)
 		default:
-			lower, upper = fmt.Sprintf("Long.compareUnsigned(%s, %s) >= 0", expr, min), fmt.Sprintf("Long.compareUnsigned(%s, %s) <= 0", expr, max)
+			lower, upper = fmt.Sprintf("java.lang.Long.compareUnsigned(%s, %s) >= 0", expr, min), fmt.Sprintf("java.lang.Long.compareUnsigned(%s, %s) <= 0", expr, max)
 		}
 		if min == "0L" {
 			fmt.Fprintf(b, "%sassert %s : %q;\n", ind, upper, name)

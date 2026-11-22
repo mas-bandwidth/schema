@@ -131,11 +131,11 @@ public final class TableBytes {
     }
 
     public static float f32(byte[] data, int at) {
-        return Float.intBitsToFloat(i32(data, at));
+        return java.lang.Float.intBitsToFloat(i32(data, at));
     }
 
     public static double f64(byte[] data, int at) {
-        return Double.longBitsToDouble(i64(data, at));
+        return java.lang.Double.longBitsToDouble(i64(data, at));
     }
 
     // A RECORD'S FLOAT ACCESSOR NEVER ANSWERS A NaN OR AN INFINITY
@@ -144,30 +144,30 @@ public final class TableBytes {
     // non-finite one is refused by name — thrown as NonFiniteFloat, the field
     // spelled <Record>.<field> — and its value is never returned. A finite
     // read allocates nothing.
-    public static float f32(byte[] data, int at, String field) {
+    public static float f32(byte[] data, int at, java.lang.String field) {
         int bits = i32(data, at);
         if ((bits & 0x7f800000) == 0x7f800000) {
             throw new NonFiniteFloat(field);
         }
-        return Float.intBitsToFloat(bits);
+        return java.lang.Float.intBitsToFloat(bits);
     }
 
-    public static double f64(byte[] data, int at, String field) {
+    public static double f64(byte[] data, int at, java.lang.String field) {
         long bits = i64(data, at);
         if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             throw new NonFiniteFloat(field);
         }
-        return Double.longBitsToDouble(bits);
+        return java.lang.Double.longBitsToDouble(bits);
     }
 
     /** the accessor's refusal of a non-finite float: non_finite_float, naming the field. */
-    public static final class NonFiniteFloat extends RuntimeException {
+    public static final class NonFiniteFloat extends java.lang.RuntimeException {
         private static final long serialVersionUID = 1L;
 
         /** the field the refused float sits in, as {@code <Record>.<field>}. */
-        public final String field;
+        public final java.lang.String field;
 
-        public NonFiniteFloat(String field) {
+        public NonFiniteFloat(java.lang.String field) {
             super("non_finite_float: " + field, null, false, false);
             this.field = field;
         }
@@ -191,7 +191,7 @@ public record TableBlockRows(byte[] data, int base, int count, int stride) {
     /** the offset of the row at index, at the pitch the instance gave. */
     public int at(int index) {
         if (index < 0 || index >= count) {
-            throw new IndexOutOfBoundsException("row " + index + " of " + count);
+            throw new java.lang.IndexOutOfBoundsException("row " + index + " of " + count);
         }
         return base + index * stride;
     }
@@ -232,7 +232,7 @@ public final class TableBlockInfo {
     /** every block base and every out-of-line array start is 64-aligned (§19.1). */
     public static final int alignment = ` + fmt.Sprintf("%d", ir.BlockAlign) + `;
 
-    public String name;
+    public java.lang.String name;
     public long buildVersion; // the unit's (docs/SPEC-TABLES.md §20)
     public int size;          // the record's own size: a projection's, or a row's
     public int align;
@@ -257,7 +257,7 @@ public final class TableBlockFieldInfo {
         TableBlockInfo get();
     }
 
-    public String name;
+    public java.lang.String name;
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its size there
     public int kind; // the table-wire kind, as TableFieldInfo carries it
@@ -286,7 +286,7 @@ public final class TableBlockFieldInfo {
 
     /** one INLINE field. */
     public static TableBlockFieldInfo of(
-            String name,
+            java.lang.String name,
             int offset,
             int size,
             int kind,
@@ -320,7 +320,7 @@ public final class TableBlockFieldInfo {
 
     /** one OUT-OF-LINE array: its triple, and the row it names. */
     public static TableBlockFieldInfo array(
-            String name,
+            java.lang.String name,
             int offset,
             int size,
             int kind,
@@ -457,7 +457,7 @@ func (g *blockGen) emitBuild() {
 	}
 	g.f("    }\n\n")
 	g.f("    public static final class Refusal {\n")
-	g.f("        public String array;\n        public long count;\n        public long maximum;\n")
+	g.f("        public java.lang.String array;\n        public long count;\n        public long maximum;\n")
 	g.f("    }\n\n")
 	g.f("    /** §19.1: write only the prologue and triples; rows belong to the caller. */\n")
 	g.f("    public static %sBlock begin(byte[] storage, int base, Counts counts, Refusal refusal) {\n", name)
@@ -557,7 +557,7 @@ func (g *blockGen) emitArrays() {
 		g.f("    public int %sAt(int index) {\n", field)
 		g.f("        int count = TableBytes.i32(data, base + %d);\n", a.CountOffset)
 		g.f("        if (index < 0 || index >= count) {\n")
-		g.f("            throw new IndexOutOfBoundsException(\"%s row \" + index + \" of \" + count);\n", a.Field.Name)
+		g.f("            throw new java.lang.IndexOutOfBoundsException(\"%s row \" + index + \" of \" + count);\n", a.Field.Name)
 		g.f("        }\n")
 		g.f("        long offsetOf = TableBytes.i64(data, base + %d);\n", a.OffsetOfOffset)
 		g.f("        int stride = TableBytes.i32(data, base + %d);\n", a.StrideOffset)
@@ -622,7 +622,7 @@ func (g *blockGen) emitOpen() {
 	g.f("        if (bytes > data.length - offset) { return -6; } // truncated\n")
 	g.f("        long magic = TableBytes.i64(data, offset);\n")
 	g.f("        if (magic != TableBlockInfo.magic) {\n")
-	g.f("            return magic == Long.reverseBytes(TableBlockInfo.magic) ? -2 : -1; // foreign_order : not_a_cook\n")
+	g.f("            return magic == java.lang.Long.reverseBytes(TableBlockInfo.magic) ? -2 : -1; // foreign_order : not_a_cook\n")
 	g.f("        }\n")
 	g.f("        if (TableBytes.i64(data, offset + 16) != TableBlockInfo.byteOrder) { return -1; } // not_a_cook\n")
 	g.f("        if (TableBytes.i64(data, offset + 8) != BuildVersion.value) { return -3; } // wrong_build_version\n")
@@ -643,9 +643,9 @@ func (g *blockGen) emitOpen() {
 		g.f("            // anything by the maximum would overflow on a count the maximum\n")
 		g.f("            // does not bound\n")
 		g.f("            if (count > %sMax) { return -8; }\n", field)
-		g.f("            if (Long.compareUnsigned(offsetOf, %d) < 0 || (offsetOf & %d) != 0) { return -8; }\n",
+		g.f("            if (java.lang.Long.compareUnsigned(offsetOf, %d) < 0 || (offsetOf & %d) != 0) { return -8; }\n",
 			bl.Projection.Size, alignment-1)
-		g.f("            if (Long.compareUnsigned(offsetOf, bytes) > 0) { return -8; }\n")
+		g.f("            if (java.lang.Long.compareUnsigned(offsetOf, bytes) > 0) { return -8; }\n")
 		g.f("            long rows = count * stride; // both bounded above: this cannot carry\n")
 		g.f("            if (rows > bytes - offsetOf) { return -8; }\n")
 		g.f("            long end = offsetOf + rows;\n")
@@ -667,7 +667,7 @@ func (g *blockGen) emitOpen() {
 	g.f("    /** openReason answers open's check as the TableRefuseReason value name\n")
 	g.f("     *  (internal/codegen/gotable/refusal.go), \"ok\" for a block that opens:\n")
 	g.f("     *  the block-reason surface (test/conformance/README.md). */\n")
-	g.f("    public static String openReason(byte[] data, int offset, long bytes) {\n")
+	g.f("    public static java.lang.String openReason(byte[] data, int offset, long bytes) {\n")
 	g.f("        TableBlockLayout.verify();\n")
 	g.f("        long check = openCheck(data, offset, bytes);\n")
 	g.f("        if (check >= 0) { return \"ok\"; }\n")
@@ -772,7 +772,7 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 	}
 	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")
-	b.WriteString(`    private static void record(String what, int size, int align, int[] offsets, TableBlockInfo info) {
+	b.WriteString(`    private static void record(java.lang.String what, int size, int align, int[] offsets, TableBlockInfo info) {
         number(what + " size", size, info.size);
         number(what + " align", align, info.align);
         number(what + " field count", offsets.length, info.numFields);
@@ -781,9 +781,9 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
         }
     }
 
-    private static void number(String what, int accessors, int descriptors) {
+    private static void number(java.lang.String what, int accessors, int descriptors) {
         if (accessors != descriptors) {
-            throw new IllegalStateException(
+            throw new java.lang.IllegalStateException(
                     "schema block layout: "
                             + what
                             + " is "

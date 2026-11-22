@@ -116,7 +116,7 @@ public final class BenchPacketRetain {
 
     static void decodeNodeBodyRetain(
             TableVariable.Reader r,
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableRetain retain,
             TableVariable.Report report,
@@ -176,7 +176,7 @@ public final class BenchPacketRetain {
     static void writeNodeBodyRetain(
             TableVariable.Writer w,
             TableVariable.NodeGraph nodes,
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableRetain retain,
             TableVariable.Report report,
@@ -483,7 +483,7 @@ public final class BenchPacketRetain {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchPacket.x");
                         } else {
-                            v.x = Float.intBitsToFloat(fbits);
+                            v.x = java.lang.Float.intBitsToFloat(fbits);
                         }
                     } else {
                         report.damaged = true;
@@ -500,7 +500,7 @@ public final class BenchPacketRetain {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchPacket.y");
                         } else {
-                            v.y = Float.intBitsToFloat(fbits);
+                            v.y = java.lang.Float.intBitsToFloat(fbits);
                         }
                     } else {
                         report.damaged = true;
@@ -517,7 +517,7 @@ public final class BenchPacketRetain {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchPacket.z");
                         } else {
-                            v.z = Float.intBitsToFloat(fbits);
+                            v.z = java.lang.Float.intBitsToFloat(fbits);
                         }
                     } else {
                         report.damaged = true;
@@ -666,7 +666,7 @@ public final class BenchPacketRetain {
         put64(b, at, id);
         at += 8;
         b[at++] = (byte) kind;
-        System.arraycopy(resolved, 0, b, at, resolved.length);
+        java.lang.System.arraycopy(resolved, 0, b, at, resolved.length);
         retain.used += total;
         report.retained++;
     }
@@ -712,12 +712,12 @@ public final class BenchPacketRetain {
             int table = w.off;
             w.putLeb(nodeCount);
             for (int i = 0; i < nodeCount; i++) {
-                Object value = nodes.nodeValue(i);
+                java.lang.Object value = nodes.nodeValue(i);
                 long typeId = nodes.nodeType(i);
                 w.putLeb(w.ref(typeId));
                 if (nodes.nodeBlob(i)) {
-                    if (value instanceof String) {
-                        w.putUtf8((String) value);
+                    if (value instanceof java.lang.String) {
+                        w.putUtf8((java.lang.String) value);
                     } else {
                         byte[] bytes = (byte[]) value;
                         w.putLeb(bytes.length);
@@ -725,7 +725,7 @@ public final class BenchPacketRetain {
                     }
                 } else {
                     int body = w.off;
-                    Integer key = retain == null ? null : retain.nodeKeys.get(value);
+                    java.lang.Integer key = retain == null ? null : retain.nodeKeys.get(value);
                     if (key != null) {
                         path[0] = -(key + 1);
                         path[1] = 0;
@@ -799,17 +799,17 @@ public final class BenchPacketRetain {
             w.put8(1);
             w.put8(v.flag ? 1 : 0);
         }
-        if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
+        if (java.lang.Float.floatToRawIntBits(v.x) != java.lang.Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_x));
             w.put8(10);
             w.putF32(v.x);
         }
-        if (Float.floatToRawIntBits(v.y) != Float.floatToRawIntBits(0.0f)) {
+        if (java.lang.Float.floatToRawIntBits(v.y) != java.lang.Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_y));
             w.put8(10);
             w.putF32(v.y);
         }
-        if (Float.floatToRawIntBits(v.z) != Float.floatToRawIntBits(0.0f)) {
+        if (java.lang.Float.floatToRawIntBits(v.z) != java.lang.Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_z));
             w.put8(10);
             w.putF32(v.z);
