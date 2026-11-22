@@ -1,0 +1,2 @@
+package demo
+type A {   arr [<= 4]uint8   }

@@ -31,6 +31,7 @@ func TestExportedVocabulariesAreCopies(t *testing.T) {
 	clear(TableForms)
 	clear(TableIntegrityChecks)
 	WireForms[3] = WireForm{Byte: 3, Name: "edited by an importer", Planned: true}
+	WireForms[4] = WireForm{Byte: 4, Name: "edited by an importer", Planned: true}
 	for i := range MapFieldVerbs {
 		MapFieldVerbs[i] = ""
 	}
@@ -58,8 +59,8 @@ func TestExportedVocabulariesAreCopies(t *testing.T) {
 	if f, ok := WireFormOf(3); !ok || f != registry[3] {
 		t.Errorf("WireFormOf(3) = %+v, %t after an edit of ir.WireForms; want %+v", f, ok, registry[3])
 	}
-	if got, want := WireFormLine([]byte{3}), "FORM 3 the fixed form (docs/SPEC-TABLES.md §3.4)"; got != want {
-		t.Errorf("WireFormLine followed an edit of ir.WireForms: %q, want %q", got, want)
+	if got, want := FileLine([]byte{4}), "FORM 4 the cook — PLANNED as a form byte, which no build writes or reads yet: the cook today begins with the magic SCHMCOOK (docs/SPEC-TABLES.md §7.1)"; got != want {
+		t.Errorf("FileLine followed an edit of ir.WireForms: %q, want %q", got, want)
 	}
 	for _, c := range []struct {
 		name string

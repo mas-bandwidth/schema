@@ -1,0 +1,13 @@
+package decls
+
+// a NEW table under the name the removal freed
+table Extra
+{
+    s string(8)
+}
+
+table Holder
+{
+    c     int32
+    spare *Extra
+}
