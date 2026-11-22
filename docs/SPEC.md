@@ -1589,7 +1589,8 @@ All compile errors with positions:
   (`type NULL` is `struct NULL_`); C prefixes every declaration with the
   package already. A C header's include guard keeps the file base's case and
   spells every other byte in hex (`my_file.schema` guards with
-  `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one. C# names `global::System.Math`, and a unit with a type named in
+  `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one.
+  C# names `global::System.Math`, and a unit with a type named in
   lowercase letters only disables CS8981 in its generated files. Elixir
   lowers a declaration to the module `<Ns>.<Name>` with its first letter
   raised (`type memcpy` is `Probe.Memcpy`). Every one of these is the target's
