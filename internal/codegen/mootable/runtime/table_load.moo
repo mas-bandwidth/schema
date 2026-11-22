@@ -425,6 +425,13 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 			return nil
 		end
 	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+	-- (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+	-- scalarAt): a mask widened from a narrower unsigned kind is held the same way
+	if fd.mw ~= nil and fd.mw < kw * 8 and V.rawCmp(x, V.bitsCap(fd.mw, kw), kw, false) > 0 then
+		over(report)
+		return nil
+	end
 	if fd.cls == nil then
 		return x
 	end

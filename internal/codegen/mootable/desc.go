@@ -314,7 +314,9 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 			_, init := g.scalar(f, def)
 			return fmt.Sprintf("s = \"enum\", t = %q, vs = %s, fw = %d, def = %s", r.Name, g.enumVariants(r), r.StorageBits/8, init)
 		case *ir.Flags:
-			return intDesc(g, f, def)
+			// mw is W, the mask width every table read and write holds the value
+			// to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			return intDesc(g, f, def) + fmt.Sprintf(", mw = %d", r.WireBits)
 		case *ir.Union:
 			requireHome(g, r.Name)
 			return fmt.Sprintf("s = \"union\", t = %q", r.Name)
