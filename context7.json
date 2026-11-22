@@ -33,8 +33,7 @@
     "SECURITY.md",
     "SPEC-TABLES.md",
     "UNITY.md",
-    "VERSIONING.md",
-    "relaxed.md"
+    "VERSIONING.md"
   ],
   "excludeFolders": [
     "docs/LAYERS",
