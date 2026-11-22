@@ -576,6 +576,7 @@ namespace Example
             }
             {
                 float compressedValue = value.Orientation;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -180.0f && compressedValue <= 180.0f, "value.Orientation out of range [-180.0f, 180.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
                 {
                     return false;
@@ -1525,6 +1526,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.Text.AsSpan().Slice(0, value.TextLength)), "value.Text holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.Text.AsSpan().Slice(0, value.TextLength)))
             {
                 return false;
@@ -1704,6 +1706,7 @@ namespace Example
             }
             {
                 float compressedValue = value.CompressedFloatValue;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.CompressedFloatValue out of range [0.0f, 10.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1761,6 +1764,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.Text.AsSpan().Slice(0, value.TextLength)), "value.Text holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.Text.AsSpan().Slice(0, value.TextLength)))
             {
                 return false;
@@ -1919,6 +1923,7 @@ namespace Example
         {
             {
                 float compressedValue = value.Boundary;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.Boundary out of range [0.0f, 10.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1926,6 +1931,7 @@ namespace Example
             }
             {
                 float compressedValue = value.Offset;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -5.0f && compressedValue <= 5.0f, "value.Offset out of range [-5.0f, 5.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
                 {
                     return false;
