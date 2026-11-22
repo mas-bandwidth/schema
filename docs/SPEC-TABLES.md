@@ -4618,7 +4618,8 @@ same rule one level in, not a second one.
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
 the FIELD's declared default; the variant is not counted as unknown. An array
 or map element whose value is a deprecated variant yields the ELEMENT's default
-by the same rule. No map has an enum KEY: an enum key is refused at
+by the same rule, and **an element carries no declared default, so its default is
+`None`**; a union arm whose payload is an enum holds `None` likewise. No map has an enum KEY: an enum key is refused at
 declaration (§2.8; the checker names `[E]T` as the spelling to use), so a
 deprecated variant can never stand as a map key and no reader or writer has
 a rule for one. Deprecated-slot defaulting therefore
@@ -5771,7 +5772,9 @@ the payload opens with the count and then carries the records:
   the load is accepted. Its bytes are still held to the rules every reader
   applies to them (the text rule above, the size cap, §6.5), and it commands
   no storage.
-- **A blob record no pointer reaches** is damage, `wire_damaged`, as every
+- **A blob record no pointer reaches** (§6.5, THE GRAPH: "reaches" means some
+  kind `17` payload anywhere in the input names it, in a field this reader
+  declares or not) is damage, `wire_damaged`, as every
   unreachable record is (§6.5, THE GRAPH). No conforming writer emits one: a
   save numbers only the records its written slots name. A MESSAGE's tail
   announces both reserved ids whether or not the root names them (§3.3); an
@@ -9069,8 +9072,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
   every reader and every path: the root body is at depth 0, and each
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
   keyed or map body, and a union whose arm holds one of those or another union
-  (so union inside union nests). A union whose arm is a scalar or None adds no
-  level. A keyed entry's framing adds nothing by itself; what it frames is
+  (so union inside union nests). **A union whose arm holds a structural
+  payload is ITSELF a level, and the payload it holds counts again one level
+  deeper**: a table body that holds a union field whose arm is a table puts
+  the union at depth 1 and the arm's body at depth 2. A union whose arm is a
+  scalar or None adds no level. A keyed entry's framing adds nothing by itself; what it frames is
   its element, and the one structural element a keyed body carries is a
   table body (element kind `13`; THE ELEMENT KINDS ARE CLOSED, §3), which is
   one level deeper like any other. So a keyed body of keyed bodies nests
@@ -9256,7 +9262,9 @@ diagnostic name, which is not normative and is never compared:
   new writer", met per value.
 - **A COUNT OR A LENGTH PAST THE READER'S BOUND — `count_over_bound`,
   `length_over_bound`**: an array count past the reader's `N` (a bound
-  shrunk since the writer, or `[]T` read as `[..N]T`); a text or `bytes`
+  shrunk since the writer, or `[]T` read as `[..N]T`), **or below the
+  reader's `A` of a `[A..B]T`** (the same name, in the file form and in the
+  text form alike, and a count of zero is below any `A` above zero); a text or `bytes`
   payload, a map's string key, or a text list's `total`, past the reader's
   declared bytes or code units. Nothing is cut at a code point boundary and
   nothing is dropped.
@@ -9772,7 +9780,12 @@ other target refuses a unit with any such field by name at generation
 **ONE HASH SERVES EVERY VOCABULARY, at one width.** A field's wire id, an
 enum variant's id, a union arm's id and a table's own name id are all
 `fnv1a64( name )`, the 64-bit FNV-1a of the name, with no fold and no
-rebound. Width follows the largest population rather than each vocabulary's
+rebound. **The bytes hashed are the name's ASCII bytes**, one byte per
+character with no terminator, no length prefix and no package or table
+qualifier: an identifier is `[A-Za-z_][A-Za-z0-9_]*` (SPEC §4.1), so ASCII is
+all a schema name can hold, and a `was` name is hashed the same way. The
+function is `h = 0xcbf29ce484222325`; for each byte `b`,
+`h = (h XOR b) * 0x100000001b3` mod 2^64. Width follows the largest population rather than each vocabulary's
 own, because one rule in place of three is worth more than the bytes three
 would have saved, and the bytes it costs are paid ONCE a file: an id rides in
 the id table and a body names it by reference (§3).
@@ -16522,7 +16535,11 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
+inside it) are read and the 130th nested container refuses `malformed`.
+**Worked example.** The text `{"x":{"x":{ ... }}}` of N objects, each holding
+the next under the unknown key `x`, puts the innermost object at depth N-1:
+N = 129 is read (innermost at depth 128) and N = 130 refuses. An array counts
+as a container like an object, so `{"x":[[1]]}` is three containers. The write's cap at the same number counts
 table and type values only (W2), so the two caps share a number and not a unit.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
@@ -16532,7 +16549,9 @@ the 255 counts the name's DECODED bytes, after its escapes are resolved, and
 a longer one refuses the read (the generated Go: `out_of_range`, §6.5), and an unknown enum name over 255 bytes refuses
 and never reads `None`. The cap never reaches a map key or a string value —
 those are data a conforming writer emits — and the `map[string]V` row's "no
-key is refused for its length" stands (§2.13.1).
+key is refused for its length" stands (§2.13.1). **Inside a SKIPPED value
+the reader cannot tell a map's key from a field's, so EVERY object key there
+is held to the 255**; a map's keys are exempt only where the map is placed.
 
 **Every JSON read is handed BYTES and validates UTF-8 itself.** A leg whose
 read takes its language's string also offers a bytes entry, and that string
@@ -16552,7 +16571,13 @@ the field's width (round to nearest, ties to even), never through a wider
 float first, and it refuses ONLY when that conversion rounds to infinity; a
 token that rounds to a finite value, a subnormal or zero included, lands as
 that value. It refuses for nothing else but a value outside the field's
-DECLARED range (`out_of_range`). **A token that is not a JSON number at all** —
+DECLARED range (`out_of_range`). **A declared float bound is compared as
+declared**: the stored value, at the field's width and widened exactly to
+float64, is compared with the bound's own float64 value (the decimal bound
+rounded ONCE, to float64, and never rounded to the field's width), so a
+`float32` field with `max = 0.1` refuses the text `0.1`, whose float32 value
+`0.100000001490116…` is above the float64 `0.1`. The same comparison holds on
+the wire read and on the write. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a value. **A token's LENGTH is never the reason it is refused**: a valid
 number is read by its value however many bytes it spans, within the
@@ -17069,7 +17094,11 @@ read a shared graph as a tree with an empty object where every later reference
 stood. A FIXED reader handed a variable table's text refuses on the first `&node`
 it would have placed and says so, which is the whole point of spending the
 prefix. **The label grammar and the definition rules apply EVERYWHERE**, inside an
-unknown key's skipped value too: a malformed label, a reference before its
+unknown key's skipped value too, **in every unit, one that declares no pointer
+included**. **Inside a skipped value, an `&`-prefixed object key refuses
+`malformed` unless it is a well-formed `&node` that is its object's FIRST key**:
+a reader cannot tell a skipped map's key from a field's, so the `&` prefix is
+ordinary data only where a map is PLACED (§16.2). A malformed label, a reference before its
 definition and a label defined twice refuse wherever they sit, as the wire's
 conditions decidable from the bytes alone apply to every byte (§6.5). **A
 SKIPPED VALUE IS READ FOR ITS LABELS AT EVERY DEPTH**, not only at its opening

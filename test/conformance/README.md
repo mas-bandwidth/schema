@@ -94,14 +94,20 @@ language" below, where both shapes are stated.
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
-An expected semantic refusal scores PASS. A historical `.absent` file may
-transport that refusal; the feature-absence rules below apply only when the
-case requires an accepted value.
+An expected semantic refusal scores PASS. On the surfaces that compare a
+verdict file (`report`, `framing`, `retain` and the like) the refusal is the
+file `refused\n`; on the `wire` surface for a `wire-refused` instance, and on
+`message` for a row with no message form, it is the marker file `<answer>.absent`
+ONLY (below), and any other file there fails. The feature-absence rules below
+apply only when the case requires an accepted value.
 
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
-`<case>.absent` — an empty file, beside where the answer would go — and the
-harness counts it. The cell then reads `pass 16/16 +4a`: what the leg answered,
+`<answer>.absent` — an empty file, beside where the answer would go — and the
+harness counts it. **`<answer>` is the FULL name of the answer file the case
+would have written, extension included**: the answer for `json-write` is
+`<name>.json`, so its marker is `<name>.json.absent`, and `<name>.absent` is
+not it (the harness reports that as "the driver wrote nothing"). The cell then reads `pass 16/16 +4a`: what the leg answered,
 and how many it said it cannot. The distinction is the surface-level one at a
 finer grain, and the corpus needed it the day it gained VARIABLE-class
 instances: a backend with no variable class still answers the wire surface over
@@ -750,7 +756,9 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers may emit `refused` or the historical `<case>.absent` file; the
-file's diagnostic text is ignored. This expected semantic refusal scores PASS.
-Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
+compatibility metadata; they do not select a language or a shared reason. On the `wire` surface a driver writes the marker `<answer>.absent` and NO
+answer file; the marker's text is ignored. This expected refusal scores PASS.
+A `refused` file written as the answer is a file of bytes to the harness and
+fails ("expected wire refusal, got bytes"), as does emitting value bytes or
+nothing at all. An ordinary absence
 for a missing codec remains incomplete coverage.

@@ -528,7 +528,8 @@ from this projection rather than carried in it.
   (§4.2's grammar), and it is accepted in a table body only — a `type` body
   refuses one by name (SPEC-TABLES.md §2.3). `|` opens a line's qualification
   section (§4.2, Attributes) and claims the rest of the line — the newline
-  or a `//` comment terminates it, and no newline suppression applies after
+  or a `//` comment terminates it (on a declaration line, the `{` that opens
+  the declaration's own body ends it too), and no newline suppression applies after
   `|` or after a `,` inside a qualification. `<=` is not in the language: a count
   bound is a range literal (`[..N]`, `[A..B]`), never a truncated
   comparison, and the retired `[<= N]` spelling is refused with the
@@ -579,8 +580,10 @@ from this projection rather than carried in it.
   one separator rather than two. **A `}` on the same line as a QUALIFIED
   variant is refused by name** — `{ Laser | beam }` draws "a qualified
   variant ends its own line: write the list one variant per line" — because
-  the pipe claims the rest of the line and the brace would be arguing with
-  it. Both rules have a named negative control (§7.2).
+  the pipe claims the rest of that variant's line and the brace would be
+  arguing with it. (A DECLARATION line is different: the `{` that opens a
+  declaration's own body may follow its qualification on the same line, and
+  ends the section: §4.2, `AttrSection`.) Both rules have a named negative control (§7.2).
 
 ### 4.2 Grammar
 
@@ -592,12 +595,11 @@ placement and the formatter normalizes to it:
 ```
 File        = { Declaration } .
 Declaration = Package | Const | Enum | Flags | TypeDecl | TableDecl | Union .
-Flags       = "flags" ident ( VariantList
-            | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
-                                                                   // a qualified declaration's
-                                                                   // body opens on the NEXT line
-Union       = "union" ident ( UnionBlock
-            | AttrSection NL UnionBlock ) NL .                     // "union" contextual, §4.8;
+Flags       = "flags" ident [ AttrSection ] VariantList NL .   // "flags" contextual, §4.2;
+                                                                   // the body opens at the `{` on the
+                                                                   // section's own line, or on the NEXT
+                                                                   // line (AttrSection)
+Union       = "union" ident [ AttrSection ] UnionBlock NL .        // "union" contextual, §4.8;
                                                                    // the qualification carries TAGS
                                                                    // and nothing else (§4.2)
 UnionBlock  = "{" { UnionVariant } "}" .
@@ -612,7 +614,7 @@ UnionVariant = ident [ ArmType ] [ AttrSection ] NL .              // AN ARM IS 
                                                                    // json: each is refused at the arm
                                                                    // (§4.8, SPEC-TABLES.md §2.6). `was`
                                                                    // is the arm's rename (§4.2)
-ArmType     = [ "[" Bound "]" ] Scalar .                           // the field Type without its "?".
+ArmType     = [ "[" [ Bound ] "]" ] Scalar .                           // the field Type without its "?".
                                                                    // An arm that names neither a
                                                                    // declared `type` nor nothing at all
                                                                    // is legal inside a table closure
@@ -621,8 +623,7 @@ Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr [ AttrSection ] NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
-Enum        = "enum" ident ( VariantList
-            | AttrSection NL VariantList ) NL .
+Enum        = "enum" ident [ AttrSection ] VariantList NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
 Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
                                                                     // and on an enum variant `was`,
@@ -636,15 +637,20 @@ Variant     = ident [ AttrSection ] .                              // the qualif
 VariantSep  = "," | NL .                                           // a comma, or the newline that
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
-TypeDecl    = "type" ident ( Block
-            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
+TypeDecl    = "type" ident [ AttrSection ] Block NL .   // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
-TableDecl   = "table" ident ( Block
-            | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
+TableDecl   = [ "fixed" ] "table" ident [ AttrSection ] Block NL .
+                                                        // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
-                                                        // A table declaration's qualification
-                                                        // carries TAGS, `was` and `forms`
-                                                        // (§4.2, SPEC-TABLES.md §2.12)
+                                                        // `fixed table` is the fixed class
+                                                        // (SPEC-TABLES.md §2.2); `fixed` is a
+                                                        // keyword at file scope only, and inside
+                                                        // a body the same word is the scalar
+                                                        // `fixed(I, F)`. A table declaration's
+                                                        // qualification carries TAGS, `was`,
+                                                        // `forms`, `integrity` and `json`
+                                                        // (§4.2, SPEC-TABLES.md §2.12, §2.14,
+                                                        // §16.10)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -659,7 +665,18 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = [ "?" ] [ "[" Bound "]" ] ( Scalar | Map ) .       // array bound is a PREFIX, Go's order.
+Type        = [ "?" ] [ "[" [ Bound ] "]" [ "?" ] ] ( Scalar | Map ) .
+                                                                 // array bound is a PREFIX, Go's order.
+                                                                 // An EMPTY bracket `[]T` is the UNBOUNDED
+                                                                 // array (SPEC-TABLES.md §2.9). A "?" AFTER
+                                                                 // the bracket binds to the ELEMENT:
+                                                                 // `[..16]?string(M)` (SPEC-TABLES.md
+                                                                 // §2.13). The parser takes every spelling
+                                                                 // here wherever a type stands; a
+                                                                 // placement the language does not allow
+                                                                 // (a "?" or a map in a type body, an array
+                                                                 // of arrays) is refused BY NAME by the
+                                                                 // checking rules, never by the grammar
                                                                  // "?" is the OPTIONAL prefix
                                                                  // (SPEC-TABLES.md §2.3): the value plus
                                                                  // a generated presence bool. TABLE
@@ -680,6 +697,10 @@ Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
+            | "string"                                           // BARE: UNBOUNDED text, where the
+                                                                 // checking rules allow it (a text-list
+                                                                 // element, a map key; SPEC-TABLES.md
+                                                                 // §2.13.1)
             | "bytes" "(" IntExpr ")"
             | "timestamp"                                        // nanoseconds since the Unix epoch
                                                                  // (§4.13); TABLE fields only
@@ -687,6 +708,10 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
+            | "*" ( "bytes" | "string" )                         // a BLOB pointer: a byte buffer or text
+                                                                 // at its used size, NO bound
+                                                                 // (SPEC-TABLES.md §2.5); `*bytes(N)` is
+                                                                 // refused where the paren stands
             | "*" ident                                          // a POINTER to a declared table
                                                                  // (SPEC-TABLES.md §2.1);
                                                                  // TABLE BODIES ONLY — a type
@@ -694,7 +719,8 @@ Scalar      = IntType
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
-Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact; [..N] = [0..N],
+Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // (an EMPTY bracket is `[]T`, see Type)
+                                                                    // [N] exact; [..N] = [0..N],
                                                                     // "up to N"; [A..B] = count in [A, B].
                                                                     // An exact bound NAMING A DECLARED
                                                                     // ENUM is an ENUM-KEYED array: exactly
@@ -703,9 +729,13 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
                                                                     // for None (SPEC-TABLES.md §2.4).
                                                                     // On this wire it IS [E.Max]T
 
-AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
-                                                                 // or a // comment terminates it —
-                                                                 // nothing follows a qualification
+AttrSection = "|" Attr { "," Attr } .                            // ends at the first token after an Attr
+                                                                 // that is not a ",": the newline, a
+                                                                 // // comment, or — on a DECLARATION line
+                                                                 // only — the "{" that opens its body, so
+                                                                 // `table Root | forms="wire" {` is legal
+                                                                 // and so is the body on the next line.
+                                                                 // Nothing else follows a qualification
 Attr        = ident "=" ( ConstExpr | QualIdent | string )       // valued:    min = 0, max = 100,
                                                                  //            cpp_include = "a.h",
                                                                  //            cpp_native = math::Vec2
@@ -742,7 +772,12 @@ FloatExpr   = float expression over float literals, int literals and const names
   errors. Integer division truncates toward zero, Go's rule. **Float
   attribute values (`min`/`max`/`resolution` on `float32`) are float
   expressions** — literals, const names, and arithmetic, per `FloatExpr`;
-  integer constants convert in float positions.
+  integer constants convert in float positions. **A float constant is a
+  float64 value, always**: a lone literal is the float64 nearest to its
+  decimal, and a `float32` field's default `= 0.1` holds that float64
+  narrowed ONCE to float32 (round to nearest, ties to even). That is two
+  roundings, and it is the rule for schema constants; §16.2's one-conversion
+  rule is for JSON text read into a field, a different input.
 - **Zero initialization is the rule, in every generated language, with an
   optional specified default overriding it.** Every generated type fully
   initializes to zero values on construction — 0, 0.0, false, `None` for an
@@ -946,9 +981,9 @@ sequence    uint16
 - **Declaration lines take the same section**: a tag or a native-type
   binding, a flags declaration's `max` headroom —
   `type Quat | quat4`, `flags Damage | max = 8` —
-  and the body brace opens on the next line — with a qualification section
-  that is forced (the section runs to the end of the line), and everywhere
-  else it is the Allman house style (§4.1):
+  and the body brace opens on the next line, or at the end of the same line
+  (`table Root | forms = "wire" {`, which the parser reads), and everywhere
+  else the Allman house style (§4.1):
 
   ```
   type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
@@ -999,7 +1034,8 @@ sequence    uint16
   **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
   field of a **type** that a table closure reaches takes `was` and `json`
   on the same terms, a **table** declaration takes `was` (below) and
-  `forms` (SPEC-TABLES.md §2.12), an **enum variant** and a union **arm**
+  `forms` (SPEC-TABLES.md §2.12), `integrity` (SPEC-TABLES.md §2.14) and
+  `json = "array"` (SPEC-TABLES.md §16.10), an **enum variant** and a union **arm**
   take `was` (below), and a **union** declaration, a **constant** and a
   **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
@@ -1008,7 +1044,7 @@ sequence    uint16
   open namespace must not be able to swallow a typo in the closed one.
   **The lookup is against the UNION of every valued key the language has, on
   every line kind** — `min`, `max`, `resolution`, `was`, `json`, `forms`,
-  `cpp_native`, `cpp_include` — **plus the keys refused by name**
+  `integrity`, `cpp_native`, `cpp_include` — **plus the keys refused by name**
   (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
   `| min` on a `string(N)` field, where `min` was never legal, is the exact
   case a per-line check would wave through as a tag, and one union table
@@ -3233,6 +3269,15 @@ never change meaning), and it verifies its own idempotence on every run.
   branches and counts are explicit; names of structs, fields and variants are
   carried — the backends print them. The IR's stability obligation is what
   the golden-wire gate (§7.2) holds still across compiler versions.
+  **There is no serialized IR, and none is promised.** The IR is a Go
+  package (`ir`), and the ports INSIDE this repository are Go backends that
+  consume it. **For a port OUTSIDE this repository, the normative input is the
+  `.schema` text: the grammar of §4.2 and the checking and resolving rules of
+  §4 (constants, `E.Max`, guards, defaults, one-sided ranges, the identity
+  hash of SPEC-TABLES.md §5) together define exactly what a unit means.** Such
+  a port reads `.schema` files, parses them by §4.2, and resolves and checks
+  them by the rules stated in this document and in SPEC-TABLES.md; nothing
+  else is needed and nothing in the Go source outranks those rules.
 - **Backends: dumb printers.** Hand-written emitters (a small indent-aware
   writer helper), not `text/template` — codegen wants precision. Each backend
   is a small package a reviewer can hold (two to seven files).
