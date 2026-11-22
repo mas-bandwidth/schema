@@ -421,8 +421,10 @@ acquisition-before-owner)
 	wait_for build/emission-started 100 || { printf 'holder never started emission\n' >&2; cat "$work/holder.log" >&2; exit 1; }
 
 	# Fire concurrent contenders while holder is in emission
+	cpids=""
 	for i in 1 2 3; do
 		run_verify > "$work/contender$i.log" 2>&1 &
+		cpids="$cpids $!"
 	done
 
 	# Wait for holder to finish
@@ -434,7 +436,16 @@ acquisition-before-owner)
 		fail=1
 	fi
 
-	wait || true
+	# Each contender waited on by its pid (F-068: a bare wait reads no status).
+	# A contender is refused, so it must exit non-zero, as the reclaimers do.
+	for p in $cpids; do
+		rcc=0
+		wait "$p" || rcc=$?
+		if [ "$rcc" -eq 0 ]; then
+			printf 'ASSERTION FAILED: a contender exited 0 while the holder held the lock\n' >&2
+			fail=1
+		fi
+	done
 
 	# Every contender must have been refused with valid holder pid (never unknown or empty)
 	for i in 1 2 3; do

@@ -21,7 +21,7 @@ public final class TableVariable {
     // infinity in a float's raw bits refuses as non_finite_float, the
     // strict load, naming the first such field, and lands nothing.
     // Every finite float32 widens exactly through the ordinary conversion.
-    public static void nonFiniteFloat(Report report, String field) {
+    public static void nonFiniteFloat(Report report, java.lang.String field) {
         if (report.reason == null) {
             report.reason = "non_finite_float: " + field;
         }
@@ -34,7 +34,8 @@ public final class TableVariable {
     // the value at an end float32 cannot spell exactly (max = 0.1) is the
     // float32 nearest it and in range. Its -0 IS +0: it lands as +0, uncounted
     // (ruling fixed-compressed-negzero). The variable and JSON reads share it.
-    public static float compressedF32(float v, float lo, float hi, Report report, String field) {
+    public static float compressedF32(
+            float v, float lo, float hi, Report report, java.lang.String field) {
         if (v < lo) {
             report.refuse("out_of_range", field);
             return lo;
@@ -48,8 +49,8 @@ public final class TableVariable {
 
     // a retained unknown float is named by the table that holds it and the
     // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
-    public static String retainedFloatName(String owner, long id) {
-        String hex = Long.toHexString(id);
+    public static java.lang.String retainedFloatName(java.lang.String owner, long id) {
+        java.lang.String hex = java.lang.Long.toHexString(id);
         return owner + ".0x" + "0000000000000000".substring(hex.length()) + hex;
     }
 
@@ -70,7 +71,7 @@ public final class TableVariable {
         public int widened;
         public int missingRequired;
         public boolean refused;
-        public String reason;
+        public java.lang.String reason;
         public int retained;
         public int retainLost;
         // THE NUMBERING this load reads against, set when the node table is
@@ -100,14 +101,22 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
-        public void refuse(String why) {
+        // settleDamage names framing damage on the report, as Go does: a
+        // damaged read answers reason wire_damaged unless a refusal named one.
+        public void settleDamage() {
+            if (damaged && reason == null) {
+                reason = "wire_damaged";
+            }
+        }
+
+        public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;
                 reason = why;
             }
         }
 
-        public void refuse(String why, String field) {
+        public void refuse(java.lang.String why, java.lang.String field) {
             if (!refused) {
                 refused = true;
                 reason = (field != null && !field.isEmpty()) ? (why + ": " + field) : why;
@@ -447,11 +456,16 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                if (!growable || entries.length >= 65536) {
+                // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader
+                // refuses more than 4096 entries, so the writer refuses to grow
+                // past it and never writes a file its readers refuse.
+                if (!growable || entries.length >= 4096) {
                     overflow = true;
                     return 0;
                 }
-                entries = java.util.Arrays.copyOf(entries, Math.min(65536, entries.length * 2));
+                entries =
+                        java.util.Arrays.copyOf(
+                                entries, java.lang.Math.min(4096, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -487,8 +501,8 @@ public final class TableVariable {
                 overflow = true;
                 return false;
             }
-            long want = Math.max((long) buf.length * 2, (long) off + n);
-            if (want > Integer.MAX_VALUE - 8) {
+            long want = java.lang.Math.max((long) buf.length * 2, (long) off + n);
+            if (want > java.lang.Integer.MAX_VALUE - 8) {
                 overflow = true;
                 return false;
             }
@@ -526,7 +540,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start, buf, start + k, len);
             putLebAt(start, len);
             off += k;
         }
@@ -539,7 +553,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start, buf, start + k, len);
             int at = putLebAt(start, ref);
             buf[at++] = (byte) kind;
             putLebAt(at, len);
@@ -554,7 +568,7 @@ public final class TableVariable {
             if (k > drop && !room(k - drop)) {
                 return;
             }
-            System.arraycopy(buf, start + drop, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start + drop, buf, start + k, len);
             putLebAt(start, len);
             off = start + k + len;
         }
@@ -567,7 +581,7 @@ public final class TableVariable {
             if (k > drop && !room(k - drop)) {
                 return;
             }
-            System.arraycopy(buf, start + drop, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start + drop, buf, start + k, len);
             int at = putLebAt(start, key);
             putLebAt(at, len);
             off = start + k + len;
@@ -581,7 +595,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, entries);
+            java.lang.System.arraycopy(buf, start, buf, start + k, entries);
             int at = putLebAt(start, length);
             buf[at++] = (byte) kind;
             putLebAt(at, count);
@@ -591,7 +605,7 @@ public final class TableVariable {
         // putUtf8 writes one string as L then its UTF-8 bytes, byte for byte
         // what String.getBytes(UTF_8) spells (a lone surrogate is '?'), with no
         // byte[] of its own.
-        public void putUtf8(String s) {
+        public void putUtf8(java.lang.String s) {
             int n = s.length();
             long len = 0;
             for (int i = 0; i < n; i++) {
@@ -600,12 +614,12 @@ public final class TableVariable {
                     len += 1;
                 } else if (c < 0x800) {
                     len += 2;
-                } else if (Character.isHighSurrogate(c)
+                } else if (java.lang.Character.isHighSurrogate(c)
                         && i + 1 < n
-                        && Character.isLowSurrogate(s.charAt(i + 1))) {
+                        && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                     len += 4;
                     i++;
-                } else if (Character.isSurrogate(c)) {
+                } else if (java.lang.Character.isSurrogate(c)) {
                     len += 1;
                 } else {
                     len += 3;
@@ -619,15 +633,15 @@ public final class TableVariable {
                 } else if (c < 0x800) {
                     put8(0xc0 | (c >> 6));
                     put8(0x80 | (c & 0x3f));
-                } else if (Character.isHighSurrogate(c)
+                } else if (java.lang.Character.isHighSurrogate(c)
                         && i + 1 < n
-                        && Character.isLowSurrogate(s.charAt(i + 1))) {
-                    int cp = Character.toCodePoint(c, s.charAt(++i));
+                        && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
+                    int cp = java.lang.Character.toCodePoint(c, s.charAt(++i));
                     put8(0xf0 | (cp >> 18));
                     put8(0x80 | ((cp >> 12) & 0x3f));
                     put8(0x80 | ((cp >> 6) & 0x3f));
                     put8(0x80 | (cp & 0x3f));
-                } else if (Character.isSurrogate(c)) {
+                } else if (java.lang.Character.isSurrogate(c)) {
                     put8('?');
                 } else {
                     put8(0xe0 | (c >> 12));
@@ -673,7 +687,7 @@ public final class TableVariable {
         // exact, and refuse a NaN or an infinity for the whole save
         // (docs/SPEC-TABLES.md §3.3): no table writer emits one.
         public void putF32(float v) {
-            int bits = Float.floatToRawIntBits(v);
+            int bits = java.lang.Float.floatToRawIntBits(v);
             if ((bits & 0x7f800000) == 0x7f800000) {
                 ids.nonFinite = true;
             }
@@ -681,7 +695,7 @@ public final class TableVariable {
         }
 
         public void putF64(double v) {
-            long bits = Double.doubleToRawLongBits(v);
+            long bits = java.lang.Double.doubleToRawLongBits(v);
             if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 ids.nonFinite = true;
             }
@@ -707,7 +721,7 @@ public final class TableVariable {
             if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF64(v);
+            putF64(v == 0.0 ? 0.0 : v);
         }
 
         public void putLeb(long v) {
@@ -879,8 +893,8 @@ public final class TableVariable {
     // reaches, and one blob record named from two slots. tla/ReadOrder.tla
     // models the split (WireDamage, Unreachable, Cycle, BlobShared); the walk
     // covers every slot, known or not.
-    private static final ThreadLocal<WireCheck> WIRE_CHECK =
-            ThreadLocal.withInitial(WireCheck::new);
+    private static final java.lang.ThreadLocal<WireCheck> WIRE_CHECK =
+            java.lang.ThreadLocal.withInitial(WireCheck::new);
 
     static final class WireCheck {
         static final int OK = 0;
@@ -930,9 +944,9 @@ public final class TableVariable {
             this.buf = buf;
             this.ids = ids;
             if (stamp.length <= ids.length) {
-                stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
+                stamp = new int[java.lang.Math.max(ids.length + 1, stamp.length * 2)];
                 gen = 0;
-            } else if (gen < 0 || gen > Integer.MAX_VALUE - buf.length) {
+            } else if (gen < 0 || gen > java.lang.Integer.MAX_VALUE - buf.length) {
                 // A body and a keyed array each spend at least one byte, so
                 // this file stamps at most buf.length generations. Clear the
                 // stamps before the walk whenever those generations would
@@ -997,7 +1011,7 @@ public final class TableVariable {
                         return -1;
                     }
                     at = off;
-                    return v < 0 ? Long.MAX_VALUE : v;
+                    return v < 0 ? java.lang.Long.MAX_VALUE : v;
                 }
                 shift += 7;
             }
@@ -1106,7 +1120,7 @@ public final class TableVariable {
                 return DAMAGED;
             }
             if (edgeStart.length < n + 2) {
-                edgeStart = new int[Math.max(n + 2, edgeStart.length * 2)];
+                edgeStart = new int[java.lang.Math.max(n + 2, edgeStart.length * 2)];
             }
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
@@ -1127,7 +1141,7 @@ public final class TableVariable {
         // unreachable; and a blob record named from two slots is blob_shared.
         boolean graph(int[] edgeStart, int n, boolean[] blob) {
             if (names.length < n) {
-                int cap = Math.max(n, names.length * 2);
+                int cap = java.lang.Math.max(n, names.length * 2);
                 names = new int[cap];
                 mark = new byte[cap];
                 stack = new int[cap];
@@ -1317,7 +1331,9 @@ public final class TableVariable {
                             return -1;
                         }
                         if (edgeCount == edges.length) {
-                            edges = java.util.Arrays.copyOf(edges, Math.max(8, edgeCount * 2));
+                            edges =
+                                    java.util.Arrays.copyOf(
+                                            edges, java.lang.Math.max(8, edgeCount * 2));
                         }
                         edges[edgeCount++] = index;
                         return at;
@@ -1572,7 +1588,8 @@ public final class TableVariable {
     // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
     // twice the 4096-entry bound so it is never more than half full (§3): the
     // walk allocates nothing per call and every slot compares the stored id.
-    private static final ThreadLocal<IdProbe> ID_PROBE = ThreadLocal.withInitial(IdProbe::new);
+    private static final java.lang.ThreadLocal<IdProbe> ID_PROBE =
+            java.lang.ThreadLocal.withInitial(IdProbe::new);
 
     static final class IdProbe {
         final long[] seen = new long[8192];
@@ -1884,7 +1901,7 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
-    public static long utf8Len(String s) {
+    public static long utf8Len(java.lang.String s) {
         if (s == null) {
             return 0;
         }
@@ -1896,12 +1913,12 @@ public final class TableVariable {
                 len += 1;
             } else if (c < 0x800) {
                 len += 2;
-            } else if (Character.isHighSurrogate(c)
+            } else if (java.lang.Character.isHighSurrogate(c)
                     && i + 1 < n
-                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                    && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                 len += 4;
                 i++;
-            } else if (Character.isSurrogate(c)) {
+            } else if (java.lang.Character.isSurrogate(c)) {
                 len += 1;
             } else {
                 len += 3;
@@ -1913,7 +1930,7 @@ public final class TableVariable {
     // textWritable is the write contract on text (docs/SPEC.md §5.1 rows 4
     // and 8): no lone surrogate, no zero, and a UTF-8 length inside max (a
     // negative max is unbounded). A writer's checkWrite asserts it: debug only.
-    public static boolean textWritable(String s, long max) {
+    public static boolean textWritable(java.lang.String s, long max) {
         if (s == null) {
             return true;
         }
@@ -1927,13 +1944,13 @@ public final class TableVariable {
                 len += 1;
             } else if (c < 0x800) {
                 len += 2;
-            } else if (Character.isHighSurrogate(c)) {
-                if (i + 1 >= n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+            } else if (java.lang.Character.isHighSurrogate(c)) {
+                if (i + 1 >= n || !java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                     return false;
                 }
                 len += 4;
                 i++;
-            } else if (Character.isLowSurrogate(c)) {
+            } else if (java.lang.Character.isLowSurrogate(c)) {
                 return false;
             } else {
                 len += 3;
@@ -1948,17 +1965,17 @@ public final class TableVariable {
     // a recursion, so a long chain cannot run out of stack. Debug only: a
     // writer's checkWrite makes one under an assert.
     public static final class WriteCheck {
-        private final java.util.IdentityHashMap<Object, Boolean> seen =
+        private final java.util.IdentityHashMap<java.lang.Object, java.lang.Boolean> seen =
                 new java.util.IdentityHashMap<>();
-        private final java.util.ArrayDeque<Object> pending = new java.util.ArrayDeque<>();
+        private final java.util.ArrayDeque<java.lang.Object> pending = new java.util.ArrayDeque<>();
 
-        public void point(Object target) {
-            if (target != null && seen.put(target, Boolean.TRUE) == null) {
+        public void point(java.lang.Object target) {
+            if (target != null && seen.put(target, java.lang.Boolean.TRUE) == null) {
                 pending.add(target);
             }
         }
 
-        public Object next() {
+        public java.lang.Object next() {
             return pending.poll();
         }
     }
@@ -1967,7 +1984,7 @@ public final class TableVariable {
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
     // text is not text at whatever length the reader would have kept.
-    public static String utf8FromFixed(byte[] b, int len) {
+    public static java.lang.String utf8FromFixed(byte[] b, int len) {
         assert len >= 0 && len <= b.length;
         try {
             return java.nio.charset.StandardCharsets.UTF_8
@@ -1977,7 +1994,7 @@ public final class TableVariable {
                     .decode(java.nio.ByteBuffer.wrap(b, 0, len))
                     .toString();
         } catch (java.nio.charset.CharacterCodingException bad) {
-            throw new AssertionError("ill-formed UTF-8 in fixed text");
+            throw new java.lang.AssertionError("ill-formed UTF-8 in fixed text");
         }
     }
 
@@ -2042,9 +2059,9 @@ public final class TableVariable {
     public static final class NodeRecord {
         public long typeId;
         public final byte[] body;
-        public String value;
+        public java.lang.String value;
         public byte[] bytes;
-        public Object table;
+        public java.lang.Object table;
         public boolean textMalformed;
         public boolean named;
         public boolean judged;
@@ -2098,7 +2115,7 @@ public final class TableVariable {
                 return null;
             }
             byte[] body = new byte[(int) size];
-            System.arraycopy(r.buf, r.off, body, 0, (int) size);
+            java.lang.System.arraycopy(r.buf, r.off, body, 0, (int) size);
             r.off += (int) size;
             list.add(new NodeRecord(typeId, body));
         }
@@ -2119,7 +2136,8 @@ public final class TableVariable {
                     rec.typeId = 0;
                     rec.textMalformed = true;
                 } else {
-                    rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
+                    rec.value =
+                            new java.lang.String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
                 }
             } else if (rec.typeId == BYTES_ID) {
                 rec.bytes = rec.body;
@@ -2431,7 +2449,7 @@ public final class TableVariable {
         }
         NodeRecord[] recs = report.nodeRecs;
         // a reference is unsigned
-        if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) {
+        if (java.lang.Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) {
             report.damaged = true; // a reference above the entry count is damage
             return;
         }
@@ -2480,7 +2498,7 @@ public final class TableVariable {
         return false;
     }
 
-    public static String resolveString(NodeRecord[] recs, long index, Report report) {
+    public static java.lang.String resolveString(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -2583,18 +2601,18 @@ public final class TableVariable {
             NodeTable nt,
             long index,
             long targetTypeId,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             Report report) {
         return resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
     }
 
-    @SuppressWarnings("unchecked")
+    @java.lang.SuppressWarnings("unchecked")
     public static <T> T resolveTable(
             NodeRecord[] recs,
             long index,
             long targetTypeId,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             Report report) {
         if (index == 0) {
@@ -2630,25 +2648,25 @@ public final class TableVariable {
     // reset() empties it for the next save while keeping its arrays, so a
     // reused Saver numbers a graph with nothing allocated per node.
     public static final class NodeGraph {
-        private Object[] keys = new Object[16];
+        private java.lang.Object[] keys = new java.lang.Object[16];
         private long[] keyIndex = new long[16];
         private int[] keyUses = new int[16];
         private boolean[] keyOpen = new boolean[16];
         private int keyCount;
-        private Object[] nodeValue = new Object[8];
+        private java.lang.Object[] nodeValue = new java.lang.Object[8];
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
         // The graph walk's work list: one frame per field to visit, plus the
         // close marker that ends a descended node. It is grow-only and reused
         // like the arrays above, so numbering a graph recurses nowhere.
-        private Object[] workValue = new Object[16];
+        private java.lang.Object[] workValue = new java.lang.Object[16];
         private int[] workKind = new int[16];
         private int[] workField = new int[16];
         private int[] workIndex = new int[16];
-        private Object[] workClose = new Object[16];
+        private java.lang.Object[] workClose = new java.lang.Object[16];
         private int workSize;
-        public final java.util.IdentityHashMap<Object, Long> labels =
+        public final java.util.IdentityHashMap<java.lang.Object, java.lang.Long> labels =
                 new java.util.IdentityHashMap<>();
 
         public void reset() {
@@ -2670,7 +2688,8 @@ public final class TableVariable {
             }
         }
 
-        public void push(Object value, int kind, int field, int index, Object close) {
+        public void push(
+                java.lang.Object value, int kind, int field, int index, java.lang.Object close) {
             if (workSize == workValue.length) {
                 int cap = workSize * 2;
                 workValue = java.util.Arrays.copyOf(workValue, cap);
@@ -2691,7 +2710,7 @@ public final class TableVariable {
             return workSize;
         }
 
-        public Object workValue(int i) {
+        public java.lang.Object workValue(int i) {
             return workValue[i];
         }
 
@@ -2707,7 +2726,7 @@ public final class TableVariable {
             return workIndex[i];
         }
 
-        public Object workClose(int i) {
+        public java.lang.Object workClose(int i) {
             return workClose[i];
         }
 
@@ -2717,9 +2736,9 @@ public final class TableVariable {
             workClose[workSize] = null;
         }
 
-        private int slot(Object obj) {
+        private int slot(java.lang.Object obj) {
             int mask = keys.length - 1;
-            int h = System.identityHashCode(obj);
+            int h = java.lang.System.identityHashCode(obj);
             int i = (h ^ (h >>> 16)) & mask;
             while (keys[i] != null && keys[i] != obj) {
                 i = (i + 1) & mask;
@@ -2727,23 +2746,23 @@ public final class TableVariable {
             return i;
         }
 
-        private int find(Object obj) {
+        private int find(java.lang.Object obj) {
             int i = slot(obj);
             return keys[i] == obj ? i : -1;
         }
 
-        private int insert(Object obj) {
+        private int insert(java.lang.Object obj) {
             int i = slot(obj);
             if (keys[i] == obj) {
                 return i;
             }
             if ((keyCount + 1) * 2 > keys.length) {
-                Object[] ok = keys;
+                java.lang.Object[] ok = keys;
                 long[] oi = keyIndex;
                 int[] ou = keyUses;
                 boolean[] oo = keyOpen;
                 int cap = keys.length * 2;
-                keys = new Object[cap];
+                keys = new java.lang.Object[cap];
                 keyIndex = new long[cap];
                 keyUses = new int[cap];
                 keyOpen = new boolean[cap];
@@ -2766,17 +2785,17 @@ public final class TableVariable {
             return i;
         }
 
-        public long index(Object obj) {
+        public long index(java.lang.Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyIndex[i];
         }
 
-        public boolean indexed(Object obj) {
+        public boolean indexed(java.lang.Object obj) {
             return index(obj) != 0;
         }
 
-        public int useCount(Object obj) {
+        public int useCount(java.lang.Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyUses[i];
@@ -2784,12 +2803,12 @@ public final class TableVariable {
 
         // setOpen marks a target whose body is being numbered: a pointer that
         // reaches it before it is indexed is a cycle the walk refuses.
-        public void setOpen(Object obj, boolean open) {
+        public void setOpen(java.lang.Object obj, boolean open) {
             if (obj == null) return;
             keyOpen[insert(obj)] = open;
         }
 
-        public boolean recordPointer(Object target, long typeId, boolean isBlob) {
+        public boolean recordPointer(java.lang.Object target, long typeId, boolean isBlob) {
             if (target == null) return true;
             int i = insert(target);
             if (keyOpen[i]) {
@@ -2818,7 +2837,7 @@ public final class TableVariable {
             return true;
         }
 
-        public long recordBlob(Object target, long typeId) {
+        public long recordBlob(java.lang.Object target, long typeId) {
             if (target == null) return 0;
             if (nodeCount == nodeValue.length) {
                 int cap = nodeCount * 2;
@@ -2838,7 +2857,7 @@ public final class TableVariable {
             return nodeCount;
         }
 
-        public Object nodeValue(int i) {
+        public java.lang.Object nodeValue(int i) {
             return nodeValue[i];
         }
 
@@ -2868,7 +2887,7 @@ public final class TableVariable {
 
         public Saver(int capacity) {
             ids.growable = true;
-            writer = new Writer(new byte[Math.max(capacity, 16)], ids);
+            writer = new Writer(new byte[java.lang.Math.max(capacity, 16)], ids);
             writer.growable = true;
         }
 
@@ -2900,28 +2919,28 @@ public final class TableVariable {
         }
 
         private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
-        private final java.util.IdentityHashMap<String, Long> seen =
+        private final java.util.IdentityHashMap<java.lang.String, java.lang.Long> seen =
                 new java.util.IdentityHashMap<>();
-        private final java.util.IdentityHashMap<byte[], Long> seenBytes =
+        private final java.util.IdentityHashMap<byte[], java.lang.Long> seenBytes =
                 new java.util.IdentityHashMap<>();
         private int next = 2;
 
-        public long ref(String s) {
-            Long have = seen.get(s);
+        public long ref(java.lang.String s) {
+            java.lang.Long have = seen.get(s);
             if (have != null) {
                 return have.longValue();
             }
-            seen.put(s, Long.valueOf(next));
+            seen.put(s, java.lang.Long.valueOf(next));
             entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
 
         public long refBytes(byte[] b) {
-            Long have = seenBytes.get(b);
+            java.lang.Long have = seenBytes.get(b);
             if (have != null) {
                 return have.longValue();
             }
-            seenBytes.put(b, Long.valueOf(next));
+            seenBytes.put(b, java.lang.Long.valueOf(next));
             entries.add(new Entry(BYTES_ID, b));
             return next++;
         }
@@ -2943,8 +2962,9 @@ public final class TableVariable {
         java.math.BigInteger upper =
                 signed
                         ? java.math.BigInteger.valueOf(hi)
-                        : new java.math.BigInteger(Long.toUnsignedString(hi));
-        return upper.shiftLeft(64).add(new java.math.BigInteger(Long.toUnsignedString(lo)));
+                        : new java.math.BigInteger(java.lang.Long.toUnsignedString(hi));
+        return upper.shiftLeft(64)
+                .add(new java.math.BigInteger(java.lang.Long.toUnsignedString(lo)));
     }
 
     static int integerWidth(int kind) {

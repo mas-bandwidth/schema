@@ -38,17 +38,32 @@ import (
 // Qualify returns files with every unit-declared file-scope name qualified
 // by pkg. The shared runtime header passes through untouched.
 func Qualify(files map[string][]byte, pkg string) (map[string][]byte, error) {
-	rename, err := Names(files, pkg)
+	return QualifyEscaped(files, pkg, nil)
+}
+
+// QualifyEscaped is Qualify over an emission of a unit whose types Escape
+// marked: a marked declaration takes the qualified spelling of its declared
+// twin, string literals and comments are unmarked, and an output that still
+// carries the marker is refused (Escapes.Leak). With a nil table it is
+// Qualify.
+func QualifyEscaped(files map[string][]byte, pkg string, esc *Escapes) (map[string][]byte, error) {
+	rename, err := names(files, pkg, esc)
 	if err != nil {
-		return nil, err
+		return nil, esc.Err(err)
 	}
 	out := make(map[string][]byte, len(files))
 	for name, data := range files {
-		if name == ccommon.RuntimeHeaderName || !isC(name) {
+		switch {
+		case name == ccommon.RuntimeHeaderName:
 			out[name] = data
-			continue
+		case !isC(name):
+			out[name] = []byte(esc.Unescape(string(data)))
+		default:
+			out[name] = []byte(rewrite(string(data), rename, esc))
 		}
-		out[name] = []byte(Rewrite(string(data), rename))
+	}
+	if err := esc.Leak(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -60,6 +75,10 @@ func isC(name string) bool {
 // Names is the unit's rename map: every file-scope name its files declare,
 // to its qualified spelling.
 func Names(files map[string][]byte, pkg string) (map[string]string, error) {
+	return names(files, pkg, nil)
+}
+
+func names(files map[string][]byte, pkg string, esc *Escapes) (map[string]string, error) {
 	shared := map[string]bool{}
 	for n := range declared(string(ccommon.RuntimeHeader())).all() {
 		shared[n] = true
@@ -72,8 +91,15 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	}
 	sort.Strings(names)
 	decls := &decls{kind: map[string]kind{}, hooks: map[string]bool{}}
+	inHeader := map[string]bool{}
 	for _, name := range names {
-		decls.merge(declared(string(files[name])))
+		d := declared(string(files[name]))
+		decls.merge(d)
+		if strings.HasSuffix(name, ".h") {
+			for n := range d.all() {
+				inHeader[n] = true
+			}
+		}
 	}
 	// SCHEMA_ and schema_ are the generator's own (SPEC §6.3), so a name
 	// under them is the unit's even where the unit only TESTS it — an
@@ -97,12 +123,22 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	}
 	sort.Strings(keys)
 	for _, n := range keys {
-		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") {
+		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") || featureMacro(n) && !inHeader[n] {
 			continue
 		}
-		q, ok := qualify(n, decls.kind[n], pkg)
+		// a marked spelling (Escape) is the unit's own name by construction:
+		// it takes the qualified spelling of its declared twin, and is
+		// respelled even where that twin is already the package's
+		base := n
+		if esc.Marked(n) {
+			base = esc.Unescape(n)
+		}
+		q, ok := qualify(base, decls.kind[n], pkg)
 		if !ok {
-			continue
+			if base == n {
+				continue
+			}
+			q = base
 		}
 		if prev, dup := from[q]; dup {
 			return nil, fmt.Errorf("the C backend qualifies both %s and %s to %s in package %s; rename one at the source", prev, n, q, pkg)
@@ -114,6 +150,14 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 		rename[n] = q
 	}
 	return rename, nil
+}
+
+// featureMacro: a feature-test macro (_POSIX_C_SOURCE, _DARWIN_C_SOURCE, ...)
+// a unit's .c file defines ahead of its first include. The C library reads it
+// by its own name, so it is never respelled; a name a HEADER declares is a
+// schema's own declaration and is qualified like any other.
+func featureMacro(n string) bool {
+	return len(n) > 1 && n[0] == '_' && n[1] >= 'A' && n[1] <= 'Z'
 }
 
 type kind int
@@ -162,6 +206,12 @@ func screaming(n string) bool {
 // comments, literals, member names and a function-like macro's own
 // parameters. Exported for the harness migration and the tests.
 func Rewrite(src string, rename map[string]string) string {
+	return rewrite(src, rename, nil)
+}
+
+// rewrite is Rewrite that also unmarks every string literal and comment
+// (Escape): those carry the schema's spellings, never a C identifier.
+func rewrite(src string, rename map[string]string, esc *Escapes) string {
 	toks := tokenize(src)
 	var b strings.Builder
 	b.Grow(len(src) + len(src)/8)
@@ -192,6 +242,14 @@ func Rewrite(src string, rename map[string]string) string {
 				b.WriteString(q)
 				continue
 			}
+		}
+		// a marked token the unit does not declare at file scope (a local the
+		// emitter named after a type) keeps the declared spelling, as every
+		// undeclared name always has; literals and comments carry the schema's
+		// spellings
+		if t.kind == tIdent || t.kind == tString || t.kind == tComment {
+			b.WriteString(esc.Unescape(t.text))
+			continue
 		}
 		b.WriteString(t.text)
 	}

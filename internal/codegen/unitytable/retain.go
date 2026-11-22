@@ -776,7 +776,6 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }
-                if (f.Kind == 13 && f.KeyId == null) { return true; }
                 for (int i = 0; i < n; i++) { if (!RetainDefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -985,7 +984,8 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         }
         else
         {
-            w.Fixed(f.GetBuffer != null ? f.GetBuffer(value.Obj)[i] : f.GetRaw(value.Obj, i), Width(f.Kind));
+            // a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+            w.Fixed(f.GetBuffer != null ? f.GetBuffer(value.Obj)[i] : StoredRaw(f.GetRaw(value.Obj, i), f), Width(f.Kind));
         }
     }
 

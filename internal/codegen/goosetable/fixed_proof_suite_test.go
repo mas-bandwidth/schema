@@ -1368,7 +1368,11 @@ func TestGooseFixedProofSuiteValues(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
 
-	for _, tc := range fixedProofValueCases() {
+	allFixedProofValueCases := fixedProofValueCases()
+	if len(allFixedProofValueCases) == 0 {
+		t.Fatal("fixedProofValueCases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allFixedProofValueCases {
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			u := parseCheckUnit(t, tc.schema)
@@ -1476,7 +1480,11 @@ func TestGooseFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
 
-	for _, tc := range fixedProofValueCases() {
+	allFixedProofValueCases := fixedProofValueCases()
+	if len(allFixedProofValueCases) == 0 {
+		t.Fatal("fixedProofValueCases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allFixedProofValueCases {
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			u := parseCheckUnit(t, tc.schema)

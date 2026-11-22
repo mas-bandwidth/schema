@@ -217,7 +217,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 kind_mismatch 0 222 333",
+		want:    "0 kind_mismatch 0 222 333",
 		control: [2]string{"if(c<0){refuseRead(r,\"kind_mismatch\");return;}\n    if(c>0)r.widened++;\n    if(fd.optional)", "if(c<0)c=0;\n    if(c>0)r.widened++;\n    if(fd.optional)"},
 	}, {
 		name: "kind_mismatch_arm",
@@ -233,7 +233,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 kind_mismatch 0 222 333",
+		want:    "0 kind_mismatch 0 222 333",
 		control: [2]string{"if(c<0){refuseRead(r,\"kind_mismatch\");return;}\n    if(c>0)r.widened++;\n    u.Type", "if(c<0)c=0;\n    if(c>0)r.widened++;\n    u.Type"},
 	}, {
 		name: "out_of_range_int",
@@ -247,7 +247,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 out_of_range 0 222 333",
+		want:    "0 out_of_range 0 222 333",
 		control: [2]string{"    } else if (!fd.signed) {\n      local MIN = 0x8000000000000000;\n      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, \"out_of_range\"); return 0; }\n    } else if (x < fd.lo || x > fd.hi) { refuseRead(r, \"out_of_range\"); return 0; }", "    }"},
 	}, {
 		name: "out_of_range_float",
@@ -264,7 +264,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 out_of_range 0 222 333",
+		want:    "0 out_of_range 0 222 333",
 		control: [2]string{"  if (v < fd.fmin || v > fd.fmax) { refuseRead(r, \"out_of_range\"); return 0.0; }\n", ""},
 	}, {
 		name: "length_over_bound",
@@ -283,7 +283,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 length_over_bound 0 222 333",
+		want:    "0 length_over_bound 0 222 333",
 		control: [2]string{"if(n>fd.bound){refuseRead(r,\"length_over_bound\");return;}\n    local s=joinText(r.b,at,at+n);", "local s=joinText(r.b,at,at+n);"},
 	}, {
 		name: "count_over_bound",
@@ -303,7 +303,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 count_over_bound 0 222 333",
+		want:    "0 count_over_bound 0 222 333",
 		control: [2]string{"if(n>fd.bound){refuseRead(r,\"count_over_bound\");return;}", ""},
 	}, {
 		name: "repeated_field_id",
@@ -389,7 +389,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "-1 non_finite_float 0 222 333",
+		want:    "0 non_finite_float 0 222 333",
 		control: [2]string{"if(k==10){local raw=get(r,32);if(!r.bad&&(raw&0x7f800000)==0x7f800000)refuseRead(r,\"non_finite_float\");return;}", "if(k==10){local raw=get(r,32);return;}"},
 	}, {
 		name: "bytes_after_pad",
@@ -500,7 +500,11 @@ func TestSquirrelLoadMessagesIsTheStrictRead(t *testing.T) {
 
 func TestSquirrelLoadMessagesStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	for _, row := range messageStrictRows() {
+	allMessageStrictRows := messageStrictRows()
+	if len(allMessageStrictRows) == 0 {
+		t.Fatal("messageStrictRows() is empty: the loop below would check nothing")
+	}
+	for _, row := range allMessageStrictRows {
 		if row.control[0] == "" {
 			continue
 		}

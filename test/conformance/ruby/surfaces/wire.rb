@@ -5,10 +5,10 @@ def self.run(manifest, outdir)
     case_name, unit, root, wire = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
-    if pkg.nil? || cls.nil? || !RubyConformance.supported?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'wire root is not generated and supported')
-      next
-    end
+    # Every instance row is a committed wire: a unit missing here is the leg
+    # losing it, never a feature the port lacks (Python's wire.py raises too).
+    raise "#{case_name}: wire root is not generated and supported" if pkg.nil? || cls.nil? || !RubyConformance.supported?(pkg, cls)
+
     begin
       value = cls.load(RubyConformance.read_bytes(wire))
     rescue pkg::Refused => e

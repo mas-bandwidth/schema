@@ -3,6 +3,7 @@
 // whole trailing byte and nonzero unused bits in the final byte.
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -37,7 +38,42 @@ static bool read_packet( const std::vector<uint8_t> & packet, packetend::End & v
     return true;
 }
 
-int main( int argc, char ** argv )
+// one counted unit per vector: main prints "ran N, failed M" and build/mustrun
+// holds N to the count the recipe registers
+static int g_ran = 0;
+
+// The vectors this driver reads are named in run_all. The directory is held to
+// that list: a .bin the driver does not read is red, so a vector added to the
+// shared corpus cannot ride unread. A named vector that is gone fails at its
+// load.
+static bool hold_directory( const std::string & directory )
+{
+    std::error_code error;
+    std::filesystem::directory_iterator listing( directory, error );
+    if ( error )
+    {
+        std::fprintf( stderr, "FAILED: packet end: cannot list %s\n", directory.c_str() );
+        return false;
+    }
+    bool held = true;
+    for ( const std::filesystem::directory_entry & entry : listing )
+    {
+        const std::string name = entry.path().filename().string();
+        if ( entry.path().extension() != ".bin" )
+        {
+            continue;
+        }
+        if ( name != "exact.bin" && name != "trailing.bin" && name != "padding.bin" )
+        {
+            std::fprintf( stderr, "FAILED: packet end: vector %s is in %s and this driver does not read it\n",
+                          name.c_str(), directory.c_str() );
+            held = false;
+        }
+    }
+    return held;
+}
+
+static int run_all( int argc, char ** argv )
 {
     if ( argc != 2 )
     {
@@ -45,7 +81,12 @@ int main( int argc, char ** argv )
         return 2;
     }
     const std::string directory = argv[1];
+    if ( !hold_directory( directory ) )
+    {
+        return 1;
+    }
 
+    g_ran++;
     std::vector<uint8_t> exact;
     if ( !load( directory + "/exact.bin", exact ) )
     {
@@ -70,6 +111,7 @@ int main( int argc, char ** argv )
         return 1;
     }
 
+    g_ran++;
     std::vector<uint8_t> trailing;
     if ( !load( directory + "/trailing.bin", trailing ) )
     {
@@ -84,6 +126,7 @@ int main( int argc, char ** argv )
         return 1;
     }
 
+    g_ran++;
     std::vector<uint8_t> padding;
     if ( !load( directory + "/padding.bin", padding ) )
     {
@@ -100,4 +143,12 @@ int main( int argc, char ** argv )
 
     std::printf( "packet end cpp: exact accepted as 3; trailing refused; padding refused\n" );
     return 0;
+}
+
+int main( int argc, char ** argv )
+{
+    const int status = run_all( argc, argv );
+    const int failed = status != 0 ? 1 : 0;
+    std::printf( "packet-end-cpp: ran %d, failed %d\n", g_ran, failed );
+    return ( status != 0 ) ? status : ( g_ran == 0 ? 1 : 0 );
 }

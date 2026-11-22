@@ -91,7 +91,11 @@ func TestPythonFixedProofValuesNegativeControl(t *testing.T) {
 func TestPythonFixedProofValuesTypes(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "pinned mypy")
-	for _, tc := range fixedproof.Cases() {
+	allCases := fixedproof.Cases()
+	if len(allCases) == 0 {
+		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCases {
 		if _, ok := pythonFixedValueSetups[tc.ID]; !ok {
 			continue
 		}

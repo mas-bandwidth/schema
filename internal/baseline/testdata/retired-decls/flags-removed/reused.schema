@@ -1,0 +1,11 @@
+package decls
+
+// a NEW flags under the name the removal freed: a mask carries no names, so
+// bit 0 of an old save would read as Fly
+flags Caps { Fly }
+
+table Holder
+{
+    c     int32
+    moves Caps
+}

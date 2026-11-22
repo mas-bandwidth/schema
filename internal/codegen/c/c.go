@@ -139,9 +139,10 @@ func (g *gen) unsupported(format string, args ...any) {
 	g.errs = append(g.errs, fmt.Errorf("C backend: "+format, args...))
 }
 
-// guardName is the include guard: SCHEMA_<PACKAGE>_<BASE>_H.
-func (g *gen) guardName(suffix string) string {
-	return "SCHEMA_" + screaming(g.unit.Package) + "_" + screaming(g.file.Base) + suffix + "_H"
+// guardName is the include guard of the file's data ("") or wire ("wire")
+// header, one token distinct for every file base (ccommon.HeaderGuard).
+func (g *gen) guardName(part string) string {
+	return ccommon.HeaderGuard(g.unit.Package, g.file.Base, part)
 }
 
 func (g *gen) assembleHeader() []byte {
@@ -185,7 +186,7 @@ func (g *gen) assembleHeader() []byte {
 func (g *gen) assembleWireHeader() []byte {
 	var h strings.Builder
 	g.header(&h, g.file.Base)
-	guard := g.guardName("WIRE")
+	guard := g.guardName("wire")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
 	fmt.Fprintf(&h, "#include \"%s.h\"\n", g.file.Base)
 	body := g.body.String()

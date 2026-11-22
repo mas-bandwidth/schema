@@ -1,0 +1,21 @@
+{
+  "root": "EvoRoot",
+  "target": "EvoRoot@0x290910b756f09a98",
+  "before": [
+    { "input": "wire/fixedevo_v0_retired.bin", "want": "refuse" },
+    { "input": "wire/fixedevo_v1.bin", "want": "rewrite/fixedevo_v1_as_v3.bin" },
+    { "input": "wire/fixedevo_v2.bin", "want": "rewrite/fixedevo_v2_as_v3.bin" },
+    { "input": "wire/fixedevo_v3_full.bin", "want": "wire/fixedevo_v3_full.bin" }
+  ],
+  "after": [
+    { "input": "wire/fixedevo_v0_retired.bin", "want": "refuse" },
+    { "input": "wire/fixedevo_v1.bin", "want": "refuse" },
+    { "input": "wire/fixedevo_v2.bin", "want": "rewrite/fixedevo_v2_as_v3.bin" },
+    { "input": "wire/fixedevo_v3_full.bin", "want": "wire/fixedevo_v3_full.bin" }
+  ],
+  "reloaded": [
+    { "input": "wire/fixedevo_v1.bin", "want": "refuse" },
+    { "input": "wire/fixedevo_v2.bin", "want": "rewrite/fixedevo_v2_as_v3.bin" },
+    { "input": "wire/fixedevo_v3_full.bin", "want": "wire/fixedevo_v3_full.bin" }
+  ]
+}

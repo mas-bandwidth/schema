@@ -20,9 +20,18 @@ import ludicrous.UInt128;
 public final class Main {
     static boolean failed = false;
 
+    // every check, and every expectAssert that runs, is one counted unit: main
+    // prints "ran N, failed M" and build/mustrun holds N to the count the
+    // recipe registers. The -ea run counts the assert legs and the plain run
+    // does not, so a recipe that lost -ea is a different count.
+    static int ran = 0;
+    static int failures = 0;
+
     static void check(boolean ok, String what) {
+        ran++;
         if (!ok) {
             System.out.println("FAILED: " + what);
+            failures++;
             failed = true;
         }
     }
@@ -44,6 +53,7 @@ public final class Main {
             check(false, what);
         } catch (AssertionError e) {
             // the contract fired — expected
+            ran++;
         }
     }
 
@@ -280,9 +290,12 @@ public final class Main {
                     "a smuggled ufixed high-half offset is REJECTED");
         }
 
-        if (failed) {
+        if (!failed) {
+            System.out.println("OK");
+        }
+        System.out.println("java-test-ludicrous: ran " + ran + ", failed " + (failed ? Math.max(failures, 1) : 0));
+        if (failed || ran == 0) {
             System.exit(1);
         }
-        System.out.println("OK");
     }
 }

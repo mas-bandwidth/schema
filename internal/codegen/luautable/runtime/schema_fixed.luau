@@ -24,7 +24,6 @@ local HASH_AT = 8
 local ENTRY = 17
 local LAYOUT_HEADER = 4
 local RECORD_MAX = 65536
-local MAX_RECORDS = 4096
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
@@ -1171,7 +1170,7 @@ end
 -- only on a read that returns — the compile census once, after the loop
 -- (§5.3, §5.9 #6). `batch_too_large` is the caller's capacity: a file holding
 -- more records than it refuses before any record is checked or lands, and an
--- omitted capacity is MAX_RECORDS; `plan_too_large` is the lineage entry's own
+-- omitted capacity is the file's own count; `plan_too_large` is the lineage entry's own
 -- lane (a layout past PLAN_MAX entries).
 function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
@@ -1235,8 +1234,9 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: 
 	local stride = k.recordBytes
 	if rest == 0 or stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
-	-- 10: the caller's capacity, the default when none was given
-	local cap = capacity or MAX_RECORDS
+	-- 10: the caller's capacity; none given reads the file's own count, as a
+	-- Go destination slice is the only bound there is
+	local cap = capacity or count
 	if count > cap then return no("batch_too_large") end
 	-- 11: EVERY record's hash before the first one lands (§5.3, TOTAL OVER
 	-- THE BATCH)

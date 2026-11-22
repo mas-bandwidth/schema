@@ -160,14 +160,15 @@ const tableNativeSource = `
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
         }
-        UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+        // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+        UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)
-    { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
+    { return NativeExtent(type) ? Align(type.StorageSize, global::System.Math.Max(8, type.StorageAlign)) : type.StorageSize; }
     static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
     {
-        alignment = Math.Max(8, type.StorageAlign);
+        alignment = global::System.Math.Max(8, type.StorageAlign);
         NativeWriter probe = new NativeWriter(default, true, false, graph);
         long extent = 0, rootBytes = NativeRecordBytes(type);
         // Placement precedes validation of references: later nodes have no
@@ -179,7 +180,7 @@ const tableNativeSource = `
             foreach (Node node in graph.Nodes)
             {
                 int align = node.BlobKind != 0 ? 8 : node.Type.StorageAlign;
-                alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+                alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
                 if (node.BlobKind != 0) { at += 8 + ((TableBlob)node.Value).Data.Length + (node.BlobKind == 12 ? 1 : 0); }
                 else
                 {

@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var workflowNameLine = regexp.MustCompile(`^\s*(?:- )?name:\s+(.*)$`)
@@ -46,7 +48,7 @@ func unquotedNameColons(body string) []string {
 func TestWorkflowNamesParseAsScalars(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	files, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}

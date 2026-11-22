@@ -149,6 +149,7 @@
     def self.block_rows_of: (untyped) -> untyped
     def self.block_stride_align: (untyped) -> untyped
     def self.body_end_offset: (untyped) -> untyped
+    def self.born_element: (untyped, untyped) -> untyped
     def self.by_id: (untyped) -> untyped
     def self.by_name: (untyped) -> untyped
     def self.capture_retain_file: (untyped, untyped, untyped, ?untyped) -> untyped
@@ -187,7 +188,7 @@
     def self.cook_text_entry: (untyped, untyped) -> untyped
     def self.cook_union_field: (untyped) -> untyped
     def self.cook_write_record: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?inherited_inactive: untyped) -> untyped
-    def self.cook_write_scalar: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.cook_write_scalar: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?ranged: untyped) -> untyped
     def self.count_json_graph: (untyped, untyped, untyped, untyped) -> untyped
     def self.count_json_value: (untyped, untyped, untyped, untyped, untyped) -> untyped
     def self.crc32c: (untyped) -> untyped

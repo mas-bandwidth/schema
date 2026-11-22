@@ -11,7 +11,6 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -75,6 +74,9 @@ fixed table Fox { x int32 }
 	if cppHasFormFile(decl, "Table.cpp") {
 		t.Fatalf("a wire-only table emitted a JSON/text-form translation unit: %v", cppKeysOf(decl))
 	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
+	}
 	for name, data := range decl {
 		src := string(data)
 		for _, forbidden := range []string{
@@ -130,10 +132,7 @@ fixed table FoxAll
 	}
 
 	slowtest.Gate(t, "c++")
-	cxx, err := exec.LookPath("c++")
-	if err != nil {
-		return
-	}
+	cxx := slowtest.Tool(t, "c++")
 	dir := t.TempDir()
 	var sources []string
 	var header string

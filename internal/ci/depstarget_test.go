@@ -46,6 +46,7 @@ func TestNoGateTestHardCodesTheSerializeGoPath(t *testing.T) {
 	root := repoRoot(t)
 	var failures []string
 	cacheNeedle := "serialize.go" + "@" + "v"
+	scanned := 0
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -71,6 +72,7 @@ func TestNoGateTestHardCodesTheSerializeGoPath(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
+		scanned++
 		flag := func(pos token.Pos, why string) {
 			p := fset.Position(pos)
 			failures = append(failures, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(rel), p.Line, why))
@@ -124,6 +126,9 @@ func TestNoGateTestHardCodesTheSerializeGoPath(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if scanned == 0 {
+		t.Fatal("no _test.go source was read: this gate walked the wrong tree, and a scan over nothing proves nothing")
 	}
 	if len(failures) != 0 {
 		sort.Strings(failures)

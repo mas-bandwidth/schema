@@ -180,7 +180,11 @@ func judgeFramingSpellings(t *testing.T, root string, vectors []framingVector) {
 			t.Errorf("%s: %v", v.name, err)
 			continue
 		}
-		ids, _ := idTableSpellings(data)
+		ids, err := idTableSpellings(data)
+		if _, damaged := errors.AsType[*fixtureDamage](err); err != nil && !damaged {
+			t.Errorf("%s: id table: %v", v.name, err)
+			continue
+		}
 		for shape := range ids {
 			shapes[shape] = true
 		}

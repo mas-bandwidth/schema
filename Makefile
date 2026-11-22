@@ -29,6 +29,20 @@
 # leg in SCHEMA_SKIP_LEGS and requires the same gate to go green with each
 # skip printed by name.
 
+# EVERY RECIPE RUNS UNDER bash -o pipefail. Under plain sh a pipeline's status
+# is its LAST command's, so `go test ... | tee log` was green whatever go test
+# said (make/rust.mk did exactly that: go test printed FAIL and exited 1, and
+# the target printed its success line). With pipefail a pipeline fails when any
+# stage fails. The flag goes IN SHELL, never in .SHELLFLAGS: GNU Make 3.81 (the
+# make macOS ships) ignores .SHELLFLAGS and ran plain "bash -c", so the same
+# recipe was red under make 4 and green under 3.81 (F-060); both makes run
+# "bash -o pipefail -c" from this one line. It is set once, here; no included
+# makefile may set SHELL or .SHELLFLAGS: internal/recipescan
+# (TestTreeHasNoGatedFinding) refuses the tree when this line is gone, an
+# included makefile sets SHELL, or .SHELLFLAGS appears, and
+# TestTreeLosingPipefailIsRed shows each of the three going red.
+SHELL := bash -o pipefail
+
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
@@ -145,6 +159,28 @@ LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/versio
 
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# tools/mustrun is the wrapper a language harness runs under: it fails on a
+# non-zero exit, on a harness that printed no "ran N, failed M" line, on zero
+# ran, on any failed, and on a count that differs from the recipe's -count.
+MUSTRUN := build/mustrun
+build/mustrun: $(wildcard tools/mustrun/*.go)
+	@mkdir -p build
+	go build -o $@ ./tools/mustrun
+
+# test-run: run ONE go test selection and refuse it when nothing ran.
+#
+#   make test-run PKG=./internal/foo RUN='^TestBar$$'
+#
+# A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
+# and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
+# fails when no test ran, or none passed (all skipped). PKG and RUN are both
+# required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
+# not bare go test -run, in every brief, recipe and by hand.
+.PHONY: test-run
+test-run:
+	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
+	go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
 
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
@@ -381,7 +417,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -448,20 +484,37 @@ TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason|TableRefuse
 # blast radius (a package rename through `test/tables/main.cpp`, the goldens,
 # and the tabletext and tablepack suites that load `tables/examples` by name),
 # so it is named here rather than done under a wire branch.
-TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
-	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
-	build/tables-generated/p3/*Table.h \
-	build/tables-generated/fixedevo/*Table.h build/tables-generated/m1/*Table.h \
-	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
+TABLES_ZERO_COST_UNITS := v1 v2 p1 p3 fixedevo m1 m2 scalars
+TABLES_ZERO_COST_HEADERS := $(foreach u,$(TABLES_ZERO_COST_UNITS),build/tables-generated/$(u)/*Table.h)
+
+# $(1) one header. True when it carries a symbol the gate refuses. The last
+# stage reads ALL of its input (grep . >/dev/null, never grep -q): under
+# pipefail a reader that quits at its first line leaves sort writing into a
+# closed pipe, sort dies of SIGPIPE, the pipeline fails and a header with many
+# leaks read as clean (F-067). tables-zero-cost-negative-control plants 17,576.
+tables_zero_cost_leaks = grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $(1) | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep . >/dev/null
+
+# $(1) a generated tree. The gate's whole scan: every registered unit must
+# hold at least one readable *Table.h, and no header may leak. A missing or
+# unreadable header is refused before it is scanned (F-072): grep on a file it
+# cannot open finds nothing, so the leak test above read a missing unit, or
+# all eight, as clean. An unmatched glob stays literal and is refused the same
+# way. tables-zero-cost-negative-control removes a unit and requires red.
+tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
+		for f in $(1)/$$u/*Table.h; do \
+			if ! test -f "$$f" || ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: registered unit $$u has no readable header: $$f"; exit 1; \
+			fi; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
+	done
 
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
-	@for f in $(TABLES_ZERO_COST_HEADERS); do \
-		if grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
-			grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
-			echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
-		fi; \
-	done
+	@$(call tables_zero_cost_scan,build/tables-generated)
 	@echo "tables zero-cost gate: value-only tables carry no pointer, map or list machinery"
 
 # THE NEGATIVE CONTROL. The gate above sanctions ONE node spelling, so it owes a
@@ -473,12 +526,36 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
 	@cp build/tables-generated/scalars/ScalarsTable.h build/zero-cost-control/GuardedTable.h
 	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
-	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
-			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+	@if ! $(call tables_zero_cost_leaks,build/zero-cost-control/GuardedTable.h); then \
 		echo "NEGATIVE CONTROL FAILED: a planted node symbol left the zero-cost scan green"; exit 1; \
 	fi
 	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
-	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
+	@# F-067: MANY leaks, more than a pipe holds, must still be leaks. 17,576
+	@# distinct node symbols (aaaTableNode .. zzzTableNode, about 300 KB through sort).
+	@printf 'static const int %sTableNode = 0;\n' {a..z}{a..z}{a..z} > build/zero-cost-control/ManyTable.h
+	@if ! $(call tables_zero_cost_leaks,build/zero-cost-control/ManyTable.h); then \
+		echo "NEGATIVE CONTROL FAILED: 17576 planted node symbols left the zero-cost scan green (F-067: the scan's reader quit early and sort died of SIGPIPE)"; exit 1; \
+	fi
+	@# and the same for the block-file check (tables_zero_cost_no_block_files): 1000
+	@# Block files, more than a pipe holds, must still be found.
+	@mkdir -p build/zero-cost-control/blockfiles && cd build/zero-cost-control/blockfiles && touch Planted{1..1000}Block.h
+	@if ! $(call tables_zero_cost_block_files_found,build/zero-cost-control/blockfiles); then \
+		echo "NEGATIVE CONTROL FAILED: 1000 planted Block files left the block-file check green (F-067: its reader quit early and find died of SIGPIPE)"; exit 1; \
+	fi
+	@# F-072: a copy of the registered units scans green, and the same copy with
+	@# one unit's headers removed (scalars) must be refused, not read as clean.
+	@mkdir -p build/zero-cost-control/tree && for u in $(TABLES_ZERO_COST_UNITS); do \
+		mkdir -p build/zero-cost-control/tree/$$u && cp build/tables-generated/$$u/*Table.h build/zero-cost-control/tree/$$u/ || exit 1; \
+	done
+	@( $(call tables_zero_cost_scan,build/zero-cost-control/tree) ) > build/zero-cost-control/tree.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: a copy of the registered headers did not scan green"; cat build/zero-cost-control/tree.log; exit 1; }
+	@rm -f build/zero-cost-control/tree/scalars/*Table.h
+	@if ( $(call tables_zero_cost_scan,build/zero-cost-control/tree) ) > build/zero-cost-control/missing.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a registered unit with no header left the zero-cost scan green (F-072)"; exit 1; \
+	fi
+	@grep 'registered unit scalars has no readable header' build/zero-cost-control/missing.log >/dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: the missing unit was refused for another reason:"; cat build/zero-cost-control/missing.log; exit 1; }
+	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not; 17576 planted symbols, 1000 planted Block files and a registered unit with no header are RED too"
 
 # THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
 # technique (docs/PORTING.md, schema#421): the generated accessor and the
@@ -2100,7 +2177,7 @@ tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
 .PHONY: tables-cpp-runtime-home-bytes-negative-control
 tables-cpp-runtime-home-bytes-negative-control: bin/schema tables-cpp-runtime-home
 	@rm -rf build/runtime-home-cpp/bytes-sabotage && cp -R build/runtime-home-cpp/added build/runtime-home-cpp/bytes-sabotage
-	@f=$$(ls build/runtime-home-cpp/bytes-sabotage/*Table.h | head -1); \
+	@f=$$(ls build/runtime-home-cpp/bytes-sabotage/*Table.h | sed -n 1p); \
 	 sed 's|^#define \([A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES\)$$|#define \1 // SABOTAGED: follows the file|' $$f > $$f.sabotaged && mv $$f.sabotaged $$f; \
 	 grep -q SABOTAGED $$f || { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@distinct=$$(test/cpp-tables/runtime_home_digest.sh build/runtime-home-cpp/bytes-sabotage | awk '{print $$1, $$2}' | sort -u | wc -l | tr -d ' '); \
@@ -3180,10 +3257,13 @@ tables-big-endian-control-only: build/tables-main-be-control.cpp
 	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
 	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order/examples
 	@./build/schema-host-order generate --lang cpp --out build/tables-host-order/examples tables/examples
+	@# Both compilers at once, each waited on by its own pid (F-068): a bare
+	@# wait returned 0 when either compile failed.
 	@set -e; \
-	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & \
-	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & \
-	wait
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & host=$$!; \
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & be=$$!; \
+	failed=0; wait "$$host" || failed=1; wait "$$be" || failed=1; \
+	if test "$$failed" -ne 0; then echo "NEGATIVE CONTROL FAILED: a host-order control binary did not compile" >&2; exit 1; fi
 	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; cat build/host-order-host.log; exit 1; }
 	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
@@ -3505,21 +3585,21 @@ test-core-tables-1:
 	$(MAKE) test-core-tables-1c
 	$(MAKE) test-core-tables-1d
 
-test-core-tables-1a: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan
+test-core-tables-1a: build/mustrun build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan
 	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
 	$(MAKE) toolchain-negative-control
-	./build/schema_test
-	./build/schema_test_guard
+	$(MUSTRUN) -name schema_test -count 735 -- ./build/schema_test
+	$(MUSTRUN) -name schema_test_guard -count 8 -- ./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) check-enum-bound-negative-control
 	$(MAKE) check-wstring-refusal-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control
-	./build/schema_test_tables
-	./build/schema_test_tables_asan
+	$(MUSTRUN) -name schema_test_tables -count 153 -- ./build/schema_test_tables
+	$(MUSTRUN) -name schema_test_tables_asan -count 153 -- ./build/schema_test_tables_asan
 	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
 	# repeat header out of slot[ordinal] is held to main's own bytes by
 	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
@@ -3635,7 +3715,7 @@ test-core-tables-2: build/conformance-harness build/tables-generated/.stamp
 	$(MAKE) tables-clamp-limits
 	$(MAKE) tables-clamp-limits-negative-control
 
-test-core-tables-3: build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/tables-generated/.stamp
+test-core-tables-3: build/mustrun build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/tables-generated/.stamp
 	$(MAKE) tables-block
 	$(MAKE) tables-block-fuzz
 	$(MAKE) tables-block-fuzz-extent-negative-control
@@ -3683,13 +3763,13 @@ test-core-tables-3: build/schema_test_block build/schema_test_block_asan build/s
 	$(MAKE) tables-json-differential-negative-control
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
-	./build/schema_test_random
-	./build/schema_test_ludicrous
-	./build/schema_test_bench
+	$(MUSTRUN) -name schema_test_random -count 40001 -- ./build/schema_test_random
+	$(MUSTRUN) -name schema_test_ludicrous -count 61 -- ./build/schema_test_ludicrous
+	$(MUSTRUN) -name schema_test_bench -count 37 -- ./build/schema_test_bench
 	# the tables bench corpus's oracle — the generated table unit has no other
 	# consumer under `make test`, and a unit that generates but does not compile
 	# is issue #80's lesson, so each leg's compile gate rides in its test-<lang>
-	./build/schema_test_bench_table
+	$(MUSTRUN) -name schema_test_bench_table -count 66 -- ./build/schema_test_bench_table
 
 test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness
 	$(MAKE) test-core-tables-1
@@ -4264,6 +4344,10 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
 	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
+	# and the Go test that holds the same map-holding cook
+	# (internal/tablecook/list_test.go) reads it here, the one place it is
+	# written: under SCHEMA_REQUIRE_CORPUS an absent cook fails, never skips.
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
@@ -4422,7 +4506,7 @@ tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@# layout"). Both are sabotaged so the writer still lands on the extent it
 	@# measured and the cook is written, laid wrong, for the pinned cook
 	@# compare and cook-check's containment clause below to name.
-	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -qx 2 || \
+	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -x 2 >/dev/null || \
 		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the cook writer's and the cook measure's list branch"; exit 1; }
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
@@ -4703,7 +4787,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on widelist_wide"; cat build/node-align-control/$$half.log; exit 1; }; \
 		grep -q -- 'widelist_wide: .* differs at byte offset' build/node-align-control/$$half.log || \
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on a widelist_wide cook that differs"; cat build/node-align-control/$$half.log; exit 1; }; \
-		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q '/widelist_wide '; then \
+		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v '/widelist_wide ' >/dev/null; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half control went red on a row that holds no sixteen-aligned array"; exit 1; \
 		fi; \
 		echo "negative control ($$half): the tool's cook of widelist_wide goes RED and no other row does"; \
@@ -4882,8 +4966,9 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
-	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
+	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -4971,8 +5056,8 @@ bench-variants: generated/bench/go/.stamp
 bench-table-corpus: build/schema_test_bench_table
 	./build/schema_test_bench_table pin
 
-bench-table-check: build/schema_test_bench_table
-	./build/schema_test_bench_table verify
+bench-table-check: build/mustrun build/schema_test_bench_table
+	$(MUSTRUN) -name schema_test_bench_table -count 66 -- ./build/schema_test_bench_table verify
 
 # Matched Fixed Table uses BenchMixed itself, reached through the tiny wrapper.
 # The wrapper is never serialized; packet storage remains independently built.
@@ -6534,7 +6619,7 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
@@ -6548,6 +6633,7 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
@@ -6577,6 +6663,27 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# THE SUITE RUN ALONE (docs/SPEC-CONFORMANCE.md): one driver, no other language.
+# `make conformance` builds every leg first; a new port written from the spec
+# has no sibling checkouts and no other legs. This builds ONLY the harness (Go)
+# and runs every surface against the one driver named. Expected answers come
+# from the committed manifests and goldens under testdata/conformance, never
+# from another leg: a substituted registry has no reference leg, so no other
+# driver is asked anything. The driver is the port's own and is built by the
+# caller beforehand. CARDS_DRIVER (optional) also runs the cards corpus.
+#
+#   make conformance-port DRIVER=path/to/driver NAME=clisp [CARDS_DRIVER='cmd']
+.PHONY: conformance-port
+conformance-port: build/conformance-harness
+	@test -n "$(DRIVER)" || { echo "conformance-port: DRIVER=<command> is required (docs/SPEC-CONFORMANCE.md)"; exit 2; }
+	@test -n "$(NAME)" || { echo "conformance-port: NAME=<language> is required"; exit 2; }
+	@test "$(NAME)" != cpp || { echo "conformance-port: NAME=cpp is the reference leg's name; pick the port's own"; exit 2; }
+	@mkdir -p build/conformance-port-$(NAME)
+	@printf '%s %s\n' '$(NAME)' '$(DRIVER)' > build/conformance-port-$(NAME)/drivers.txt
+	./build/conformance-harness run --drivers build/conformance-port-$(NAME)/drivers.txt \
+		--work build/conformance-port-$(NAME)/work
+	$(if $(CARDS_DRIVER),./build/conformance-harness cards --corpus tables/cards/conformance --driver '$(CARDS_DRIVER)' --require $(CARDS_REQUIRE))
+
 # A separate four-case whole-text entry gate, not four new global corpus rows.
 # The caller builds the selected driver first; nightly already has that build.
 CONFORMANCE_BOM_LANG ?= cpp
@@ -6997,7 +7104,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 
 # The corpus is written beside the live one and swapped in whole, so a reader
 # never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf build/fixedform-corpus.next
 	@mkdir -p build/fixedform-corpus.next
 	./build/schema_test_fixedform_dump build/fixedform-corpus.next
@@ -7028,7 +7135,7 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 # (or in the environment) that is absent still refuses by name, and so does a
 # fetch that fails or produces no header: a gate with no blade is the exact
 # silence this refusal exists to forbid.
-SERIALIZE_PIN     ?= v2.1.3
+SERIALIZE_PIN     ?= v2.1.6
 SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
 SERIALIZE_FETCHED := build/serialize
 SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
@@ -7047,10 +7154,14 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
 # still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
 # is up to date, and a phony target with only that prerequisite would report
-# nothing to be done.
+# nothing to be done. SERIALIZE_GO_RUNTIME is resolved when the Makefile is
+# read, so a sibling that deps-go publishes LATER in the same run (CI's
+# verify-leg jobs stage none) is linked as build/serialize.go rather than
+# leaving the rule's own target unmade; internal/ci/serializegorace_test.go
+# holds both cases.
 SERIALIZE_GO_PIN     ?= v2.1.1
 SERIALIZE_C_PIN      ?= v2.1.1
-SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.2.1
 SERIALIZE_RS_PIN     ?= v5.0.0
 SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
@@ -7156,12 +7267,22 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push, active only in agent clones:
+# it refuses a push whose author or committer is not rowan-claude). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push guards agent clones)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
-	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
+	@if test -f "$(SERIALIZE_GO)/go.mod" && test "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO)"; then :; \
+	elif test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the sibling runtime '$(SERIALIZE_GO)' arrived during this run (deps-go); linking $(SERIALIZE_GO_RUNTIME), the runtime this run resolved, to it"; \
+		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
+		test -f "$@" || ln -sfn "$(abspath $(SERIALIZE_GO))" "$(SERIALIZE_GO_RUNTIME)"; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
 		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
@@ -7401,7 +7522,7 @@ MATRIX_GOFLAGS ?=
 RELEASE_LANE ?= full
 release:
 ifeq ($(RELEASE_LANE),fast)
-	@newest=$$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1); \
+	@newest=$$(git tag -l 'v*.*.*' --sort=-v:refname | sed -n 1p); \
 	case '$(RELEASE_VERSION)' in "$${newest%.*}".*) ;; *) echo "release REFUSES: the fast lane makes patch releases only; $(RELEASE_VERSION) is not a patch of $$newest: use the full lane"; exit 1;; esac
 	@sha=$$(git rev-parse '$(RELEASE_COMMIT)^{commit}'); \
 	run=$$(gh run list --workflow ci-fast.yml --commit "$$sha" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty'); \
@@ -7475,8 +7596,12 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
+# The version is past every tag but keeps the current major: releasetag refuses
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
+# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
@@ -7490,7 +7615,7 @@ release-refuses-on-differential:
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+	@grep -q '^release: would tag $(RELEASE_GATE_VERSION) ' $(RELEASE_GATE_TEST)/guard.out || \
 		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
 	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
 		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
@@ -7727,15 +7852,18 @@ test: slow-gate-scan
 # `test`: it rides ci-full.yml beside the steps it credits. Nothing is
 # MOVED to nightly by this; the scan above, which is the gate, is on `test`.
 #
-# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
-# which tests the gate skipped, and it must still read that when some unrelated
-# test is red. The red itself is `test`'s to report, not this target's, and the
-# accounting below exits nonzero on its own finding.
+# GO'S EXIT STATUS IS HANDED TO THE ACCOUNTING, NOT DROPPED. The accounting
+# still reads the whole transcript and writes its table when go test failed,
+# then exits nonzero naming the status: a transcript from a run that failed,
+# did not build, or was cut short cannot prove every gated test reached its
+# gate. It was `|| true` here, and a transcript cut after its first skip was
+# a green one-owner verdict (the reviewer's F-233). Every package in the
+# transcript must also close with its own pass, fail or skip record.
 .PHONY: slow-gate-coverage
 slow-gate-coverage: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1; echo $$? > build/slowgate/all-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log -go-exit "$$(cat build/slowgate/all-plain.status)"
 
 # THE SAME ACCOUNTING, SHARDED, for ci-full.yml's slow-gate rows. The two
 # halves below were killed at the fleet's 120 s per-commit limit (130 s and
@@ -7762,12 +7890,12 @@ SLOWGATE_SHARDS ?= 26
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1; echo $$? > build/slowgate/codegen-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log -go-exit "$$(cat build/slowgate/codegen-plain.status)"
 slow-gate-coverage-rest: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1; echo $$? > build/slowgate/rest-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log -go-exit "$$(cat build/slowgate/rest-plain.status)"
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the
 # retry-and-classify logic behind the nightly is a committed script
@@ -7939,6 +8067,7 @@ pins-source-cs: bin/schema
 pins-source-goldens: bin/schema
 	@mkdir -p testdata/golden
 	go test ./internal/goldens -update -run '^TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run '^TestGolden'
 	go test ./internal/goldens -count=1 -run '^TestGolden'
 
 .PHONY: pins-source
@@ -8084,8 +8213,13 @@ define tables_zero_cost_symbol_grep
 	echo "block zero-cost gate: no Table source carries one symbol of the block form"
 endef
 
+# $(1) a tree. True when it holds a Block file. The reader takes all of find's
+# output (never grep -q, F-067: under pipefail find died of SIGPIPE on a big
+# tree and the check passed); tables-zero-cost-negative-control plants 1000.
+tables_zero_cost_block_files_found = find $(1) -name '*Block.*' | grep . >/dev/null
+
 define tables_zero_cost_no_block_files
-	@if find $(1) -name '*Block.*' | grep -q .; then \
+	@if $(call tables_zero_cost_block_files_found,$(1)); then \
 		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
 		find $(1) -name '*Block.*'; exit 1; \
 	fi
@@ -8189,28 +8323,35 @@ cards-conformance-all-goose:
 		fi; \
 		printf '%s\n' "$$lines"; \
 		for s in load save render parse bounds upgrade edit taskhash view; do \
-			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+			printf '%s\n' "$$lines" | grep -E "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" >/dev/null || fail=1; \
 		done; \
 	done; \
 	exit $$fail
 
 # ---- Per-commit big-endian smoke and nightly full battery (green-be-nightly) ----
+# The ten generators run at once, and each one's pid is kept and waited on by
+# itself (F-068): a bare `wait` returns 0 whatever the jobs did, so a failed
+# P2 generator wrote the stamp and a retry skipped the missing tree. Every job
+# is waited for, and the line fails if any of them failed, so the stamp below
+# is never touched over a failed child.
 define be_main_generate
-	@set -e; \
-	$(1) generate --lang cpp --out $(2)/examples tables/examples & \
-	$(1) generate --lang cpp --out $(2)/pointers tables/pointers & \
-	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema & \
-	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema & \
-	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema & \
-	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema & \
-	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema & \
-	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema & \
-	$(1) generate --lang cpp --out $(2)/scalars tables/scalars & \
-	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema & \
-	wait
+	@set -e; pids=; \
+	$(1) generate --lang cpp --out $(2)/examples tables/examples & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/pointers tables/pointers & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/scalars tables/scalars & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema & pids="$$pids $$!"; \
+	failed=0; for p in $$pids; do wait "$$p" || failed=1; done; \
+	if test "$$failed" -ne 0; then echo "FAILED: a big-endian generator failed; $(2)/.stamp is not written" >&2; exit 1; fi
 endef
 
 build/tables-generated-be/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/F1.schema
+	@rm -f $@
 	@mkdir -p build/tables-generated-be
 	$(call be_main_generate,./bin/schema,build/tables-generated-be)
 	@touch $@

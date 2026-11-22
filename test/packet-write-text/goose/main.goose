@@ -11,11 +11,13 @@ import .driverlib;
 import .serialize;
 
 var failed = false;
+var failures = 0;
 var cases = 0;
 
 fn fail(name: const u8[:], detail: const u8[:]) {
     write_stderr(str("FAILED: ", name, ": ", detail, "\n"));
     failed = true;
+    failures += 1;
 }
 
 fn process(line: const u8[:]) {
@@ -67,6 +69,7 @@ fn main() {
         line.clear();
     }
     if cases == 0 { fail("input", "the shared case list was empty"); }
+    // The last stdout line is the count tools/mustrun reads.
+    print("packet write text Goose: ran ", cases, ", failed ", failures);
     if failed { exit(1); }
-    print("packet write text Goose: ", cases, " cases OK");
 }

@@ -41,12 +41,20 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/build"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/runmatch"
 )
 
 const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
@@ -73,8 +81,9 @@ type recipe struct {
 	target   string
 	cmd      string
 	packages []string
-	armed    bool // sets SCHEMA_SLOW / SCHEMA_REQUIRE_CORPUS, or runs through test/slowgate/proof
+	armed    bool // the gate is open for what it runs: SCHEMA_SLOW=1, a non-empty SCHEMA_REQUIRE_CORPUS, or test/slowgate/proof
 	runPat   string
+	test     goTestLine // the line as the shell, the go tool and the test binary read it
 }
 
 type exception struct {
@@ -97,6 +106,7 @@ func main() {
 	shardHalf := flag.String("half", "all", "with -emit-shard-packages: codegen, rest or all")
 	shardIndex := flag.Int("shard", -1, "with -emit-shard-packages: shard index, or -1 for every gated package of the half")
 	shardCount := flag.Int("shards", 1, "with -emit-shard-packages: number of shards")
+	goExit := flag.Int("go-exit", -1, "with -coverage: the exit status of the go test that wrote the transcript (required)")
 	root := flag.String("C", ".", "repository root")
 	flag.Parse()
 
@@ -129,7 +139,11 @@ func main() {
 		return
 	}
 
-	gated, err := gatedPackages(*root)
+	gatedTests, err := gatedTestPackages(*root)
+	if err != nil {
+		fail("reading the tree for tests that reach slowtest.Gate: %v", err)
+	}
+	gated, err := gatedPackagesWith(*root, gatedTests)
 	if err != nil {
 		fail("reading the tree for slowtest.Gate call sites: %v", err)
 	}
@@ -147,24 +161,91 @@ func main() {
 	}
 
 	if *coverage != "" {
+		if *goExit < 0 {
+			fail("-coverage needs -go-exit, the exit status of the go test that wrote %s: a transcript whose run failed or was cut proves nothing", *coverage)
+		}
 		steps, err := workflowSteps(*root)
 		if err != nil {
 			fail("scanning .github/workflows: %v", err)
 		}
-		os.Exit(runCoverage(*root, *coverage, recipes, exceptions, steps))
+		os.Exit(runCoverage(*root, *coverage, *goExit, recipes, exceptions, steps))
 	}
-	os.Exit(runStatic(*root, recipes, exceptions, gated))
+	os.Exit(runStatic(*root, recipes, exceptions, gated, gatedTests))
 }
 
-func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool) int {
+// selectsNoGatedTest reports whether an unarmed recipe line is PROVEN to run
+// tests, and to run none the gate can skip. Both halves are required:
+//
+//   - the line RUNS A TEST in every package it names: its -run pattern selects
+//     one among the tests declared under the build context the line runs in
+//     (its -tags, the tags -race, -msan and -asan imply, its CGO_ENABLED,
+//     GOOS and GOARCH, else the lane's), and no flag on it
+//     makes `go test` run nothing (-count=0, -list, -c). A line that runs
+//     nothing exits 0 and proves nothing;
+//   - no test that reaches the gate (gatedTests, by directory, under any build
+//     context) is selected.
+//
+// The line is read as the shell, the go tool and the test binary read it
+// (gotestline.go: the last -run wins, -args -test.run counts), and selection
+// is Go's own (internal/runmatch, a port of testing/match.go):
+// `-run TestGated/roundtrip` runs TestGated, which skips at the gate before
+// any subtest is reached; `-run 'TestFast/unused|TestGated/roundtrip'` runs
+// both parents.
+//
+// Anything short of the proof is bare: a line this scan cannot read, no -run
+// pattern, an element that does not compile, a -skip (which this scan does not
+// model), a `./...`, a package whose declarations cannot be read, or a package
+// gated by the marker alone (another module's, whose reach this scan does not
+// compute).
+func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) bool {
+	if ok, _ := r.test.provable(); !ok || len(r.packages) == 0 {
+		return false
+	}
+	selector, err := runmatch.Compile(r.test.run)
+	if err != nil {
+		return false
+	}
+	ctx, _ := r.test.buildContext()
+	for _, pkg := range r.packages {
+		if strings.HasSuffix(pkg, "/...") {
+			return false
+		}
+		dir := strings.TrimPrefix(pkg, "./")
+		gatedHere, ok := gatedTests[dir]
+		if !ok || slices.ContainsFunc(gatedHere, selector.Selects) {
+			return false
+		}
+		declared, err := declaredTestsIn(filepath.Join(root, filepath.FromSlash(dir)), &ctx)
+		if err != nil {
+			return false
+		}
+		selected := 0
+		for name := range declared {
+			if selector.Selects(name) {
+				selected++
+			}
+		}
+		if selected == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool, gatedTests map[string][]string) int {
 	var bare []recipe
 	usedException := map[int]bool{}
+	proven := 0
 	for _, r := range recipes {
 		if r.armed {
 			continue
 		}
 		if i := matchException(exceptions, r); i >= 0 {
 			usedException[i] = true
+			continue
+		}
+		if selectsNoGatedTest(root, r, gatedTests) {
+			proven++
 			continue
 		}
 		bare = append(bare, r)
@@ -209,7 +290,7 @@ func runStatic(root string, recipes []recipe, exceptions []exception, gated map[
 	if stale > 0 {
 		return 1
 	}
-	fmt.Printf("slow gate scan: %d gated package(s), %d armed `go test` recipe line(s), %d written exception(s), 0 bare\n", len(gated), armed, len(exceptions))
+	fmt.Printf("slow gate scan: %d gated package(s), %d armed `go test` recipe line(s), %d written exception(s), %d unarmed line(s) whose -run pattern selects no gated test, 0 bare\n", len(gated), armed, len(exceptions), proven)
 	return 0
 }
 
@@ -223,7 +304,7 @@ func runStatic(root string, recipes []recipe, exceptions []exception, gated map[
 //	ci         no make target runs it; it runs ONLY on ci-full.yml's SCHEMA_SLOW=1
 //	           steps. Not silence: a named lane, counted here, listed in the file.
 //	NOBODY     nothing in the repo runs it. That is the failure.
-func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, steps []ciStep) int {
+func runCoverage(root, logPath string, goExit int, recipes []recipe, exceptions []exception, steps []ciStep) int {
 	skipped, err := gateSkips(logPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "slow gate coverage: reading %s: %v\n", logPath, err)
@@ -237,10 +318,11 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 	var uncovered []gatedTest
 	var rows []string
 	usedCILanes := map[string]bool{}
+	decls := newDeclCache(root)
 
 	for _, t := range skipped {
 		tDisplay := t.Display()
-		if target := coveredBy(recipes, t); target != "" {
+		if target := coveredBy(decls, recipes, t); target != "" {
 			byMake++
 			rows = append(rows, fmt.Sprintf("make\t%s\t%s", tDisplay, target))
 		} else if ok, _ := coveredByException(exceptions, t); ok {
@@ -256,16 +338,31 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 			rows = append(rows, fmt.Sprintf("NOBODY\t%s\t-", tDisplay))
 		}
 	}
+	// THE TABLE IS THE RECEIPT: a table that could not be written is a red
+	// verdict, never a green one that names a file that is not there (the
+	// reviewer's F-234).
 	out := filepath.Join(root, "build", "slowgate", "coverage.tsv")
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err == nil {
-		_ = os.WriteFile(out, []byte("# bucket\ttest\trun by\n"+strings.Join(rows, "\n")+"\n"), 0o644)
+	if err := writeCoverageTable(out, rows); err != nil {
+		fmt.Printf("SLOW GATE COVERAGE FAILED: the table could not be written: %v\n", err)
+		return 1
 	}
+	red := false
 	if len(uncovered) > 0 {
 		fmt.Printf("SLOW GATE COVERAGE FAILED: %d of %d tests that skip at slowtest.Gate under a plain `go test ./...` are run by NOTHING — no make target and no SCHEMA_SLOW=1 CI step (schema#988):\n", len(uncovered), len(skipped))
 		for _, n := range uncovered {
 			fmt.Printf("  %s\n", n.Display())
 		}
 		fmt.Println("remedy: give it a positive gate target that goes through test/slowgate/proof, or name it in make/slow-gate-exceptions.txt with the reason.")
+		red = true
+	}
+	// The accounting is read whatever go test's status, so a red run still
+	// shows its table; but a run that failed, did not build or was cut cannot
+	// prove every gated test reached its gate (the reviewer's F-233).
+	if goExit != 0 {
+		fmt.Printf("SLOW GATE COVERAGE FAILED: the go test that wrote %s exited %d — a test failed, a package did not build, or the run was cut, so the transcript cannot prove every gated test reached its gate\n", logPath, goExit)
+		red = true
+	}
+	if red {
 		return 1
 	}
 	var laneNames []string
@@ -282,14 +379,22 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 	return 0
 }
 
+// writeCoverageTable writes the accounting's rows to out, creating its
+// directory.
+func writeCoverageTable(out string, rows []string) error {
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(out, []byte("# bucket\ttest\trun by\n"+strings.Join(rows, "\n")+"\n"), 0o644)
+}
+
 // workflowSteps parses workflow files in .github/workflows/*.yml and extracts
 // steps that run `go test` with SCHEMA_SLOW enabled.
 func workflowSteps(root string) ([]ciStep, error) {
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(paths)
 	var steps []ciStep
 	for _, p := range paths {
 		b, err := os.ReadFile(p)
@@ -306,27 +411,36 @@ func workflowSteps(root string) ([]ciStep, error) {
 	return steps, nil
 }
 
-func parseWorkflowContent(file, content string) ([]ciStep, error) {
-	// These settings can affect package resolution or test execution outside the
-	// command itself. This scanner does not resolve inherited workflow/job state.
-	for line := range strings.SplitSeq(content, "\n") {
-		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
-		switch key {
-		case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT":
-			return nil, nil // no coverage credit from an unsupported workflow shape
-		}
+// unreadContext reports whether a workflow line sets something that changes
+// package resolution or test execution outside the command itself.
+func unreadContext(trimmed string) bool {
+	key, _, _ := strings.Cut(trimmed, ":")
+	switch strings.TrimSpace(key) {
+	case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT", "GOTOOLCHAIN", "CGO_ENABLED":
+		return true
 	}
+	return false
+}
+
+func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	lines := strings.Split(content, "\n")
 	var steps []ciStep
 	groups := matrixGroups(lines)
 
 	type rawStep struct {
-		startLine int
-		runLine   int
-		name      string
-		ifCond    string
-		envLines  []string
-		runLines  []string
+		startLine  int
+		runLine    int
+		dashIndent int
+		name       string
+		ifCond     string
+		envLines   []string
+		runLines   []string
+		// refused: the step itself sets a working directory or a Go
+		// environment variable this scanner does not resolve, so it earns no
+		// credit. One such step used to void the whole file: ci-full.yml's
+		// big-endian row sets GOFLAGS, and every unit-codegen row of the same
+		// file went uncredited.
+		refused bool
 	}
 
 	var rawSteps []rawStep
@@ -339,15 +453,40 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	for idx, line := range lines {
 		lineNo := idx + 1
 		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+
+		// A line at or left of the current item's dash, that is not a new
+		// item, ends the item: it is a job's or the workflow's own property.
+		if cur != nil && trimmed != "" && !strings.HasPrefix(trimmed, "#") && indent <= cur.dashIndent && !strings.HasPrefix(trimmed, "- ") {
+			rawSteps = append(rawSteps, *cur)
+			cur = nil
+			inRun, inEnv = false, false
+		}
+
+		// These settings change package resolution or test execution outside
+		// the command. Set by a step, they void that step; set anywhere else
+		// (the workflow's or a job's env or defaults, which every step
+		// inherits), this scanner does not resolve them and the file earns no
+		// credit.
+		if !strings.HasPrefix(trimmed, "- ") && (!inRun || indent <= runIndent) && unreadContext(trimmed) {
+			if cur == nil {
+				return nil, nil // no coverage credit from an unsupported workflow shape
+			}
+			cur.refused = true
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "- ") {
 			if cur != nil {
 				rawSteps = append(rawSteps, *cur)
 			}
-			cur = &rawStep{startLine: lineNo, runLine: lineNo}
+			cur = &rawStep{startLine: lineNo, runLine: lineNo, dashIndent: indent}
 			inRun = false
 			inEnv = false
 			lineAfterDash := strings.TrimSpace(trimmed[2:])
+			if unreadContext(lineAfterDash) {
+				cur.refused = true
+			}
 			switch {
 			case strings.HasPrefix(lineAfterDash, "name:"):
 				cur.name = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "name:"))
@@ -369,7 +508,6 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			continue
 		}
 
-		indent := len(line) - len(strings.TrimLeft(line, " "))
 		// End a block before interpreting a sibling property such as if: false.
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			if inEnv && indent <= envIndent {
@@ -450,7 +588,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 
 		// Step condition: explicitly disabled steps must not count as enabled;
 		// unresolved execution conditions cannot certify coverage.
-		if !isStepConditionEnabled(rs.ifCond, groups) {
+		if rs.refused || !isStepConditionEnabled(rs.ifCond, groups) {
 			steps = append(steps, ciStep{
 				file:     file,
 				line:     rs.runLine,
@@ -572,12 +710,14 @@ var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
 const modulePath = "github.com/mas-bandwidth/schema/v2"
 
 // The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`,
-// or the same over `go list ./dir/...`.
+// or the same over `go list ./dir/...`, optionally with one `-skip '<re>'`
+// before the substitution: the tests it matches earn no credit there, because
+// a step of their own runs them.
 // A filter is a literal with an optional trailing `$` (no other regular
 // expression syntax), so its basic-regex meaning to grep and its meaning here
 // are the same: a substring, or with `$` a suffix, of the import path.
 var (
-	ciComplement     = regexp.MustCompile(`^go test (?:-timeout 0 )?\$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
+	ciComplement     = regexp.MustCompile(`^go test (?:-timeout 0 )?(?:-skip '([^'\s]+)' )?\$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
 	ciComplementDrop = regexp.MustCompile(`grep -v ['"]([A-Za-z0-9_/-]+\$?)['"]`)
 )
 var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)
@@ -610,12 +750,16 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 	// drops. Its package selection cannot be inferred from a substring in
 	// another argument.
 	if m := ciComplement.FindStringSubmatch(cmd); m != nil {
-		base := strings.TrimSuffix(strings.TrimSuffix(m[1], "..."), "/")
+		skip := m[1]
+		base := strings.TrimSuffix(strings.TrimSuffix(m[2], "..."), "/")
 		var drops []string
-		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[2], -1) {
+		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[3], -1) {
 			drops = append(drops, f[1])
 		}
 		return func(pkg, test string) bool {
+			if skip != "" && matchesRun(skip, test) {
+				return false
+			}
 			if base != "." && pkg != base && !strings.HasPrefix(pkg, base+"/") {
 				return false
 			}
@@ -667,8 +811,15 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 				return nil, false, false
 			}
 			skip, i = value, next
-		case field == "-count=1", field == "-v", field == "-json":
+		case field == "-count=1", field == "-v", field == "-json", field == "-timeout=0":
 			// These options do not remove selected tests.
+		case field == "-timeout":
+			// Only an unlimited timeout (a nightly has no time limit) is part of
+			// the grammar; it selects nothing away.
+			if i+1 >= len(fields) || fields[i+1] != "0" {
+				return nil, false, false
+			}
+			i++
 		default:
 			// Unknown options, redirections, substitutions and command separators all
 			// fail this package grammar. In particular -list does not earn credit.
@@ -752,9 +903,36 @@ func coveredByCI(steps []ciStep, t gatedTest) string {
 	return ""
 }
 
-// coveredBy reports the first armed recipe whose package and -run pattern select
-// t, using Go's own -run semantics.
-func coveredBy(recipes []recipe, t gatedTest) string {
+// runs reports whether a recipe line RUNS the test called name, read as the go
+// tool and the test binary read the line: the last -run in force selects it,
+// no -skip in force removes it, and no flag makes the run empty. A line this
+// scan cannot read runs nothing it can be credited with — python-reflection-core
+// was credited with TestPythonReflectionStrictTypes, the one test its recipe
+// names in -skip, because only -run was read.
+func (r recipe) runs(name string) bool {
+	l := r.test
+	if l.undecided != "" || l.unreadArg != "" || l.runsNothing != "" {
+		return false
+	}
+	if l.hasRun {
+		if p, err := runmatch.Compile(l.run); err != nil || !p.Selects(name) {
+			return false
+		}
+	}
+	if l.skip != "" {
+		if p, err := runmatch.Compile(l.skip); err != nil || p.Skips(name) {
+			return false
+		}
+	}
+	return true
+}
+
+// coveredBy reports the first armed recipe whose package it names, which runs
+// t, and which builds t: a line that builds under another context than the
+// lane's (-tags, -race, CGO_ENABLED, GOOS, GOARCH) is credited only with the
+// tests declared under that context — `go test -race` does not build a test
+// behind `//go:build !race` (the reviewer's F-030).
+func coveredBy(decls *declCache, recipes []recipe, t gatedTest) string {
 	for _, r := range recipes {
 		if !r.armed {
 			continue
@@ -762,11 +940,45 @@ func coveredBy(recipes []recipe, t gatedTest) string {
 		if !recipeMatchesPkg(r, t.pkg) {
 			continue
 		}
-		if r.runPat == "" || matchesRun(r.runPat, t.name) {
-			return r.target
+		if !r.runs(t.name) {
+			continue
 		}
+		if ctx, custom := r.test.buildContext(); custom && !decls.declares(t.pkg, &ctx, t.name) {
+			continue
+		}
+		return r.target
 	}
 	return ""
+}
+
+// declCache holds the tests each package declares under each build context a
+// recipe line names, read once per package and context.
+type declCache struct {
+	root string
+	read map[string]map[string]bool
+}
+
+func newDeclCache(root string) *declCache {
+	return &declCache{root: root, read: map[string]map[string]bool{}}
+}
+
+// declares reports whether the package pkg (a "./dir" path under the root)
+// declares a top-level test name in a file ctx builds. A package that cannot
+// be read declares nothing.
+func (c *declCache) declares(pkg string, ctx *build.Context, name string) bool {
+	key := strings.Join([]string{pkg, ctx.GOOS, ctx.GOARCH, strconv.FormatBool(ctx.CgoEnabled), strings.Join(ctx.BuildTags, ",")}, "\x00")
+	set, ok := c.read[key]
+	if !ok {
+		dir := filepath.Join(c.root, filepath.FromSlash(strings.TrimPrefix(pkg, "./")))
+		declared, err := declaredTestsIn(dir, ctx)
+		if err != nil {
+			declared = map[string]bool{}
+		}
+		set = declared
+		c.read[key] = set
+	}
+	top, _, _ := strings.Cut(name, "/")
+	return set[top]
 }
 
 func recipeMatchesPkg(r recipe, pkg string) bool {
@@ -833,15 +1045,40 @@ func matchException(exceptions []exception, r recipe) int {
 	return -1
 }
 
+// gatedPackages is every package directory ("./dir") that holds a test the
+// gate can skip. Two readings, and the set is their union:
+//
+//   - a *_test.go that spells `slowtest.Gate(`, the direct call;
+//   - a package whose test REACHES the gate through a helper, in its own
+//     package or in an imported one (gatedTestPackages). Lobster's, Lua's,
+//     Luau's, Squirrel's and Goose's packet legs gate inside a runner package
+//     their tests import, so no test file of theirs spells the call: read by
+//     the marker alone, six packages holding 83 gated tests were missing from
+//     this set, and a bare `go test` on one of them was a line the static
+//     audit never looked at.
+//
+// Nothing is skipped quietly: a directory that cannot be walked or a test
+// source that cannot be read is an error, not an ungated package.
 func gatedPackages(root string) (map[string]bool, error) {
+	reaching, err := gatedTestPackages(root)
+	if err != nil {
+		return nil, err
+	}
+	return gatedPackagesWith(root, reaching)
+}
+
+func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bool, error) {
 	gated := map[string]bool{}
+	spelled := 0
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "build", "generated", "node_modules":
+			// a directory the go tool builds no package from is not a gated
+			// package (the reviewer's F-241: the scan's own corpus trees
+			// under testdata were counted, 58 → 62)
+			if notBuilt(root, path, info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -850,17 +1087,62 @@ func gatedPackages(root string) (map[string]bool, error) {
 			return nil
 		}
 		b, err := os.ReadFile(path)
-		if err != nil || !strings.Contains(string(b), "slowtest.Gate(") {
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(b), "slowtest.Gate(") {
+			return nil
+		}
+		// the spelling in a comment or a string is not a call (F-241)
+		calls, err := callsSlowtestGate(path, b)
+		if err != nil {
+			return err
+		}
+		if !calls {
 			return nil
 		}
 		rel, err := filepath.Rel(root, filepath.Dir(path))
 		if err != nil {
-			return nil
+			return err
 		}
+		spelled++
 		gated["./"+filepath.ToSlash(rel)] = true
 		return nil
 	})
-	return gated, err
+	if err != nil {
+		return nil, err
+	}
+	if spelled == 0 && len(reaching) == 0 {
+		return nil, fmt.Errorf("no test source under %s spells slowtest.Gate( and no test reaches it: the walk read the wrong tree, or the gate is gone", root)
+	}
+	for dir := range reaching {
+		gated["./"+dir] = true
+	}
+	return gated, nil
+}
+
+// callsSlowtestGate reports whether a Go source holds a call slowtest.Gate(…)
+// in its code: the spelling in a comment or a string literal is not one. A
+// source that does not parse is an error, not an ungated file.
+func callsSlowtestGate(path string, src []byte) (bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+	if err != nil {
+		return false, err
+	}
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || found {
+			return !found
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Gate" {
+			if x, ok := sel.X.(*ast.Ident); ok && x.Name == "slowtest" {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found, nil
 }
 
 var targetLine = regexp.MustCompile(`^([A-Za-z0-9_./$()%-][^:=]*):(?:[^=]|$)`)
@@ -876,32 +1158,264 @@ func scanMakefiles(root string, gated map[string]bool) ([]recipe, error) {
 		sort.Strings(m)
 		files = append(files, m...)
 	}
+	vars, err := makeVariables(files)
+	if err != nil {
+		return nil, err
+	}
+	macros, err := readMakeMacros(files)
+	if err != nil {
+		return nil, err
+	}
+	// Every recipe line that runs `go test` or the proof script is a candidate,
+	// and every candidate is placed: it names a gated package (a recipe, armed
+	// or bare), it names only packages that hold no gated test, it is armed
+	// whatever it names, or the scan cannot read what it runs — and that last
+	// one is an error by name, never a line quietly left out of the audit.
+	ledger := provesran.NewLedger("`go test` and test/slowgate/proof recipe lines in Makefile, make/*.mk and make/checks/*.mk")
 	var out []recipe
 	for _, f := range files {
-		rs, err := scanOne(root, f, gated)
+		rs, err := scanOne(root, f, gated, vars, macros, ledger)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, rs...)
 	}
+	if err := ledger.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
-func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
-	fh, err := os.Open(path)
+// makeAssignment is a one-line variable assignment at the left margin:
+// `NAME = value`, `NAME := value`, `NAME ::= value` or `NAME ?= value`.
+var makeAssignment = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:::?|\?)?=[ \t]*(.*)$`)
+
+// makeVariables reads the simple variables of the scanned makefiles, so a
+// recipe that spells its command or its packages through one is read as make
+// runs it: `$(GO) test ./internal/ci` is a `go test`, and
+// `go test $(SQUIRREL_DIFFERENTIAL_FAST)` names ./internal/ci. Both shapes
+// were lines the audit never saw. A name assigned two different values is
+// left out: which one a recipe gets is make's business, and a line whose
+// packages then cannot be read is refused by name in scanOne.
+func makeVariables(files []string) (map[string]string, error) {
+	vars := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, path := range files {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		for line := range strings.SplitSeq(string(b), "\n") {
+			if m := makeAppend.FindStringSubmatch(line); m != nil {
+				// built up in pieces, target by target or with override: its
+				// value is make's to say, and this scan does not guess it
+				ambiguous[m[1]+m[2]+m[3]] = true
+				continue
+			}
+			m := makeAssignment.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
+			if m == nil || strings.HasSuffix(m[2], `\`) {
+				continue
+			}
+			if prev, ok := vars[m[1]]; ok && prev != m[2] {
+				ambiguous[m[1]] = true
+			}
+			vars[m[1]] = m[2]
+		}
+	}
+	for name := range ambiguous {
+		delete(vars, name)
+	}
+	return vars, nil
+}
+
+// makeAppend is every assignment makeAssignment does not read whole: `NAME +=`,
+// `override NAME =`, `export NAME =` and a target-specific `target: NAME =`.
+var makeAppend = regexp.MustCompile(`^(?:([A-Za-z_][A-Za-z0-9_]*)[ \t]*\+=|(?:override|export)[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:::?|\?|\+)?=|[^\t#=:]+:[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:::?|\?|\+)?=)`)
+
+var makeReference = regexp.MustCompile(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
+
+// expandMakeVariables replaces every reference to a known simple variable, a
+// few levels deep. An unknown reference is left as written.
+func expandMakeVariables(cmd string, vars map[string]string) string {
+	for range 4 {
+		next := makeReference.ReplaceAllStringFunc(cmd, func(ref string) string {
+			if v, ok := vars[ref[2:len(ref)-1]]; ok {
+				return v
+			}
+			return ref
+		})
+		if next == cmd {
+			break
+		}
+		cmd = next
+	}
+	return cmd
+}
+
+// makeMacros is the `define NAME` … `endef` blocks of the scanned makefiles.
+// A recipe that calls one runs the block's lines with its arguments in place
+// of $(1)…$(9), so that is how the scan reads it: `$(call squirrel_nc,$@,
+// TestSquirrelJsonNegativeControl,internal/codegen/squirreltable)` is a proof
+// call that names a test and a package. Read as written, the call was no
+// candidate at all and the block's own line named the package `./$(3)/`, so
+// nineteen required names were checked against nothing.
+type makeMacros struct {
+	bodies map[string][]string // each block's recipe lines, continuations joined
+	called map[string]bool     // blocks some recipe line calls
+}
+
+var makeCall = regexp.MustCompile(`\$\(call ([A-Za-z_][A-Za-z0-9_]*),`)
+
+// logicalRecipe joins the recipe line at index i with its backslash
+// continuations, and returns the index of its last physical line.
+func logicalRecipe(lines []string, i int) (string, int) {
+	cmd := lines[i]
+	for strings.HasSuffix(strings.TrimRight(cmd, " "), `\`) && i+1 < len(lines) {
+		i++
+		cmd = strings.TrimSuffix(strings.TrimRight(cmd, " "), `\`) + " " + lines[i]
+	}
+	return cmd, i
+}
+
+func readLines(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = fh.Close() }() // Read-only input; Scanner reports read errors.
-	rel, _ := filepath.Rel(root, path)
+	lines := strings.Split(string(b), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSuffix(lines[i], "\r")
+	}
+	return lines, nil
+}
+
+// defineName is the NAME of a `define NAME` line, or "".
+func defineName(line string) string {
+	rest, ok := strings.CutPrefix(line, "define ")
+	if !ok {
+		return ""
+	}
+	if f := strings.Fields(rest); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+func readMakeMacros(files []string) (makeMacros, error) {
+	m := makeMacros{bodies: map[string][]string{}, called: map[string]bool{}}
+	for _, path := range files {
+		lines, err := readLines(path)
+		if err != nil {
+			return m, err
+		}
+		define := ""
+		for i := 0; i < len(lines); i++ {
+			if define == "" {
+				if name := defineName(lines[i]); name != "" {
+					define = name
+					continue
+				}
+			} else if strings.HasPrefix(lines[i], "endef") {
+				define = ""
+				continue
+			}
+			if !strings.HasPrefix(lines[i], "\t") {
+				continue
+			}
+			var cmd string
+			cmd, i = logicalRecipe(lines, i)
+			if define != "" {
+				m.bodies[define] = append(m.bodies[define], cmd)
+				continue
+			}
+			for _, c := range makeCall.FindAllStringSubmatch(cmd, -1) {
+				m.called[c[1]] = true
+			}
+		}
+	}
+	return m, nil
+}
+
+// instantiate returns the lines a recipe line's $(call NAME,…) runs: each
+// known block's lines with the call's arguments substituted.
+func (m makeMacros) instantiate(cmd string) []string {
+	var out []string
+	for _, loc := range makeCall.FindAllStringSubmatchIndex(cmd, -1) {
+		body, ok := m.bodies[cmd[loc[2]:loc[3]]]
+		if !ok {
+			continue
+		}
+		args, ok := callArguments(cmd[loc[1]:])
+		if !ok {
+			continue
+		}
+		for _, line := range body {
+			for n := 9; n >= 1; n-- {
+				arg := ""
+				if n <= len(args) {
+					arg = args[n-1]
+				}
+				line = strings.ReplaceAll(line, fmt.Sprintf("$(%d)", n), arg)
+			}
+			// a block is expanded twice (the call, then the recipe), so it
+			// spells a shell `$` as `$$$$`; one expansion leaves `$$`
+			out = append(out, strings.ReplaceAll(line, "$$$$", "$$"))
+		}
+	}
+	return out
+}
+
+// callArguments splits the text after `$(call NAME,` at its top-level commas,
+// up to the parenthesis that closes the call.
+func callArguments(rest string) ([]string, bool) {
+	var args []string
+	depth, start := 0, 0
+	for i, r := range rest {
+		switch r {
+		case '(', '{':
+			depth++
+		case ')', '}':
+			if depth == 0 {
+				return append(args, strings.TrimSpace(rest[start:i])), true
+			}
+			depth--
+		case ',':
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(rest[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return nil, false
+}
+
+// goTestCommand is `go test` as a command word. `printf 'go test/conformance'`,
+// `cargo test` and `cp a.go test/x` are not it.
+var goTestCommand = regexp.MustCompile("(?:^|[\\s;&|(@=/+`\"'-])go test(?:\\s|$)")
+
+func scanOne(root, path string, gated map[string]bool, vars map[string]string, macros makeMacros, ledger *provesran.Ledger) ([]recipe, error) {
+	lines, err := readLines(path)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return nil, err
+	}
 	var out []recipe
 	target := "(no target)"
-	sc := bufio.NewScanner(fh)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
-	lineNo := 0
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
+	define := ""
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if define == "" {
+			if name := defineName(line); name != "" {
+				define = name
+				continue
+			}
+		} else if strings.HasPrefix(line, "endef") {
+			define = ""
+			continue
+		}
 		if !strings.HasPrefix(line, "\t") {
 			if m := targetLine.FindStringSubmatch(line); m != nil && !strings.HasPrefix(line, "#") {
 				names := strings.Fields(m[1])
@@ -911,69 +1425,131 @@ func scanOne(root, path string, gated map[string]bool) ([]recipe, error) {
 			}
 			continue
 		}
-		start := lineNo
-		cmd := line
-		for strings.HasSuffix(strings.TrimRight(cmd, " "), `\`) && sc.Scan() {
-			lineNo++
-			cmd = strings.TrimSuffix(strings.TrimRight(cmd, " "), `\`) + " " + sc.Text()
-		}
-		if !strings.Contains(cmd, "go test") && !strings.Contains(cmd, "test/slowgate/proof") {
+		start := i + 1
+		var cmd string
+		cmd, i = logicalRecipe(lines, i)
+		if define != "" && macros.called[define] {
+			// a block some recipe calls is judged at each call, with the
+			// call's arguments; its own text names `$(1)`, not a package
 			continue
 		}
-		if strings.Contains(cmd, "#") && strings.HasPrefix(strings.TrimSpace(cmd), "#") {
-			continue
+		for _, run := range append([]string{cmd}, macros.instantiate(cmd)...) {
+			if r, ok := judgeRecipeLine(rel, start, target, expandMakeVariables(run, vars), gated, ledger); ok {
+				out = append(out, r)
+			}
 		}
-		pkgs := packagesOf(cmd, gated)
-		if len(pkgs) == 0 {
-			continue
-		}
-		armed := strings.Contains(cmd, "SCHEMA_SLOW=1") ||
-			strings.Contains(cmd, "SCHEMA_REQUIRE_CORPUS") ||
-			strings.Contains(cmd, "test/slowgate/proof")
-		out = append(out, recipe{
-			file: rel, line: start, target: target, cmd: cmd,
-			packages: pkgs, armed: armed, runPat: runPattern(cmd),
-		})
 	}
-	return out, sc.Err()
+	return out, nil
 }
 
-func packagesOf(cmd string, gated map[string]bool) []string {
-	base := ""
-	if i := strings.Index(cmd, "cd "); i >= 0 && strings.Contains(cmd[i:], "&&") {
-		rest := strings.TrimSpace(cmd[i+3:])
-		if j := strings.IndexAny(rest, " \t"); j > 0 {
-			base = strings.Trim(rest[:j], "\"'")
-		}
+// judgeRecipeLine places one recipe line, and returns it as a recipe when it
+// names a gated package or runs the proof script.
+func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string]bool, ledger *provesran.Ledger) (recipe, bool) {
+	proof := strings.Contains(cmd, "test/slowgate/proof")
+	if !strings.Contains(cmd, "go test") && !proof {
+		return recipe{}, false
 	}
-	var found []string
-	seen := map[string]bool{}
-	for tok := range strings.FieldsSeq(cmd) {
-		tok = strings.Trim(tok, "\"'")
-		spelled := ""
+	if strings.HasPrefix(strings.TrimSpace(cmd), "#") {
+		return recipe{}, false
+	}
+	parsed := parseGoTestLine(cmd)
+	armed := parsed.armed()
+	named := namedPackages(cmd)
+	pkgs := packagesOf(cmd, gated)
+	if proof && len(pkgs) == 0 {
+		// A proof line is kept whatever it names: its required names are
+		// audited against the package's declarations (prooflist.go), and a
+		// line dropped here was a list nobody checked.
+		pkgs = named
+	}
+	where := fmt.Sprintf("%s:%d: %s", rel, start, target)
+	if len(pkgs) == 0 {
 		switch {
-		case tok == "./...":
-			spelled = "./..."
-		case tok == "." || tok == "./":
-			if base == "" {
-				continue
-			}
-			spelled = "./" + filepath.ToSlash(filepath.Clean(base))
-		case strings.HasPrefix(tok, "./"):
-			spelled = "./" + filepath.ToSlash(filepath.Clean(strings.TrimSuffix(tok, "/")))
-			if base != "" {
-				spelled = "./" + filepath.ToSlash(filepath.Clean(filepath.Join(base, tok)))
-			}
+		case proof:
+			ledger.Unknown(where, "runs test/slowgate/proof on a package this scan cannot read, so its required names are checked against nothing: spell the package on the line")
+		case len(named) > 0, armed, !goTestCommand.MatchString(cmd):
+			// it names only packages that hold no gated test; or it sets the
+			// variable, so nothing it runs can skip at the gate; or `go test`
+			// is text in the line, not a command it runs
+			ledger.Judged()
 		default:
-			continue
+			ledger.Unknown(where, "runs `go test` without the variable on packages this scan cannot read (no ./package on the line, no `cd <dir> &&`, no simple make variable that names one): spell the package on the line")
 		}
+		return recipe{}, false
+	}
+	ledger.Judged()
+	return recipe{
+		file: rel, line: start, target: target, cmd: cmd,
+		packages: pkgs, armed: armed, runPat: parsed.run, test: parsed,
+	}, true
+}
+
+// packagesOf is the gated packages a recipe line names, as namedPackages
+// spells them.
+func packagesOf(cmd string, gated map[string]bool) []string {
+	var found []string
+	for _, spelled := range namedPackages(cmd) {
 		if spelled != "./..." && !gated[spelled] && !gatedUnder(spelled, gated) {
 			continue
 		}
+		found = append(found, spelled)
+	}
+	return found
+}
+
+// cdBase is the directory of a recipe's `cd <dir> &&`, or "".
+func cdBase(cmd string) string {
+	if i := strings.Index(cmd, "cd "); i >= 0 && strings.Contains(cmd[i:], "&&") {
+		rest := strings.TrimSpace(cmd[i+3:])
+		if j := strings.IndexAny(rest, " \t"); j > 0 {
+			return strings.Trim(rest[:j], "\"'")
+		}
+	}
+	return ""
+}
+
+// namedPackages is every package a recipe line spells, relative to the
+// repository root ("./dir", "./dir/..." or "./..."), gated or not. A line that
+// changes directory and names no package runs the package of that directory:
+// `cd test/go-tables && go test -run '^TestUsage$'` is ./test/go-tables, and
+// read without that rule it was a `go test` the audit never placed.
+func namedPackages(cmd string) []string {
+	base := cdBase(cmd)
+	var found []string
+	seen := map[string]bool{}
+	add := func(spelled string) {
 		if !seen[spelled] {
 			seen[spelled] = true
 			found = append(found, spelled)
 		}
+	}
+	for tok := range strings.FieldsSeq(cmd) {
+		tok = strings.Trim(tok, "\"'")
+		switch {
+		case tok == "./...":
+			// under a `cd <dir> &&` it is that directory's subtree, not the
+			// repository's; a directory this scan cannot read keeps the
+			// widest reading
+			if base != "" && !strings.Contains(base, "$") {
+				add("./" + filepath.ToSlash(filepath.Clean(base)) + "/...")
+			} else {
+				add("./...")
+			}
+		case tok == "." || tok == "./":
+			if base == "" {
+				continue
+			}
+			add("./" + filepath.ToSlash(filepath.Clean(base)))
+		case strings.HasPrefix(tok, "./"):
+			if base != "" {
+				add("./" + filepath.ToSlash(filepath.Clean(filepath.Join(base, tok))))
+			} else {
+				add("./" + filepath.ToSlash(filepath.Clean(strings.TrimSuffix(tok, "/"))))
+			}
+		}
+	}
+	if len(found) == 0 && base != "" && !strings.Contains(base, "$") && goTestCommand.MatchString(cmd) {
+		add("./" + filepath.ToSlash(filepath.Clean(base)))
 	}
 	return found
 }
@@ -991,16 +1567,6 @@ func gatedUnder(spelled string, gated map[string]bool) bool {
 		}
 	}
 	return false
-}
-
-var runFlag = regexp.MustCompile(`-run[= ]+'?"?([^'"\s]+)'?"?`)
-
-func runPattern(cmd string) string {
-	m := runFlag.FindStringSubmatch(cmd)
-	if m == nil {
-		return ""
-	}
-	return strings.ReplaceAll(m[1], "$$", "$")
 }
 
 func readExceptions(path string) ([]exception, error) {
@@ -1073,6 +1639,7 @@ func gateSkips(path string) ([]gatedTest, error) {
 
 	var results []gatedTest
 	seen := map[string]bool{}
+	closed := map[string]bool{} // package → its stream has closed
 
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 10<<20), 10<<20)
@@ -1093,6 +1660,14 @@ func gateSkips(path string) ([]gatedTest, error) {
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
 			return nil, fmt.Errorf("line %d: malformed JSON event: %w", lineNo, err)
 		}
+		if ev.Package != "" {
+			if _, ok := closed[ev.Package]; !ok {
+				closed[ev.Package] = false
+			}
+			if ev.Test == "" && (ev.Action == "pass" || ev.Action == "fail" || ev.Action == "skip") {
+				closed[ev.Package] = true
+			}
+		}
 		if strings.Contains(ev.Output, gateSkipMarker) {
 			if strings.TrimSpace(ev.Package) == "" || strings.TrimSpace(ev.Test) == "" {
 				return nil, fmt.Errorf("line %d: gate skip record missing package or test identity", lineNo)
@@ -1107,6 +1682,20 @@ func gateSkips(path string) ([]gatedTest, error) {
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	// EVERY PACKAGE CLOSES. go test -json ends each package's stream with a
+	// package-level pass, fail or skip; a stream cut at an event boundary
+	// parses cleanly and holds fewer skips than the run would have, and was
+	// read as complete (the reviewer's F-233).
+	var cut []string
+	for pkg, ok := range closed {
+		if !ok {
+			cut = append(cut, pkg)
+		}
+	}
+	if len(cut) > 0 {
+		sort.Strings(cut)
+		return nil, fmt.Errorf("the transcript was cut: %d package(s) have no closing pass, fail or skip record: %s", len(cut), strings.Join(cut, ", "))
 	}
 
 	sort.Slice(results, func(i, j int) bool {

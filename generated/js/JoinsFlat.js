@@ -8,7 +8,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -69,22 +69,22 @@ function validText(bytes, length) {
 // must hold ArmsAgreeMaxBytes.
 export function WriteArmsAgreeFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   if (value.flag) {
-    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
       return -1;
     }
     lo = (lo | (((value.a & 0x7ff)) << 6)) >>> 0;
   } else {
-    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 2047) {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 2047) {
       return -1;
     }
     lo = (lo | (((value.b & 0x7ff)) << 6)) >>> 0;
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   lo = (lo | (((value.tail & 0x7f)) << 17)) >>> 0;
@@ -162,13 +162,13 @@ export function ReadArmsAgreeFlatBits(view, numBits, value) {
 // must hold ArmsDisagreeMaxBytes.
 export function WriteArmsDisagreeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
-    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
       return -1;
     }
     v = ((value.a & 0x7ff)) >>> 0;
@@ -181,7 +181,7 @@ export function WriteArmsDisagreeFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
-    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 7) {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 7) {
       return -1;
     }
     v = ((value.b & 0x7)) >>> 0;
@@ -194,7 +194,7 @@ export function WriteArmsDisagreeFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
@@ -336,13 +336,13 @@ export function ReadArmsDisagreeFlatBits(view, numBits, value) {
 // must hold ArmEmptyMaxBytes.
 export function WriteArmEmptyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
-    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 524287) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 524287) {
       return -1;
     }
     v = ((value.a & 0x7ffff)) >>> 0;
@@ -355,7 +355,7 @@ export function WriteArmEmptyFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (19 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
@@ -473,7 +473,7 @@ export function ReadArmEmptyFlatBits(view, numBits, value) {
 // must hold ArmsNestedMaxBytes.
 export function WriteArmsNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) {
     return -1;
   }
   lo = ((value.lead & 0x7) | ((value.outer ? 1 : 0) << 3));
@@ -489,7 +489,7 @@ export function WriteArmsNestedFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     if (value.inner) {
-      if (!Number.isInteger(value.x) || value.x < 0 || value.x > 536870911) {
+      if (!globalThis.Number.isInteger(value.x) || value.x < 0 || value.x > 536870911) {
         return -1;
       }
       v = ((value.x & 0x1fffffff)) >>> 0;
@@ -502,7 +502,7 @@ export function WriteArmsNestedFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (29 - sb);
       }
     } else {
-      if (!Number.isInteger(value.y) || value.y < 0 || value.y > 31) {
+      if (!globalThis.Number.isInteger(value.y) || value.y < 0 || value.y > 31) {
         return -1;
       }
       v = ((value.y & 0x1f)) >>> 0;
@@ -516,7 +516,7 @@ export function WriteArmsNestedFlat(view, value) {
       }
     }
   } else {
-    if (!Number.isInteger(value.z) || value.z < 0 || value.z > 8191) {
+    if (!globalThis.Number.isInteger(value.z) || value.z < 0 || value.z > 8191) {
       return -1;
     }
     v = ((value.z & 0x1fff)) >>> 0;
@@ -529,7 +529,7 @@ export function WriteArmsNestedFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 63) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 63) {
     return -1;
   }
   v = ((value.tail & 0x3f)) >>> 0;
@@ -729,13 +729,13 @@ export function ReadArmsNestedFlatBits(view, numBits, value) {
 // must hold ArmAlignMaxBytes.
 export function WriteArmAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
-    if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
+    if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
       return -1;
     }
     if (!validText(value.s, value.sLength)) {
@@ -783,7 +783,7 @@ export function WriteArmAlignFlat(view, value) {
       }
     }
   } else {
-    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1023) {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1023) {
       return -1;
     }
     v = ((value.b & 0x3ff)) >>> 0;
@@ -796,7 +796,7 @@ export function WriteArmAlignFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
@@ -988,13 +988,13 @@ export function ReadArmAlignFlatBits(view, numBits, value) {
 // must hold ArmArrayMaxBytes.
 export function WriteArmArrayFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
   if (value.flag) {
-    if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
       return -1;
     }
     v = (((value.itemsCount) & 0x3)) >>> 0;
@@ -1007,7 +1007,7 @@ export function WriteArmArrayFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
     for (let i0 = 0; i0 < value.itemsCount; i0++) {
-      if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
+      if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
         return -1;
       }
       v = (((value.items[i0]) & 0x1fff)) >>> 0;
@@ -1021,7 +1021,7 @@ export function WriteArmArrayFlat(view, value) {
       }
     }
   } else {
-    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 511) {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 511) {
       return -1;
     }
     v = ((value.b & 0x1ff)) >>> 0;
@@ -1034,7 +1034,7 @@ export function WriteArmArrayFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
@@ -1204,7 +1204,7 @@ export function ReadArmArrayFlatBits(view, numBits, value) {
 // must hold NarrowMaxBytes.
 export function WriteNarrowFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.n) || value.n < 0 || value.n > 7) {
+  if (!globalThis.Number.isInteger(value.n) || value.n < 0 || value.n > 7) {
     return -1;
   }
   lo = ((value.n & 0x7));
@@ -1318,14 +1318,14 @@ export function ReadWideFlatBits(view, numBits, value) {
 // must hold UnevenMaxBytes.
 export function WriteUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.type & 0x3));
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (!Number.isInteger(value.narrow.n) || value.narrow.n < 0 || value.narrow.n > 7) {
+      if (!globalThis.Number.isInteger(value.narrow.n) || value.narrow.n < 0 || value.narrow.n > 7) {
         return -1;
       }
       v = ((value.narrow.n & 0x7)) >>> 0;
@@ -1507,17 +1507,17 @@ export function ReadUnevenFlatBits(view, numBits, value) {
 // must hold HoldsUnevenMaxBytes.
 export function WriteHoldsUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.u.type & 0x3) << 5));
   sb = 7;
   switch (value.u.type) {
     case 1: {
-      if (!Number.isInteger(value.u.narrow.n) || value.u.narrow.n < 0 || value.u.narrow.n > 7) {
+      if (!globalThis.Number.isInteger(value.u.narrow.n) || value.u.narrow.n < 0 || value.u.narrow.n > 7) {
         return -1;
       }
       v = ((value.u.narrow.n & 0x7)) >>> 0;
@@ -1557,7 +1557,7 @@ export function WriteHoldsUnevenFlat(view, value) {
       break;
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 2047) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 2047) {
     return -1;
   }
   v = ((value.tail & 0x7ff)) >>> 0;
@@ -1745,17 +1745,17 @@ export function ReadHoldsUnevenFlatBits(view, numBits, value) {
 // must hold ArrUnevenMaxBytes.
 export function WriteArrUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
   sb = 7;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
-    if (!Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
       return -1;
     }
     v = ((e0.type & 0x3)) >>> 0;
@@ -1769,7 +1769,7 @@ export function WriteArrUnevenFlat(view, value) {
     }
     switch (e0.type) {
       case 1: {
-        if (!Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
+        if (!globalThis.Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
           return -1;
         }
         v = ((e0.narrow.n & 0x7)) >>> 0;
@@ -1810,7 +1810,7 @@ export function WriteArrUnevenFlat(view, value) {
       }
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
     return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
@@ -2026,16 +2026,16 @@ export function ReadArrUnevenFlatBits(view, numBits, value) {
 // must hold RegainAfterAlignMaxBytes.
 export function WriteRegainAfterAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
   sb = 7;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
     }
     v = (((value.items[i0]) & 0x1fff)) >>> 0;
@@ -2048,7 +2048,7 @@ export function WriteRegainAfterAlignFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   if (!validText(value.s, value.sLength)) {
@@ -2095,10 +2095,10 @@ export function WriteRegainAfterAlignFlat(view, value) {
       }
     }
   }
-  if (!Number.isInteger(value.p) || value.p < 0 || value.p > 4294967295) {
+  if (!globalThis.Number.isInteger(value.p) || value.p < 0 || value.p > 4294967295) {
     return -1;
   }
-  if (!Number.isInteger(value.q) || value.q < 0 || value.q > 536870911) {
+  if (!globalThis.Number.isInteger(value.q) || value.q < 0 || value.q > 536870911) {
     return -1;
   }
   v = ((value.p >>> 0)) >>> 0;
@@ -2110,7 +2110,7 @@ export function WriteRegainAfterAlignFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.r) || value.r < 0 || value.r > 524287) {
+  if (!globalThis.Number.isInteger(value.r) || value.r < 0 || value.r > 524287) {
     return -1;
   }
   v = ((value.q & 0x1fffffff)) >>> 0;
@@ -2122,7 +2122,7 @@ export function WriteRegainAfterAlignFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 15) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 15) {
     return -1;
   }
   v = ((value.r & 0x7ffff) | ((value.tail & 0xf) << 19)) >>> 0;

@@ -21,7 +21,7 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 
@@ -85,7 +85,7 @@ export declare function ReadArmsNested(stream: SerializeStream, value: ArmsNeste
 export declare class ArmAlign {
   lead: number;
   flag: boolean;
-  s: Uint8Array;
+  s: globalThis.Uint8Array;
   sLength: number;
   b: number;
   tail: number;
@@ -132,7 +132,7 @@ export declare function ZeroWide(value: Wide): void;
 export declare function WriteWide(stream: SerializeStream, value: Wide): boolean;
 export declare function ReadWide(stream: SerializeStream, value: Wide): boolean;
 
-export declare const UnevenType: Readonly<{
+export declare const UnevenType: globalThis.Readonly<{
   None: 0;
   Narrow: 1;
   Wide: 2;
@@ -180,7 +180,7 @@ export declare class RegainAfterAlign {
   lead: number;
   items: number[];
   itemsCount: number;
-  s: Uint8Array;
+  s: globalThis.Uint8Array;
   sLength: number;
   p: number;
   q: number;

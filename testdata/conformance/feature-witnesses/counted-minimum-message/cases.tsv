@@ -1,0 +1,29 @@
+# THE COUNTED-MINIMUM MESSAGE CORPUS (docs/SPEC-TABLES.md §3.3(a), §22.2):
+# `few [2..4]int32` in a fixed root, the message form. Probe.schema is the
+# unit; every .bin is a whole message batch of one body (the form byte, then
+# the body), read against the unit's own announcement. The reference engine
+# holds every row: internal/tablewire's TestCountedMinimumMessageWitnessPins.
+#
+# read <case> <wire> <verdict>: read the batch, `read` or `refused` (the
+# verdict only; docs/rulings.json refusal-verdict-only).
+#   msg-birth-stored is the birth value (two zero elements) STORED, the 11
+#   bytes the writers that did not elide it emitted: a field stored at its
+#   declared default, refused. The other two are its controls.
+#
+# write <case> <count> <verdict> <wire>: a fresh Root whose `few` has that
+# live count, every element zero; measure, then save the batch of one.
+# `refused` owes a refusal from both (a writer that refuses in every build;
+# an assert leg answers from its debug build), `wrote` owes <wire> byte for
+# byte. Count -1 is for a target whose record carries a settable live count;
+# a target whose count is its array's length runs the others.
+#
+# kind	case	value	verdict	wire
+read	read_birth_stored	msg-birth-stored	refused	-
+read	read_birth_elided	msg-birth-elided	read	-
+read	read_min_plus1_zeros	msg-three-zeros	read	-
+write	write_count_m1	-1	refused	-
+write	write_count_0	0	refused	-
+write	write_count_1	1	refused	-
+write	write_count_5	5	refused	-
+write	write_count_2	2	wrote	msg-birth-elided
+write	write_count_3	3	wrote	msg-three-zeros

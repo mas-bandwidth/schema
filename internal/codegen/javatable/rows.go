@@ -567,9 +567,15 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
+	// a COMPRESSED float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3;
+	// docs/rulings.json fixed-compressed-negzero); a plain float's rides
+	compressed := ""
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		compressed = ".compressed()"
+	}
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)%s",
 		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
-		cookStorageKind(f), names)
+		cookStorageKind(f), names, compressed)
 }
 
 // cookStorageKind is what a cooked SLOT holds, which is not always what the
@@ -717,9 +723,9 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 	if typ == "long" {
 		widen = "%s"
 	}
-	cmp := "Long.compare"
+	cmp := "java.lang.Long.compare"
 	if !key.Type.Signed {
-		cmp = "Long.compareUnsigned"
+		cmp = "java.lang.Long.compareUnsigned"
 		if width < 64 {
 			widen = fmt.Sprintf("((long) %%s & 0x%xL)", uint64(1)<<width-1)
 		}

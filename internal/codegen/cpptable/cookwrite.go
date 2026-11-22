@@ -419,9 +419,19 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 		// float would be swapped by nothing. A NaN or an infinity is refused,
 		// never cooked (docs/SPEC-TABLES.md §3.3)
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", indent, value)
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS COOKED AS +0 (§3.3; docs/rulings.json
+			// fixed-compressed-negzero); a plain float's -0 rides bit-exact
+			g.pf("%stable_cook_put( %s, (uint64_t) TableStoredFloatBits( %s ), 4, order );\n", indent, at, value)
+			return
+		}
 		g.pf("%s{ uint32_t bits = 0; memcpy( &bits, &%s, 4 ); table_cook_put( %s, (uint64_t) bits, 4, order ); }\n", indent, value, at)
 	case ir.TFloat64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", indent, value)
+		if f.HasFloatRange {
+			g.pf("%stable_cook_put( %s, TableStoredFloatBits( %s ), 8, order );\n", indent, at, value)
+			return
+		}
 		g.pf("%s{ uint64_t bits = 0; memcpy( &bits, &%s, 8 ); table_cook_put( %s, bits, 8, order ); }\n", indent, value, at)
 	case ir.TInt, ir.TFixed:
 		// a fixed field's slot holds its RAW scaled integer, the same bytes

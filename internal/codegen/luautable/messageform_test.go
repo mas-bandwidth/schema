@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -152,7 +153,7 @@ local report = { malformed = false, verdict = 0, reason = "", unknown = 0 }
 if not M.AnnounceRead(v, inputs.ann, report) then print("announce_fail") return end
 local count, bodies = M.%s(v, %q, inputs.batch, 256, report)
 print("count " .. tostring(count) .. " malformed " .. tostring(report.malformed))
-if count < 0 then return end
+if count <= 0 then return end
 local out, n = M.SaveMessages(v, %q, bodies, report)
 if out == nil then print("save_fail") return end
 print(hex(out))
@@ -192,45 +193,59 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 	if fixed != 15 {
 		t.Fatalf("the manifest names %d message rows over a fixed root, want the 15 this card pins", fixed)
 	}
-	compared := 0
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
-			t.Parallel()
-			conn, ok := conns[row.connection]
-			if !ok {
-				t.Fatalf("message %s names connection %s with no connection row", row.name, row.connection)
-			}
-			if !messageRootFixed(t, units[conn.unit], row.root) {
-				return // a variable table carries no message form (§3.3)
-			}
-			ann, err := os.ReadFile(filepath.Join(root, conn.announcement))
-			if err != nil {
-				t.Fatal(err)
-			}
-			batch, err := os.ReadFile(filepath.Join(root, row.batch))
-			if err != nil {
-				t.Fatal(err)
-			}
-			dir, mods, _ := buildMessageUnit(t, units[conn.unit])
-			out := messageMain(t, dir, mods, row.root, ann, batch)
-			lines := strings.Split(out, "\n")
-			if len(lines) < 2 {
-				t.Fatalf("the probe printed %q", out)
-			}
-			if !strings.HasPrefix(lines[0], "count 1 malformed false") {
-				t.Fatalf("LoadMessages: %s", lines[0])
-			}
-			got, err := hex.DecodeString(lines[len(lines)-1])
-			if err != nil {
-				t.Fatalf("the probe printed %q: %v", out, err)
-			}
-			if string(got) != string(batch) {
-				t.Fatalf("SaveMessages differs from %s: got %d bytes, want %d", row.batch, len(got), len(batch))
-			}
-			compared++
-		})
+	// the parallel row subtests run inside one group, so the count below is
+	// read after every one of them has finished (and counted atomically)
+	// a row skipped by the toolchain gate (slowtest, with its reason) is
+	// counted apart, so the total below holds either way
+	var compared, skipped atomic.Int64
+	t.Run("rows", func(t *testing.T) {
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				conn, ok := conns[row.connection]
+				if !ok {
+					t.Fatalf("message %s names connection %s with no connection row", row.name, row.connection)
+				}
+				if !messageRootFixed(t, units[conn.unit], row.root) {
+					return // a variable table carries no message form (§3.3)
+				}
+				t.Cleanup(func() {
+					if t.Skipped() {
+						skipped.Add(1)
+					}
+				})
+				ann, err := os.ReadFile(filepath.Join(root, conn.announcement))
+				if err != nil {
+					t.Fatal(err)
+				}
+				batch, err := os.ReadFile(filepath.Join(root, row.batch))
+				if err != nil {
+					t.Fatal(err)
+				}
+				dir, mods, _ := buildMessageUnit(t, units[conn.unit])
+				out := messageMain(t, dir, mods, row.root, ann, batch)
+				lines := strings.Split(out, "\n")
+				if len(lines) < 2 {
+					t.Fatalf("the probe printed %q", out)
+				}
+				if !strings.HasPrefix(lines[0], "count 1 malformed false") {
+					t.Fatalf("LoadMessages: %s", lines[0])
+				}
+				got, err := hex.DecodeString(lines[len(lines)-1])
+				if err != nil {
+					t.Fatalf("the probe printed %q: %v", out, err)
+				}
+				if string(got) != string(batch) {
+					t.Fatalf("SaveMessages differs from %s: got %d bytes, want %d", row.batch, len(got), len(batch))
+				}
+				compared.Add(1)
+			})
+		}
+	})
+	if n, s := compared.Load(), skipped.Load(); n+s != int64(fixed) && !t.Failed() {
+		t.Fatalf("compared %d message rows against their batch goldens and %d skipped, want the %d fixed-root rows", n, s, fixed)
 	}
-	t.Cleanup(func() { t.Logf("compared %d message rows against their batch goldens", compared) })
+	t.Logf("compared %d message rows against their batch goldens (%d skipped)", compared.Load(), skipped.Load())
 }
 
 // TestLuauMessageFormNegativeControl patches the emitted runtime in memory,
@@ -304,7 +319,7 @@ func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}
 	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)
-	if !strings.HasPrefix(out, "count -1 malformed true") {
+	if out != "count 0 malformed true" {
 		t.Fatalf("the plain batch read handed back a body of a damaged batch: %q", out)
 	}
 }

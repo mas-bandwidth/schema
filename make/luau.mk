@@ -258,9 +258,9 @@ build/packet-finite/luau/.stamp: $(GO_SOURCES) $(wildcard internal/codegen/luau/
 	@touch $@
 
 .PHONY: packet-finite-luau packet-finite-luau-negative-control
-packet-finite-luau: toolchain-luau build/packet-finite/luau/.stamp
+packet-finite-luau: toolchain-luau build/packet-finite/luau/.stamp build/mustrun
 	cd build/packet-finite/luau/generated && $(LUAU_ANALYZE) main.luau Finite.luau
-	cd build/packet-finite/luau/generated && $(LUAU) main.luau
+	cd build/packet-finite/luau/generated && $(CURDIR)/$(MUSTRUN) -name packet-finite-luau -count 121 -- $(LUAU) main.luau
 
 # $(1) is the direction: read or write.
 define packet-finite-luau-control
@@ -324,13 +324,14 @@ build/cards-driver-luau: tables/cards/luau/host/main.go
 	@mkdir -p build
 	go build -o $@ tables/cards/luau/host/main.go
 
-cards-luau-test: toolchain-luau cards-luau-generate build/cards-driver-luau cards-corpus-check
+cards-luau-test: toolchain-luau cards-luau-generate build/cards-driver-luau cards-corpus-check build/mustrun
 	@mkdir -p build/cards-luau-analyze
 	@cp $(CARDS_LUAU_GENERATED)/*.luau tables/cards/luau/*.luau build/cards-luau-analyze/
 	@printf 'return {surface="unit",rows={},files={}}\n' > build/cards-luau-analyze/inputs.luau
 	$(LUAU_ANALYZE) build/cards-luau-analyze/cards.luau build/cards-luau-analyze/cards_codec.luau build/cards-luau-analyze/cards_test.luau build/cards-luau-analyze/driver.luau
+	@rm -f build/cards-luau-unit/unit.txt
 	./build/cards-driver-luau tables/cards/luau/UNIT_INPUTS.txt unit build/cards-luau-unit
-	@cat build/cards-luau-unit/unit.txt
+	$(MUSTRUN) -name cards-luau-test -count 11 -- cat build/cards-luau-unit/unit.txt
 
 cards-luau-conformance: toolchain-luau cards-luau-generate build/cards-driver-luau build/conformance-harness cards-corpus-check
 	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_LUAU_REQUIRE) ./build/conformance-harness cards --work build/cards-luau-conformance --corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(CARDS_LUAU_REQUIRE)

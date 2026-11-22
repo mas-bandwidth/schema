@@ -259,6 +259,9 @@ func TestLuauMessageAnnounceMalformedShapes(t *testing.T) {
 	if len(want) != len(inputs) {
 		t.Fatalf("the oracle printed %d verdicts, want %d:\n%s", len(want), len(inputs), out)
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		if want[c.name+"_malformed"] != "false" {
 			t.Fatalf("%s: the oracle accepted the malformed announcement", c.name)
@@ -298,6 +301,9 @@ end
 			t.Fatalf("unexpected Luau line %q", line)
 		}
 		got[name] = rest
+	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
 	}
 	for _, name := range names {
 		if got[name] != want[name] {

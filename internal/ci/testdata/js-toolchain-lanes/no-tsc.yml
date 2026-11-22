@@ -1,0 +1,19 @@
+# The go-test job declares node but not tsc: a tsc subtest there could skip
+# and the lane stay green.
+name: fixture
+on: workflow_dispatch
+jobs:
+  go-test:
+    name: go-test (${{ matrix.group }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    env:
+      SCHEMA_REQUIRE_NODE: '1'
+    steps:
+      - name: Check out the runtimes
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+      - name: go test the compiler package
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler

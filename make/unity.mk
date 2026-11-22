@@ -34,9 +34,9 @@ generated/unity-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # Debug, where the write contracts are live, and in Release, where they are
 # gone. The buffer layout the Span views rest on is asserted first.
 .PHONY: unity-wire unity-wire-negative-control
-unity-wire: generated/unity/.stamp generated/unity-ludicrous/.stamp
-	cd test/unity && $(DOTNET) run -c Debug
-	cd test/unity && $(DOTNET) run -c Release
+unity-wire: build/mustrun generated/unity/.stamp generated/unity-ludicrous/.stamp
+	cd test/unity && ../../$(MUSTRUN) -name unity-wire-debug -count 1037 -- $(DOTNET) run -c Debug
+	cd test/unity && ../../$(MUSTRUN) -name unity-wire-release -count 1039 -- $(DOTNET) run -c Release
 
 # The wire test must go red on one wrong wire constant in the generated code.
 UNITY_WIRE_NC := build/unity-wire-negative
@@ -180,3 +180,31 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 	@touch $@
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
+
+# THE WRITE CONTRACT's controls (docs/SPEC.md §5.1), on the C# leg's pattern
+# (make/cs.mk): write checks are Debug.Assert, so the Debug unit is rebuilt
+# from a copy of its generated source with ONE assert removed
+# (test/conformance/unity/write-refusal-control) and the named surface must go
+# red while `wire` stays green. A fixed root is written through its own form's
+# one checked writer, so a removed fixed-writer check turns write-refusal and
+# write-refusal-fixed red together; the message control's surface stands alone.
+.PHONY: conformance-negative-control-unity-write-refusal conformance-negative-control-unity-write-refusal-fixed conformance-negative-control-unity-write-refusal-message
+conformance-negative-control-unity-write-refusal: build/conformance-unity/.stamp build/conformance-harness
+	@sh test/conformance/unity/write-refusal-control "$(DOTNET)" build/conformance-unity-write-refusal-control tabledemo \
+		's/Debug\.Assert\(f\.WriteValidRaw\(f\.GetRaw\(value, i\)\)\);/Debug.Assert(true \/* SABOTAGED: no value write check *\/);/' \
+		'Debug\.Assert\(f\.WriteValidRaw\(f\.GetRaw\(value, i\)\)\);' write-refusal wire
+	@echo 'C# (unity) write-refusal negative control: the variable writer without its value write check is detected by unity / write-refusal; wire stays green'
+
+conformance-negative-control-unity-write-refusal-fixed: build/conformance-unity/.stamp build/conformance-harness
+	@sh test/conformance/unity/write-refusal-control "$(DOTNET)" build/conformance-unity-write-refusal-fixed-control tabledemo \
+		's/Debug\.Assert\(value\.Penetration >= 0 && value\.Penetration <= 10,/Debug.Assert(true \/* SABOTAGED: no fixed value write check *\/ || value.Penetration >= 0 \&\& value.Penetration <= 10,/' \
+		'Debug\.Assert\(value\.Penetration >= 0 && value\.Penetration <= 10,' write-refusal-fixed wire
+	@echo 'C# (unity) write-refusal-fixed negative control: the fixed writer without its value write check is detected by unity / write-refusal-fixed; wire stays green'
+
+conformance-negative-control-unity-write-refusal-message: build/conformance-unity/.stamp build/conformance-harness
+	@sh test/conformance/unity/write-refusal-control "$(DOTNET)" build/conformance-unity-write-refusal-message-control backenddemo \
+		's/Debug\.Assert\(f\.WriteValidRaw\(f\.GetRaw\(value, i\)\)\);/Debug.Assert(true \/* SABOTAGED: no message value write check *\/);/' \
+		'Debug\.Assert\(f\.WriteValidRaw\(f\.GetRaw\(value, i\)\)\);' write-refusal-message message
+	@echo 'C# (unity) write-refusal-message negative control: the message writer without its value write check is detected by unity / write-refusal-message; message stays green'
+
+test-unity: conformance-negative-control-unity-write-refusal conformance-negative-control-unity-write-refusal-fixed conformance-negative-control-unity-write-refusal-message

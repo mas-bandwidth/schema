@@ -87,7 +87,12 @@ defmodule Benchtable.BenchTableFixed do
   @r_table_mixed_ack_sequence {0, 65_535}
   @r_table_mixed_nonce {1, 9_223_372_036_854_775_807}
   @r_table_mixed_world_time {-1_000_000_000_000, 1_000_000_000_000}
+  @r_table_mixed_server_time {0.0, 65535.0}
+  @r_table_mixed_aim_x {-1.0, 1.0}
+  @r_table_mixed_aim_y {-1.0, 1.0}
+  @r_table_mixed_aim_z {-1.0, 1.0}
   @r_table_mixed_flux {-1_000_000_000_000_000_000, 1_000_000_000_000_000_000}
+  @r_table_mixed_ping {0.0, 250.0}
   @r_table_mixed_extra {0, 255}
   @r_table_mixed_idle_ticks {0, 15}
 
@@ -935,7 +940,7 @@ defmodule Benchtable.BenchTableFixed do
         R.ranged(v_nonce, @r_table_mixed_nonce)::little-unsigned-64,
         R.ranged(v_world_time, @r_table_mixed_world_time)::little-signed-64,
         R.fits(v_frame_tick, 48, false)::little-unsigned-64,
-        R.f32_bits(v_server_time)::little-unsigned-32>>
+        R.cf32_bits(v_server_time, @r_table_mixed_server_time)::little-unsigned-32>>
 
     n_entities = R.count(v_entities, 1, 8)
     acc = <<acc::binary, n_entities::little-signed-32>>
@@ -958,12 +963,15 @@ defmodule Benchtable.BenchTableFixed do
         byte_size(v_player_name)::little-signed-32, v_player_name::binary,
         0::size(R.string_slack(v_player_name, 15))-unit(8),
         byte_size(v_payload)::little-signed-32, v_payload::binary,
-        0::size(R.text_slack(v_payload, 16))-unit(8), R.f32_bits(v_aim_x)::little-unsigned-32,
-        R.f32_bits(v_aim_y)::little-unsigned-32, R.f32_bits(v_aim_z)::little-unsigned-32,
+        0::size(R.text_slack(v_payload, 16))-unit(8),
+        R.cf32_bits(v_aim_x, @r_table_mixed_aim_x)::little-unsigned-32,
+        R.cf32_bits(v_aim_y, @r_table_mixed_aim_y)::little-unsigned-32,
+        R.cf32_bits(v_aim_z, @r_table_mixed_aim_z)::little-unsigned-32,
         R.f32_bits(v_recoil)::little-unsigned-32, R.f64_bits(v_drift)::little-unsigned-64,
         R.fits(v_wide_key, 64, false)::little-unsigned-64,
         R.ranged(v_flux, @r_table_mixed_flux)::little-signed-64,
-        R.f32_bits(v_ping)::little-unsigned-32, R.fits(v_crc_hint, 24, false)::little-unsigned-32,
+        R.cf32_bits(v_ping, @r_table_mixed_ping)::little-unsigned-32,
+        R.fits(v_crc_hint, 24, false)::little-unsigned-32,
         if(v_has_extra, do: 1, else: 0)::unsigned-8,
         R.ranged(v_extra, @r_table_mixed_extra)::little-signed-32,
         R.ranged(v_idle_ticks, @r_table_mixed_idle_ticks)::little-signed-32>>

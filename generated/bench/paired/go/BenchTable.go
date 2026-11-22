@@ -897,10 +897,10 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 			return uint64(i)
 		}
 	}
-	if ids.Count == len(ids.Values) {
+	if ids.Count == len(ids.Values) || ids.Count >= 4096 {
 		ids.Overflow = true
 		return 0
-	}
+	} // 4096: SPEC-TABLES.md §3
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
 	ids.ordinalOf[i] = -1
@@ -6310,7 +6310,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimX))
+			w.Put32(math.Float32bits(value.AimX + 0))
 		}
 	}
 	{
@@ -6321,7 +6321,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimY))
+			w.Put32(math.Float32bits(value.AimY + 0))
 		}
 	}
 	{
@@ -6332,7 +6332,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimZ))
+			w.Put32(math.Float32bits(value.AimZ + 0))
 		}
 	}
 	{
