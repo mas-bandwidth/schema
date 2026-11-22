@@ -341,7 +341,11 @@ static NSDictionary *gRawFields; // SPDecl -> raw fields, during resolution
         if ([self isPunct:@","]) { _pos++; continue; }
         break;
     }
-    if (!(self.peek.t == TNL || self.peek.t == TEOF || [self isPunct:@"}"]))
+    // SPEC-GAP 2: §4.1 says a qualification section runs to the physical end
+    // of the line, but the corpus's Features.schema opens a table body on the
+    // same line (`table Root | forms="wire,json,cook", integrity="crc32c" {`).
+    // Following the corpus: a `{` also ends the section.
+    if (!(self.peek.t == TNL || self.peek.t == TEOF || [self isPunct:@"}"] || [self isPunct:@"{"]))
         [self fail:@"a qualification section runs to the end of the line"];
     return out;
 }

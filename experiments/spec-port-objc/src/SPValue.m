@@ -128,6 +128,7 @@ SPTableVal *SPNewTable(SPDecl *d) {
     v.values = [NSMutableArray arrayWithCapacity:d.fields.count];
     v.present = [NSMutableArray arrayWithCapacity:d.fields.count];
     for (SPField *f in d.fields) {
+        if (!f.defaultValue) SPResolveDefault(f); // a nested default before its own pass
         [v.values addObject:SPCopyValue(f.defaultValue)];
         [v.present addObject:@NO];
     }

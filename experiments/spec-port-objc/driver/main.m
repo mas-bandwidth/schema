@@ -57,6 +57,9 @@ static NSData *readFile(NSString *path) {
 }
 
 static BOOL isRefusal(NSException *e) { return [e.name isEqualToString:SPRefusal]; }
+// an exception that is not a refusal is a defect in this port: the case gets
+// no answer (a failure the matrix shows), and the surface goes on
+static void bug(NSException *e) { fprintf(stderr, "BUG %s: %s\n", e.name.UTF8String, e.reason.UTF8String); }
 
 // ---------------------------------------------------------------------------
 // The write-refusal patcher: set ONE field at a dotted path (FORMAT.md)
@@ -133,41 +136,61 @@ static PatchResult applyPatch(SPTableVal *root, NSString *path, NSString *kind, 
             rest = [rest substringFromIndex:close.location + 1];
         }
     }
-    id container = root;
-    SPType *ctype = nil; // type of an array container
-    SPField *field = nil;
-    SPTableVal *owner = nil;
-    NSUInteger ownerIndex = 0;
+    id container = root;   // SPTableVal, NSMutableArray, SPMapEntry or SPUnionVal
+    NSUInteger slot = 0;
     id cur = root;
     SPType *curType = nil;
     for (NSUInteger s = 0; s < steps.count; s++) {
         id step = steps[s];
         if ([step isKindOfClass:[NSString class]]) {
-            id tv = cur;
-            if ([tv isKindOfClass:[SPUnionVal class]]) tv = ((SPUnionVal *)tv).value;
-            SPTableVal *t = tv;
+            if ([cur isKindOfClass:[SPMapEntry class]]) {
+                SPMapEntry *e = cur;
+                container = e;
+                BOOL key = [step isEqualToString:@"key"];
+                slot = key ? 0 : 1;
+                cur = key ? e.key : e.value;
+                curType = key ? curType.key : curType.elem;
+                continue;
+            }
+            if ([cur isKindOfClass:[SPUnionVal class]]) {
+                SPUnionVal *u = cur;
+                NSInteger ai = -1;
+                for (NSUInteger j = 0; j < curType.decl.fields.count; j++)
+                    if ([curType.decl.fields[j].name isEqualToString:step]) ai = (NSInteger)j;
+                if (ai >= 0) {
+                    SPField *arm = curType.decl.fields[(NSUInteger)ai];
+                    if (u.arm != ai + 1) { u.arm = ai + 1; u.value = arm.type ? SPCopyValue(arm.defaultValue) : [NSNull null]; }
+                    container = u;
+                    cur = u.value;
+                    curType = arm.type;
+                    continue;
+                }
+                cur = u.value;
+            }
+            SPTableVal *t = cur;
             NSInteger fi = -1;
             for (NSUInteger j = 0; j < t.decl.fields.count; j++)
                 if ([t.decl.fields[j].name isEqualToString:step]) fi = (NSInteger)j;
             if (fi < 0) [NSException raise:@"DriverPath" format:@"no field %@ in %@", step, path];
-            owner = t; ownerIndex = (NSUInteger)fi; field = t.decl.fields[(NSUInteger)fi];
-            container = t; ctype = nil;
+            SPField *field = t.decl.fields[(NSUInteger)fi];
+            container = t; slot = (NSUInteger)fi;
             cur = t.values[(NSUInteger)fi];
             curType = field.type;
             if (field.optional) t.present[(NSUInteger)fi] = @YES;
         } else {
             NSInteger k = [step integerValue];
-            container = cur; ctype = curType;
-            if (curType.kind == SPKArray) {
-                cur = ((NSArray *)cur)[(NSUInteger)k];
-                curType = curType.elem;
-            } else [NSException raise:@"DriverPath" format:@"index into a non-array in %@", path];
-            ownerIndex = (NSUInteger)k;
+            if (curType.kind != SPKArray && curType.kind != SPKMap && curType.kind != SPKKeyed)
+                [NSException raise:@"DriverPath" format:@"index into a non-array in %@", path];
+            container = cur; slot = (NSUInteger)k;
+            cur = ((NSArray *)cur)[(NSUInteger)k];
+            if (curType.kind != SPKMap) curType = curType.elem;
         }
     }
     void (^set)(id) = ^(id x) {
-        if ([container isKindOfClass:[SPTableVal class]]) ((SPTableVal *)container).values[ownerIndex] = x;
-        else ((NSMutableArray *)container)[ownerIndex] = x;
+        if ([container isKindOfClass:[SPTableVal class]]) ((SPTableVal *)container).values[slot] = x;
+        else if ([container isKindOfClass:[SPMapEntry class]]) { if (slot) ((SPMapEntry *)container).value = x; else ((SPMapEntry *)container).key = x; }
+        else if ([container isKindOfClass:[SPUnionVal class]]) ((SPUnionVal *)container).value = x;
+        else ((NSMutableArray *)container)[slot] = x;
     };
     SPType *t = curType;
     if ([kind isEqualToString:@"int"]) {
@@ -211,7 +234,6 @@ static PatchResult applyPatch(SPTableVal *root, NSString *path, NSString *kind, 
     } else {
         [NSException raise:@"DriverPath" format:@"unknown kind %@", kind];
     }
-    (void)owner; (void)ctype; (void)field;
     return PatchOK;
 }
 
@@ -234,7 +256,7 @@ static void readAndWriteBack(NSString *name, NSData *(^read)(SPDecl *, SPUnit *)
     @try {
         v = (SPTableVal *)read(d, u);
     } @catch (NSException *e) {
-        if (!isRefusal(e)) @throw;
+        if (!isRefusal(e)) { bug(e); return; }
         putText(name, @"refused\n");
         return;
     }
@@ -246,7 +268,7 @@ static void readAndWriteBack(NSString *name, NSData *(^read)(SPDecl *, SPUnit *)
         put(name, o);
         put([name stringByAppendingString:@".wire"], wire);
     } @catch (NSException *e) {
-        if (!isRefusal(e)) @throw;
+        if (!isRefusal(e)) { bug(e); return; }
         absent(name, [NSString stringWithFormat:@"accepted, but the write-back refused: %@", e.reason]);
     }
 }
@@ -269,7 +291,7 @@ static int runSurface(NSString *surface) {
                 else v = SPLoadVariable(readFile(l[4]), d, u);
                 put(outName, jread || wire ? SPSaveVariable(v) : SPToJson(v));
             } @catch (NSException *e) {
-                if (!isRefusal(e)) @throw;
+                if (!isRefusal(e)) { bug(e); continue; }
                 if (!refusedLine) fprintf(stderr, "%s: refused: %s\n", name.UTF8String, e.reason.UTF8String);
                 putText(outName, @"refused\n");
             }
@@ -290,7 +312,7 @@ static int runSurface(NSString *surface) {
                         applyPatch(v, [damage substringFromIndex:5], @"units", @"0061d8000062");
                     put(name, SPToJson(v));
                 } @catch (NSException *e) {
-                    if (!isRefusal(e)) @throw;
+                    if (!isRefusal(e)) { bug(e); continue; }
                     putText(name, @"refused\n");
                 }
             }
@@ -327,7 +349,7 @@ static int runSurface(NSString *surface) {
             @try {
                 v = SPLoadVariable(readFile(l[4]), d, u);
             } @catch (NSException *e) {
-                if (!isRefusal(e)) @throw;
+                if (!isRefusal(e)) { bug(e); continue; }
                 absent(name, [NSString stringWithFormat:@"the row's wire did not load: %@", e.reason]);
                 continue;
             }
@@ -337,7 +359,7 @@ static int runSurface(NSString *surface) {
                 else SPSaveVariable(v);
                 putText(name, @"wrote\n");
             } @catch (NSException *e) {
-                if (!isRefusal(e)) @throw;
+                if (!isRefusal(e)) { bug(e); continue; }
                 putText(name, @"refused\n");
             }
         }
