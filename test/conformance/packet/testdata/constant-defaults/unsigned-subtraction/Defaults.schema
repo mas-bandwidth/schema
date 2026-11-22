@@ -1,0 +1,11 @@
+package arithmetic
+
+const Start uint32 = 1
+const Offset = Start - 2
+const Half = (Start - 2) / 2
+
+type Value
+{
+    difference int64 = Offset
+    half int64 = Half
+}
