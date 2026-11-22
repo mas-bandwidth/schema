@@ -816,8 +816,9 @@ static void test_message_form_five_answers()
     }
 
     // M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE: refused by name from the
-    // count, nothing decoded, no counter moved, and the returned count is the
-    // wire's M so the caller knows what to call again with
+    // count, nothing decoded, no counter moved, and the returned count is 0,
+    // "as every refused batch does; a caller that needs room reads the wire's
+    // M itself" (docs/SPEC-TABLES.md §3.3)
     {
         static backenddemo::LoginRequest many[256];
         for ( int32_t i = 0; i < 256; i++ ) { backenddemo::LoginRequestReset( many[i] ); many[i].client_build = 7; }
@@ -825,14 +826,15 @@ static void test_message_form_five_answers()
         backenddemo::TableReport report;
         const int64_t wide_bytes = backenddemo::LoginRequestSaveMessages( many, 256, wide, sizeof( wide ), &report );
         static backenddemo::LoginRequest eight[8];
-        for ( int32_t i = 0; i < 8; i++ ) { backenddemo::LoginRequestReset( eight[i] ); }
+        for ( int32_t i = 0; i < 8; i++ ) { backenddemo::LoginRequestReset( eight[i] ); eight[i].client_build = 17; }
         int64_t count = 8;
         backenddemo::TableReport small;
         CHECK( !backenddemo::LoginRequestLoadMessages( eight, &count, vocabulary, wide, wide_bytes, &small ) );
         CHECK( small.refused && small.reason == backenddemo::batch_too_large );
         CHECK( !small.damaged && small.unknown == 0 );
-        CHECK( count == 256 ); // the wire's M, not the caller's capacity
-        CHECK( eight[0].client_build == 0 ); // nothing decoded
+        CHECK( count == 0 ); // a refused batch returns a count of 0
+        CHECK( wide_bytes > 1 && (int64_t) wide[1] + 1 == 256 ); // the wire's M, which the caller reads itself
+        for ( int32_t i = 0; i < 8; i++ ) { CHECK( eight[i].client_build == 17 ); } // nothing decoded, the storage as it was
         // and the recovery is one call with capacity at or above it
         static backenddemo::LoginRequest room[256];
         int64_t again = 256;
