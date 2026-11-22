@@ -182,6 +182,15 @@ namespace Tabledemo
         // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
         // #7), the operator's other answer. Zero on every other path.
         public ulong LayoutHash;
+        // Zero clears every counter and verdict, so a read into a REUSED report
+        // answers for that read alone (docs/SPEC-TABLES.md §16.2), as the Go
+        // runtime resets the whole struct.
+        internal void Zero()
+        {
+            Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
+            NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
+            KindChanged = 0; LayoutHash = 0;
+        }
     }
 
     // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -243,6 +252,10 @@ namespace Tabledemo
         // a named variant may have any 64-bit id. null for every other kind.
         // Walk [1, EnumMax] to enumerate named vocabulary entries.
         public Func<ulong, ulong> VariantId;
+        // enums: whether a value names a variant marked as deprecated (docs/SPEC-TABLES.md
+        // §2.15): a read lands the field's declared default, never an unknown; null when
+        // the enum has none
+        public Func<ulong, bool> EnumDeprecated = null;
 
         // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
         // per variant of KeyTypeName, indexed by the variant's value, and its
@@ -1505,6 +1518,8 @@ namespace Tabledemo
                 if (IsEnum(f))
                 {
                     ulong value = f.GetRaw(owner, index);
+                    // A WRITE OF A DEPRECATED VARIANT IS REFUSED (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+                    System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated enum variant is written");
                     // a value no variant names has no text spelling, exactly as it has
                     // no wire identity: the writer REFUSES rather than writing None
                     // over it, the rule measure and save already apply (§5)
@@ -1883,7 +1898,8 @@ namespace Tabledemo
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
                 string mapField = input.TextField;
-                Span<byte> spelling = stackalloc byte[MaxKey];
+                // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
+                Span<byte> spelling = key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? new byte[key.ArrayBound] : stackalloc byte[MaxKey];
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2181,7 +2197,7 @@ namespace Tabledemo
                 // changed kind, an out-of-range value, a count or length past its
                 // bound, or text that cannot be stored refuses the load. The rest of
                 // the walk's failures are damage.
-                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
                 {
                     input.Report.Refused = true;
                 }
@@ -2753,6 +2769,11 @@ namespace Tabledemo
                     {
                         if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                         {
+                            // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                            // ELEMENT default inside an array) and is never counted unknown
+                            // (docs/SPEC-TABLES.md §2.15)
+                            if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                            { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                             f.SetRaw(owner, index, (ulong)v);
                             return true;
                         }
@@ -3306,7 +3327,7 @@ namespace Tabledemo
                 // a caller with no report is off the read path this section prices: it
                 // gets one rather than a branch on every counter
                 input.Report = report != null ? report : new TableReport();
-                input.Report.Reason = null; input.Report.Refused = false;
+                input.Report.Zero();
                 input.Bad = false;
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
@@ -4596,14 +4617,14 @@ namespace Tabledemo
                     if (!keyOk) { Damage(report); break; }
                     if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
                     int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-                    if (order > 0) { Damage(report); break; }
-                    int slot = order == 0 ? landed - 1 : landed;
+                    // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+                    if (order >= 0) { Damage(report); break; }
+                    int slot = landed;
                     f.EnsureCount(value, slot + 1);
                     object entry = f.Table.Create(); f.SetChild(value, slot, entry);
                     ReadBody(ref body, entry, f.Table, report, true);
                     if (CountRefused(report)) { return false; }
-                    if (order == 0) { return Fail(report, "duplicate"); }
-                    else { last = KeyOf(entry, keyField); landed++; }
+                    last = KeyOf(entry, keyField); landed++;
                 }
                 f.SetCount(value, landed);
                 // bytes left inside the map's L after its entries are damage
@@ -5194,7 +5215,10 @@ namespace Tabledemo
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
                     int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
                     if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-                    if (keep) { f.SetRaw(value, index, (ulong)variant); }
+                    ulong raw = (ulong)variant;
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+                    if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
+                    if (keep) { f.SetRaw(value, index, raw); }
                     return true;
                 }
                 if (kind == 15)
@@ -5586,7 +5610,7 @@ namespace Tabledemo
                     // is A default elements, and that is what the writer elides
                     if (f.ArrayMin > 0)
                     {
-                        if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                        if (n != f.ArrayMin) { return true; }
                         for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                         return false;
                     }
@@ -5636,7 +5660,7 @@ namespace Tabledemo
                 {
                     ulong v = f.GetRaw(value, i);
                     if (v == 0) { return true; }
-                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
                     return ids.Add(f.VariantId(v));
                 }
                 return true;
@@ -6059,6 +6083,8 @@ namespace Tabledemo
                     int variant = reference == 0 ? 0 : FindVariant(f, id, false);
                     if (reference != 0 && variant == 0) { report.Unknown++; }
                     raw = (ulong)variant;
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+                    if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                 }
                 else
                 {
@@ -6465,7 +6491,7 @@ namespace Tabledemo
             {
                 if (report == null) { report = IgnoredReport(); }
                 type.Reset(value);
-                report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+                report.Zero();
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (bytes[0] != 1)
                 {
