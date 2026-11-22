@@ -26,7 +26,7 @@ import (
 )
 
 // each element shape is its own unit, as the matrix's pinned units are: the
-// message vocabulary is the unit's, and its widths follow the unit's roots
+// message vocabulary is the unit's, and its widths follow the unit's roots.
 var countedBirthEngineSchemas = map[string]string{
 	"I32": "package birth\n\nfixed table FixI32 { few [2..4]int32 }\ntable VarI32 { few [2..4]int32 }\n",
 	"Rec": "package birth\n\ntype Rec\n{\n    n int32 = 55\n    on bool\n}\n\nfixed table FixRec { few [2..4]Rec }\ntable VarRec { few [2..4]Rec }\n",
