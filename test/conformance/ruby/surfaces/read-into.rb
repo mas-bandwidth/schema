@@ -9,11 +9,12 @@
 # read that returns. A Ruby read refuses by raising Refused, which this driver
 # answers `threw` (the README: a read refuses through its report and never by
 # throwing, FL-29). The driver catches only to say so.
-def self.attempt(values)
+def self.attempt(pkg, values)
   result = yield
   values.replace(result.is_a?(::Array) ? result : [result])
   "read\n"
-rescue StandardError
+rescue pkg::Refused => e
+  warn "read-into: the read raised #{e.class}: #{e.message}"
   "threw\n"
 end
 
@@ -31,7 +32,7 @@ def self.run(manifest, outdir)
       # record count it returned
       report = pkg::FixedLoadReport.new
       values = []
-      line = attempt(values) { cls.fixed_load(RubyConformance.read_bytes(lawful), report: report) }
+      line = attempt(pkg, values) { cls.fixed_load(RubyConformance.read_bytes(lawful), report: report) }
       out = line == "read\n" ? "read\n#{values.length}\n" : line
       RubyConformance.write_bytes(outdir, case_name, out.b)
       next
@@ -58,10 +59,10 @@ def self.run(manifest, outdir)
       end
     values = Array.new(n) { cls.new }
     out = String.new(encoding: ::Encoding::BINARY)
-    out << attempt(values) { read.call(lawful) }
-    out << attempt(values) { read.call(damaged) }
+    out << attempt(pkg, values) { read.call(lawful) }
+    out << attempt(pkg, values) { read.call(damaged) }
     values.each { |v| out << v.to_json.b }
-    out << attempt(values) { read.call(lawful) }
+    out << attempt(pkg, values) { read.call(lawful) }
     RubyConformance.write_bytes(outdir, case_name, out)
   end
 end
