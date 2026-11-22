@@ -244,7 +244,8 @@ typedef struct benchtable_table_field_info_t
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
+    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
 } benchtable_table_field_info_t;
 
 typedef struct benchtable_table_type_info_t
@@ -295,7 +296,7 @@ typedef struct benchtable_table_writer_t
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_checkpoint;
+    int overflow, id_checkpoint, check_default;
     benchtable_table_write_ids_t * vocabulary;
 
 } benchtable_table_writer_t;
@@ -3171,7 +3172,7 @@ static SCHEMA_UNUSED uint16_t benchtable_table_message_own_slot(const uint8_t * 
  return 0;
 }
 
-typedef struct benchtable_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow; } benchtable_table_bit_writer_t;
+typedef struct benchtable_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } benchtable_table_bit_writer_t;
 typedef struct benchtable_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } benchtable_table_bit_reader_t;
 static SCHEMA_UNUSED benchtable_table_bit_writer_t benchtable_table_bit_writer(uint8_t * buffer,int64_t capacity)
 { benchtable_table_bit_writer_t w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }
@@ -3655,14 +3656,77 @@ static SCHEMA_UNUSED int benchtable_table_message_skip_run(benchtable_table_mess
  if(count>(uint64_t)(INT64_MAX/width))return 0;
  return benchtable_table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
 }
+/* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3): a count past it
+   is damage at a named field as it is on the skip path. */
 static SCHEMA_UNUSED int benchtable_table_message_count(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e,uint64_t * n)
 {
  uint64_t raw;
  if(!benchtable_table_bit_get(&r->bits,&raw,benchtable_table_bits_required(e->min,e->max)))return 0;
  *n=raw+(uint64_t)e->min;
+ if(*n>(uint64_t)e->max)return 0;
  return !(e->kind==14 && e->elem_kind==6) || benchtable_table_bit_align_read(&r->bits);
 }
+static SCHEMA_UNUSED int benchtable_table_message_signed_kind(uint8_t kind)
+{
+ return (kind>=2 && kind<=5) || kind==18 || (kind>=20 && kind<=24);
+}
+/* A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND'S STORAGE DOMAIN (§3.3): the
+   offset's bits can spell a value past the sender's range, and base plus
+   offset is never wrapped. The arithmetic is on 64-bit words; no base lies
+   outside its own domain, because the announcement read held it there. */
+static SCHEMA_UNUSED int benchtable_table_message_ranged_holds(uint8_t kind,uint64_t lo,uint64_t hi,int64_t base_lo,int64_t base_hi)
+{
+ int64_t domain=benchtable_table_message_kind_bits(kind);
+ int is_signed=benchtable_table_message_signed_kind(kind);
+ if(domain==128) {
+  uint64_t top_hi=is_signed ? (uint64_t)INT64_MAX : UINT64_MAX;
+  uint64_t room_lo=UINT64_MAX-(uint64_t)base_lo,room_hi=top_hi-(uint64_t)base_hi;
+  return hi<room_hi || (hi==room_hi && lo<=room_lo);
+ }
+ if(hi!=0)return 0;
+ if(!is_signed) {
+  uint64_t top=domain==64 ? UINT64_MAX : (UINT64_C(1)<<domain)-1;
+  return (uint64_t)base_lo<=top && lo<=top-(uint64_t)base_lo;
+ }
+ {
+  int64_t top=domain==64 ? INT64_MAX : (int64_t)((UINT64_C(1)<<(domain-1))-1);
+  int64_t bottom=-top-1;
+  if(base_lo>top || lo>(uint64_t)top-(uint64_t)base_lo)return 0;
+  return base_lo>=bottom;
+ }
+}
+static SCHEMA_UNUSED int benchtable_table_message_number(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;
+ uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !benchtable_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !benchtable_table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  if(!benchtable_table_message_ranged_holds(e->kind,*lo,*hi,e->base_lo,e->base_hi))return 0;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
+  if(benchtable_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
 static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_reader_t *,const benchtable_table_message_entry_t *);
+/* A message field cannot be required, so a union FIELD at None is elided at
+   every build: an arm reference 0 stored for one is refused on the skip path
+   as on a read (§3.3(c)). An array element and an arm's own value keep their
+   positional None, so they skip through table_message_skip. */
+static SCHEMA_UNUSED int benchtable_table_message_skip_field(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e)
+{
+ if(e->kind==15) {
+  benchtable_table_bit_reader_t peek=r->bits;
+  uint64_t arm=0;
+  if(!benchtable_table_bit_get(&peek,&arm,r->vocabulary->ref_bits)||arm==0)return 0;
+ }
+ return benchtable_table_message_skip(r,e);
+}
 /* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
@@ -3681,7 +3745,7 @@ static SCHEMA_UNUSED int benchtable_table_message_skip_body(benchtable_table_mes
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
      one slot or two. */
   if(!benchtable_table_message_seen_once(seen,r->vocabulary,entry))return 0;
-  if(!benchtable_table_message_skip(r,entry))return 0;
+  if(!benchtable_table_message_skip_field(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int benchtable_table_message_skip_deeper(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e)
@@ -3691,6 +3755,28 @@ static SCHEMA_UNUSED int benchtable_table_message_skip_deeper(benchtable_table_m
  ok=benchtable_table_message_skip(r,e);
  r->skip_depth=saved;
  return ok;
+}
+/* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY REPEATS
+   (§3.2, §3.3): the name reference and the bitset hold it. The walk has its
+   own frame, so the bitset rides only where a keyed array is skipped. */
+static SCHEMA_UNUSED int benchtable_table_message_skip_keyed(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * elem,uint64_t n)
+{
+ uint8_t seen[BENCHTABLE_K_TABLE_MESSAGE_SEEN_REFS/8];
+ uint64_t i;
+ const benchtable_table_message_entry_t * key;
+ int64_t before;
+ memset(seen,0,sizeof(seen));
+ for(i=0;i<n;i++) {
+  if(!benchtable_table_message_ref(r,&key,1)||key==NULL||!benchtable_table_message_seen_once(seen,r->vocabulary,key))return 0;
+  before=r->bits.offset;
+  if(elem->value_bits>=0 || elem->kind==0 || elem->kind==32) {
+   if(!benchtable_table_message_skip(r,elem))return 0;
+  } else if(!benchtable_table_message_skip_deeper(r,elem))return 0;
+  /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3); a scalar or a
+     no-payload slot rides its key reference as its payload. */
+  if(r->bits.offset==before && elem->value_bits<0 && elem->kind!=0 && elem->kind!=32)return 0;
+ }
+ return 1;
 }
 static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e)
 {
@@ -3736,28 +3822,25 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
   return benchtable_table_bits_finite64(n);
  case 14:case 16: {
   benchtable_table_message_entry_t elem=benchtable_table_message_element(e);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3):
+     table_message_count refuses it. */
   if(!benchtable_table_message_count(r,e,&n))return 0;
-  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
-  if(n>(uint64_t)e->max)return 0;
-  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
-     a quantized element carries a value condition, so it is walked; a keyed
-     entry carries a key reference, so it is walked too. */
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to be: a
+     ranged element whose min equals its max rides no bits at all, so a count
+     of 2^32 over one would otherwise buy 2^32 loop turns for a few bytes of
+     wire. Its one value is its base, which the announcement read already held
+     to the kind. A float, a ranged or a quantized element of non-zero width
+     carries a value condition, so it is walked; a keyed entry carries a key
+     reference, so it is walked too. */
   if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
-   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.kind==0||elem.kind==32||elem.value_bits==0)return 1;
    if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
     return benchtable_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
+  if(e->kind==16)return benchtable_table_message_skip_keyed(r,&elem,n);
   {
-   uint8_t seen[BENCHTABLE_K_TABLE_MESSAGE_SEEN_REFS/8];
    int64_t before;
-   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
-   if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
-    if(e->kind==16) {
-     if(!benchtable_table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     if(!benchtable_table_message_seen_once(seen,r->vocabulary,entry))return 0;
-    }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
        its own value conditions at the array body's level; only a string, a
@@ -3766,33 +3849,21 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
     if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
      if(!benchtable_table_message_skip(r,&elem))return 0;
     } else if(!benchtable_table_message_skip_deeper(r,&elem))return 0;
-    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
-       scalar or no-payload element rides no element bits; its key reference
-       is the payload, and the reference reader's arithmetic run counts it. */
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
     if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
    }
    return 1;
   }
  }
- default:return e->value_bits>=0 && benchtable_table_bit_skip(&r->bits,e->value_bits);
+ default:
+  /* SKIPPED IS NOT UNREAD (§3.3): a ranged integer's base plus offset is
+     held to its announced kind, as a named read holds it. */
+  if(e->packing==1 && (benchtable_table_message_integer_kind(e->kind)||benchtable_table_message_fixed_kind(e->kind))) {
+   uint64_t lo,hi;
+   return benchtable_table_message_number(r,e,&lo,&hi);
+  }
+  return e->value_bits>=0 && benchtable_table_bit_skip(&r->bits,e->value_bits);
  }
-}
-static SCHEMA_UNUSED int benchtable_table_message_number(benchtable_table_message_reader_t * r,const benchtable_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
-{
- int64_t width=e->value_bits;
- uint64_t before;
- *lo=*hi=0;
- if(width<0 || width>128 || !benchtable_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
- if(width>64 && !benchtable_table_bit_get(&r->bits,hi,width-64))return 0;
- if(e->packing==1) {
-  before=*lo;
-  *lo+=(uint64_t)e->base_lo;
-  if(benchtable_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
- } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
-  *lo|=UINT64_MAX<<width;
- }
- if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
- return 1;
 }
 /* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
    infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
@@ -3967,7 +4038,7 @@ static SCHEMA_UNUSED void benchtable_table_mixed_reset( benchtable_table_mixed_t
     value->server_time = 0.0f;
     benchtable_table_entity_reset( &value->entities[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; } }
-    value->entities_count = 0;
+    value->entities_count = 1;
     benchtable_table_stat_reset( &value->stats[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; } }
     value->stats_count = 0;
@@ -4266,76 +4337,104 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     { /* entity_id */
         if ( !( value->entity_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 11, 0x23fcfd6678e36712ull, 7 );
+            schema_assert( (uint64_t)( value->entity_id ) <= 0xfffull ); /* bits(12) no wider than 12 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->entity_id ) );
         }
     }
     { /* pos_x */
         if ( !( value->pos_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 65, 0xcb4b37357667310eull, 4 );
+            schema_assert( value->pos_x >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->pos_x <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_x ) );
         }
     }
     { /* pos_y */
         if ( !( value->pos_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 66, 0xcb4b3835766732c1ull, 4 );
+            schema_assert( value->pos_y >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->pos_y <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_y ) );
         }
     }
     { /* pos_z */
         if ( !( value->pos_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 64, 0xcb4b353576672da8ull, 4 );
+            schema_assert( value->pos_z >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->pos_z <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_z ) );
         }
     }
     { /* yaw */
         if ( !( value->yaw == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 59, 0xb54d8e19798e16e8ull, 7 );
+            schema_assert( (uint64_t)( value->yaw ) <= 0x1ffull ); /* bits(9) no wider than 9 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->yaw ) );
         }
     }
     { /* pitch */
         if ( !( value->pitch == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 24, 0x53a9f665a90cc1b1ull, 7 );
+            schema_assert( (uint64_t)( value->pitch ) <= 0x1ffull ); /* bits(9) no wider than 9 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->pitch ) );
         }
     }
     { /* vel_x */
         if ( !( value->vel_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 30, 0x6cede6b6eb60ee67ull, 4 );
+            schema_assert( value->vel_x >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->vel_x <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_x ) );
         }
     }
     { /* vel_y */
         if ( !( value->vel_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 29, 0x6cede5b6eb60ecb4ull, 4 );
+            schema_assert( value->vel_y >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->vel_y <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_y ) );
         }
     }
     { /* vel_z */
         if ( !( value->vel_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 31, 0x6cede8b6eb60f1cdull, 4 );
+            schema_assert( value->vel_z >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->vel_z <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_z ) );
         }
     }
     { /* health */
         if ( !( value->health == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 41, 0x7f69d4b5288ba9cfull, 4 );
+            schema_assert( value->health >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->health <= 1000 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->health ) );
         }
     }
     { /* weapon */
         if ( !( value->weapon == BENCHTABLE_TABLE_WEAPON_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 54, 0xa0b610205f2c6e01ull, 30 );
             switch ( value->weapon )
             {
@@ -4362,6 +4461,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     { /* damage */
         if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 40, 0x7f6308be8ab37fc0ull, 9 );
             benchtable_table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
@@ -4369,6 +4469,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     { /* moving */
         if ( !( value->moving == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 5, 0x11a44fc1d1243da7ull, 1 );
             benchtable_table_writer_put8( w, value->moving ? 1 : 0 );
         }
@@ -4376,6 +4477,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     { /* firing */
         if ( !( value->firing == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 36, 0x7674cfd19b9031caull, 1 );
             benchtable_table_writer_put8( w, value->firing ? 1 : 0 );
         }
@@ -5088,66 +5190,99 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_message_body(benchtable_ta
  (void)value;
  { /* entity_id */
  if(!(value->entity_id == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,3,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->entity_id)-UINT64_C(0),12);
  }
  }
  { /* pos_x */
  if(!(value->pos_x == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,4,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->pos_x)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* pos_y */
  if(!(value->pos_y == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,5,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->pos_y)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* pos_z */
  if(!(value->pos_z == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,6,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->pos_z)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* yaw */
  if(!(value->yaw == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,7,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->yaw)-UINT64_C(0),9);
  }
  }
  { /* pitch */
  if(!(value->pitch == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,8,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->pitch)-UINT64_C(0),9);
  }
  }
  { /* vel_x */
  if(!(value->vel_x == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,9,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->vel_x)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* vel_y */
  if(!(value->vel_y == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,10,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->vel_y)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* vel_z */
  if(!(value->vel_z == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,11,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->vel_z)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* health */
  if(!(value->health == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,12,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,(uint64_t)(value->health)-UINT64_C(0),10);
  }
  }
  { /* weapon */
  if(!(value->weapon == BENCHTABLE_TABLE_WEAPON_NONE)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,13,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   switch(value->weapon) {
    case BENCHTABLE_TABLE_WEAPON_NONE: benchtable_table_bit_put(w,0,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
@@ -5188,6 +5323,9 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_message_body(benchtable_ta
  }
  { /* damage */
  if(!(value->damage == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,14,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert(((uint64_t)(value->damage) >> 8) == 0);
   /* message flags domain, debug only (§5.1) */
@@ -5196,12 +5334,18 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_message_body(benchtable_ta
  }
  { /* moving */
  if(!(value->moving == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,15,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,value->moving ? 1 : 0,1);
  }
  }
  { /* firing */
  if(!(value->firing == 0)) {
+  if(w->check_default) {w->bits=BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   benchtable_table_bit_put(w,16,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   benchtable_table_bit_put(w,value->firing ? 1 : 0,1);
  }
@@ -5272,7 +5416,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5300,7 +5444,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5331,7 +5475,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5362,7 +5506,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5393,7 +5537,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5421,7 +5565,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5449,7 +5593,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5480,7 +5624,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5511,7 +5655,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5542,7 +5686,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5573,7 +5717,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { const benchtable_table_message_entry_t * named;
@@ -5630,7 +5774,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5655,7 +5799,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5678,7 +5822,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5695,7 +5839,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -5769,6 +5913,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_save_body( benchtable_table_write
         if ( !( value->delta == 0 ) )
         {
             benchtable_table_writer_header_at( w, 23, 0x52076675ec13a0c1ull, 4 );
+            schema_assert( value->delta >= -512 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->delta <= 511 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->delta ) );
         }
     }
@@ -5989,7 +6135,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_tabl
  (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -6017,7 +6163,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_tabl
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -6042,7 +6188,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_tabl
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6088,6 +6234,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_st
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value, int64_t * element_sizes )
 {
     schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
+    schema_assert( value->entities_count >= 1 ); /* a count below the declared Min (§5.1 row 3) */
     int32_t i;
     benchtable_table_writer_put8( w, 13 ); benchtable_table_writer_leb( w, (uint64_t) value->entities_count );
     for ( i = 0; i < value->entities_count; i++ )
@@ -6217,6 +6364,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->ack_sequence == 0 ) )
         {
             benchtable_table_writer_header_at( w, 4, 0x0dbe005c56697c3eull, 4 );
+            schema_assert( value->ack_sequence >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->ack_sequence <= 65535 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->ack_sequence ) );
         }
     }
@@ -6245,6 +6394,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->nonce == 1ull ) )
         {
             benchtable_table_writer_header_at( w, 34, 0x73a94c71d60dc0d8ull, 9 );
+            schema_assert( value->nonce >= 1ull ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->nonce <= 9223372036854775807ull ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->nonce ) );
         }
     }
@@ -6252,6 +6403,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->world_time == 0 ) )
         {
             benchtable_table_writer_header_at( w, 21, 0x3eee6b51be54fc85ull, 5 );
+            schema_assert( value->world_time >= -1000000000000ll ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->world_time <= 1000000000000ll ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->world_time ) );
         }
     }
@@ -6259,6 +6412,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->frame_tick == 0 ) )
         {
             benchtable_table_writer_header_at( w, 39, 0x7bbc035f7b6d0112ull, 9 );
+            schema_assert( (uint64_t)( value->frame_tick ) <= 0xffffffffffffull ); /* bits(48) no wider than 48 bits (§5.1 row 2) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->frame_tick ) );
         }
     }
@@ -6273,7 +6427,15 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
     }
     { /* entities */
         schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
-        if ( value->entities_count > 0 )
+        schema_assert( value->entities_count >= 1 ); /* a count below the declared Min (§5.1 row 3) */
+        int birth_rides = value->entities_count != 1;
+        if ( !birth_rides ) { int32_t bi; for ( bi = 0; bi < 1; bi++ ) {
+            benchtable_table_writer_t birth_probe = benchtable_table_writer_probe( w ); birth_probe.check_default = 1;
+            if ( !benchtable_table_entity_save_body( &birth_probe, &value->entities[bi] ) ) { return 0; }
+            benchtable_table_writer_rewind( &birth_probe );
+            if ( birth_probe.offset > 1 ) { birth_rides = 1; break; }
+        } }
+        if ( birth_rides )
         {
             benchtable_table_writer_header_at( w, 46, 0x935d0fb07bb3822aull, 14 );
             int64_t element_sizes[8]; /* bounded sizing-to-write cache */
@@ -6422,6 +6584,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
             benchtable_table_writer_header_at( w, 27, 0x5ab3f9c9341f6c04ull, 11 );
             if ( !benchtable_table_double_finite( value->drift ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             benchtable_table_writer_put64( w, benchtable_table_double_to_bits( value->drift ) );
+            benchtable_table_writer_put64( w, benchtable_table_double_to_bits( value->drift ) );
         }
     }
     { /* wide_key */
@@ -6435,6 +6598,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->flux == 0 ) )
         {
             benchtable_table_writer_header_at( w, 68, 0xd61bdd7908af2642ull, 5 );
+            schema_assert( value->flux >= -1000000000000000000ll ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->flux <= 1000000000000000000ll ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->flux ) );
         }
     }
@@ -6451,6 +6616,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->crc_hint == 0 ) )
         {
             benchtable_table_writer_header_at( w, 25, 0x560d6527ccd8515full, 8 );
+            schema_assert( (uint64_t)( value->crc_hint ) <= 0xffffffull ); /* bits(24) no wider than 24 bits (§5.1 row 2) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->crc_hint ) );
         }
     }
@@ -6465,6 +6631,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->extra == 0 ) )
         {
             benchtable_table_writer_header_at( w, 76, 0xfd29ee12a979cb69ull, 4 );
+            schema_assert( value->extra >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->extra <= 255 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->extra ) );
         }
     }
@@ -6472,6 +6640,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->idle_ticks == 0 ) )
         {
             benchtable_table_writer_header_at( w, 37, 0x78101ac0aa8cbcfeull, 4 );
+            schema_assert( value->idle_ticks >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->idle_ticks <= 15 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->idle_ticks ) );
         }
     }
@@ -7004,6 +7174,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         float decoded_f = benchtable_table_bits_to_float( decoded_bits );
                         if ( decoded_f < 0.0f ) { decoded_f = 0.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         else if ( decoded_f > 65535.0f ) { decoded_f = 65535.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */
                         value->server_time = decoded_f;
                     }
                 }
@@ -7033,6 +7204,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8 ) { kept = 8; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        if ( count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         int32_t previous_count = value->entities_count;
                         value->entities_count = 0;
                         for ( i = 0; i < kept; i++ )
@@ -7236,6 +7408,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         float decoded_f = benchtable_table_bits_to_float( decoded_bits );
                         if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */
                         value->aim_x = decoded_f;
                     }
                 }
@@ -7258,6 +7431,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         float decoded_f = benchtable_table_bits_to_float( decoded_bits );
                         if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */
                         value->aim_y = decoded_f;
                     }
                 }
@@ -7280,6 +7454,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         float decoded_f = benchtable_table_bits_to_float( decoded_bits );
                         if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */
                         value->aim_z = decoded_f;
                     }
                 }
@@ -7480,6 +7655,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         float decoded_f = benchtable_table_bits_to_float( decoded_bits );
                         if ( decoded_f < 0.0f ) { decoded_f = 0.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                         else if ( decoded_f > 250.0f ) { decoded_f = 250.0f; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+                        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */
                         value->ping = decoded_f;
                     }
                 }
@@ -7756,9 +7932,24 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  }
  { /* entities */
  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
- if(value->entities_count>0) {
+ int birth_rides = value->entities_count != 1;
+ if ( !birth_rides ) { int32_t bi;
+ for ( bi = 0; bi < 1; bi++ ) {
+     benchtable_table_bit_writer_t birth_probe = *w;
+     birth_probe.buffer = NULL;
+     birth_probe.capacity = INT64_MAX;
+     birth_probe.bits = 0;
+     if ( !benchtable_table_entity_save_message_body( &birth_probe, &value->entities[bi] ) ) { return 0;
+     }
+     if ( birth_probe.bits > BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE ) { birth_rides = 1;
+     break;
+     }
+ } }
+ if(birth_rides) {
   benchtable_table_bit_put(w,31,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
+  schema_assert( value->entities_count >= 1 );
+  /* a count below the declared Min (§5.1 row 3) */
   benchtable_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -7970,7 +8161,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -7998,7 +8189,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8026,7 +8217,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8057,7 +8248,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8085,7 +8276,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8110,7 +8301,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8138,7 +8329,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8169,7 +8360,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,5)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8200,7 +8391,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8228,7 +8419,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8248,7 +8439,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   }else if(decoded>65535.0f){decoded=65535.0f;
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
-  }value->server_time=decoded;
+  }decoded=decoded+0;
+  value->server_time=decoded;
   } }
  break;
  }
@@ -8265,7 +8457,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && benchtable_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -8275,6 +8467,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   if(!benchtable_table_message_count(r,entry,&n))goto damaged;
   kept=n>8?8:n;
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
+  if(n<1)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   walk=element_entry->value_bits>=0?kept:n;
   for(i=0;i<walk;i++){benchtable_table_entity_t scratch;
   benchtable_table_entity_t * item=i<kept ? &value->entities[i] : &scratch;
@@ -8282,7 +8475,14 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   }if(walk<n && !benchtable_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
- if(same_shape && original_count==0)goto damaged;
+ if(same_shape && original_count==1){int32_t bi;
+ int empty=1;
+ for(bi=0;bi<1;bi++){uint64_t first=0;
+ if(!benchtable_table_bit_get(&original,&first,r->vocabulary->ref_bits))goto damaged;
+ if(first!=0){empty=0;
+ break;
+ }}if(empty)goto damaged;
+ }
  break;
  }
  case UINT64_C(0xee639cad45b1994c): {
@@ -8298,7 +8498,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && benchtable_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -8326,7 +8526,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==15 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,15)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {benchtable_table_bit_reader_t arm=r->bits;
@@ -8350,7 +8550,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->kind==14 && benchtable_table_kind_widens(entry->elem_kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -8395,11 +8595,12 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!benchtable_table_bit_get(&r->bits,&n,benchtable_table_bits_required(0,entry->max)))goto damaged;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!benchtable_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !benchtable_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
@@ -8429,11 +8630,13 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,14)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!benchtable_table_bit_get(&r->bits,&n,benchtable_table_bits_required(entry->min,entry->max)))goto damaged;
+  n+=(uint64_t)entry->min;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!benchtable_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !benchtable_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   kept=n>16 ? 16 : n;
@@ -8458,7 +8661,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8478,7 +8681,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
-  }value->aim_x=decoded;
+  }decoded=decoded+0;
+  value->aim_x=decoded;
   } }
  break;
  }
@@ -8490,7 +8694,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8510,7 +8714,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
-  }value->aim_y=decoded;
+  }decoded=decoded+0;
+  value->aim_y=decoded;
   } }
  break;
  }
@@ -8522,7 +8727,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8542,7 +8747,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
-  }value->aim_z=decoded;
+  }decoded=decoded+0;
+  value->aim_z=decoded;
   } }
  break;
  }
@@ -8554,7 +8760,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8588,7 +8794,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
@@ -8622,7 +8828,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8647,7 +8853,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,5)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8678,7 +8884,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -8698,7 +8904,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
   }else if(decoded>250.0f){decoded=250.0f;
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
-  }value->ping=decoded;
+  }decoded=decoded+0;
+  value->ping=decoded;
   } }
  break;
  }
@@ -8710,7 +8917,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8738,7 +8945,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8761,7 +8968,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8792,7 +8999,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8817,7 +9024,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -8894,6 +9101,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->target_id == 0 ) )
         {
             benchtable_table_writer_header_at( w, 60, 0xb7bc9ac015a25050ull, 7 );
+            schema_assert( (uint64_t)( value->target_id ) <= 0xfffull ); /* bits(12) no wider than 12 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->target_id ) );
         }
     }
@@ -8901,6 +9109,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->damage == 0 ) )
         {
             benchtable_table_writer_header_at( w, 40, 0x7f6308be8ab37fc0ull, 4 );
+            schema_assert( value->damage >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->damage <= 4095 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->damage ) );
         }
     }
@@ -8908,6 +9118,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->hit_kind == 0 ) )
         {
             benchtable_table_writer_header_at( w, 1, 0x01fbc365b059b925ull, 4 );
+            schema_assert( value->hit_kind >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->hit_kind <= 7 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->hit_kind ) );
         }
     }
@@ -9237,7 +9449,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9265,7 +9477,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9296,7 +9508,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9327,7 +9539,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9344,7 +9556,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -9411,6 +9623,8 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_save_body( benchtable_table
         if ( !( value->channel == 0 ) )
         {
             benchtable_table_writer_header_at( w, 56, 0xa5013e9ad5caeda4ull, 4 );
+            schema_assert( value->channel >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->channel <= 3 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->channel ) );
         }
     }
@@ -9418,6 +9632,7 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_save_body( benchtable_table
         if ( !( value->speaker == 0 ) )
         {
             benchtable_table_writer_header_at( w, 75, 0xfbf1ac4d96ebd022ull, 7 );
+            schema_assert( (uint64_t)( value->speaker ) <= 0xfffull ); /* bits(12) no wider than 12 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->speaker ) );
         }
     }
@@ -9657,7 +9872,7 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtabl
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9688,7 +9903,7 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtabl
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -9710,7 +9925,7 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtabl
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -9777,6 +9992,7 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_save_body( benchtable_tab
         if ( !( value->item_id == 0 ) )
         {
             benchtable_table_writer_header_at( w, 51, 0x9e7fd06d864fbd56ull, 7 );
+            schema_assert( (uint64_t)( value->item_id ) <= 0x3ffull ); /* bits(10) no wider than 10 bits (§5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->item_id ) );
         }
     }
@@ -9784,6 +10000,8 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_save_body( benchtable_tab
         if ( !( value->amount == 0 ) )
         {
             benchtable_table_writer_header_at( w, 43, 0x8113fe7ea2b16969ull, 4 );
+            schema_assert( value->amount >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->amount <= 255 ); /* a ranged value inside its declaration (§5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }
@@ -10023,7 +10241,7 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchta
  (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -10051,7 +10269,7 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchta
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -10076,7 +10294,7 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchta
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!benchtable_table_message_skip(r,entry))goto damaged;
+ if(!benchtable_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
@@ -10426,6 +10644,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0.0f ) | (int) ( value->server_time > 65535.0f );
     value->server_time = value->server_time + 0.0f;
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -10548,6 +10767,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( benchtable_table_float_finite( value->server_time ) && ( value->server_time < 0.0f || value->server_time > 65535.0f ) );
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
@@ -10727,12 +10947,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_entity_
    run after the guarded payload it replaces: the entries that are nearly
    all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_entity_fixed_plan[] = {
-    { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 8u, 8u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 12u, 12u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 16u, 16u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 20u, 20u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 16u, 16u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 20u, 20u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 24u, 24u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 28u, 28u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 32u, 32u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11095,7 +11315,7 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_stat_fi
    run after the guarded payload it replaces: the entries that are nearly
    all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_stat_fixed_plan[] = {
-    { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stat_id */
+    { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stat_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stat_id */
 };
 static SCHEMA_UNUSED const int32_t benchtable_table_stat_fixed_plan_count = 2;
@@ -11600,7 +11820,7 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_mixed_f
    all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed_fixed_plan[] = {
     { 0u, 0u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* protocol_magic */
-    { 2u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* sequence */
+    { 2u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* sequence */
     { 6u, 8u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* sequence */
     { 10u, 12u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* sequence */
     { 14u, 16u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* sequence */
@@ -11610,12 +11830,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 42u, 48u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* nonce */
     { 50u, 56u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* nonce */
     { 54u, 576u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COUNT, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 51u, 0u, 0u, 0, 0u }, /* entities count */
-    { 58u, 64u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 58u, 64u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 62u, 68u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 66u, 72u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 70u, 76u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 74u, 80u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 78u, 84u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 74u, 80u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 78u, 84u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 82u, 88u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 86u, 92u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 90u, 96u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11623,12 +11843,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 98u, 104u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 99u, 112u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 107u, 120u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 109u, 128u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 109u, 128u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 113u, 132u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 117u, 136u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 121u, 140u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 125u, 144u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 129u, 148u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 125u, 144u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 129u, 148u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 133u, 152u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 137u, 156u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 141u, 160u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11636,12 +11856,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 149u, 168u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 150u, 176u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 158u, 184u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 160u, 192u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 160u, 192u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 164u, 196u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 168u, 200u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 172u, 204u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 176u, 208u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 180u, 212u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 176u, 208u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 180u, 212u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 184u, 216u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 188u, 220u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 192u, 224u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11649,12 +11869,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 200u, 232u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 201u, 240u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 209u, 248u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 211u, 256u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 211u, 256u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 215u, 260u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 219u, 264u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 223u, 268u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 227u, 272u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 231u, 276u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 227u, 272u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 231u, 276u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 235u, 280u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 239u, 284u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 243u, 288u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11662,12 +11882,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 251u, 296u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 252u, 304u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 260u, 312u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 262u, 320u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 262u, 320u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 266u, 324u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 270u, 328u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 274u, 332u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 278u, 336u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 282u, 340u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 278u, 336u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 282u, 340u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 286u, 344u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 290u, 348u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 294u, 352u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11675,12 +11895,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 302u, 360u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 303u, 368u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 311u, 376u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 313u, 384u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 313u, 384u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 317u, 388u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 321u, 392u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 325u, 396u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 329u, 400u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 333u, 404u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 329u, 400u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 333u, 404u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 337u, 408u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 341u, 412u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 345u, 416u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11688,12 +11908,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 353u, 424u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 354u, 432u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 362u, 440u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 364u, 448u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 364u, 448u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 368u, 452u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 372u, 456u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 376u, 460u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 380u, 464u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 384u, 468u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 380u, 464u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 384u, 468u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 388u, 472u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 392u, 476u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 396u, 480u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11701,12 +11921,12 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 404u, 488u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 405u, 496u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 413u, 504u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
-    { 415u, 512u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 415u, 512u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 419u, 516u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 423u, 520u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 427u, 524u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 431u, 528u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
-    { 435u, 532u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 431u, 528u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
+    { 435u, 532u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 439u, 536u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 443u, 540u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
     { 447u, 544u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* entity_id */
@@ -11715,165 +11935,165 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 456u, 560u, 8u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8, 0u, 0u, 0u, 0, 0u }, /* damage */
     { 464u, 568u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* moving */
     { 466u, 1220u, 80u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COUNT, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 8u, 0u, 0u, 0, 0u }, /* stats count */
-    { 470u, 580u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 470u, 580u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 474u, 584u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 478u, 588u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 478u, 588u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 482u, 592u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 486u, 596u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 486u, 596u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 490u, 600u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 494u, 604u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 494u, 604u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 498u, 608u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 502u, 612u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 502u, 612u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 506u, 616u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 510u, 620u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 510u, 620u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 514u, 624u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 518u, 628u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 518u, 628u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 522u, 632u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 526u, 636u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 526u, 636u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 530u, 640u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 534u, 644u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 534u, 644u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 538u, 648u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 542u, 652u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 542u, 652u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 546u, 656u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 550u, 660u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 550u, 660u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 554u, 664u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 558u, 668u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 558u, 668u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 562u, 672u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 566u, 676u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 566u, 676u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 570u, 680u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 574u, 684u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 574u, 684u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 578u, 688u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 582u, 692u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 582u, 692u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 586u, 696u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 590u, 700u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 590u, 700u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 594u, 704u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 598u, 708u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 598u, 708u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 602u, 712u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 606u, 716u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 606u, 716u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 610u, 720u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 614u, 724u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 614u, 724u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 618u, 728u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 622u, 732u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 622u, 732u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 626u, 736u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 630u, 740u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 630u, 740u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 634u, 744u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 638u, 748u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 638u, 748u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 642u, 752u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 646u, 756u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 646u, 756u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 650u, 760u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 654u, 764u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 654u, 764u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 658u, 768u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 662u, 772u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 662u, 772u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 666u, 776u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 670u, 780u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 670u, 780u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 674u, 784u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 678u, 788u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 678u, 788u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 682u, 792u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 686u, 796u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 686u, 796u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 690u, 800u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 694u, 804u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 694u, 804u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 698u, 808u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 702u, 812u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 702u, 812u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 706u, 816u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 710u, 820u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 710u, 820u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 714u, 824u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 718u, 828u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 718u, 828u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 722u, 832u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 726u, 836u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 726u, 836u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 730u, 840u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 734u, 844u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 734u, 844u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 738u, 848u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 742u, 852u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 742u, 852u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 746u, 856u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 750u, 860u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 750u, 860u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 754u, 864u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 758u, 868u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 758u, 868u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 762u, 872u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 766u, 876u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 766u, 876u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 770u, 880u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 774u, 884u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 774u, 884u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 778u, 888u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 782u, 892u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 782u, 892u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 786u, 896u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 790u, 900u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 790u, 900u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 794u, 904u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 798u, 908u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 798u, 908u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 802u, 912u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 806u, 916u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 806u, 916u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 810u, 920u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 814u, 924u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 814u, 924u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 818u, 928u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 822u, 932u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 822u, 932u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 826u, 936u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 830u, 940u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 830u, 940u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 834u, 944u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 838u, 948u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 838u, 948u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 842u, 952u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 846u, 956u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 846u, 956u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 850u, 960u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 854u, 964u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 854u, 964u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 858u, 968u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 862u, 972u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 862u, 972u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 866u, 976u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 870u, 980u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 870u, 980u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 874u, 984u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 878u, 988u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 878u, 988u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 882u, 992u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 886u, 996u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 886u, 996u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 890u, 1000u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 894u, 1004u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 894u, 1004u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 898u, 1008u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 902u, 1012u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 902u, 1012u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 906u, 1016u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 910u, 1020u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 910u, 1020u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 914u, 1024u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 918u, 1028u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 918u, 1028u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 922u, 1032u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 926u, 1036u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 926u, 1036u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 930u, 1040u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 934u, 1044u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 934u, 1044u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 938u, 1048u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 942u, 1052u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 942u, 1052u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 946u, 1056u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 950u, 1060u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 950u, 1060u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 954u, 1064u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 958u, 1068u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 958u, 1068u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 962u, 1072u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 966u, 1076u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 966u, 1076u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 970u, 1080u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 974u, 1084u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 974u, 1084u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 978u, 1088u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 982u, 1092u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 982u, 1092u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 986u, 1096u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 990u, 1100u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 990u, 1100u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 994u, 1104u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 998u, 1108u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 998u, 1108u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1002u, 1112u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1006u, 1116u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1006u, 1116u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1010u, 1120u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1014u, 1124u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1014u, 1124u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1018u, 1128u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1022u, 1132u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1022u, 1132u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1026u, 1136u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1030u, 1140u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1030u, 1140u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1034u, 1144u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1038u, 1148u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1038u, 1148u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1042u, 1152u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1046u, 1156u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1046u, 1156u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1050u, 1160u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1054u, 1164u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1054u, 1164u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1058u, 1168u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1062u, 1172u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1062u, 1172u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1066u, 1176u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1070u, 1180u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1070u, 1180u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1074u, 1184u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1078u, 1188u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1078u, 1188u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1082u, 1192u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1086u, 1196u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1086u, 1196u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1090u, 1200u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1094u, 1204u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1094u, 1204u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1098u, 1208u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1102u, 1212u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
+    { 1102u, 1212u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1106u, 1216u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1110u, 1224u, 1u, 3u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 13u, 0u, 3u, 1, 0u }, /* game_event tag */
     { 1124u, 1244u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* loadout, whole */
@@ -11894,12 +12114,16 @@ static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed
     { 1215u, 1336u, 1u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* has_extra */
     { 1216u, 1340u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* extra */
     { 1220u, 1344u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* extra */
-    { 1111u, 1228u, 12u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 0, 0u, 13u, 0u, 0, 0u }, /* target_id */
+    { 1111u, 1228u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 13u, 0u, 0, 0u }, /* target_id */
+    { 1115u, 1232u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 13u, 0u, 0, 0u }, /* target_id */
+    { 1119u, 1236u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 1, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 13u, 0u, 0, 0u }, /* target_id */
     { 1123u, 1240u, 1u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_BOOL, 1, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 0 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 0, 0u, 13u, 0u, 0, 0u }, /* crit */
-    { 1111u, 1228u, 8u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 2, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 0, 0u, 8u, 0u, 0, 0u }, /* channel */
-    { 1111u, 1228u, 8u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 3, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 0, 0u, 8u, 0u, 0, 0u }, /* item_id */
+    { 1111u, 1228u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 2, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 8u, 0u, 0, 0u }, /* channel */
+    { 1115u, 1232u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 2, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 1 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 8u, 0u, 0, 0u }, /* channel */
+    { 1111u, 1228u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 3, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 8u, 0u, 0, 0u }, /* item_id */
+    { 1115u, 1232u, 4u, 0u, 1110u, BENCHTABLE_K_TABLE_FIXED_COPY, 3, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 1, 2 * (int) sizeof( benchtable_table_fixed_guard_link_t ), 4, 0u, 8u, 0u, 0, 0u }, /* item_id */
 };
-static SCHEMA_UNUSED const int32_t benchtable_table_mixed_fixed_plan_count = 299;
+static SCHEMA_UNUSED const int32_t benchtable_table_mixed_fixed_plan_count = 303;
 static SCHEMA_UNUSED const int32_t benchtable_table_mixed_fixed_plan_guarded = 295;
 static SCHEMA_UNUSED const benchtable_table_fixed_guard_link_t benchtable_table_mixed_fixed_guards[] = {
     { 1110u, 1u, 1 },

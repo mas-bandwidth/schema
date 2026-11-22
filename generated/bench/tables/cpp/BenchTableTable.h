@@ -960,6 +960,12 @@ struct TableReader
         return false;
     }
 
+    // EVERY STRUCTURAL CONTENT IS A LEVEL, A UNION AMONG THEM (§4): a union
+    // whose arm is a union nests exactly as a table in a table does, so the
+    // cap below counts it, at the strict walk's own bound. A chain of unions
+    // costs five bytes a level, and an uncounted one is a recursion as deep as
+    // the input is long, which overflows the stack before the strict walk,
+    // which does count it, ever runs.
     bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
     {
         if ( depth >= 128 ) return false;
@@ -971,7 +977,7 @@ struct TableReader
             case 15:
             {
                 TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
+                return badElementKindUnion( r, depth + 1 );
             }
         }
         return false;
@@ -2053,6 +2059,14 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
 // that rule CONSUMES are locals of the parse. The widths are int16 because a
 // width is bounded by the kind it came under and no kind holds more than 128
 // bits.
+// THE REPEAT CHECK's DEPTH (§3.3): one level per body open on the read's path,
+// named or skipped, and one per keyed array's key set. The skip walk's own
+// bound is 128 levels below the body that met the unknown entry, so this
+// leaves the named nesting above it the same room again; a read deeper than
+// this is damage, never silently untracked.
+static const int32_t kTableMessageSeenLevels = 256;
+static const int32_t kTableMessageSeenWords = kTableMessageSeenLevels / 64;
+
 struct TableMessageEntry
 {
     uint64_t id = 0;
@@ -2079,6 +2093,18 @@ struct TableMessageEntry
     uint8_t packing = 0;
     uint8_t elem_kind = 0;
     uint8_t elem_packing = 0;
+    // THE REPEAT CHECK's STATE (§3.3), kept in the caller's storage beside the
+    // shape so a body costs nothing to open and a frame carries no set: the
+    // slot of this id's FIRST entry (0 when it is this one), resolved once at
+    // AnnounceRead, because an ID is the wire's name and one name may be
+    // announced at two shapes; the read clock's tick at the last naming above
+    // nine bits holding that body's level; and one bit for each shallower
+    // level whose open body had named it before a deeper body named it again
+    // (TableMessageSeenOnce). Only the first entry of an id carries the last
+    // two.
+    uint32_t seen_first = 0;
+    uint64_t seen_at = 0;
+    uint64_t seen_below[kTableMessageSeenWords] = {};
 };
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
@@ -3371,6 +3397,14 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // THE REPEAT CHECK's CLOCK (§3.3, TableMessageSeenOnce): every body a read
+    // opens takes the next tick and keeps it at its level until it closes. A
+    // read moves these through the const reference it is handed, as it moves
+    // the entries' own marks, so one vocabulary is read by one thread at a
+    // time, which is what one direction of one connection is.
+    mutable uint64_t seen_clock = 0;
+    mutable int32_t seen_depth = 0;
+    mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -3622,7 +3656,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // scan is quadratic in the entry count, and the entry count is bounded
         // above at 4096, so it is at most eight million compares on a path
         // that runs ONCE a connection and never again.
+        //
+        // The same scan finds the slot of each id's FIRST entry, which the
+        // repeat check keys on (TableMessageSeenOnce), so a body never scans
+        // the vocabulary for it.
         const int64_t length = at - began;
+        uint32_t first = 0;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[seen];
@@ -3631,20 +3670,24 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
                 to->damaged = true;
                 return false;
             }
+            if ( first == 0 && other.id == parsed.id ) { first = (uint32_t) ( seen + 1 ); }
         }
         parsed.min = began;
         parsed.max = at;
+        parsed.seen_first = first;
         count++;
     }
     // THE ENTRIES RESOLVED, over bytes the first pass already accepted
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
+        const uint32_t first = vocabulary.entries[slot].seen_first;
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
             to->damaged = true;
             return false;
         }
+        vocabulary.entries[slot].seen_first = first;
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -3712,6 +3755,8 @@ inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary &
 // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth = 0 );
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth );
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
 
 // TableMessageSkipElement steps over ONE element of an array or keyed entry
 // by the element's own announced shape: a nested body to its zero reference,
@@ -3763,15 +3808,18 @@ inline bool TableMessageSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
 }
 
-// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
-// to the kind's own domain, the bound a named read holds it to: the offset's
-// bits can spell a value past the sender's range (§3.3). The base and the
-// offset are added exactly as the named read adds them. The arithmetic is on
-// 64-bit words, since this runtime carries no 128-bit type of its own.
-inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+// TableMessageRangedHolds is THE ANNOUNCED KIND'S DOMAIN for a RANGED value
+// (§3.3): the offset's bits can spell a value past the sender's range and past
+// the kind itself, and base plus offset is held to the kind's own storage
+// domain, exactly, with no wraparound, before anything else reads it. It is
+// the ONE test the skip path (TableMessageSkipRanged) and every named read
+// take, so the two cannot drift: a named read that added the base modulo 2^64
+// landed a sum past the domain wrapped back into range where the skip of the
+// same bytes refused. lo and hi are the offset's two words, hi zero at 64 bits
+// or fewer. The arithmetic is on 64-bit words, since this runtime carries no
+// 128-bit type of its own.
+inline bool TableMessageRangedHolds( uint8_t kind, uint64_t lo, uint64_t hi, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t lo = 0, hi = 0;
-    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
     const bool is_signed = TableMessageSignedKind( kind );
     const int64_t domain = TableMessageKindBits( kind );
     if ( domain == 128 )
@@ -3785,6 +3833,7 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     }
     // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
     // sign-extended for a signed kind, and the sum is held to both ends
+    if ( hi != 0 ) { return false; }
     if ( !is_signed )
     {
         const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
@@ -3797,28 +3846,95 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
-// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
-// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
-// it: one name may be announced at two shapes, and naming it twice is a
-// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
-// announcement can carry; a slot past it is damage, never silently untracked.
-static const int64_t kTableMessageSeenBits = 65536;
-
-// TableMessageSeenOnce records one id of a body or one key of a keyed array
-// and answers false on a repeat, whether or not this reader can name the field
-// (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to (§3.3).
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t slot = ref;
-    for ( uint64_t i = 1; i < ref; i++ )
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    return TableMessageRangedHolds( kind, lo, hi, base_lo, base_hi );
+}
+
+// THE SEEN SET OF ONE BODY (§3.2, §3.3): a FIELD ID TWICE IN ONE BODY, and one
+// KEY twice in one keyed array, is damage, named or skipped. An ID is the
+// wire's own name, not the slot that happened to carry it: one name may be
+// announced at two shapes, and naming it twice is a repeat whichever slot it
+// rode, so the check keys on the id's FIRST slot, which AnnounceRead resolved.
+//
+// THE SET IS NOT ON THE FRAME. A bitmap per body, sized for every slot an
+// announcement can carry, was 8 KiB of every level of a walk the input nests
+// 128 deep, a megabyte of stack for a twenty-byte batch, and 8 KiB zeroed for
+// every empty body a count can claim. The marks live in the entries instead,
+// as the Go leg keeps them (gotable's tableMessageSeenRepeat): opening a body
+// takes the next tick of the vocabulary's clock and keeps it at the body's
+// level, and naming an id records the tick and the level in the id's first
+// entry. A body's own earlier naming still stands when a deeper body named the
+// id since, because that naming left a bit for each shallower level whose open
+// body had named it; a level's bit stands only while that level's body is the
+// one open at the last naming, and the levels opened since are cleared as the
+// id is named again. Opening a body is one store, a naming is a constant
+// number of word operations and at most a binary search over the open levels,
+// and nothing is zeroed, so the work is linear in the batch.
+struct TableMessageSeenBody
+{
+    const TableVocabulary & vocabulary;
+    int32_t level;
+    explicit TableMessageSeenBody( const TableVocabulary & owner ) : vocabulary( owner ), level( owner.seen_depth )
     {
-        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+        if ( level < kTableMessageSeenLevels ) { owner.seen_starts[level] = ++owner.seen_clock; }
+        owner.seen_depth = level + 1;
     }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
-    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
-    seen[slot >> 6] |= bit;
+    ~TableMessageSeenBody() { vocabulary.seen_depth = level; }
+    TableMessageSeenBody( const TableMessageSeenBody & ) = delete;
+    TableMessageSeenBody & operator=( const TableMessageSeenBody & ) = delete;
+};
+
+// keeps the marks of the levels below level and clears the rest
+inline void TableMessageSeenKeepBelow( TableMessageEntry & entry, int32_t level )
+{
+    for ( int32_t w = 0; w < kTableMessageSeenWords; w++ )
+    {
+        const int32_t low = w * 64;
+        if ( level <= low ) { entry.seen_below[w] = 0; }
+        else if ( level < low + 64 ) { entry.seen_below[w] &= ( uint64_t( 1 ) << ( level - low ) ) - 1; }
+    }
+}
+
+// TableMessageSeenOnce records one id of the open body (or one key of the
+// open keyed array) through the reference that named it, and answers false on
+// a repeat, whether or not this reader can name the field, and past the level
+// bound. ref is a slot the caller already held to [1, count].
+inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t ref )
+{
+    const int32_t level = body.level;
+    if ( level >= kTableMessageSeenLevels ) { return false; }
+    const TableVocabulary & vocabulary = body.vocabulary;
+    TableMessageEntry * entry = &vocabulary.entries[ref - 1];
+    if ( entry->seen_first != 0 ) { entry = &vocabulary.entries[entry->seen_first - 1]; }
+    const uint64_t at = entry->seen_at >> 9;
+    const int32_t last = (int32_t) ( entry->seen_at & 511 );
+    if ( vocabulary.seen_starts[level] <= at )
+    {
+        // this body was open at the last naming, so that naming was this
+        // body's or a deeper one's, and every deeper body has closed since
+        if ( last == level || ( ( entry->seen_below[level >> 6] >> ( level & 63 ) ) & 1 ) != 0 ) { return false; }
+        TableMessageSeenKeepBelow( *entry, level );
+    }
+    else
+    {
+        // this body opened after the last naming: the levels still open
+        // since then are the ones whose start is no later than it
+        int32_t kept = 0, high = level;
+        while ( kept < high )
+        {
+            const int32_t mid = ( kept + high ) / 2;
+            if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
+            else { high = mid; }
+        }
+        if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
+        TableMessageSeenKeepBelow( *entry, kept );
+    }
+    entry->seen_at = ( vocabulary.seen_clock << 9 ) | (uint64_t) level;
     return true;
 }
 
@@ -3889,6 +4005,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            // a length above the ANNOUNCED max, which its bits can spell and
+            // no conforming writer emits, refuses as at a named field (§3.3)
+            if ( n > (uint64_t) entry.max ) { return false; }
             if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }
@@ -3943,17 +4062,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             // does not, so the depth cap counts what §4 says it counts.
             const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
                 entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
-            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+            if ( entry.kind == 16 ) { return TableMessageSkipKeyed( r, vocabulary, index_bits, entry, n, nested ? depth + 1 : depth ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 )
-                {
-                    uint64_t key_ref = 0;
-                    TableMessageEntry key_entry;
-                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
-                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
-                }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
@@ -3967,10 +4078,28 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
+// TableMessageSkipKeyed walks a skipped keyed array's n (key, element) pairs:
+// the keys are their own seen set, one level of the repeat check's own, so a
+// frame of the skip walk carries none.
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth )
+{
+    const TableMessageSeenBody keys( vocabulary );
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key_ref = 0;
+        TableMessageEntry key_entry;
+        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+        if ( !TableMessageSeenOnce( keys, key_ref ) ) { return false; } // one key twice
+        if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -3979,15 +4108,25 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
-        if ( entry.kind == 15 )
-        {
-            TableBitReader peek = r;
-            uint64_t arm = 0;
-            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSkipField( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
+}
+
+// TableMessageSkipField skips one FIELD's payload: a union FIELD names an arm,
+// because a conforming writer elides an empty union (§3.3, §22.2), so an
+// explicit arm 0 at a field is not the one encoding and is damage, in a root
+// body and in a nested one alike. A union ELEMENT is not elided and its arm 0
+// is the empty arm, which is why TableMessageSkip itself admits it.
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
+{
+    if ( entry.kind == 15 )
+    {
+        TableBitReader peek = r;
+        uint64_t arm = 0;
+        if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+    }
+    return TableMessageSkip( r, vocabulary, index_bits, entry, depth );
 }
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
@@ -7268,15 +7407,32 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
 inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( value.entity_id <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
     if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x23fcfd6678e36712ull ) ) + 1 + 2; } // entity_id
+    schema_assert( value.pos_x >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.pos_x <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref_at( 65, 0xcb4b37357667310eull ) ) + 1 + 4; } // pos_x
+    schema_assert( value.pos_y >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.pos_y <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref_at( 66, 0xcb4b3835766732c1ull ) ) + 1 + 4; } // pos_y
+    schema_assert( value.pos_z >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.pos_z <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref_at( 64, 0xcb4b353576672da8ull ) ) + 1 + 4; } // pos_z
+    schema_assert( value.yaw <= 511ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(9))
     if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0xb54d8e19798e16e8ull ) ) + 1 + 2; } // yaw
+    schema_assert( value.pitch <= 511ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(9))
     if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x53a9f665a90cc1b1ull ) ) + 1 + 2; } // pitch
+    schema_assert( value.vel_x >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.vel_x <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref_at( 30, 0x6cede6b6eb60ee67ull ) ) + 1 + 4; } // vel_x
+    schema_assert( value.vel_y >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.vel_y <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref_at( 29, 0x6cede5b6eb60ecb4ull ) ) + 1 + 4; } // vel_y
+    schema_assert( value.vel_z >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.vel_z <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x6cede8b6eb60f1cdull ) ) + 1 + 4; } // vel_z
+    schema_assert( value.health >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.health <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( value.weapon != TableWeapon::None )
     {
@@ -7307,51 +7463,68 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
     if ( value.entity_id != 0 )
     {
         w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
+        schema_assert( value.entity_id <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
         w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
+        schema_assert( value.pos_x >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.pos_x <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
         w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
+        schema_assert( value.pos_y >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.pos_y <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
         w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
+        schema_assert( value.pos_z >= -16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.pos_z <= 16383 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
         w.header( ids.ref_at( 59, 0xb54d8e19798e16e8ull ), 7 ); // yaw
+        schema_assert( value.yaw <= 511ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(9))
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
         w.header( ids.ref_at( 24, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
+        schema_assert( value.pitch <= 511ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(9))
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
         w.header( ids.ref_at( 30, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
+        schema_assert( value.vel_x >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.vel_x <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
         w.header( ids.ref_at( 29, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
+        schema_assert( value.vel_y >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.vel_y <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
         w.header( ids.ref_at( 31, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
+        schema_assert( value.vel_z >= -2048 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.vel_z <= 2047 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
         w.header( ids.ref_at( 41, 0x7f69d4b5288ba9cfull ), 4 ); // health
+        schema_assert( value.health >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.health <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != TableWeapon::None )
@@ -8445,7 +8618,7 @@ inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & 
 inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableEntity & value )
 {
     TableEntityReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -8476,7 +8649,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -8507,8 +8680,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -8529,7 +8708,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8544,8 +8723,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -8560,7 +8745,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8593,8 +8778,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8620,7 +8811,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8635,8 +8826,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8656,7 +8853,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8689,8 +8886,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8716,7 +8919,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8731,8 +8934,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8752,7 +8961,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8785,8 +8994,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8812,7 +9027,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8827,8 +9042,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -8848,7 +9069,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8881,8 +9102,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -8903,7 +9130,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8918,8 +9145,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -8934,7 +9167,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     } // bits(9) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8967,8 +9200,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -8989,7 +9228,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9004,8 +9243,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -9020,7 +9265,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     } // bits(9) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9053,8 +9298,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9080,7 +9331,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9095,8 +9346,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9116,7 +9373,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9149,8 +9406,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9176,7 +9439,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9191,8 +9454,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9212,7 +9481,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9245,8 +9514,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9272,7 +9547,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9287,8 +9562,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9308,7 +9589,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9341,8 +9622,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9368,7 +9655,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9383,8 +9670,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -9404,7 +9697,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9429,7 +9722,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9493,8 +9786,14 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.damage = decoded_v;
                         }
@@ -9503,7 +9802,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9518,11 +9817,17 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9547,7 +9852,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9578,7 +9883,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9596,7 +9901,7 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -9702,6 +10007,8 @@ inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0x80ab75f0866dbf65ull ) ) + 1 + 1; } // stat_id
+    schema_assert( value.delta >= -512 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.delta <= 511 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
     return bytes;
 }
@@ -9726,6 +10033,8 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
     if ( value.delta != 0 )
     {
         w.header( ids.ref_at( 23, 0x52076675ec13a0c1ull ), 4 ); // delta
+        schema_assert( value.delta >= -512 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.delta <= 511 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -10040,7 +10349,7 @@ inline bool TableStatSaveMessageBody( TableBitWriter & w, const TableStat & valu
 inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableStat & value )
 {
     TableStatReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -10071,7 +10380,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -10094,7 +10403,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10109,8 +10418,14 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -10119,7 +10434,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10152,8 +10467,14 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -10179,7 +10500,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10194,8 +10515,14 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -10215,7 +10542,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10227,7 +10554,7 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -10334,12 +10661,19 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.protocol_magic != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x6a5a70d91aa115fdull ) ) + 1 + 2; } // protocol_magic
     if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 58, 0xaa38aca481f528a8ull ) ) + 1 + 2; } // sequence
+    schema_assert( value.ack_sequence >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.ack_sequence <= 65535 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 4, 0x0dbe005c56697c3eull ) ) + 1 + 4; } // ack_sequence
     if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref_at( 49, 0x9bae0da8b829ee03ull ) ) + 1 + 4; } // ack_bits
     if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 61, 0xb7d7b5650a590b05ull ) ) + 1 + 8; } // session_id
     if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0x6d7b98e2d095967eull ) ) + 1 + 4; } // client_id
+    schema_assert( value.nonce >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.nonce <= 9223372036854775807ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.nonce != 1ull ) { bytes += TableLebBytes( ids.ref_at( 34, 0x73a94c71d60dc0d8ull ) ) + 1 + 8; } // nonce
+    schema_assert( value.world_time >= -1000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.world_time <= 1000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
+    schema_assert( value.frame_tick <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
@@ -10452,13 +10786,20 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( !TableFloatFinite( value.drift ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 27, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
     if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0xa3348580461faf16ull ) ) + 1 + 8; } // wide_key
+    schema_assert( value.flux >= -1000000000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.flux <= 1000000000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
     if ( !TableFloatFinite( value.ping ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 62, 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
+    schema_assert( value.crc_hint <= 16777215ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(24))
     if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
     if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref_at( 63, 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
+    schema_assert( value.extra >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.extra <= 255 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
+    schema_assert( value.idle_ticks >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.idle_ticks <= 15 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     return bytes;
 }
@@ -10488,6 +10829,8 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.ack_sequence != 0 )
     {
         w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
+        schema_assert( value.ack_sequence >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.ack_sequence <= 65535 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
@@ -10508,16 +10851,21 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.nonce != 1ull )
     {
         w.header( ids.ref_at( 34, 0x73a94c71d60dc0d8ull ), 9 ); // nonce
+        schema_assert( value.nonce >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.nonce <= 9223372036854775807ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
         w.header( ids.ref_at( 21, 0x3eee6b51be54fc85ull ), 5 ); // world_time
+        schema_assert( value.world_time >= -1000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.world_time <= 1000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
         w.header( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
+        schema_assert( value.frame_tick <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0.0f )
@@ -10717,6 +11065,8 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.flux != 0 )
     {
         w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 5 ); // flux
+        schema_assert( value.flux >= -1000000000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.flux <= 1000000000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.flux ) );
     }
     if ( value.ping != 0.0f )
@@ -10729,6 +11079,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.crc_hint != 0 )
     {
         w.header( ids.ref_at( 25, 0x560d6527ccd8515full ), 8 ); // crc_hint
+        schema_assert( value.crc_hint <= 16777215ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(24))
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != false )
@@ -10739,11 +11090,15 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.extra != 0 )
     {
         w.header( ids.ref_at( 76, 0xfd29ee12a979cb69ull ), 4 ); // extra
+        schema_assert( value.extra >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.extra <= 255 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.extra ) );
     }
     if ( value.idle_ticks != 0 )
     {
         w.header( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+        schema_assert( value.idle_ticks >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.idle_ticks <= 15 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.idle_ticks ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11274,6 +11629,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             r.report->refused = true;
                             r.report->refuse_reason = out_of_range;
                         }
+                        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                         value.server_time = decoded_f;
                     }
                 }
@@ -11819,6 +12175,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             r.report->refused = true;
                             r.report->refuse_reason = out_of_range;
                         }
+                        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                         value.aim_x = decoded_f;
                     }
                 }
@@ -11862,6 +12219,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             r.report->refused = true;
                             r.report->refuse_reason = out_of_range;
                         }
+                        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                         value.aim_y = decoded_f;
                     }
                 }
@@ -11905,6 +12263,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             r.report->refused = true;
                             r.report->refuse_reason = out_of_range;
                         }
+                        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                         value.aim_z = decoded_f;
                     }
                 }
@@ -12124,6 +12483,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             r.report->refused = true;
                             r.report->refuse_reason = out_of_range;
                         }
+                        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                         value.ping = decoded_f;
                     }
                 }
@@ -12880,7 +13240,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
 inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableMixed & value )
 {
     TableMixedReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -12911,7 +13271,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -12942,8 +13302,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -12958,7 +13324,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12973,8 +13339,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -12983,7 +13355,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13016,8 +13388,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -13032,7 +13410,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13047,8 +13425,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -13057,7 +13441,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13090,8 +13474,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -13117,7 +13507,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13132,8 +13522,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -13153,7 +13549,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13186,8 +13582,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -13202,7 +13604,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13217,8 +13619,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -13227,7 +13635,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13260,8 +13668,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.session_id = decoded_v;
                         }
@@ -13270,7 +13684,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13285,11 +13699,17 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13322,8 +13742,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -13338,7 +13764,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13353,8 +13779,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -13363,7 +13795,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13396,8 +13828,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide < 1ull )
                             {
                                 decoded_wide = (int64_t) 1ull;
@@ -13418,7 +13856,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13433,8 +13871,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide < 1ull )
                     {
@@ -13449,7 +13893,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 1ull ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 1ull ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13482,8 +13926,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -13509,7 +13959,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13524,8 +13974,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -13545,7 +14001,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int64_t decoded_v = (int64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13578,8 +14034,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 281474976710655ull )
                             {
                                 decoded_wide = (int64_t) 281474976710655ull;
@@ -13594,7 +14056,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13609,8 +14071,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 281474976710655ull )
                     {
@@ -13619,7 +14087,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     } // bits(48) width clamp
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13644,7 +14112,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13700,6 +14168,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refused = true;
                         report->refuse_reason = out_of_range;
                     }
+                    if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                     value.server_time = decoded_f;
                 }
                 break;
@@ -13720,7 +14189,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13782,7 +14251,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13844,7 +14313,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13956,7 +14425,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14001,8 +14470,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past_2 = entry.elem_packing == 1 && !TableMessageRangedHolds( entry.elem_kind, raw_2, 0, entry.elem_base_lo, entry.elem_base_hi );
+                            if ( past_2 )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
-                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
+                            if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             if ( (uint64_t) decoded_wide_2 > 255ull )
                             {
                                 decoded_wide_2 = (int64_t) 255ull;
@@ -14044,7 +14519,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14098,7 +14573,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14107,7 +14582,13 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    n += (uint64_t) entry.min;
+                    if ( !r.align() || !r.has( (int64_t) n * 8 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14151,7 +14632,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14207,6 +14688,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refused = true;
                         report->refuse_reason = out_of_range;
                     }
+                    if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                     value.aim_x = decoded_f;
                 }
                 break;
@@ -14227,7 +14709,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14283,6 +14765,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refused = true;
                         report->refuse_reason = out_of_range;
                     }
+                    if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                     value.aim_y = decoded_f;
                 }
                 break;
@@ -14303,7 +14786,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14359,6 +14842,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refused = true;
                         report->refuse_reason = out_of_range;
                     }
+                    if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                     value.aim_z = decoded_f;
                 }
                 break;
@@ -14379,7 +14863,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14480,7 +14964,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14519,8 +15003,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.wide_key = decoded_v;
                         }
@@ -14529,7 +15019,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14544,11 +15034,17 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14581,8 +15077,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -14608,7 +15110,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14623,8 +15125,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -14644,7 +15152,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int64_t decoded_v = (int64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14669,7 +15177,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14725,6 +15233,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refused = true;
                         report->refuse_reason = out_of_range;
                     }
+                    if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0
                     value.ping = decoded_f;
                 }
                 break;
@@ -14753,8 +15262,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -14775,7 +15290,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14790,8 +15305,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -14806,7 +15327,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     } // bits(24) width clamp
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14831,7 +15352,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14870,8 +15391,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -14897,7 +15424,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14912,8 +15439,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -14933,7 +15466,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14966,8 +15499,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -14993,7 +15532,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15008,8 +15547,14 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15029,7 +15574,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15041,7 +15586,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -15146,8 +15691,13 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
 inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( value.target_id <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
     if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 60, 0xb7bc9ac015a25050ull ) ) + 1 + 2; } // target_id
+    schema_assert( value.damage >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.damage <= 4095 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    schema_assert( value.hit_kind >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.hit_kind <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x01fbc365b059b925ull ) ) + 1 + 4; } // hit_kind
     if ( value.crit != false ) { bytes += TableLebBytes( ids.ref_at( 6, 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
     return bytes;
@@ -15166,16 +15716,21 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & 
     if ( value.target_id != 0 )
     {
         w.header( ids.ref_at( 60, 0xb7bc9ac015a25050ull ), 7 ); // target_id
+        schema_assert( value.target_id <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ), 4 ); // damage
+        schema_assert( value.damage >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.damage <= 4095 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
         w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
+        schema_assert( value.hit_kind >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.hit_kind <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
@@ -15632,7 +16187,7 @@ inline bool TableHitEventSaveMessageBody( TableBitWriter & w, const TableHitEven
 inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableHitEvent & value )
 {
     TableHitEventReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -15663,7 +16218,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -15694,8 +16249,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -15716,7 +16277,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15731,8 +16292,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -15747,7 +16314,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15780,8 +16347,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15807,7 +16380,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15822,8 +16395,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15843,7 +16422,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15876,8 +16455,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15903,7 +16488,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15918,8 +16503,14 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15939,7 +16530,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15964,7 +16555,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15982,7 +16573,7 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -16085,7 +16676,10 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
 inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( value.channel >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.channel <= 3 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xa5013e9ad5caeda4ull ) ) + 1 + 4; } // channel
+    schema_assert( value.speaker <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
     if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref_at( 75, 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
     return bytes;
 }
@@ -16103,11 +16697,14 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds &
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 56, 0xa5013e9ad5caeda4ull ), 4 ); // channel
+        schema_assert( value.channel >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.channel <= 3 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
         w.header( ids.ref_at( 75, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
+        schema_assert( value.speaker <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -16449,7 +17046,7 @@ inline bool TableChatEventSaveMessageBody( TableBitWriter & w, const TableChatEv
 inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TableChatEvent & value )
 {
     TableChatEventReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -16480,7 +17077,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -16511,8 +17108,14 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -16538,7 +17141,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16553,8 +17156,14 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -16574,7 +17183,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16607,8 +17216,14 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -16629,7 +17244,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16644,8 +17259,14 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -16660,7 +17281,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->refuse_reason = out_of_range;
                     } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16672,7 +17293,7 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -16775,7 +17396,10 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
 inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( value.item_id <= 1023ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(10))
     if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0x9e7fd06d864fbd56ull ) ) + 1 + 2; } // item_id
+    schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.amount <= 255 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
@@ -16793,11 +17417,14 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds
     if ( value.item_id != 0 )
     {
         w.header( ids.ref_at( 51, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
+        schema_assert( value.item_id <= 1023ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(10))
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 43, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.amount <= 255 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -17139,7 +17766,7 @@ inline bool TablePickupEventSaveMessageBody( TableBitWriter & w, const TablePick
 inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TablePickupEvent & value )
 {
     TablePickupEventReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -17170,7 +17797,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -17201,8 +17828,14 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -17223,7 +17856,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17238,8 +17871,14 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -17254,7 +17893,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         report->refuse_reason = out_of_range;
                     } // bits(10) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17287,8 +17926,14 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -17314,7 +17959,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17329,8 +17974,14 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -17350,7 +18001,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17362,7 +18013,7 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -18295,12 +18946,12 @@ constexpr TableFixedDst TableEntityFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry TableEntityFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 16u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 20u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 16u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 20u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 24u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 28u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 32u, 32u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -18806,7 +19457,7 @@ constexpr TableFixedDst TableStatFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry TableStatFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stat_id
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stat_id
     { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stat_id
 };
 constexpr int32_t TableStatFixedPlanCount = 2;
@@ -19561,7 +20212,7 @@ constexpr TableFixedDst TableMixedFixedDst[] = {
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 0u, 0u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // protocol_magic
-    { 2u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // sequence
+    { 2u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // sequence
     { 6u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // sequence
     { 10u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // sequence
     { 14u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // sequence
@@ -19571,12 +20222,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 42u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // nonce
     { 50u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // nonce
     { 54u, 576u, 8u, 51u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // entities count
-    { 58u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 58u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 62u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 66u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 70u, 76u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 74u, 80u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 78u, 84u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 74u, 80u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 78u, 84u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 82u, 88u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 86u, 92u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 90u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19584,12 +20235,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 98u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 99u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 107u, 120u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 109u, 128u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 109u, 128u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 113u, 132u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 117u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 121u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 125u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 129u, 148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 125u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 129u, 148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 133u, 152u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 137u, 156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 141u, 160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19597,12 +20248,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 149u, 168u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 150u, 176u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 158u, 184u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 160u, 192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 160u, 192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 164u, 196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 168u, 200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 172u, 204u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 176u, 208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 180u, 212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 176u, 208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 180u, 212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 184u, 216u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 188u, 220u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 192u, 224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19610,12 +20261,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 200u, 232u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 201u, 240u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 209u, 248u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 211u, 256u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 211u, 256u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 215u, 260u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 219u, 264u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 223u, 268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 227u, 272u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 231u, 276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 227u, 272u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 231u, 276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 235u, 280u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 239u, 284u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 243u, 288u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19623,12 +20274,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 251u, 296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 252u, 304u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 260u, 312u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 262u, 320u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 262u, 320u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 266u, 324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 270u, 328u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 274u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 278u, 336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 282u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 278u, 336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 282u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 286u, 344u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 290u, 348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 294u, 352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19636,12 +20287,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 302u, 360u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 303u, 368u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 311u, 376u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 313u, 384u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 313u, 384u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 317u, 388u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 321u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 325u, 396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 329u, 400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 333u, 404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 329u, 400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 333u, 404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 337u, 408u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 341u, 412u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 345u, 416u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19649,12 +20300,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 353u, 424u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 354u, 432u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 362u, 440u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 364u, 448u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 364u, 448u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 368u, 452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 372u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 376u, 460u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 380u, 464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 384u, 468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 380u, 464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 384u, 468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 388u, 472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 392u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 396u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19662,12 +20313,12 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 404u, 488u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // entity_id
     { 405u, 496u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 413u, 504u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
-    { 415u, 512u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 415u, 512u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 419u, 516u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 423u, 520u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 427u, 524u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
-    { 431u, 528u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
-    { 435u, 532u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // entity_id
+    { 431u, 528u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
+    { 435u, 532u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 439u, 536u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 443u, 540u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
     { 447u, 544u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // entity_id
@@ -19676,165 +20327,165 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 456u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // damage
     { 464u, 568u, 2u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // moving
     { 466u, 1220u, 80u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // stats count
-    { 470u, 580u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 470u, 580u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 474u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 478u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 478u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 482u, 592u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 486u, 596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 486u, 596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 490u, 600u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 494u, 604u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 494u, 604u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 498u, 608u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 502u, 612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 502u, 612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 506u, 616u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 510u, 620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 510u, 620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 514u, 624u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 518u, 628u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 518u, 628u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 522u, 632u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 526u, 636u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 526u, 636u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 530u, 640u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 534u, 644u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 534u, 644u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 538u, 648u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 542u, 652u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 542u, 652u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 546u, 656u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 550u, 660u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 550u, 660u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 554u, 664u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 558u, 668u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 558u, 668u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 562u, 672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 566u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 566u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 570u, 680u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 574u, 684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 574u, 684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 578u, 688u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 582u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 582u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 586u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 590u, 700u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 590u, 700u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 594u, 704u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 598u, 708u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 598u, 708u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 602u, 712u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 606u, 716u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 606u, 716u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 610u, 720u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 614u, 724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 614u, 724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 618u, 728u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 622u, 732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 622u, 732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 626u, 736u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 630u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 630u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 634u, 744u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 638u, 748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 638u, 748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 642u, 752u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 646u, 756u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 646u, 756u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 650u, 760u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 654u, 764u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 654u, 764u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 658u, 768u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 662u, 772u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 662u, 772u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 666u, 776u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 670u, 780u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 670u, 780u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 674u, 784u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 678u, 788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 678u, 788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 682u, 792u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 686u, 796u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 686u, 796u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 690u, 800u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 694u, 804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 694u, 804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 698u, 808u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 702u, 812u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 702u, 812u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 706u, 816u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 710u, 820u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 710u, 820u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 714u, 824u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 718u, 828u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 718u, 828u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 722u, 832u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 726u, 836u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 726u, 836u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 730u, 840u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 734u, 844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 734u, 844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 738u, 848u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 742u, 852u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 742u, 852u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 746u, 856u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 750u, 860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 750u, 860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 754u, 864u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 758u, 868u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 758u, 868u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 762u, 872u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 766u, 876u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 766u, 876u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 770u, 880u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 774u, 884u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 774u, 884u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 778u, 888u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 782u, 892u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 782u, 892u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 786u, 896u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 790u, 900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 790u, 900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 794u, 904u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 798u, 908u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 798u, 908u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 802u, 912u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 806u, 916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 806u, 916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 810u, 920u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 814u, 924u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 814u, 924u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 818u, 928u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 822u, 932u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 822u, 932u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 826u, 936u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 830u, 940u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 830u, 940u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 834u, 944u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 838u, 948u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 838u, 948u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 842u, 952u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 846u, 956u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 846u, 956u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 850u, 960u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 854u, 964u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 854u, 964u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 858u, 968u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 862u, 972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 862u, 972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 866u, 976u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 870u, 980u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 870u, 980u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 874u, 984u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 878u, 988u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 878u, 988u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 882u, 992u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 886u, 996u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 886u, 996u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 890u, 1000u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 894u, 1004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 894u, 1004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 898u, 1008u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 902u, 1012u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 902u, 1012u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 906u, 1016u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 910u, 1020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 910u, 1020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 914u, 1024u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 918u, 1028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 918u, 1028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 922u, 1032u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 926u, 1036u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 926u, 1036u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 930u, 1040u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 934u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 934u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 938u, 1048u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 942u, 1052u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 942u, 1052u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 946u, 1056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 950u, 1060u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 950u, 1060u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 954u, 1064u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 958u, 1068u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 958u, 1068u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 962u, 1072u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 966u, 1076u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 966u, 1076u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 970u, 1080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 974u, 1084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 974u, 1084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 978u, 1088u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 982u, 1092u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 982u, 1092u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 986u, 1096u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 990u, 1100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 990u, 1100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 994u, 1104u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 998u, 1108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 998u, 1108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1002u, 1112u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1006u, 1116u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1006u, 1116u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1010u, 1120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1014u, 1124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1014u, 1124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1018u, 1128u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1022u, 1132u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1022u, 1132u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1026u, 1136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1030u, 1140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1030u, 1140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1034u, 1144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1038u, 1148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1038u, 1148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1042u, 1152u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1046u, 1156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1046u, 1156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1050u, 1160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1054u, 1164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1054u, 1164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1058u, 1168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1062u, 1172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1062u, 1172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1066u, 1176u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1070u, 1180u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1070u, 1180u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1074u, 1184u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1078u, 1188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1078u, 1188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1082u, 1192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1086u, 1196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1086u, 1196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1090u, 1200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1094u, 1204u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1094u, 1204u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1098u, 1208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
-    { 1102u, 1212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // stats, whole
+    { 1102u, 1212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1106u, 1216u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // stats, whole
     { 1110u, 1224u, 1u, 3u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // game_event tag
     { 1124u, 1244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // loadout, whole
@@ -19855,12 +20506,16 @@ constexpr TableFixedEntry TableMixedFixedPlan[] = {
     { 1215u, 1336u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // has_extra
     { 1216u, 1340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // extra
     { 1220u, 1344u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // extra
-    { 1111u, 1228u, 12u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // target_id
+    { 1111u, 1228u, 4u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 4 }, // target_id
+    { 1115u, 1232u, 4u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 4 }, // target_id
+    { 1119u, 1236u, 4u, 0u, 1110u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 4 }, // target_id
     { 1123u, 1240u, 1u, 0u, 1110u, kTableFixedBool, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 0 }, // crit
-    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 0 }, // channel
-    { 1111u, 1228u, 8u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 0 }, // item_id
+    { 1111u, 1228u, 4u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 4 }, // channel
+    { 1115u, 1232u, 4u, 0u, 1110u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 1 * (int) sizeof( TableFixedGuardLink ), 4 }, // channel
+    { 1111u, 1228u, 4u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // item_id
+    { 1115u, 1232u, 4u, 0u, 1110u, kTableFixedCopy, 3, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 }, // item_id
 };
-constexpr int32_t TableMixedFixedPlanCount = 299;
+constexpr int32_t TableMixedFixedPlanCount = 303;
 constexpr int32_t TableMixedFixedPlanGuarded = 295;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).

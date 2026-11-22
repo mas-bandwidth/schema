@@ -82,9 +82,10 @@ export class TableVariableReport {
   // A form byte the read does not carry is unknown_form whichever
   // form-specific name the reason holds; then integrity_mismatch, a
   // non-finite float, any damage as wire_damaged, a missing required field, a
-  // storage cap by its own name, a blob named from two slots, out_of_range, and
-  // kind_mismatch, in that order. unknown, widened, retained and repeated
-  // alone never refuse. No string is built: the answer is a frozen member.
+  // storage cap by its own name, a blob named from two slots, out_of_range,
+  // kind_mismatch, and a repeated JSON key (damage, as every other malformed
+  // text is: wire_damaged), in that order. unknown, widened and retained alone
+  // never refuse. No string is built: the answer is a frozen member.
   err() {
     const reason = this.reason;
     if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
@@ -98,6 +99,9 @@ export class TableVariableReport {
     if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
     if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
     if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    // A REPEATED KEY REFUSES (docs/SPEC-TABLES.md §16.2; docs/plans/strict-only.md
+    // decision 5): the read hands back null, and err() must say why.
+    if (this.repeated > 0) { return TableRefuseReason.WireDamaged; }
     return null;
   }
 }
@@ -1250,14 +1254,29 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      w.leb(ids.ref(fd.id));
-      w.u8(14);
+      // A COUNTED ARRAY AT ITS BIRTH ELIDES (§3; tablewire encodeArray): Min
+      // elements, each at its default — a table element's body the terminator
+      // alone — is the value a fresh holder has, so it is not written, exactly
+      // as a scalar at its default is not
+      let birth = (fd.min || 0) > 0 && n === fd.min && !fd.req && !fd.opt;
+      const mark = ids.mark();
+      const ref = ids.ref(fd.id);
       const body = new TableVariableWriter();
       body.u8(fd.ek);
       body.leb(n);
       for (let i = 0; i < n; i++) {
+        const at = body.len;
         if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (birth) {
+          const s = fd.e.s;
+          birth = s === "tab" ? body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0
+            : s === "union" || s === "ptr" ? val[i] === null
+            : !fd.tl && TableVariableElemIsDefault(fd.e, val[i]);
+        }
       }
+      if (birth) { ids.rollback(mark); return true; }
+      w.leb(ref);
+      w.u8(14);
       w.leb(body.len);
       w.raw(body.b);
       return true;
@@ -2151,6 +2170,9 @@ function TableVariableScalar(r, d, kind, report) {
       if (d.f32 && d.lo !== null) {
         if (v < d.lo) { v = globalThis.Math.fround(d.lo); report.oor++; }
         else if (v > d.hi) { v = globalThis.Math.fround(d.hi); report.oor++; }
+        // A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, ruling
+        // fixed-compressed-negzero), uncounted
+        else if (v === 0) { v = 0; }
       }
       return v;
     }
@@ -2334,6 +2356,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       keep = fd.bound;
       report.oor++;
       if (fd.tl && !report.oorField) { report.oorField = fd.field; }
+    } else if (count < (fd.min || 0)) {
+      // a count below the declared Min is off the count's own range: the
+      // field is refused out_of_range where it stands, before any element
+      // lands (SPEC §5.1 row 3; decode.go arrayBody refuseField)
+      report.oor++;
+      if (fd.tl && !report.oorField) { report.oorField = fd.field; }
+      return false;
     }
     // the span from the cursor to the body's end, empty rather than negative
     // when the count's own spelling ran past it (decode.go subTo)
@@ -2728,11 +2757,14 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
 // all see the same entry (§3.1)
 let TableVariableEntryCache = null;
 
-function TableVariableUtf8Compare(a, b) {
-  const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
+function TableVariableBytesCompare(x, y) {
   const n = globalThis.Math.min(x.length, y.length);
   for (let i = 0; i < n; i++) { if (x[i] !== y[i]) { return x[i] < y[i] ? -1 : 1; } }
   return x.length === y.length ? 0 : (x.length < y.length ? -1 : 1);
+}
+
+function TableVariableUtf8Compare(a, b) {
+  return TableVariableBytesCompare(TableVariableUtf8Encode(a), TableVariableUtf8Encode(b));
 }
 
 // THE KEY ORDER (internal/tabletext MapKeyOrder): byte-wise over the UTF-8 for
@@ -2740,6 +2772,18 @@ function TableVariableUtf8Compare(a, b) {
 function TableVariableKeyOrder(fd, a, b) {
   if (fd.ks) { return TableVariableUtf8Compare(a, b); }
   return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+// THE ENTRY SORT, in the key order: a string key is encoded to UTF-8 once
+// per entry, not twice per compare
+function TableVariableSortEntries(fd, ents) {
+  if (!fd.ks) {
+    ents.sort((a, b) => (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0)));
+    return;
+  }
+  const keyed = ents.map((e) => ({ b: TableVariableUtf8Encode(e.key), e }));
+  keyed.sort((x, y) => TableVariableBytesCompare(x.b, y.b));
+  for (let i = 0; i < keyed.length; i++) { ents[i] = keyed[i].e; }
 }
 
 function TableVariableMapEntries(fd, m) {
@@ -2754,7 +2798,7 @@ function TableVariableMapEntries(fd, m) {
     e.value = val;
     out.push(e);
   }
-  out.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, out);
   if (TableVariableEntryCache !== null) { TableVariableEntryCache.set(m, out); }
   return out;
 }
@@ -3991,18 +4035,28 @@ class TableVariableTextIn {
     if (this.number() === null) { this.bad = true; return false; }
     return true;
   }
-  // a skipped OBJECT may still be a pointer's: an "&node" opening it names a
-  // node the storage could not hold, and the label still exists (§16.7)
+  // a skipped OBJECT may still be a pointer's, and THE LABEL RULES HOLD THERE
+  // (§16.7): a label alone (a trailing comma allowed) REFERS, so the text must
+  // have defined it and closed that definition; a label with fields DEFINES,
+  // so the text must not have defined it, and it is registered with no node,
+  // open until this skipped object closes — a later reference reads null and
+  // a second definition refuses
   skipContainer(close, depth, graph, report) {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
+    let opened = null;
+    const closed = () => {
+      this.p++;
+      if (opened !== null) { graph.set(opened, { node: null, c: null, open: false }); }
+      return true;
+    };
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
     const keys = close === "}" ? new globalThis.Set() : null;
     for (;;) {
       let ch = this.peek();
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { return closed(); }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
         const key = this.name();
@@ -4012,24 +4066,31 @@ class TableVariableTextIn {
         this.p++;
         if (keys.has(key)) { this.bad = true; return false; }
         keys.add(key);
-        if (key.length > 0 && key[0] === "&") {
+        if (key.length > 0 && key[0] === "&" && graph !== null) {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
           if (label === null) { return false; }
-          if (!graph.has(label)) { graph.set(label, { node: null, c: null, open: false }); }
-          first = false;
+          const entry = graph.get(label);
           ch = this.peek();
-          if (ch === ",") { this.p++; continue; }
-          if (ch === close) { this.p++; return true; }
-          this.bad = true;
-          return false;
+          if (ch !== "," && ch !== close) { this.bad = true; return false; }
+          if (ch === ",") { this.p++; ch = this.peek(); }
+          if (ch === close) {
+            this.p++;
+            if (entry === undefined || entry.open) { this.bad = true; return false; }
+            return true;
+          }
+          if (entry !== undefined) { this.bad = true; return false; }
+          graph.set(label, { node: null, c: null, open: true });
+          opened = label;
+          first = false;
+          continue;
         }
       }
       first = false;
       if (!this.skip(depth + 1, graph, report)) { return false; }
       ch = this.peek();
       if (ch === ",") { this.p++; continue; }
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { return closed(); }
       this.bad = true;
       return false;
     }
@@ -4067,7 +4128,10 @@ function TableVariableFromJson(c, text, report) {
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
-  const ok = TableVariableReadTable(c, inp, v, 0, new globalThis.Map(), report);
+  // the label graph exists for a VARIABLE root only (§2.2, §16.7): a fixed
+  // root has no pointer, so an "&node" in a value it skips is a key like any
+  // other and the value is skipped whole
+  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new globalThis.Map() : null, report);
   if (ok) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
@@ -4109,8 +4173,9 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 }
 
 // keys are field keys: an unknown one is skipped and counted, a repeated one is
-// last-wins and counted, null puts a pointer back at null, and a value of the
-// wrong JSON shape is skipped and counted, never coerced (§16.2)
+// counted and refuses the whole read (the strict mark), null puts a pointer back
+// at null, and a value of the wrong JSON shape is counted and refuses the read
+// too, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new globalThis.Set();
   const seenKeys = new globalThis.Set();
@@ -4290,9 +4355,12 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
+  // a closed array shorter than the declared Min is off the count's own
+  // range, refused as the count past Max is (SPEC §5.1 row 3; read.go)
+  const least = () => { if (placed < (fd.min || 0)) { report.oor++; } return true; };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return least(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -4312,7 +4380,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return least(); }
     inp.bad = true;
     return false;
   }
@@ -4323,7 +4391,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
 // already defined, alone, REFERS to it; any other key is a node named once.
 // A reference inside its own definition is the cycle the wire refuses.
 function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
-  if (depth + 1 > 128) { inp.bad = true; return false; }
+  if (graph === null || depth + 1 > 128) { inp.bad = true; return false; }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   let ch = inp.peek();
@@ -4343,6 +4411,9 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (label === null) { return false; }
   const entry = graph.get(label);
   ch = inp.peek();
+  // the label is followed by its object's , or } and nothing else:
+  // {"&node": 1 "x": 2} is not JSON (§16.7, RFC 8259's value-separator)
+  if (ch !== "," && ch !== "}") { inp.bad = true; return false; }
   if (ch === ",") { inp.p++; ch = inp.peek(); }
   const bare = ch === "}";
   if (bare !== (entry !== undefined)) { inp.bad = true; return false; }
@@ -4448,6 +4519,14 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (x < d.lo) { x = d.lo; report.oor++; }
         else if (x > d.hi) { x = d.hi; report.oor++; }
       }
+      // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS (SPEC §4.6) after the
+      // one rounding, so the text "0.1" every writer emits for 0.1f reads
+      // under max = 0.1; its -0 lands as +0, uncounted (§3.3)
+      if (d.lo !== null) {
+        if (x < d.lo) { x = d.lo; report.oor++; }
+        else if (x > d.hi) { x = d.hi; report.oor++; }
+        else if (x === 0) { x = 0; }
+      }
       holder[key] = x;
       return true;
     }
@@ -4514,6 +4593,12 @@ function TableVariableTextWide(d, tok, holder, key, report) {
       return false;
     } else {
       const scale = point - digits.length;
+      // MORE FRACTION DIGITS THAN F IS NEVER EXACT, refused before any BigInt
+      // work: k/2^F spells at most F decimal fraction digits, and the digits
+      // here carry no trailing zero, so 10^(-scale) cannot divide them times
+      // 2^F. It is the answer the remainder test below gives, without the
+      // document-sized BigInt and divisor (js.md Q2).
+      if (-scale > d.frac) { report.mismatch++; return false; }
       raw = globalThis.BigInt(digits) << globalThis.BigInt(d.frac);
       if (scale >= 0) {
         raw *= 10n ** globalThis.BigInt(scale);
@@ -4653,7 +4738,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   holder[fd.n] = TableVariableFieldDefault(fd);
   if (!TableVariableShapeMatches(fd.js, shape)) {
     report.mismatch++;
-    return inp.skip(depth, graph, report);
+    return inp.skip(depth + 1, graph, report);
   }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
@@ -4663,6 +4748,11 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
+  // THE REPEAT TEST IS ONE KEYED LOOKUP, never a scan of the landed entries
+  // (linear work in the entry count): a string key is equal exactly when its
+  // UTF-8 is, and an integer key (Number or BigInt) by value, which is Map's
+  // own key equality
+  const at = new globalThis.Map();
   const mapField = inp.field;
   v[fd.n] = new globalThis.Map();
   for (;;) {
@@ -4683,17 +4773,18 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "damaged") { report.damaged = true; inp.bad = true; return false; }
     if (status === "mismatch") {
       report.mismatch++;
-      if (!inp.skip(depth, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      // KEYS NEVER CLAMP: the count refuses the whole read (§2.8, the strict mark)
       report.oor++;
-      if (!inp.skip(depth, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
-      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
-      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.repeated++; ents[at] = entry; } else { ents.push(entry); }
+      // the map object is a level (§16.2): its value is read one below it
+      if (!TableVariableTextValue(vd, inp, entry, depth + 1, graph, report)) { return false; }
+      const i = at.get(key);
+      if (i !== undefined) { report.repeated++; ents[i] = entry; } else { at.set(key, ents.length); ents.push(entry); }
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
@@ -4701,7 +4792,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     inp.bad = true;
     return false;
   }
-  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, ents);
   for (const e of ents) { v[fd.n].set(e.key, e.value); }
   return true;
 }
@@ -4757,13 +4848,17 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   const arm = d.u.byName.get(k);
+  // DEPTH (§16.2): the union's holder is at depth, the union object at
+  // depth+1, and the arm's value at depth+2, where it is read or skipped; a
+  // field arm reads through TextField(depth+1), whose own walk adds the
+  // level, as a by-value field's does
   if (arm === undefined) {
     report.unknown++;
-    if (!inp.skip(depth + 1, graph, report)) { return false; }
+    if (!inp.skip(depth + 2, graph, report)) { return false; }
   } else if (arm.void) {
     if (inp.shape() !== "z") {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       if (!inp.literal("null")) { return false; }
       holder[key] = { arm: arm.name, value: null };
@@ -4771,10 +4866,10 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   } else if (arm.body) {
     if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       const inst = arm.c.make();
-      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
+      if (!TableVariableReadTable(arm.c, inp, inst, depth + 2, graph, report)) { return false; }
       holder[key] = { arm: arm.name, value: inst };
     }
   } else {
@@ -4786,7 +4881,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = h;
     } else if (!TableVariableShapeMatches(arm.f.js, shape)) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
       holder[key] = h;

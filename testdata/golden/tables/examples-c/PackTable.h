@@ -246,7 +246,8 @@ typedef struct tabledemo_table_field_info_t
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
+    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4928,14 +4929,77 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_run(tabledemo_table_messag
  if(count>(uint64_t)(INT64_MAX/width))return 0;
  return tabledemo_table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
 }
+/* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3): a count past it
+   is damage at a named field as it is on the skip path. */
 static SCHEMA_UNUSED int tabledemo_table_message_count(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e,uint64_t * n)
 {
  uint64_t raw;
  if(!tabledemo_table_bit_get(&r->bits,&raw,tabledemo_table_bits_required(e->min,e->max)))return 0;
  *n=raw+(uint64_t)e->min;
+ if(*n>(uint64_t)e->max)return 0;
  return !(e->kind==14 && e->elem_kind==6) || tabledemo_table_bit_align_read(&r->bits);
 }
+static SCHEMA_UNUSED int tabledemo_table_message_signed_kind(uint8_t kind)
+{
+ return (kind>=2 && kind<=5) || kind==18 || (kind>=20 && kind<=24);
+}
+/* A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND'S STORAGE DOMAIN (§3.3): the
+   offset's bits can spell a value past the sender's range, and base plus
+   offset is never wrapped. The arithmetic is on 64-bit words; no base lies
+   outside its own domain, because the announcement read held it there. */
+static SCHEMA_UNUSED int tabledemo_table_message_ranged_holds(uint8_t kind,uint64_t lo,uint64_t hi,int64_t base_lo,int64_t base_hi)
+{
+ int64_t domain=tabledemo_table_message_kind_bits(kind);
+ int is_signed=tabledemo_table_message_signed_kind(kind);
+ if(domain==128) {
+  uint64_t top_hi=is_signed ? (uint64_t)INT64_MAX : UINT64_MAX;
+  uint64_t room_lo=UINT64_MAX-(uint64_t)base_lo,room_hi=top_hi-(uint64_t)base_hi;
+  return hi<room_hi || (hi==room_hi && lo<=room_lo);
+ }
+ if(hi!=0)return 0;
+ if(!is_signed) {
+  uint64_t top=domain==64 ? UINT64_MAX : (UINT64_C(1)<<domain)-1;
+  return (uint64_t)base_lo<=top && lo<=top-(uint64_t)base_lo;
+ }
+ {
+  int64_t top=domain==64 ? INT64_MAX : (int64_t)((UINT64_C(1)<<(domain-1))-1);
+  int64_t bottom=-top-1;
+  if(base_lo>top || lo>(uint64_t)top-(uint64_t)base_lo)return 0;
+  return base_lo>=bottom;
+ }
+}
+static SCHEMA_UNUSED int tabledemo_table_message_number(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;
+ uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !tabledemo_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !tabledemo_table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  if(!tabledemo_table_message_ranged_holds(e->kind,*lo,*hi,e->base_lo,e->base_hi))return 0;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
+  if(tabledemo_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
 static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_reader_t *,const tabledemo_table_message_entry_t *);
+/* A message field cannot be required, so a union FIELD at None is elided at
+   every build: an arm reference 0 stored for one is refused on the skip path
+   as on a read (§3.3(c)). An array element and an arm's own value keep their
+   positional None, so they skip through table_message_skip. */
+static SCHEMA_UNUSED int tabledemo_table_message_skip_field(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e)
+{
+ if(e->kind==15) {
+  tabledemo_table_bit_reader_t peek=r->bits;
+  uint64_t arm=0;
+  if(!tabledemo_table_bit_get(&peek,&arm,r->vocabulary->ref_bits)||arm==0)return 0;
+ }
+ return tabledemo_table_message_skip(r,e);
+}
 /* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
@@ -4954,7 +5018,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_messa
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
      one slot or two. */
   if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))return 0;
-  if(!tabledemo_table_message_skip(r,entry))return 0;
+  if(!tabledemo_table_message_skip_field(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int tabledemo_table_message_skip_deeper(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e)
@@ -4964,6 +5028,28 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_deeper(tabledemo_table_mes
  ok=tabledemo_table_message_skip(r,e);
  r->skip_depth=saved;
  return ok;
+}
+/* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY REPEATS
+   (§3.2, §3.3): the name reference and the bitset hold it. The walk has its
+   own frame, so the bitset rides only where a keyed array is skipped. */
+static SCHEMA_UNUSED int tabledemo_table_message_skip_keyed(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * elem,uint64_t n)
+{
+ uint8_t seen[TABLEDEMO_K_TABLE_MESSAGE_SEEN_REFS/8];
+ uint64_t i;
+ const tabledemo_table_message_entry_t * key;
+ int64_t before;
+ memset(seen,0,sizeof(seen));
+ for(i=0;i<n;i++) {
+  if(!tabledemo_table_message_ref(r,&key,1)||key==NULL||!tabledemo_table_message_seen_once(seen,r->vocabulary,key))return 0;
+  before=r->bits.offset;
+  if(elem->value_bits>=0 || elem->kind==0 || elem->kind==32) {
+   if(!tabledemo_table_message_skip(r,elem))return 0;
+  } else if(!tabledemo_table_message_skip_deeper(r,elem))return 0;
+  /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3); a scalar or a
+     no-payload slot rides its key reference as its payload. */
+  if(r->bits.offset==before && elem->value_bits<0 && elem->kind!=0 && elem->kind!=32)return 0;
+ }
+ return 1;
 }
 static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e)
 {
@@ -5009,28 +5095,25 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
   return tabledemo_table_bits_finite64(n);
  case 14:case 16: {
   tabledemo_table_message_entry_t elem=tabledemo_table_message_element(e);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3):
+     table_message_count refuses it. */
   if(!tabledemo_table_message_count(r,e,&n))return 0;
-  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
-  if(n>(uint64_t)e->max)return 0;
-  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
-     a quantized element carries a value condition, so it is walked; a keyed
-     entry carries a key reference, so it is walked too. */
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to be: a
+     ranged element whose min equals its max rides no bits at all, so a count
+     of 2^32 over one would otherwise buy 2^32 loop turns for a few bytes of
+     wire. Its one value is its base, which the announcement read already held
+     to the kind. A float, a ranged or a quantized element of non-zero width
+     carries a value condition, so it is walked; a keyed entry carries a key
+     reference, so it is walked too. */
   if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
-   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.kind==0||elem.kind==32||elem.value_bits==0)return 1;
    if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
     return tabledemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
+  if(e->kind==16)return tabledemo_table_message_skip_keyed(r,&elem,n);
   {
-   uint8_t seen[TABLEDEMO_K_TABLE_MESSAGE_SEEN_REFS/8];
    int64_t before;
-   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
-   if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
-    if(e->kind==16) {
-     if(!tabledemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))return 0;
-    }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
        its own value conditions at the array body's level; only a string, a
@@ -5039,33 +5122,21 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
     if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
      if(!tabledemo_table_message_skip(r,&elem))return 0;
     } else if(!tabledemo_table_message_skip_deeper(r,&elem))return 0;
-    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
-       scalar or no-payload element rides no element bits; its key reference
-       is the payload, and the reference reader's arithmetic run counts it. */
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
     if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
    }
    return 1;
   }
  }
- default:return e->value_bits>=0 && tabledemo_table_bit_skip(&r->bits,e->value_bits);
+ default:
+  /* SKIPPED IS NOT UNREAD (§3.3): a ranged integer's base plus offset is
+     held to its announced kind, as a named read holds it. */
+  if(e->packing==1 && (tabledemo_table_message_integer_kind(e->kind)||tabledemo_table_message_fixed_kind(e->kind))) {
+   uint64_t lo,hi;
+   return tabledemo_table_message_number(r,e,&lo,&hi);
+  }
+  return e->value_bits>=0 && tabledemo_table_bit_skip(&r->bits,e->value_bits);
  }
-}
-static SCHEMA_UNUSED int tabledemo_table_message_number(tabledemo_table_message_reader_t * r,const tabledemo_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
-{
- int64_t width=e->value_bits;
- uint64_t before;
- *lo=*hi=0;
- if(width<0 || width>128 || !tabledemo_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
- if(width>64 && !tabledemo_table_bit_get(&r->bits,hi,width-64))return 0;
- if(e->packing==1) {
-  before=*lo;
-  *lo+=(uint64_t)e->base_lo;
-  if(tabledemo_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
- } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
-  *lo|=UINT64_MAX<<width;
- }
- if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
- return 1;
 }
 /* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
    infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
@@ -6216,7 +6287,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -6250,7 +6321,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -6273,11 +6344,12 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!tabledemo_table_bit_get(&r->bits,&n,tabledemo_table_bits_required(0,entry->max)))goto damaged;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!tabledemo_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !tabledemo_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
@@ -6301,7 +6373,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6359,6 +6431,8 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints_( tabledemo
     tabledemo_table_writer_put8( w, 4 ); tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
     for ( i = 0; i < value->hardpoints_count; i++ )
     {
+        schema_assert( value->hardpoints[i] >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+        schema_assert( value->hardpoints[i] <= 8 ); /* a ranged value inside its declaration (§5.1 row 1) */
         tabledemo_table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
     }
     return !w->overflow;
@@ -6783,11 +6857,12 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!tabledemo_table_bit_get(&r->bits,&n,tabledemo_table_bits_required(0,entry->max)))goto damaged;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!tabledemo_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !tabledemo_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
@@ -6817,7 +6892,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -6851,7 +6926,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { float decoded=0;
@@ -6885,7 +6960,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==4)){if(entry->kind==14 && tabledemo_table_kind_widens(entry->elem_kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -6928,7 +7003,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  if(same_shape)last_field_ord=5;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  if(!tabledemo_gunner_settings_load_message_body(r,&value->gunner))return 0;
@@ -6937,7 +7012,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -7008,6 +7083,8 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 88, 0xa65f859b617deaf3ull, 8 );
+            schema_assert( value->tick_rate >= 1 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->tick_rate <= 240 ); /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
         }
     }
@@ -7415,7 +7492,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -7446,7 +7523,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { const tabledemo_table_message_entry_t * named;
@@ -7479,11 +7556,12 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!tabledemo_table_bit_get(&r->bits,&n,tabledemo_table_bits_required(0,entry->max)))goto damaged;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!tabledemo_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !tabledemo_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
@@ -7513,7 +7591,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==10)){if(entry->kind==14 && tabledemo_table_kind_widens(entry->elem_kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -7558,7 +7636,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -7670,8 +7748,12 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds_( tabledem
             tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( value->thresholds[i] >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->thresholds[i] <= 1000 ); /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
             w = outer; tabledemo_table_writer_rewind(&probe); tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( value->thresholds[i] >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->thresholds[i] <= 1000 ); /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
         }
     }
@@ -8306,7 +8388,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -8337,7 +8419,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  if(same_shape && !tabledemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  if(!tabledemo_global_settings_load_message_body(r,&value->settings))return 0;
@@ -8357,7 +8439,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  }
  if(!(entry->kind==16 && entry->elem_kind==13)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,i;
@@ -8407,7 +8489,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  (void)unknown_before;
  if(!(entry->kind==16 && entry->elem_kind==4)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,i;
@@ -8496,7 +8578,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && tabledemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -8518,7 +8600,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!tabledemo_table_message_skip(r,entry))goto damaged;
+ if(!tabledemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -11517,6 +11599,10 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints__retain( ta
     tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
     for ( i = 0; i < value->hardpoints_count; i++ )
     {
+        schema_assert( value->hardpoints[i] >= 0 );
+        /* a ranged value inside its declaration (§5.1 row 1) */
+        schema_assert( value->hardpoints[i] <= 8 );
+        /* a ranged value inside its declaration (§5.1 row 1) */
         tabledemo_table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
     }
     return !w->overflow;
@@ -11949,6 +12035,10 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body_retain( tabledemo_t
             }
             tabledemo_table_retain_writer_id( w, 0xa65f859b617deaf3ull , retention);
             tabledemo_table_writer_put8( w, 8 );
+            schema_assert( value->tick_rate >= 1 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->tick_rate <= 240 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
         }
     }
@@ -12415,10 +12505,18 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds__retain( t
             tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w , retention);
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( value->thresholds[i] >= 0 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->thresholds[i] <= 1000 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
             w = outer;
             tabledemo_table_retain_rewind(&probe, retention);
             tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( value->thresholds[i] >= 0 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( value->thresholds[i] <= 1000 );
+            /* a ranged value inside its declaration (§5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
         }
     }
