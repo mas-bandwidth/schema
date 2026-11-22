@@ -10916,6 +10916,16 @@ the storage and the codec never allocates.
   degrades to the default behavior one record at a time. `MeasureRetain` and
   `SaveRetain` drop the same records under the same walk, so the measure sees
   the same overflow and its answer is the size the save writes.
+- **THE MERGED TRAILER IS BOUNDED BY THE WIRE, NEVER BY THE GENERATED
+  TABLE.** The two stores together number at most `id_table_max` = 4096
+  entries (§3), the bound every reader holds the file to; the generated
+  table's own capacity, the distinct ids this build's codec can spell, bounds
+  the ids THAT table holds and nothing else. A port that stops the merged
+  count at the generated capacity drops every retained record past it with
+  `retain_lost` on a file the reader accepted whole. With both caller stores
+  large enough, a retaining save of a file holding 4096 retained ids writes
+  the file back byte for byte (pinned by `id_table_4096` under the retain
+  arm).
 - **`C / 8` IS THE COUNT BOUND, AND IT IS AN UPPER BOUND NO CALLER MEETS.**
   Every id a retained record names rides in that record as a reference widened
   to eight bytes (THE SECURITY BOUND, below), and no record is placed unless
