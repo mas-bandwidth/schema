@@ -559,7 +559,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
+			g.pf("%sif (keep > %d || keep < %d) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, f.ArrayMin, p)
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}

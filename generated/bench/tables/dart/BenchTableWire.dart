@@ -4435,7 +4435,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <TableEntity>[];
           var keep = count;
-          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 1 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -7867,6 +7867,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
+        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');

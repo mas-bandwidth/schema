@@ -3116,7 +3116,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
+			g.pf("%s\t\tif (keep < %d || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayMin, f.ArrayBound)
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
