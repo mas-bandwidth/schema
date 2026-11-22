@@ -257,6 +257,7 @@ local function id_ref_record(ids, id)
     if v == id then return i end
   end
   if ids.known ~= nil and not ids.known[id] then
+    if #ids.list >= 4096 then return nil end
     if ids.idCapacity ~= nil and ids.retained >= ids.idCapacity then return nil end
     ids.retained = ids.retained + 1
     ids.flag[#ids.list + 1] = true
@@ -1438,6 +1439,8 @@ local function save_retain(T, name, v, retain, report)
     w_leb(idx, sub.n)
     w_raw(idx, table.concat(sub.parts))
   end
+  -- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3)
+  if #ids.list > 4096 then return nil end
   w_u8(idx, 0)
   for _, id in ipairs(ids.list) do
     w_u64(idx, id)
