@@ -201,6 +201,9 @@ func TestCPPRefuseReasonEnumHoldsItsHighRangeConstants(t *testing.T) {
 		if v > max {
 			t.Fatalf("TableRefuseReason : %s (max 0x%x) cannot hold %s = 0x%x", underlying, max, name, v)
 		}
+		if len(enumerators) == 0 {
+			t.Fatal("enumerators is empty: the loop below would check nothing")
+		}
 		for en, ev := range enumerators {
 			if ev == v {
 				t.Fatalf("%s = 0x%x collides with enumerator %s", name, v, en)

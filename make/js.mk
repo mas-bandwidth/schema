@@ -591,9 +591,13 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 # which is the only instrument here that can see §3.4's "the slack is zero",
 # because the reference's records are set from CONSTRUCTED storage and one of
 # them uses NOTHING of a string whose declared default is not empty.
+# The registered count: fixedform.mjs prints "ran N, failed M" (one unit per
+# check) and tools/mustrun holds N to this number, measured on amd-3; a commit
+# that adds or removes a check changes it.
+JS_FIXED_FORM_CHECKS := 191
 .PHONY: tables-js-fixed-form
-tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
-	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
+tables-js-fixed-form: build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+	cd $(CURDIR) && $(MUSTRUN) -name tables-js-fixed-form -count $(JS_FIXED_FORM_CHECKS) -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVASCRIPT LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -1274,8 +1278,16 @@ test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-contro
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
+# The registered counts of the primary packet harnesses (test/js, test/js-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+JS_MAIN_CHECKS := 1434
+JS_MAIN_CHECKS_PRODUCTION := 1434
+JS_LUDICROUS_CHECKS := 49
+JS_LUDICROUS_CHECKS_PRODUCTION := 49
 .PHONY: test-js
-test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
+test-js: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
 	$(MAKE) tables-js-leg
@@ -1298,8 +1310,16 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-versioning-negative-control
 	$(MAKE) tables-js-fixed-roadmap-negative-control
 	$(MAKE) tables-js-message-form-negative-control
-	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
-	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
+	$(MAKE) test-js-packet
+
+# The primary packet harnesses on their own, in both node modes, so they can be
+# run (and broken on purpose) without the rest of the leg.
+.PHONY: test-js-packet
+test-js-packet: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
+	cd test/js && "$(CURDIR)/$(MUSTRUN)" -name test-js-main -count $(JS_MAIN_CHECKS) -- $(NODE) main.mjs
+	cd test/js && NODE_ENV=production "$(CURDIR)/$(MUSTRUN)" -name test-js-main-production -count $(JS_MAIN_CHECKS_PRODUCTION) -- $(NODE) main.mjs
+	cd test/js-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-js-ludicrous -count $(JS_LUDICROUS_CHECKS) -- $(NODE) main.mjs
+	cd test/js-ludicrous && NODE_ENV=production "$(CURDIR)/$(MUSTRUN)" -name test-js-ludicrous-production -count $(JS_LUDICROUS_CHECKS_PRODUCTION) -- $(NODE) main.mjs
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
@@ -1877,9 +1897,9 @@ build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/CFloat.
 	@touch $@
 
 .PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
-packet-write-cfloat-js: build/packet-write-cfloat/js/.stamp
-	$(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
-	NODE_ENV=production $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+packet-write-cfloat-js: build/mustrun build/packet-write-cfloat/js/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-js -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+	NODE_ENV=production $(MUSTRUN) -name packet-write-cfloat-js-production -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
 
 packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@mkdir -p build/packet-write-cfloat/js-negative-flat

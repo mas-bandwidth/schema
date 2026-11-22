@@ -98,7 +98,11 @@ r = Root(); r.items = [7]; r.text = "ok"
 cook.check_cook(Root, cook.cook(r))
 for order in (1, 2): print(cook.cook(r, order).hex())
 `
-	for name, run := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, run := range allCookPins {
 		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); strings.TrimSpace(got) != strings.Join(expected, "\n") {
 			t.Errorf("%s: %s", name, got)
 		}

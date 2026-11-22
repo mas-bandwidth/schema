@@ -139,6 +139,9 @@ func TestGeneratedHeaderNamesTheToolInEveryTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(rt) == 0 {
+		t.Fatal("rt is empty: the loop below would check nothing")
+	}
 	for name, body := range rt {
 		if !checkGeneratedHeader(t, "go shared runtime "+name, body) && strings.HasSuffix(name, ".go") {
 			t.Errorf("go shared runtime %s: no generated header", name)

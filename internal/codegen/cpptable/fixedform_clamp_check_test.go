@@ -27,6 +27,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	root := regexp.MustCompile(`(?m)^    (.*?)(\w+)FixedClampBody\( value, oor_count, damaged \);`)
 	store := regexp.MustCompile(`[^=!<>|&+\-*/]=[^=]`)
 	types := 0
+	roots := 0
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
@@ -63,6 +64,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 			}
 		}
 		for _, m := range root.FindAllStringSubmatch(src, -1) {
+			roots++
 			if m[1] != "if ( !"+m[2]+"FixedInRange( value ) ) { " {
 				t.Errorf("%s: the root calls %sFixedClampBody without its check", f, m[2])
 			}
@@ -70,5 +72,8 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	}
 	if types == 0 {
 		t.Fatal("no clamp body found in any golden: the pattern no longer matches the emitter")
+	}
+	if roots == 0 {
+		t.Fatal("no root call of a FixedClampBody found in any golden: the guard check (3) checked nothing")
 	}
 }

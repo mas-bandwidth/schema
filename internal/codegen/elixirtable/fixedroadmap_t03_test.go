@@ -309,10 +309,15 @@ fixed table T
 		reflect.TypeFor[ir.Struct](),
 		reflect.TypeFor[ir.Unit](),
 	} {
+		scanned := 0
 		for sf := range rt.Fields() {
+			scanned++
 			if strings.Contains(strings.ToLower(sf.Name), "limit") {
 				t.Fatalf("R5: the IR declares %s.%s, a table-declared reader-side limit; §5.2 reserves 'L' only until one exists, and the digest must then carry it", rt.Name(), sf.Name)
 			}
+		}
+		if scanned == 0 {
+			t.Fatalf("R5: %s has no fields, so the reader-limit premise was checked against nothing", rt.Name())
 		}
 	}
 	for _, d := range [][]byte{rangedDigest, compressedDigest, once, twiceDigest} {
@@ -381,6 +386,9 @@ fixed table T
 		t.Fatalf("W11: Generate: %v", err)
 	}
 	emitted := t03Layout(t, t03Fixed(t, files), "t")
+	if len(w) == 0 {
+		t.Fatal("w is empty: the loop below would check nothing")
+	}
 	for i, e := range w {
 		if e.Note != "blob" {
 			continue
@@ -447,7 +455,8 @@ fixed table Big
 	if ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes {
 		t.Fatalf("R6: the fixture body = %d, not past %d", ir.TableFixedTypeBytes(st), ir.TableFixedRecordMaxBytes)
 	}
-	for _, r := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: a table past the ceiling is a fixed-form root")
 		}
@@ -464,6 +473,9 @@ fixed table Big
 	})
 	if err != nil {
 		t.Fatalf("R6: GenerateLineage: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
 	}
 	for name, body := range files {
 		if strings.HasSuffix(name, FixedModuleSuffix+".ex") {

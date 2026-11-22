@@ -194,5 +194,7 @@ test("TestReadStrictRefusesWhatTheDeclarationCannotName", function()
   refused(none, err, "unknown-present", "an unknown field")
 end)
 
-io.stdout:write(string.format("cards (lua): %d passed, %d failed\n", passed, failed))
-os.exit(failed == 0 and 0 or 1)
+-- The last stdout line is the count tools/mustrun reads; a run of no test is
+-- a failure.
+io.stdout:write(string.format("cards (lua): ran %d, failed %d\n", passed + failed, failed))
+os.exit((failed == 0 and passed > 0) and 0 or 1)

@@ -73,6 +73,9 @@ func TestMooGenerationIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(a) == 0 {
+		t.Fatal("a is empty: the loop below would check nothing")
+	}
 	for name := range a {
 		if string(a[name]) != string(b[name]) {
 			t.Errorf("%s differs between two generations", name)

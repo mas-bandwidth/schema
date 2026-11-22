@@ -50,8 +50,8 @@ MOO_PACKET_DEFAULTS_RUN = -analyze -schema test/packet-defaults/Defaults.schema 
 	-inputs testdata/wire/packet-defaults -main test/packet-defaults/moo/main.moo
 
 .PHONY: packet-defaults-moo packet-defaults-moo-negative-control
-packet-defaults-moo: toolchain-moo moo-packet-driver packet-defaults-cpp
-	$(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
+packet-defaults-moo: toolchain-moo moo-packet-driver packet-defaults-cpp build/mustrun
+	$(MUSTRUN) -name packet-defaults-moo -count 129 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
 
 packet-defaults-moo-negative-control: packet-defaults-moo
 	$(call moo-packet-sabotaged-driver,build/packet-defaults/moo-negative,packet-defaults-moo-constructor-bytes,moo.go)
@@ -80,8 +80,8 @@ define packet-finite-moo-control
 endef
 
 .PHONY: packet-finite-moo packet-finite-moo-negative-control
-packet-finite-moo: toolchain-moo moo-packet-driver
-	$(MOO_PACKET_DRIVER) $(MOO_PACKET_FINITE_RUN)
+packet-finite-moo: toolchain-moo moo-packet-driver build/mustrun
+	$(MUSTRUN) -name packet-finite-moo -count 111 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_FINITE_RUN)
 
 packet-finite-moo-negative-control: packet-finite-moo
 	$(call packet-finite-moo-control,read)
@@ -121,8 +121,8 @@ MOO_PACKET_END_RUN = -analyze -schema test/packet-end/End.schema -inputs testdat
 	-main test/packet-end/moo/main.moo
 
 .PHONY: packet-end-moo packet-end-moo-negative-control
-packet-end-moo: toolchain-moo moo-packet-driver
-	$(MOO_PACKET_DRIVER) $(MOO_PACKET_END_RUN)
+packet-end-moo: toolchain-moo moo-packet-driver build/mustrun
+	$(MUSTRUN) -name packet-end-moo -count 3 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_END_RUN)
 
 packet-end-moo-negative-control: packet-end-moo
 	$(call moo-packet-sabotaged-driver,build/packet-end/moo-negative,packet-end-moo-no-end,wire.go)
@@ -133,7 +133,7 @@ packet-end-moo-negative-control: packet-end-moo
 		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not named'; cat build/packet-end/moo-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding:' build/packet-end/moo-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the non-zero padding was not named'; cat build/packet-end/moo-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-end/moo-negative/log | grep -Fvq -e 'FAILED: trailing:' -e 'FAILED: padding:'; then \
+	@if grep -F 'FAILED: ' build/packet-end/moo-negative/log | grep -Fv -e 'FAILED: trailing:' -e 'FAILED: padding:' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: the moo end-check removal failed another case'; \
 		cat build/packet-end/moo-negative/log; exit 1; fi
 	@echo 'packet end moo negative control: the removed end check accepts trailing data and non-zero padding'

@@ -157,10 +157,13 @@ func TestTargetsNeverListsANameTwice(t *testing.T) {
 			var reached []string
 			c := compiler.New()
 			builtins := len(c.Targets())
+			// each step's Register result: a step registered exactly when the
+			// table says some spelling reaches it, and was refused otherwise
+			regErrs := make([]error, len(tc.steps))
 			var build func(i int) nested
 			build = func(i int) nested {
 				g := nested{names: tc.steps[i].names, tag: string(rune('0' + i)), reached: &reached}
-				next := func() { _ = c.Register(build(i + 1)) }
+				next := func() { regErrs[i+1] = c.Register(build(i + 1)) }
 				switch tc.steps[i].in {
 				case "Names":
 					g.onNames = next
@@ -169,7 +172,19 @@ func TestTargetsNeverListsANameTwice(t *testing.T) {
 				}
 				return g
 			}
-			_ = c.Register(build(0))
+			regErrs[0] = c.Register(build(0))
+			for i, err := range regErrs {
+				won := false
+				for _, tag := range tc.want {
+					won = won || tag == string(rune('0'+i))
+				}
+				switch {
+				case won && err != nil:
+					t.Fatalf("step %d is the generator a spelling reaches, and its Register was refused: %v", i, err)
+				case !won && (err == nil || !strings.Contains(err.Error(), "already registered")):
+					t.Fatalf("step %d is reached by no spelling, and its Register said %v, want a refusal naming a name already registered", i, err)
+				}
+			}
 
 			noNameTwice(t, c)
 			canonical := map[string]bool{}

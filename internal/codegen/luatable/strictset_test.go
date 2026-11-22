@@ -347,6 +347,9 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, key := range keys {
 		g := groups[key]
 		if _, err := Generate(g.unit); err != nil {

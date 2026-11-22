@@ -282,14 +282,21 @@ function D.refuse_deprecated(T, name, v)
   return "invalid_value: " .. hit .. " holds a deprecated enum variant"
 end
 
--- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): utf8.len is strict in Lua 5.4,
--- refusing an overlong form, a surrogate and anything past U+10FFFF, as the
--- fixed reader's check_utf8 relies on. zero_ok admits a zero byte, which the
--- text writer spells \u0000 (docs/SPEC-TABLES.md §16.3) and every binary
--- writer refuses.
+-- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): an overlong form, a surrogate
+-- and anything past U+10FFFF are refused. utf8.len refuses all three in Lua
+-- 5.4, but Lua 5.3's utf8.len takes a surrogate (U+D800..U+DFFF, the bytes
+-- ED A0..BF xx), so that range is refused by its bytes too: the same answer
+-- on every supported Lua (docs/PORT-LUA.md; schema-lua-version-differential).
+function D.utf8_ok(s)
+  return utf8.len(s) ~= nil and not string.find(s, "\237[\160-\191]")
+end
+
+-- D.text_ok is D.utf8_ok with the zero-byte rule. zero_ok admits a zero byte,
+-- which the text writer spells \u0000 (docs/SPEC-TABLES.md §16.3) and every
+-- binary writer refuses.
 function D.text_ok(s, zero_ok)
   if not zero_ok and string.find(s, "\0", 1, true) then return false end
-  return utf8.len(s) ~= nil
+  return D.utf8_ok(s)
 end
 
 -- THE WRITE CONTRACT (docs/SPEC.md §5.1). Lua has no assert idiom, so every

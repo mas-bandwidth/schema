@@ -106,17 +106,25 @@ func TestShardAccountingRefusesAGapAndAnOverlap(t *testing.T) {
 	if n := count(good, "./internal/codegen/gotable", "TestG"); n != 0 {
 		t.Errorf("the complement selects an emitter package %d times, want 0", n)
 	}
+	// The broken workflows below must each be REFUSED by the exactly-once rule
+	// of the test above: a count of exactly 1 is that rule accepting them.
 	drift := head + step("a", "go test ./compiler -run '^(TestA|TestB)$'") +
 		step("b", "go test ./compiler -skip '^(TestA|TestC)$'")
-	if n := count(drift, "./compiler", "TestC"); n != 0 {
+	if n := count(drift, "./compiler", "TestC"); n == 1 {
+		t.Errorf("drifted patterns: compiler.TestC selected once; the exactly-once rule accepts the gap")
+	} else if n != 0 {
 		t.Errorf("drifted patterns: compiler.TestC selected %d times, want 0 (the gap)", n)
 	}
-	if n := count(drift, "./compiler", "TestB"); n != 2 {
+	if n := count(drift, "./compiler", "TestB"); n == 1 {
+		t.Errorf("drifted patterns: compiler.TestB selected once; the exactly-once rule accepts the overlap")
+	} else if n != 2 {
 		t.Errorf("drifted patterns: compiler.TestB selected %d times, want 2 (the overlap)", n)
 	}
 	overlap := head + step("a", "go test ./compiler -run '^TestA$'") +
 		step("c", "go test $(go list ./... | grep -v '/internal/codegen/')")
-	if n := count(overlap, "./compiler", "TestA"); n != 2 {
+	if n := count(overlap, "./compiler", "TestA"); n == 1 {
+		t.Errorf("a complement that keeps ./compiler selects compiler.TestA once; the exactly-once rule accepts the double run")
+	} else if n != 2 {
 		t.Errorf("a complement that keeps ./compiler selects compiler.TestA %d times, want 2", n)
 	}
 	sub := head + step("a", "go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')") +

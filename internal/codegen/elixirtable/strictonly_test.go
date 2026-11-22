@@ -46,6 +46,9 @@ func TestStrictOnlyElixirNoTolerantEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(out) == 0 {
+		t.Fatal("out is empty: the loop below would check nothing")
+	}
 	for name, data := range out {
 		if bad := strictOnlyElixirViolation(string(data)); bad != "" {
 			t.Errorf("generated %s carries retired tolerant name %q", name, bad)

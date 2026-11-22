@@ -57,6 +57,9 @@ func TestStrictOnlyGooseNoTolerantEntry(t *testing.T) {
 		"malformed =",
 	}
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		text := string(files[name])
 		for _, bad := range retired {

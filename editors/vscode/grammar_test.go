@@ -527,7 +527,11 @@ func TestGrammarColoursCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range corpus(t) {
+	allCorpus := corpus(t)
+	if len(allCorpus) == 0 {
+		t.Fatal("corpus(t) is empty: the loop below would check nothing")
+	}
+	for _, path := range allCorpus {
 		src, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -545,6 +549,9 @@ func TestGrammarColoursCorpus(t *testing.T) {
 		scopes := g.tokenize(string(src))
 		want := expectations(toks)
 		bad := 0
+		if len(toks) == 0 {
+			t.Fatal("toks is empty: the loop below would check nothing")
+		}
 		for i, tok := range toks {
 			if tok.Kind == scanner.EOF || tok.Kind == scanner.Newline {
 				continue

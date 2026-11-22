@@ -45,7 +45,11 @@ quick = run(lambda: cook.cook(m))
 print("generated", quick, "descriptor", slow)
 print("ok")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if !strings.Contains(out, "ok\n") {
 			t.Errorf("%s: %s", name, out)

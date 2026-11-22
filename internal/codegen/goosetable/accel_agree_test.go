@@ -63,13 +63,13 @@ func TestGooseAccessorsAgreeWithDescriptors(t *testing.T) {
 			}
 			out := strings.TrimSpace(string(gooserun.Run(t, work, "agree.goose", nil)))
 			want := fmt.Sprintf("agree %d", checks)
+			if !strings.HasSuffix(out, want) {
+				t.Errorf("%s: the program printed %q, want it to end %q", dir, out, want)
+			}
 			for line := range strings.SplitSeq(out, "\n") {
 				if strings.HasPrefix(line, "DISAGREE ") || strings.HasPrefix(line, "NO DESCRIPTOR ") {
 					t.Errorf("%s: %s", dir, line)
 				}
-			}
-			if !strings.HasSuffix(out, want) {
-				t.Errorf("%s: the program printed %q, want it to end %q", dir, out, want)
 			}
 			t.Logf("%s: %d accessor reads agree with the descriptors", dir, checks)
 		})

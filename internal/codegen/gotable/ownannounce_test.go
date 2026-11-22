@@ -40,7 +40,11 @@ table Totals {
 // toolchain, so it runs on every pull request.
 func TestEngineAcceptsItsOwnAnnouncement(t *testing.T) {
 	t.Parallel()
-	for name, schema := range ownAnnouncementCases() {
+	allOwnAnnouncementCases := ownAnnouncementCases()
+	if len(allOwnAnnouncementCases) == 0 {
+		t.Fatal("ownAnnouncementCases() is empty: the loop below would check nothing")
+	}
+	for name, schema := range allOwnAnnouncementCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var v tablewire.Vocabulary

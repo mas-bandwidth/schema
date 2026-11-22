@@ -67,7 +67,11 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 		"c": true, "cpp": true, "cs": true, "dart": true, "elixir": true, "go": true,
 		"goose": true, "java": true, "js": true, "lobster": true, "lua": true, "rust": true, "squirrel": true, "luau": true, "moo": true, "python": true, "ruby": true, "unity": true,
 	}
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		_, err := c.Generate(u, target, Options{})
 		switch {
 		case carried[target]:

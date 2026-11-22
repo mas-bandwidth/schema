@@ -361,7 +361,7 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_writer_id( graphdemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==48) { w->overflow=1; return 0; }
+    if(v->count>=48) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; graphdemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -5331,7 +5331,7 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_retain_ref(graphdemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5339,7 +5339,7 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_retain_ref(graphdemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -6882,10 +6882,16 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         graphdemo_stamp_reset( &defaults );
     }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( graphdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( graphdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

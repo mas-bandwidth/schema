@@ -13,20 +13,32 @@ build/verify-bitphase-bin: $(wildcard test/verify-bitphase/*.go) test/verify-bit
 	@mkdir -p build
 	go build -o $@.$$$$ ./test/verify-bitphase && mv $@.$$$$ $@
 
+# THE CORPUS STAMPS (this file's three and make/verify-reuse.mk's one; F-046).
+# Several make processes may share one build/ tree, so each stamp is made
+# under a lock, and whoever holds the lock asks again whether the stamp is
+# current: present AND newer than every prerequisite ($^). Asking only whether
+# it exists let a rebuilt generator or bin/schema leave the old corpus in
+# place. The generator's status is the recipe's status: the stamp is removed
+# first, touched only when the generator succeeds, and the recipe exits with
+# the generator's status, so a failed generator fails make and leaves no stamp.
 build/verify-bitphase/corpus/.stamp: build/verify-bitphase-bin bin/schema
 	@mkdir -p build/verify-bitphase
 	@lockdir="build/verify-bitphase/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
 	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
-	if ! test -f "$@"; then \
+	status=0; current=1; \
+	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
+	if test "$$current" -eq 0; then \
+		rm -f "$@"; \
 		mkdir -p build/verify-bitphase/corpus; \
-		SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" CXX="$(CXX)" ./build/verify-bitphase-bin --generate-only \
+		if SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" CXX="$(CXX)" ./build/verify-bitphase-bin --generate-only \
 			--schema ./bin/schema \
 			--work build/verify-bitphase/corpus-gen \
-			--corpus build/verify-bitphase/corpus && touch "$@"; \
+			--corpus build/verify-bitphase/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
 	rmdir "$$lockdir" 2>/dev/null || true; \
-	trap - EXIT INT TERM HUP
+	trap - EXIT INT TERM HUP; \
+	exit $$status
 
 build/verify-canonical-bin: $(wildcard test/verify-canonical/*.go) test/verify-canonical/Canonical.schema $(GO_SOURCES)
 	@mkdir -p build
@@ -37,14 +49,18 @@ build/verify-canonical/corpus/.stamp: build/verify-canonical-bin
 	@lockdir="build/verify-canonical/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
 	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
-	if ! test -f "$@"; then \
+	status=0; current=1; \
+	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
+	if test "$$current" -eq 0; then \
+		rm -f "$@"; \
 		mkdir -p build/verify-canonical/corpus; \
-		./build/verify-canonical-bin --generate-only \
+		if ./build/verify-canonical-bin --generate-only \
 			--work build/verify-canonical/corpus-gen \
-			--corpus build/verify-canonical/corpus && touch "$@"; \
+			--corpus build/verify-canonical/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
 	rmdir "$$lockdir" 2>/dev/null || true; \
-	trap - EXIT INT TERM HUP
+	trap - EXIT INT TERM HUP; \
+	exit $$status
 
 VERIFY_TABLEGEN_SEED    ?= 1
 VERIFY_TABLEGEN_SCHEMAS ?= 6
@@ -58,17 +74,21 @@ build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
 	@lockdir="build/verify-tablegen/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
 	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
-	if ! test -f "$@"; then \
+	status=0; current=1; \
+	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
+	if test "$$current" -eq 0; then \
+		rm -f "$@"; \
 		rm -rf build/verify-tablegen/corpus && mkdir -p build/verify-tablegen/corpus; \
-		./build/verify-tablegen-bin --generate-only \
+		if ./build/verify-tablegen-bin --generate-only \
 			--seed $(VERIFY_TABLEGEN_SEED) \
 			--schemas $(VERIFY_TABLEGEN_SCHEMAS) \
 			--schema ./bin/schema \
 			--work build/verify-tablegen/corpus-gen \
-			--corpus build/verify-tablegen/corpus && touch "$@"; \
+			--corpus build/verify-tablegen/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
 	rmdir "$$lockdir" 2>/dev/null || true; \
-	trap - EXIT INT TERM HUP
+	trap - EXIT INT TERM HUP; \
+	exit $$status
 
 VERIFY_WIDEN_DEPS_cpp      := bin/schema
 VERIFY_WIDEN_DEPS_c        := bin/schema

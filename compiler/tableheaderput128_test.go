@@ -53,6 +53,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -533,9 +534,9 @@ func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		got := headerProbeBuildRun(t, cxx, runtime, bad, "control", headerProbeGoldenDriver())
+		got, exitErr := headerProbeBuildRun(t, cxx, runtime, bad, "control", headerProbeGoldenDriver())
 		if string(got) == string(want) {
-			t.Fatal("the golden did not move when the header wrote its two bytes backwards")
+			t.Fatalf("the golden did not move when the header wrote its two bytes backwards (driver exit: %v)", exitErr)
 		}
 	})
 }
@@ -552,11 +553,17 @@ func headerProbeRun(t *testing.T, cxx, runtime, dir, name, source string) []byte
 }
 
 // headerProbeBuildRun is the same for a driver that is EXPECTED to disagree:
-// a nonzero exit is one of the ways it may say so.
-func headerProbeBuildRun(t *testing.T, cxx, runtime, dir, name, source string) []byte {
+// a nonzero exit is one of the ways it may say so, and it is returned as the
+// exit error. Any other failure to run the driver (it never started) fails the
+// test: a control that did not run said nothing.
+func headerProbeBuildRun(t *testing.T, cxx, runtime, dir, name, source string) ([]byte, error) {
 	t.Helper()
-	out, _ := headerProbeCompileRun(t, cxx, runtime, dir, name, source)
-	return out
+	out, err := headerProbeCompileRun(t, cxx, runtime, dir, name, source)
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		t.Fatalf("%s: the driver did not run: %v\n%s", name, err, out)
+	}
+	return out, err
 }
 
 func headerProbeCompileRun(t *testing.T, cxx, runtime, dir, name, source string) ([]byte, error) {
