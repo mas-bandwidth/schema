@@ -4266,6 +4266,10 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
 	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
+	# and the Go test that holds the same map-holding cook
+	# (internal/tablecook/list_test.go) reads it here, the one place it is
+	# written: under SCHEMA_REQUIRE_CORPUS an absent cook fails, never skips.
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi

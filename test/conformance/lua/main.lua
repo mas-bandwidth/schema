@@ -297,11 +297,12 @@ local function surfaceWire(all, outdir)
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
-        if wireRefusal(why) then
-          absent(outdir, f[2], "blob_shared")
-        else
-          io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
-        end
+        -- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+        -- (docs/rulings.json refusal-verdict-only): a .absent holding the
+        -- reason, which the harness passes on a row the corpus marks
+        -- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails on
+        -- a row that owes the bytes (as test/conformance/go/main.go does)
+        absent(outdir, f[2], why ~= nil and tostring(why) or "refused")
       else
         local saved, wwhy = canonicalWrite(u, f[4], v)
         if saved == nil then
@@ -1137,7 +1138,20 @@ local function wrefSet(u, root, v, path, what, text)
     local n = wrefInteger(text, false)
     if n == nil then return UNREPRESENTABLE end
     local arr = holder[key] or {}
-    for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
+    -- THE NEW ELEMENTS ARE REAL ONES: a copy of the first, or, when the array
+    -- is empty, the element type's own default. deepCopy(arr[1]) of an empty
+    -- array is nil, so the list never grew, the writer saw the old count and
+    -- the row answered `wrote` for a count past the bound
+    -- (wref_var_layers_count, graph_tree's empty layers)
+    local function fresh()
+      if arr[1] ~= nil then return deepCopy(arr[1]) end
+      local elem = fd.elem or {}
+      local new = elem.target ~= nil and u.T["New" .. elem.target] or nil
+      if elem.shape == "table" and new ~= nil then return new() end
+      if elem.default ~= nil then return deepCopy(elem.default) end
+      fail(path .. ": count " .. text .. " grows an empty array whose element has no default")
+    end
+    for i = #arr + 1, n do arr[i] = fresh() end
     for i = #arr, n + 1, -1 do arr[i] = nil end
     holder[key] = arr
   elseif what == "length" then
@@ -1253,6 +1267,9 @@ local surface = arg[2]
 
 if surface == "list" then
   for _, name in ipairs(SURFACE_ORDER) do io.write(name .. "\n") end
+  -- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+  -- key is generated into build/conformance-lua by make/lua.mk
+  io.write("unit shapes\n")
   os.exit(0)
 end
 

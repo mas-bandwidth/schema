@@ -24,7 +24,7 @@ func TestJsFlatWriteRefusesWideBits(t *testing.T) {
 	flat := generateWideBitsProbeFlat(t)
 	write := emittedFunction(t, flat, "WriteProbeFlat")
 	for _, want := range []string{
-		"!Number.isInteger(value.a) || value.a < 0 || value.a > 127",
+		"!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 127",
 		"value.b < 0n || value.b > 1099511627775n",
 		"return -1;",
 	} {

@@ -87,7 +87,7 @@ fixed table Fx
 	if !strings.Contains(text, "R.cf32_bits(") {
 		t.Errorf("the fixed writer of the compressed tilt does not fold -0")
 	}
-	if !strings.Contains(text, "R.f32_bits(") {
+	if strings.Count(text, "R.f32_bits(") == 0 {
 		t.Errorf("the fixed writer of the plain flat folds -0: a plain float keeps its sign")
 	}
 }

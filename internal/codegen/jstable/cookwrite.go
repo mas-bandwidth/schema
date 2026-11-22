@@ -82,7 +82,7 @@ func cookWriteOpen(u *ir.Unit, layouts []*ir.Struct, variable bool) string {
 		}
 	}
 	if len(omitted) > 0 {
-		fmt.Fprintf(&b, "  const omitted = new Set([%s]);\n", strings.Join(omitted, ","))
+		fmt.Fprintf(&b, "  const omitted = new globalThis.Set([%s]);\n", strings.Join(omitted, ","))
 	}
 	b.WriteString("  const layouts = {\n")
 	for _, st := range layouts {
@@ -544,20 +544,20 @@ func cookWriteTextJS(variable bool) string {
 		b.WriteString("      n = bytes.length;\n")
 		b.WriteString("    } else if (fd.k === \"vbytes\") {\n")
 		b.WriteString("      bytes = parent[fd.n];\n")
-		b.WriteString("      if (!(bytes instanceof Uint8Array)) { return false; }\n")
+		b.WriteString("      if (!(bytes instanceof globalThis.Uint8Array)) { return false; }\n")
 		b.WriteString("      n = bytes.length;\n")
 		b.WriteString("    } else {\n")
 	}
 	b.WriteString("    bytes = parent[fd.n];\n")
 	b.WriteString("    n = parent[fd.n + \"Length\"];\n")
-	b.WriteString("    if (!(bytes instanceof Uint8Array)) { return false; }\n")
+	b.WriteString("    if (!(bytes instanceof globalThis.Uint8Array)) { return false; }\n")
 	if variable {
 		b.WriteString("    }\n")
 	}
-	b.WriteString("    if (!Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }\n")
+	b.WriteString("    if (!globalThis.Number.isInteger(n) || n < 0 || n > fd.cap || bytes.length < n) { return false; }\n")
 	b.WriteString("    if (view !== null && n > 0) {\n")
-	b.WriteString("      const src = bytes instanceof Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);\n")
-	b.WriteString("      new Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);\n")
+	b.WriteString("      const src = bytes instanceof globalThis.Uint8Array ? bytes.subarray(0, n) : bytes.slice(0, n);\n")
+	b.WriteString("      new globalThis.Uint8Array(view.buffer, view.byteOffset + base + fd.at, n).set(src);\n")
 	b.WriteString("    }\n")
 	b.WriteString("    return putWidth(view, base + fd.lenAt, 4, n, true, le);\n")
 	b.WriteString("  }\n")
@@ -574,7 +574,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
   function fit(v, width, signed) {
     let b;
     if (typeof v === "bigint") { b = v; }
-    else if (typeof v === "number" && Number.isInteger(v)) { b = BigInt(v); }
+    else if (typeof v === "number" && globalThis.Number.isInteger(v)) { b = globalThis.BigInt(v); }
     else { return null; }
     if (width === 16) {
       if (signed) {
@@ -588,7 +588,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       } else if (b < 0n || b > 0xffffffffffffffffn) { return null; }
       return b;
     }
-    const n = Number(b);
+    const n = globalThis.Number(b);
     let lo = 0, hi = 255;
     if (width === 2) { hi = 65535; }
     else if (width === 4) { hi = 4294967295; }
@@ -607,8 +607,8 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     if (bits === null) { return false; }
     if (view === null) { return true; }
     if (width === 16) {
-      const lo = BigInt.asUintN(64, bits);
-      const hi = BigInt.asUintN(64, bits >> 64n);
+      const lo = globalThis.BigInt.asUintN(64, bits);
+      const hi = globalThis.BigInt.asUintN(64, bits >> 64n);
       view.setBigUint64(at, le ? lo : hi, le);
       view.setBigUint64(at + 8, le ? hi : lo, le);
       return true;
@@ -618,7 +618,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       else { view.setBigUint64(at, bits, le); }
       return true;
     }
-    const n = Number(bits);
+    const n = globalThis.Number(bits);
     if (width === 1) { if (signed) { view.setInt8(at, n); } else { view.setUint8(at, n); } }
     else if (width === 2) { if (signed) { view.setInt16(at, n, le); } else { view.setUint16(at, n, le); } }
     else { if (signed) { view.setInt32(at, n, le); } else { view.setUint32(at, n, le); } }
@@ -661,18 +661,18 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (!Number.isFinite(Math.fround(value))) { return refuseFloat(ctx); }
+        if (!globalThis.Number.isFinite(globalThis.Math.fround(value))) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
-        if (!Number.isFinite(value)) { return refuseFloat(ctx); }
+        if (!globalThis.Number.isFinite(value)) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":
         return putWidth(view, at, fd.w, value, fd.sg === 1, le);
       case "enum":
-        if (!Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
@@ -701,10 +701,10 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     let count;
     if (fd.countFrom === "bound") { count = fd.bound; }
     else if (fd.countFrom === "len") {
-      if (!Array.isArray(arr)) { return false; }
+      if (!globalThis.Array.isArray(arr)) { return false; }
       count = arr.length;
     } else { count = parent[fd.n + "Count"]; }
-    if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (!globalThis.Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
     // a counted array's slots past the live count are DEAD BYTES and stay the
     // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
@@ -733,7 +733,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     }
     if (value === null || typeof value !== "object") { return false; }
     const tag = value.type;
-    if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
+    if (!globalThis.Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
     if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
     if (tag === 0) { return true; }
     const arm = fd.arm[tag - 1];
@@ -748,7 +748,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     }
     if (ctx === null || ctx.entries[idx - 1] === undefined) { return false; }
     if (view !== null) {
-      const delta = 64n + BigInt(ctx.entries[idx - 1].offset) - BigInt(at);
+      const delta = 64n + globalThis.BigInt(ctx.entries[idx - 1].offset) - globalThis.BigInt(at);
       view.setBigInt64(at, delta, le);
     }
     return true;
@@ -782,17 +782,17 @@ const cookEngineFixed = `  function fixedMeasure(name) {
     const layout = layouts[name];
     if (layout === undefined || omitted.has(name) || value === null || typeof value !== "object") { return false; }
     if (order !== 1 && order !== 2) { return false; }
-    if (!(buffer instanceof Uint8Array) || buffer.byteLength < layout.measure) { return false; }
+    if (!(buffer instanceof globalThis.Uint8Array) || buffer.byteLength < layout.measure) { return false; }
     const le = order === 1;
     if (!writeStruct(null, 64, layout, value, le, null)) { return false; }
     buffer.fill(0, 0, layout.measure);
-    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const view = new globalThis.DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     put64(view, 0, 0x4b4f4f434d484353n, le);
     put64(view, 8, build, le);
-    put64(view, 16, BigInt(order), le);
-    put64(view, 24, BigInt(layout.data), le);
+    put64(view, 16, globalThis.BigInt(order), le);
+    put64(view, 24, globalThis.BigInt(layout.data), le);
     put64(view, 32, 16n, le);
-    put64(view, 40, BigInt(layout.alignCook), le);
+    put64(view, 40, globalThis.BigInt(layout.alignCook), le);
     if (!writeStruct(view, 64, layout, value, le, null)) { return false; }
     put64(view, 64 + layout.data, 0n, le);
     put64(view, 64 + layout.data + 8, layout.typeId, le);
@@ -804,7 +804,7 @@ const cookEngineFixed = `  function fixedMeasure(name) {
 // a constant offset and aligns nothing.
 const cookEngineVariable = `  function alignUp(n, a) {
     if (a <= 1) { return n; }
-    return Math.floor((n + a - 1) / a) * a;
+    return globalThis.Math.floor((n + a - 1) / a) * a;
   }
   // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6;
   // docs/PORTING.md M19; the layout tla/NodeExtent.tla models and
@@ -838,9 +838,9 @@ const cookEngineVariable = `  function alignUp(n, a) {
         const blob = base + cur.at;
         cur.at += alignUp(9 + bytes.length, 8);
         if (view !== null) {
-          view.setBigInt64(at, BigInt(blob - at), le);
+          view.setBigInt64(at, globalThis.BigInt(blob - at), le);
           view.setUint32(blob, bytes.length, le);
-          new Uint8Array(view.buffer, view.byteOffset + blob + 8, bytes.length).set(bytes);
+          new globalThis.Uint8Array(view.buffer, view.byteOffset + blob + 8, bytes.length).set(bytes);
         }
         return true;
       }
@@ -854,7 +854,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
         if (e.k === "rec" && !layouts[e.t].ext) { return true; }
         // a slot past a counted array's live elements holds the
         // value-initialized element, which holds no list and no map
-        const n = fd.countFrom === "len" ? (Array.isArray(v) ? v.length : 0) : fd.bound;
+        const n = fd.countFrom === "len" ? (globalThis.Array.isArray(v) ? v.length : 0) : fd.bound;
         for (let i = 0; i < n; i++) {
           if (!carveValue(view, at + i * fd.stride, base, cur, e, v[i], le, ctx)) { return false; }
         }
@@ -882,10 +882,10 @@ const cookEngineVariable = `  function alignUp(n, a) {
   // same entry objects.
   function holderElements(fd, v) {
     if (fd.k === "map") {
-      if (!(v instanceof Map)) { return null; }
+      if (!(v instanceof globalThis.Map)) { return null; }
       return TableVariableMapEntries({ c: layouts[fd.t], ks: fd.ks === 1 }, v);
     }
-    return Array.isArray(v) ? v : null;
+    return globalThis.Array.isArray(v) ? v : null;
   }
   function carveHolder(view, slot, base, cur, fd, v, le, ctx) {
     const elems = holderElements(fd, v);
@@ -895,7 +895,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
     const array = base + cur.at;
     cur.at += n * fd.size;
     if (view !== null) {
-      view.setBigInt64(slot, n > 0 ? BigInt(array - slot) : 0n, le);
+      view.setBigInt64(slot, n > 0 ? globalThis.BigInt(array - slot) : 0n, le);
       view.setInt32(slot + 8, n, le);
     }
     if (fd.k === "map") {
@@ -920,7 +920,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
   // measure or write so every walk sees one sorted entry object per map
   function withEntries(f) {
     const outer = TableVariableEntryCache;
-    TableVariableEntryCache = new Map();
+    TableVariableEntryCache = new globalThis.Map();
     try { return f(); } finally { TableVariableEntryCache = outer; }
   }
   function blobSize(entry) {
@@ -993,24 +993,24 @@ const cookEngineVariable = `  function alignUp(n, a) {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);
     if (reg.reason !== null) { return false; }
-    if (!(buffer instanceof Uint8Array) || buffer.byteLength < reg.total) { return false; }
+    if (!(buffer instanceof globalThis.Uint8Array) || buffer.byteLength < reg.total) { return false; }
     buffer.fill(0, 0, reg.total);
-    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const view = new globalThis.DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     const le = order === 1;
     put64(view, 0, 0x4b4f4f434d484353n, le);
     put64(view, 8, build, le);
-    put64(view, 16, BigInt(order), le);
-    put64(view, 24, BigInt(reg.data), le);
-    put64(view, 32, BigInt(reg.entries.length * 16), le);
-    put64(view, 40, BigInt(reg.align), le);
+    put64(view, 16, globalThis.BigInt(order), le);
+    put64(view, 24, globalThis.BigInt(reg.data), le);
+    put64(view, 32, globalThis.BigInt(reg.entries.length * 16), le);
+    put64(view, 40, globalThis.BigInt(reg.align), le);
     for (let i = 0; i < reg.entries.length; i++) {
       const e = reg.entries[i];
       const at = 64 + e.offset;
       if (e.blob) {
         view.setUint32(at, e.len, le);
         if (e.len > 0) {
-          const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
-          new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
+          const src = e.body instanceof globalThis.Uint8Array ? e.body : globalThis.Uint8Array.from(e.body);
+          new globalThis.Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
         }
       } else {
         if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
@@ -1020,7 +1020,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
     const dir = 64 + reg.data;
     for (let i = 0; i < reg.entries.length; i++) {
       const e = reg.entries[i];
-      put64(view, dir + i * 16, BigInt(e.offset), le);
+      put64(view, dir + i * 16, globalThis.BigInt(e.offset), le);
       put64(view, dir + i * 16 + 8, e.typeId, le);
     }
     return true;

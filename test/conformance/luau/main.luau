@@ -32,7 +32,7 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = {
-	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
@@ -48,6 +48,9 @@ if surface == "list" then
 	for _, name in SURFACES do
 		print(name)
 	end
+	-- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+	-- key is generated into build/conformance-luau by make/luau.mk
+	print("unit shapes")
 	return
 end
 
@@ -213,13 +216,12 @@ local function surfaceWire(lines: { { string } })
 			local r = report()
 			local v = u.load.load(f[4], file(f[5]), r)
 			if v == nil then
-				if r.reason == "blob_shared" then
-					-- one blob named from two slots (docs/SPEC-TABLES.md §2.5)
-					-- is a NAMED refusal, and the harness holds the name
-					print(f[2] .. " absent blob_shared")
-				else
-					error(f[2] .. ": load refused " .. f[5])
-				end
+				-- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+				-- (docs/rulings.json refusal-verdict-only): an absence naming
+				-- the reason, which the harness passes on a row the corpus marks
+				-- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
+				-- on a row that owes the bytes (as test/conformance/go/main.go does)
+				print(f[2] .. " absent " .. (if r.reason ~= nil then tostring(r.reason) else "refused"))
 			else
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil and why ~= nil and why.name == "blob_shared" then
@@ -610,6 +612,53 @@ local function surfaceMessage(lines: { { string } })
 				error(f[2] .. ": message save refused or disagreed with the measure")
 			end
 			say(f[2], out)
+		end
+	end
+end
+
+-- `message-prior` (testdata/conformance/tables/FORMAT.md) is the same read of a
+-- PRIOR WRITER's batch, handed on its own keywords (`prior-connection`,
+-- `prior-message`). A row may owe a refusal, so the answer is what the public
+-- read returned: the batch re-saved, or the line `<case> refused <reason>`,
+-- which the shell driver writes as `<case>.refused` and the harness never
+-- compares (docs/rulings.json `refusal-verdict-only`).
+local function surfaceMessagePrior(lines: { { string } })
+	local connections: { [string]: { string } } = {}
+	for _, c in kind(lines, "prior-connection") do
+		connections[c[2]] = c
+	end
+	for _, f in kind(lines, "prior-message") do
+		local conn = connections[f[3]]
+		if conn == nil then
+			error("prior-message " .. f[2] .. " names no prior-connection " .. f[3])
+		end
+		local u = unit(conn[3])
+		local M = u and optional(u, "schema_message")
+		local d = if u ~= nil then rootOf(u, f[4]) else nil
+		if u == nil or M == nil or d == nil then
+			say(f[2], nil)
+		elseif not (d.table and d.fixed) then
+			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+		else
+			local v = M.NewVocabulary()
+			local r = report()
+			if not M.AnnounceRead(v, file(conn[5]), r) then
+				error(f[2] .. ": the announcement was refused (" .. tostring(r.reason) .. ")")
+			end
+			local count, bodies = M.LoadMessages(v, f[4], file(f[6]), 256, r)
+			if count < 1 or r.malformed or r.verdict ~= 0 then
+				print(f[2] .. " refused " .. tostring(r.reason))
+			else
+				local size = M.MeasureMessages(v, f[4], bodies, r)
+				if size < 0 then
+					error(f[2] .. ": message measure refused (" .. tostring(r.reason) .. ")")
+				end
+				local out, n = M.SaveMessages(v, f[4], bodies, r)
+				if out == nil or n ~= size then
+					error(f[2] .. ": message save refused or disagreed with the measure")
+				end
+				say(f[2], out)
+			end
 		end
 	end
 end
@@ -1213,6 +1262,34 @@ end
 		return n
 	end
 
+	-- A 64-BIT INTEGER FIELD holds a Luau integer, an unsigned one its
+	-- two's-complement wrap, so a token reaches it EXACTLY: tonumber rounds
+	-- 18446744073709551615 to 2^64, which no uint64 holds, and the writer
+	-- refused a value the declaration admits (wref_var_u64_ok). A token the
+	-- field's 64 bits cannot hold distinctly (past 2^64 - 1 unsigned, outside
+	-- int64 signed, or negative unsigned) is unrepresentable.
+	local function wrefInteger64(text: string, signed: boolean): integer?
+		local negative = string.sub(text, 1, 1) == "-"
+		local digits = if negative then string.sub(text, 2) else text
+		if string.match(digits, "^%d+$") == nil or (negative and not signed) then return nil end
+		local acc = 0i
+		for i = 1, #digits do
+			if integer.ult(0x1999999999999999i, acc) then return nil end
+			local t = integer.mul(acc, 10i)
+			local sum = integer.add(t, integer.create(string.byte(digits, i) - 48))
+			if integer.ult(sum, t) then return nil end
+			acc = sum
+		end
+		if not signed then return acc end
+		local min64 = integer.bnot(0x7fffffffffffffffi)
+		if negative then
+			if integer.ult(min64, acc) then return nil end
+			return integer.sub(0i, acc)
+		end
+		if integer.lt(acc, 0i) then return nil end
+		return acc
+	end
+
 local function wrefSet(u: any, root: string, v: any, path: string, what: string, text: string)
 	local owner, fd, idx = wrefWalk(u, root, v, path)
 	local holder: any = owner
@@ -1226,6 +1303,10 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		local n = wrefWhole(text)
 		if n == nil then return true end
 		holder[key] = n
+	elseif what == "int" and d.s == "int" and d.kw == 8 then
+		local n = wrefInteger64(text, d.signed == true)
+		if n == nil then return true end
+		holder[key] = n
 	elseif what == "int" then
 		holder[key] = tonumber(text) :: number
 	elseif what == "float" or what == "real" then
@@ -1236,8 +1317,18 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		local arr = holder[key]
 		if owner[fd.slot .. "Count"] ~= nil then
 			owner[fd.slot .. "Count"] = n
-			for i = #arr + 1, n do
-				arr[i] = wrefDeepCopy(arr[1])
+			if type(arr) == "buffer" then
+				-- a byte-sized element array is one buffer: the count says how
+				-- much of it is live, and it grows (zero filled) to hold n
+				if buffer.len(arr) < n then
+					local grown = buffer.create(n)
+					buffer.copy(grown, 0, arr, 0, buffer.len(arr))
+					holder[key] = grown
+				end
+			else
+				for i = #arr + 1, n do
+					arr[i] = wrefDeepCopy(arr[1])
+				end
 			end
 		else
 			for i = #arr + 1, n do
@@ -1376,6 +1467,8 @@ elseif surface == "cook-write" then
 	surfaceCookWrite(lines)
 elseif surface == "message" then
 	surfaceMessage(lines)
+elseif surface == "message-prior" then
+	surfaceMessagePrior(lines)
 elseif surface == "cook" then
 	surfaceCook(lines)
 elseif surface == "cook-foreign" then

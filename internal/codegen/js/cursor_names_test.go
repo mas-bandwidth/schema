@@ -91,10 +91,7 @@ func TestJsFieldsNamedAfterTheFlatCursorGenerate(t *testing.T) {
 	t.Run("wire", func(t *testing.T) {
 		slowtest.Gate(t, "node (round-trips fields named sb, wi and br through both JS tiers)")
 		node := jsFlatNode(t)
-		serializeDir := filepath.Join(filepath.Dir(repoRootForRuntimeProbe(t)), "serialize.js")
-		if _, err := os.Stat(filepath.Join(serializeDir, "src", "index.js")); err != nil {
-			t.Skipf("serialize.js sibling not staged at %s: %v", serializeDir, err)
-		}
+		serializeDir := serializeJSDir(t)
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`), 0o644); err != nil {
 			t.Fatal(err)

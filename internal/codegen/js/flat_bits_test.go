@@ -45,10 +45,10 @@ func TestJsFlatReadReportsBitsConsumed(t *testing.T) {
 		t.Errorf("ReadPingFlat must keep returning a boolean:\n%s", ping)
 	}
 	for _, want := range []string{
-		"export declare function ReadPingFlat(view: DataView, numBits: number, value: Ping): boolean;",
-		"export declare function ReadPingFlatBits(view: DataView, numBits: number, value: Ping): number | false;",
-		"export declare function ReadPongFlatBits(view: DataView, numBits: number, value: Pong): number | false;",
-		"export declare function ReadChoiceFlatBits(view: DataView, numBits: number, value: Choice): number | false;",
+		"export declare function ReadPingFlat(view: globalThis.DataView, numBits: number, value: Ping): boolean;",
+		"export declare function ReadPingFlatBits(view: globalThis.DataView, numBits: number, value: Ping): number | false;",
+		"export declare function ReadPongFlatBits(view: globalThis.DataView, numBits: number, value: Pong): number | false;",
+		"export declare function ReadChoiceFlatBits(view: globalThis.DataView, numBits: number, value: Choice): number | false;",
 	} {
 		if !strings.Contains(decl, want) {
 			t.Errorf("PktFlat.d.ts lacks %q", want)
