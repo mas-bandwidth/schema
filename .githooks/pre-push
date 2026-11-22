@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# pre-push: refuse a push that carries a commit whose author or committer is not
+# on the CAA allowlist. Wired in by 'make setup' (git config core.hooksPath
+# .githooks); 'make deps' runs it.
+#
+# The allowlist is read from the CAA workflow's own config, the 'allowlist:'
+# line of .github/workflows/cla.yml, so there is one list. Entries are GitHub
+# logins. A local commit has no login, only a name and an email, so an identity
+# is on the list when its email is <login>@users.noreply.github.com or
+# <id>+<login>@users.noreply.github.com, or when its name is exactly the login.
+# Entries with a wildcard are ignored (names are spoofable; the list is logins).
+#
+# Checked range, per pushed ref: <remote sha>..<local sha>, or origin/main..<local
+# sha> for a new branch (the same commits as @{u}..HEAD / origin/main..HEAD).
+#
+# An outside contributor who signs the CAA instead of being allowlisted sets
+# SCHEMA_ALLOW_ANY_AUTHOR=1 for the push. Nobody else has a reason to.
+set -u
+[ "${SCHEMA_ALLOW_ANY_AUTHOR:-}" = 1 ] && exit 0
+
+root=$(git rev-parse --show-toplevel) || exit 1
+cla=$root/.github/workflows/cla.yml
+allow=$(sed -n 's/^[[:space:]]*allowlist:[[:space:]]*//p' "$cla" 2>/dev/null | head -1 | tr -d "'\"")
+if [ -z "$allow" ]; then
+  echo "pre-push: no allowlist line in $cla; refusing (fix the hook or the workflow)" >&2
+  exit 1
+fi
+
+# one identity is allowed when its name or email matches an allowlisted login
+ok() {
+  local name=$1 email=$2 login
+  local -a logins
+  IFS=, read -ra logins <<<"$allow"
+  for login in "${logins[@]}"; do
+    login=${login//[[:space:]]/}
+    case $login in ''|*'*'*) continue ;; esac
+    [ "$name" = "$login" ] && return 0
+    case $email in
+      "$login@users.noreply.github.com"|*"+$login@users.noreply.github.com") return 0 ;;
+    esac
+  done
+  return 1
+}
+
+zero=0000000000000000000000000000000000000000
+bad=
+while read -r lref lsha rref rsha; do
+  [ -z "${lsha:-}" ] && continue
+  [ "$lsha" = "$zero" ] && continue
+  if [ "$rsha" = "$zero" ]; then
+    if git rev-parse -q --verify origin/main >/dev/null; then
+      range=(origin/main.."$lsha")
+    else
+      range=("$lsha" --not --remotes)
+    fi
+  else
+    range=("$rsha".."$lsha")
+  fi
+  while IFS=$'\t' read -r sha an ae cn ce; do
+    if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then
+      bad+="  ${sha:0:12}  author $an <$ae>  committer $cn <$ce>"$'\n'
+    fi
+  done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "${range[@]}")
+done
+
+if [ -n "$bad" ]; then
+  {
+    echo "pre-push: refused. These commits have an author or committer outside the CAA allowlist ($allow):"
+    printf '%s' "$bad"
+    echo "Fix: git config user.name 'Rowan Claude' && git config user.email '305107455+rowan-claude@users.noreply.github.com' && git rebase -r --exec 'git commit --amend --no-edit --reset-author' origin/main"
+    echo "(An outside contributor who signs the CAA instead: SCHEMA_ALLOW_ANY_AUTHOR=1 git push ...)"
+  } >&2
+  exit 1
+fi
+exit 0

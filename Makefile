@@ -7232,8 +7232,14 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push refuses a push whose author or
+# committer is outside the CAA allowlist in .github/workflows/cla.yml). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push checks commit identity)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
