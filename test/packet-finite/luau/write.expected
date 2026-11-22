@@ -16,6 +16,14 @@ pair/write/payload-nan
 pair/write/positive-inf
 pair/write/quiet-nan
 pair/write/signalling-nan
+quantized/write/double-negative-nan
+quantized/write/double-payload-nan
+quantized/write/double-quiet-nan
+quantized/write/double-signalling-nan
+quantized/write/negative-nan
+quantized/write/payload-nan
+quantized/write/quiet-nan
+quantized/write/signalling-nan
 single/write/narrows-to-inf
 single/write/negative-inf
 single/write/negative-nan
