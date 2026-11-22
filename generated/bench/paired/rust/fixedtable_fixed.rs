@@ -370,6 +370,9 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// meets damage anywhere answers None with `malformed` set, and every record
 /// in `values` goes back to its declared defaults, so nothing the read
 /// decoded before or after the damage is a value to use.
+///
+/// RULING R4: EVERY refusal, damage or named, before any record lands or
+/// after, leaves every row handed in at its declared default.
 pub fn fixed_table_fixed_load(
     values: &mut [FixedTableRow],
     data: &[u8],
@@ -379,11 +382,9 @@ pub fn fixed_table_fixed_load(
 ) -> Option<usize> {
     let damaged_before = report.damaged;
     report.damaged = false;
-    let mut untouched = false;
-    let read = fixed_table_fixed_load_records(values, data, plan, remap, report, &mut untouched);
-    let damaged = report.damaged;
+    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
     report.damaged |= damaged_before;
-    if damaged && !untouched {
+    if read.is_none() {
         for value in values.iter_mut() {
             fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
         }
@@ -398,7 +399,6 @@ fn fixed_table_fixed_load_records(
     plan: &mut [TableFixedEntry],
     remap: &mut [u16],
     report: &mut TableFixedReport,
-    untouched: &mut bool,
 ) -> Option<usize> {
     if data.is_empty() {
         report.damaged = true;
@@ -502,7 +502,6 @@ fn fixed_table_fixed_load_records(
     for k in 0..n {
         if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
             report.damaged = true;
-            *untouched = true;
             return None;
         }
     }
@@ -519,9 +518,6 @@ fn fixed_table_fixed_load_records(
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
-            for value in values.iter_mut().take(k) {
-                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-            }
             report.widened = widened_before;
             return report.refuse(TableFixedReason::NoBlock);
         }
@@ -541,12 +537,9 @@ fn fixed_table_fixed_load_records(
         // FIRST, before the bounds pass, over the storage the run just wrote,
         // and a NaN or an infinity refuses the whole batch as
         // non_finite_float, naming the field. Nothing of the batch is kept:
-        // every record this call wrote goes back to its declared defaults.
+        // the caller resets every row handed in (R4).
         let why = fixed_table_fixed_finite_body(&values[k]);
         if !why.is_empty() {
-            for value in values.iter_mut().take(k + 1) {
-                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-            }
             report.widened = widened_before;
             return report.refuse_non_finite(why);
         }
@@ -562,18 +555,12 @@ fn fixed_table_fixed_load_records(
             // having no `L` to continue past. REFUSE is total, so the refusal
             // is taken before any counter is added.
             if damaged != 0 {
-                for value in values.iter_mut().take(k + 1) {
-                    fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-                }
                 report.widened = widened_before;
                 return report.refuse(TableFixedReason::TextIllFormed);
             }
             report.held += oor as u32;
         }
         if report.held != 0 {
-            for value in values.iter_mut().take(k + 1) {
-                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-            }
             report.widened = widened_before;
             return report.refuse(TableFixedReason::OutOfRange);
         }

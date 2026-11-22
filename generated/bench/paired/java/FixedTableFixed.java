@@ -299,7 +299,7 @@ public final class FixedTableFixed {
 
     /**
      * THE LOAD PATH'S SCRATCH VALUE, reused per thread: pass 0 lands each record here so a refusal
-     * never touches the caller's values, and a read allocates nothing on its success path (§4.2).
+     * lands nothing from the file, and a read allocates nothing on its success path (§4.2).
      */
     private static final java.lang.ThreadLocal<Value> loadScratch =
             java.lang.ThreadLocal.withInitial(Value::new);
@@ -332,8 +332,32 @@ public final class FixedTableFixed {
      * through (§5.9 #5, #24): a static plan carries its own ordinal table, because the table is
      * part of the plan. They stay in the signature because §5.6 retires MECHANISMS and not API
      * (§5.9 #16). Answers the records read, or -1.
+     *
+     * <p>RULING R4: on EVERY refusal (-1), every row the call was given — the first `count` slots
+     * of `values`, `count` being the capacity this call declares, never past the array's length —
+     * holds its declared default. A null slot has nothing to reset and stays null.
      */
     public static int load(
+            Value[] values,
+            int count,
+            byte[] data,
+            TableFixed.Entry[] plan,
+            short[] remap,
+            byte[] image,
+            TableFixed.Report report) {
+        final int read = loadRecords(values, count, data, plan, remap, image, report);
+        if (read < 0 && values != null) {
+            final int given = java.lang.Math.max(0, java.lang.Math.min(count, values.length));
+            for (int j = 0; j < given; j++) {
+                if (values[j] != null) {
+                    scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
+                }
+            }
+        }
+        return read;
+    }
+
+    private static int loadRecords(
             Value[] values,
             int count,
             byte[] data,
@@ -435,8 +459,8 @@ public final class FixedTableFixed {
         // hash first, then its counts, lengths, text, bool and present bytes, and
         // that every dead byte is zero — by landing it in a scratch value the
         // caller never sees; only then does pass 1 land the records, values
-        // already known good. A refusal at record k leaves values[0..k-1] exactly
-        // as untouched as values[k].
+        // already known good. Every refusal leaves every row handed in at its
+        // declared default (R4, in load above).
         final Value scratch = loadScratch.get();
         final int widenedBefore = report.widened;
         for (int pass = 0; pass < 2; pass++) {
@@ -457,11 +481,6 @@ public final class FixedTableFixed {
                 scatter(image, 0, pass == 0 ? scratch : values[k], report, true, fileHash == hash);
                 // DAMAGE DISCARDS THE WHOLE LOAD (§4)
                 if (report.refused || report.damaged) {
-                    if (pass == 1) {
-                        for (int j = 0; j <= k; j++) {
-                            scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
-                        }
-                    }
                     report.widened = widenedBefore;
                     return -1;
                 }

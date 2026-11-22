@@ -208,18 +208,33 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
 /// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
-/// the count is zero, malformed is set, and every body of the batch goes back
-/// to its declared defaults, bytes after the pad included; "M ABOVE THE
-/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", nothing decoded and
-/// a count of 0, as every refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
-/// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+/// the count is zero, malformed is set; "M ABOVE THE CALLER'S CAPACITY ON THE
+/// READ SIDE IS A REFUSAL BY NAME", nothing decoded and a count of 0, as every
+/// refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS
+/// REFUSED BY NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 ///
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
-/// no body of it is delivered, so the count is zero, every body read so far
-/// goes back to its declared defaults, and the reason is non_finite_float.
-/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
-/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
+/// no body of it is delivered, so the count is zero, and the reason is
+/// non_finite_float. A VALUE OUTSIDE ITS DECLARED RANGE, met before any
+/// damage, refuses the batch the same way BY NAME as out_of_range (§3.3), the
+/// field in oor_field.
+///
+/// RULING R4: after ANY refusal, every value handed in (the whole slice, not
+/// only the batch's count) holds its declared default.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
+    let (count, whole) = fixed_table_load_messages_walk(values, vocabulary, data, report);
+    if !whole {
+        for value in values.iter_mut() {
+            *value = fixed_table_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
+}
+
+/// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
+/// the reset of every value handed in to the caller above (R4).
+fn fixed_table_load_messages_walk(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
     report.oor_field = "";
@@ -234,13 +249,7 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
     for i in 0..count {
         if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
-                for value in values.iter_mut().take(i + 1) {
-                    *value = fixed_table_message_default();
-                }
                 return (0, report.refuse(TableReason::NonFiniteFloat));
-            }
-            for value in values.iter_mut().take(count) {
-                *value = fixed_table_message_default();
             }
             if !report.oor_field.is_empty() {
                 return (0, report.refuse(TableReason::OutOfRange));
@@ -249,9 +258,6 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
         }
     }
     if !table_message_batch_close(&mut r, report) {
-        for value in values.iter_mut().take(count) {
-            *value = fixed_table_message_default();
-        }
         return (0, false);
     }
     (count, true)
