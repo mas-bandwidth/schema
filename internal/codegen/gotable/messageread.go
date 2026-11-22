@@ -99,13 +99,13 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		// a length past this reader's bound, or past the ANNOUNCED max its
 		// bits can spell beyond, refuses length_over_bound, as the engine's
 		// named read and the skip path hold it (docs/SPEC-TABLES.md §3.3)
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};if n>%d||n>uint64(%s.Shape.Max){%s};clear(%s[:]);copy(%s[:],text);%sLength=int32(n)}\n", ind, entry, bad, bad, bad, f.Type.Size, entry, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};if n>%d||tableMessageOverMax(n,%s.Shape){%s};clear(%s[:]);copy(%s[:],text);%sLength=int32(n)}\n", ind, entry, bad, bad, bad, f.Type.Size, entry, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.Type.Kind == ir.TBytes:
 		// a bytes count past the ANNOUNCED max its bits can spell beyond
 		// refuses count_over_bound before any byte is walked, as the engine's
 		// named read and the skip path hold it; past this reader's own bound
 		// it refuses length_over_bound (docs/SPEC-TABLES.md §3.3)
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};if n>uint64(%s.Shape.Max){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(n)]);%sLength=int32(n)}\n", ind, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"), bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};if tableMessageOverMax(n,%s.Shape){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(n)]);%sLength=int32(n)}\n", ind, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"), bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.elides = elide
 		g.emitMessageReadArray(f, expr, entry, ind)
@@ -233,7 +233,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	// conforming writer emits: an array's or a keyed array's count past it
 	// refuses count_over_bound before this reader's own bound is consulted,
 	// as the engine's named read and the skip path hold it (§3.3)
-	g.pf("%s{base:=&%s;n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok{%s};if n>uint64(%s.Shape.Max){%s};", ind, expr, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"))
+	g.pf("%s{base:=&%s;n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok{%s};if tableMessageOverMax(n,%s.Shape){%s};", ind, expr, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"))
 	if elide && f.KeyEnum != "" {
 		// a keyed array with no slot riding is elided by its writer (§3.3)
 		g.pf("if exact&&n==0{%s};", bad)
