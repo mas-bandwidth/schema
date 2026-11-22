@@ -54,6 +54,7 @@ export const fixedRoots = [
   ["tblvarevo1", "EvoMsg", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/VarEvo3Table.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureTable.js"],
+  ["cooktorture", "TortureFixedMin", "cooktorture/CookTortureTable.js"],
   ["messagedemo", "ToolMessage", "messages/MessagesTable.js"],
   ["backenddemo", "LoginRequest", "backend/BackendTable.js"],
   ["backenddemo", "MatchResult", "backend/BackendTable.js"],

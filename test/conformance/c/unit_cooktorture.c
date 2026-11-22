@@ -7,9 +7,13 @@
 
 SCHEMA_CONFORMANCE_GRAPH_CODEC( TortureCook, torture_cook )
 SCHEMA_CONFORMANCE_CODEC( TortureFixedWref, torture_fixed_wref )
+SCHEMA_CONFORMANCE_GRAPH_CODEC( TortureVarWref, torture_var_wref )
+SCHEMA_CONFORMANCE_CODEC( TortureFixedMin, torture_fixed_min )
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_GRAPH_ROW( cooktorture, TortureCook ),
-    SCHEMA_CONFORMANCE_ROW( cooktorture, TortureFixedWref )
+    SCHEMA_CONFORMANCE_ROW( cooktorture, TortureFixedWref ),
+    SCHEMA_CONFORMANCE_GRAPH_ROW( cooktorture, TortureVarWref ),
+    SCHEMA_CONFORMANCE_ROW( cooktorture, TortureFixedMin )
 };
 
 static int parse_cooktorture_f32( const char * text, float * out )
@@ -53,6 +57,62 @@ int conformance_write_refusal_set_cooktorture( const char * root, void * value, 
         if ( strcmp( path, "opt_f32" ) == 0 && strcmp( kind, "float" ) == 0 ) { v->opt_f32_present = 1; return parse_cooktorture_f32( text, &v->opt_f32 ); }
         if ( strcmp( path, "u_val.u_f32" ) == 0 && strcmp( kind, "float" ) == 0 ) { return parse_cooktorture_f32( text, &v->u_val.as.u_f32 ); }
         if ( strcmp( path, "u_val.u_str" ) == 0 ) { return conformance_write_refusal_text( v->u_val.as.u_str.value, 16, &v->u_val.as.u_str.value_length, kind, text ); }
+        return 0;
+    }
+    /* SILENT-FAILURE ROWS sfw_* (SF-09, SF-13, SF-14, SF-15, SF-26): every carrier on a variable root */
+    if ( strcmp( root, "TortureVarWref" ) == 0 )
+    {
+        schema_conformance_holder_TortureVarWref * holder = (schema_conformance_holder_TortureVarWref *) value;
+        cooktorture_torture_var_wref_t * v = (cooktorture_torture_var_wref_t *) (uintptr_t) holder->root;
+        if ( v == NULL ) { return 0; }
+        if ( strcmp( path, "raw" ) == 0 ) { return conformance_write_refusal_bytes( v->raw, 4, &v->raw_length, kind, text ); }
+        if ( strcmp( path, "opt_arr" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            int32_t i;
+            for ( i = v->opt_arr_count; i < (int32_t) n && i < 3; i++ ) { v->opt_arr[i] = v->opt_arr[0]; }
+            v->opt_arr_count = (int32_t) n;
+            v->opt_arr_present = 1;
+            return 1;
+        }
+        if ( strcmp( path, "arm_arr.a_arr" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            int32_t i;
+            if ( v->arm_arr.type != COOKTORTURE_WREF_ARM_TYPE_A_ARR ) { return 0; }
+            for ( i = v->arm_arr.as.a_arr.value_count; i < (int32_t) n && i < 3; i++ ) { v->arm_arr.as.a_arr.value[i] = v->arm_arr.as.a_arr.value[0]; }
+            v->arm_arr.as.a_arr.value_count = (int32_t) n;
+            return 1;
+        }
+        if ( strcmp( path, "arm_raw.a_raw" ) == 0 )
+        {
+            if ( v->arm_raw.type != COOKTORTURE_WREF_ARM_TYPE_A_RAW ) { return 0; }
+            return conformance_write_refusal_bytes( v->arm_raw.as.a_raw.value, 4, &v->arm_raw.as.a_raw.value_length, kind, text );
+        }
+        if ( strcmp( path, "arm_str.a_str" ) == 0 )
+        {
+            if ( v->arm_str.type != COOKTORTURE_WREF_ARM_TYPE_A_STR ) { return 0; }
+            return conformance_write_refusal_text( v->arm_str.as.a_str.value, 8, &v->arm_str.as.a_str.value_length, kind, text );
+        }
+        if ( strcmp( kind, "int" ) == 0 )
+        {
+            if ( strcmp( path, "arm_bits.a_bits" ) == 0 && v->arm_bits.type == COOKTORTURE_WREF_ARM_TYPE_A_BITS ) { v->arm_bits.as.a_bits = (uint32_t) n; return 1; }
+            if ( strcmp( path, "arm_range.a_range" ) == 0 && v->arm_range.type == COOKTORTURE_WREF_ARM_TYPE_A_RANGE ) { v->arm_range.as.a_range = (int32_t) n; return 1; }
+            if ( strcmp( path, "chan_lim[1]" ) == 0 ) { v->chan_lim[1] = (int32_t) n; return 1; }
+        }
+        if ( strcmp( path, "phase" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->phase = (cooktorture_phase_t) n; return 1; }
+        return 0;
+    }
+    /* SILENT-FAILURE ROWS sffw_* (SF-21, SF-26): FixedSave below Min, and a deprecated variant */
+    if ( strcmp( root, "TortureFixedMin" ) == 0 )
+    {
+        cooktorture_torture_fixed_min_t * v = (cooktorture_torture_fixed_min_t *) value;
+        if ( strcmp( path, "few" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            int32_t i;
+            for ( i = v->few_count; i < (int32_t) n && i < 4; i++ ) { v->few[i] = v->few[0]; }
+            v->few_count = (int32_t) n;
+            return 1;
+        }
+        if ( strcmp( path, "phase" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->phase = (cooktorture_phase_t) n; return 1; }
         return 0;
     }
     if ( strcmp( root, "TortureCook" ) == 0 )
@@ -110,6 +170,7 @@ int conformance_write_refusal_write_cooktorture( int surface, const char * root,
     (void) announcement; (void) announcement_bytes;
     if ( surface != CONFORMANCE_WRITE_FIXED ) { return 0; }
     if ( strcmp( root, "TortureFixedWref" ) == 0 ) { *wrote = cooktorture_torture_fixed_wref_fixed_save( (const cooktorture_torture_fixed_wref_t *) value, 1, buffer, capacity ); return 1; }
+    if ( strcmp( root, "TortureFixedMin" ) == 0 ) { *wrote = cooktorture_torture_fixed_min_fixed_save( (const cooktorture_torture_fixed_min_t *) value, 1, buffer, capacity ); return 1; }
     return 0;
 }
 const ConformanceCodec * conformance_codecs_cooktorture( int * count )

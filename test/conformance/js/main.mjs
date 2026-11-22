@@ -763,6 +763,8 @@ const wireRows = [
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Variable.js"],
   ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureVariable.js"],
+  ["cooktorture", "TortureVarWref", "cooktorture/CookTortureVariable.js"],
+  ["cooktorture", "TortureFixedMin", "cooktorture/CookTortureVariable.js"],
   ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)

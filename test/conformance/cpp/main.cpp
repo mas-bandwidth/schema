@@ -386,6 +386,7 @@ static const Codec codecs[] = {
     CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
+    CODEC( "cooktorture", cooktorture, TortureFixedMin ),
 };
 
 // ---------------------------------------------------------------------------
@@ -492,6 +493,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblvarevo2", tblvarevo2, EvoDoc ),
     VARCODEC( "tblvarevo3", tblvarevo3, EvoDoc ),
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
+    VARCODEC( "cooktorture", cooktorture, TortureVarWref ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
@@ -2133,6 +2135,49 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         if ( path == "u_val.u_f32" && kind == "float" ) return parse_wref_f32( text, v.u_val.u_f32 );
         if ( path == "u_val.u_str" ) return write_refusal_text( v.u_val.u_str.value, 16, v.u_val.u_str.value_length, kind, text );
     }
+    // SILENT-FAILURE ROWS sfw_* (SF-09, SF-13, SF-14, SF-15, SF-26): every carrier on a variable root
+    if ( root == "TortureVarWref" )
+    {
+        cooktorture::TortureVarWref & v = *(cooktorture::TortureVarWref *) value;
+        if ( path == "raw" ) return write_refusal_bytes_field( v.raw, 4, v.raw_length, kind, text );
+        if ( path == "opt_arr" && kind == "count" )
+        {
+            for ( int32_t i = v.opt_arr_count; i < (int32_t) n && i < 3; i++ ) v.opt_arr[i] = v.opt_arr[0];
+            v.opt_arr_count = (int32_t) n;
+            v.opt_arr_present = true;
+            return true;
+        }
+        if ( path == "arm_arr.a_arr" && kind == "count" )
+        {
+            if ( v.arm_arr.type != cooktorture::WrefArmType::AArr ) return false;
+            for ( int32_t i = v.arm_arr.a_arr.value_count; i < (int32_t) n && i < 3; i++ ) v.arm_arr.a_arr.value[i] = v.arm_arr.a_arr.value[0];
+            v.arm_arr.a_arr.value_count = (int32_t) n;
+            return true;
+        }
+        if ( path == "arm_raw.a_raw" ) return v.arm_raw.type == cooktorture::WrefArmType::ARaw && write_refusal_bytes_field( v.arm_raw.a_raw.value, 4, v.arm_raw.a_raw.value_length, kind, text );
+        if ( path == "arm_str.a_str" ) return v.arm_str.type == cooktorture::WrefArmType::AStr && write_refusal_text( v.arm_str.a_str.value, 8, v.arm_str.a_str.value_length, kind, text );
+        if ( kind == "int" )
+        {
+            if ( path == "arm_bits.a_bits" && v.arm_bits.type == cooktorture::WrefArmType::ABits ) { v.arm_bits.a_bits = (uint32_t) n; return true; }
+            if ( path == "arm_range.a_range" && v.arm_range.type == cooktorture::WrefArmType::ARange ) { v.arm_range.a_range = (int32_t) n; return true; }
+            if ( path == "chan_lim[1]" ) { v.chan_lim.slots[1] = (int32_t) n; return true; }
+        }
+        if ( path == "phase" && kind == "ordinal" ) { v.phase = (cooktorture::Phase) n; return true; }
+        return false;
+    }
+    // SILENT-FAILURE ROWS sffw_* (SF-21, SF-26): FixedSave below Min, and a deprecated variant
+    if ( root == "TortureFixedMin" )
+    {
+        cooktorture::TortureFixedMin & v = *(cooktorture::TortureFixedMin *) value;
+        if ( path == "few" && kind == "count" )
+        {
+            for ( int32_t i = v.few_count; i < (int32_t) n && i < 4; i++ ) v.few[i] = v.few[0];
+            v.few_count = (int32_t) n;
+            return true;
+        }
+        if ( path == "phase" && kind == "ordinal" ) { v.phase = (cooktorture::Phase) n; return true; }
+        return false;
+    }
     if ( root == "TortureCook" )
     {
         cooktorture::TortureCook & v = *(cooktorture::TortureCook *) value;
@@ -2210,6 +2255,7 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
     if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
+    if ( root == "TortureFixedMin" ) { wrote = cooktorture::TortureFixedMinFixedSave( (const cooktorture::TortureFixedMin *) value, 1, buffer, capacity ); return true; }
     return false;
 }
 

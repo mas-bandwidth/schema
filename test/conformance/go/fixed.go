@@ -233,6 +233,9 @@ func init() {
 	bind("tblvarevo3", "EvoMsg", func(c codec) codec {
 		return fixedForm(c, tblvarevo3.EvoMsgFixedLoad, tblvarevo3.EvoMsgFixedMeasure, tblvarevo3.EvoMsgFixedSave)
 	})
+	bind("cooktorture", "TortureFixedMin", func(c codec) codec {
+		return fixedForm(c, cooktorture.TortureFixedMinFixedLoad, cooktorture.TortureFixedMinFixedMeasure, cooktorture.TortureFixedMinFixedSave)
+	})
 	bind("cooktorture", "TortureFixedWref", func(c codec) codec {
 		return fixedForm(c, cooktorture.TortureFixedWrefFixedLoad, cooktorture.TortureFixedWrefFixedMeasure, cooktorture.TortureFixedWrefFixedSave)
 	})

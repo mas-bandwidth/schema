@@ -824,6 +824,23 @@ var codecTable = []codec{
 	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	regionRow("cooktorture", "TortureVarWref", cooktorture.TortureVarWrefLoadMeasure, cooktorture.TortureVarWrefLoad, cooktorture.TortureVarWrefMeasure, cooktorture.TortureVarWrefSave, func(text []byte, r *cooktorture.TableReport) (*cooktorture.TortureVarWref, []byte, bool) {
+		var b cooktorture.TortureVarWrefBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := cooktorture.TortureVarWrefFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, cooktorture.TortureVarWrefToJSONMeasure, cooktorture.TortureVarWrefToJSON, cooktorture.TortureVarWrefCookMeasure, cooktorture.TortureVarWrefCookFrom, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("cooktorture", "TortureFixedMin", cooktorture.TortureFixedMinReset, cooktorture.TortureFixedMinLoad, cooktorture.TortureFixedMinMeasure, cooktorture.TortureFixedMinSave, cooktorture.TortureFixedMinFromJSON, cooktorture.TortureFixedMinToJSONMeasure, cooktorture.TortureFixedMinToJSON, cooktorture.TortureFixedMinCookMeasure, cooktorture.TortureFixedMinCookFrom, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
 	row("cooktorture", "TortureFixedWref", cooktorture.TortureFixedWrefReset, cooktorture.TortureFixedWrefLoad, cooktorture.TortureFixedWrefMeasure, cooktorture.TortureFixedWrefSave, cooktorture.TortureFixedWrefFromJSON, cooktorture.TortureFixedWrefToJSONMeasure, cooktorture.TortureFixedWrefToJSON, cooktorture.TortureFixedWrefCookMeasure, cooktorture.TortureFixedWrefCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),

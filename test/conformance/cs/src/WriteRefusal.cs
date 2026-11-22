@@ -290,6 +290,15 @@ static partial class Program
                 f.SetValue(holder, arr);
                 return true;
             }
+            if (kind == "int")
+            {
+                // a keyed or fixed array slot: the slot keeps its own storage type
+                object existing = WriteRefusalElementGet(arr, elemIdx.Value);
+                object converted = Convert.ChangeType(checked(long.Parse(text, CultureInfo.InvariantCulture)), existing.GetType(), CultureInfo.InvariantCulture);
+                WriteRefusalElementSet(arr, elemIdx.Value, converted);
+                f.SetValue(holder, arr);
+                return true;
+            }
             throw new InvalidOperationException("write-refusal: unexpected indexed leaf " + seg);
         }
 
@@ -354,8 +363,11 @@ static partial class Program
                 int cap = WriteRefusalCapacity(buf);
                 for (int i = oldCount; i < Math.Min(n, cap); i++)
                 {
+                    // a fresh copy of element 0 from a fresh load of the root; an array
+                    // inside a union arm or a nested value has no root field to reload,
+                    // and its elements are scalars, so element 0 itself is the copy
                     object freshRoot = codec.Load(wire, new Report());
-                    object freshBuf = f.GetValue(freshRoot);
+                    object freshBuf = freshRoot.GetType() == holderType ? f.GetValue(freshRoot) : buf;
                     WriteRefusalElementSet(buf, i, WriteRefusalElementGet(freshBuf, 0));
                 }
                 f.SetValue(holder, buf);
@@ -396,6 +408,7 @@ static partial class Program
             case Tabledemo.LoadoutConfig loadout: return Tabledemo.Schema.LoadoutConfigFixedSave(loadout, buffer);
             case Scalardemo.SimState sim: return Scalardemo.Schema.SimStateFixedSave(sim, buffer);
             case Cooktorture.TortureFixedWref tfw: return Cooktorture.Schema.TortureFixedWrefFixedSave(tfw, buffer);
+            case Cooktorture.TortureFixedMin tfm: return Cooktorture.Schema.TortureFixedMinFixedSave(tfm, buffer);
         }
         throw new InvalidOperationException("write-refusal-fixed: no FixedSave for " + value.GetType().Name);
     }
