@@ -664,9 +664,15 @@ tables-elixir-accessor-descriptor-agreement: build/elixir-tables-ebin/.stamp
 # two-minute cap. Shard K of ELIXIR_AGREEMENT_SHARDS strictly compiles every
 # Nth table unit (sorted by name, starting at the Kth) into its own ebin and
 # walks those modules; the shards together compile and walk every unit the
-# whole-corpus target does. What a shard does not compile is the conformance
-# driver (test/conformance/elixir/driver_impl.ex), which needs every unit: the
-# verify-leg rows and test-elixir compile it with the whole corpus.
+# whole-corpus target does. WHAT THE SHARDS DROP from the per-commit lane is
+# the one strict compile of the whole corpus with the conformance driver
+# (build/elixir-tables-ebin/.stamp: test/conformance/elixir/driver_impl.ex,
+# which needs every unit, and the check that no module is defined in two
+# units, which only a compile of every unit together sees). A pull request
+# whose Elixir verify-leg rows run still compiles it there; one that touches
+# shared files (ci-fast.yml's shared_broad: ir/, compiler/, tables/, the
+# Makefile, test/tables schemas) or more than four legs runs no verify-leg
+# rows, so for it that compile runs only in Certify's nightly test-elixir.
 ELIXIR_AGREEMENT_SHARDS := 4
 
 .PHONY: tables-elixir-accessor-descriptor-agreement-shard-%
