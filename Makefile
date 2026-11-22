@@ -6683,7 +6683,7 @@ conformance-port: build/conformance-harness
 	@mkdir -p build/conformance-port-$(NAME)
 	@printf '%s %s\n' '$(NAME)' '$(DRIVER)' > build/conformance-port-$(NAME)/drivers.txt
 	./build/conformance-harness run --drivers build/conformance-port-$(NAME)/drivers.txt \
-		--work build/conformance-port-$(NAME)/work
+		--work build/conformance-port-$(NAME)/work --complete
 	$(if $(CARDS_DRIVER),./build/conformance-harness cards --corpus tables/cards/conformance --driver '$(CARDS_DRIVER)' --require $(CARDS_REQUIRE))
 
 # A separate four-case whole-text entry gate, not four new global corpus rows.

@@ -294,3 +294,41 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 		t.Fatalf("substituted registry leaked its working directory: got %q, want %q", after, cwd)
 	}
 }
+
+// TestCompleteRunRefusesEveryAbsence is `make conformance-port`'s rule
+// (--complete): a port's own conformance run is a claim of conformance, so an
+// absence at any grain fails it and the success footer never prints. The Zig
+// spec port's gap 3 (2026-11-22, docs/SPEC-CONFORMANCE.md §8): a stub driver
+// that answered nothing printed "every registered surface passes".
+func TestCompleteRunRefusesEveryAbsence(t *testing.T) {
+	needShell(t)
+	for name, leg := range map[string]fakeLeg{
+		"a surface left out of list": {unlisted: "json-write"},
+		"a surface exiting 2":        {exitTwo: "json-read"},
+		"a case answered absent":     {caseGone: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newFakeCorpus(t)
+			var out bytes.Buffer
+			ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, c.substituted(t, "zz", leg),
+				filepath.Join(t.TempDir(), "work"), "", "", runOptions{complete: true})
+			if err != nil {
+				t.Fatalf("harness run: %v\n%s", err, out.String())
+			}
+			if ok {
+				t.Errorf("a --complete run with an absence stayed green:\n%s", out.String())
+			}
+			mustSay(t, out.String(), []string{"NOT CONFORMING"}, []string{footer})
+		})
+	}
+	t.Run("a driver that answers every case", func(t *testing.T) {
+		c := newFakeCorpus(t)
+		var out bytes.Buffer
+		ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, c.substituted(t, "zz", fakeLeg{}),
+			filepath.Join(t.TempDir(), "work"), "", "", runOptions{complete: true})
+		if err != nil || !ok {
+			t.Errorf("a --complete run with no absence failed (%v):\n%s", err, out.String())
+		}
+		mustSay(t, out.String(), []string{footer}, []string{"NOT CONFORMING"})
+	})
+}

@@ -437,6 +437,17 @@ var framingVectors = []framingVector{
 	// The multiplier is complete, then a distinct unknown field carries kind
 	// 37. The strict read refuses the unsupported kind without keeping a value.
 	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9, 7, 10), f32(1.5), b(16, 37, 0), b(0))},
+	// F7, first-use order over SKIPPED bytes (docs/SPEC-TABLES.md §3, the Swift
+	// spec port's gap 5): an unknown field whose kind-13 payload names `power`,
+	// an id no decoded field uses, then grade = Silver. Every reference in the
+	// file counts at its byte position, so the canonical table is zzz, power,
+	// grade, Silver and the file reads; a reader that counts only the ids it
+	// decodes calls `power` unused and refuses a canonical file.
+	{name: "skipped_ids_first_use", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 13, 7, 15, 4), i32(7), b(0), gradeSilver, b(0))},
+	// The same body under the table a decoded-ids-only walk would expect: zzz,
+	// grade, Silver, power. `power` is first used inside the skipped payload,
+	// before grade, so the table is out of first-use order and the read refuses.
+	{name: "skipped_ids_out_of_order", unit: "tblr1", root: "Cfg", ids: []string{"zzz", "grade", "Silver", "power"}, body: cat(b(1, 13, 7, 4, 4), i32(7), b(0), b(2, 30, 3), b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.

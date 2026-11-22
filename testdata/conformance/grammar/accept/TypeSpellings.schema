@@ -1,0 +1,44 @@
+// EVERY FIELD-TYPE SPELLING OF THE GRAMMAR (SPEC.md §4.2, Type and Scalar;
+// docs/SPEC-CONFORMANCE.md §8, gap 1): the optional prefix, every bound form,
+// the unbounded `[]`, an optional element after a bound, a map with an
+// optional value, a bare `string`, the blob slots `*bytes` and `*string`, a
+// pointer, `fixed table`, and `was` on a table, a field and an arm.
+package grammartypes
+
+enum Kind { A, B }
+
+fixed table Leaf
+{
+    v int32
+}
+
+union Choice
+{
+    empty
+    leaf Leaf | was = "old_leaf"
+    small [..2]int8
+}
+
+table Node
+{
+    next *Node
+}
+
+table Root | was = "OldRoot"
+{
+    maybe   ?Leaf
+    exact   [2]int32
+    upto    [..4]int32
+    ranged  [1..4]Leaf
+    keyed   [Kind]int32
+    list    []Leaf
+    texts   []string
+    names   [..4]?string(8)
+    lookup  map[string(16)]?Leaf
+    byid    map[uint32]string(8)
+    blob    *bytes
+    note    *string
+    link    *Node
+    choice  Choice
+    renamed int32 | was = "older"
+}

@@ -366,6 +366,7 @@ var sharedFixturePurposes = map[string]string{
 	"testdata/wire/tables/framing/frame_unreferenced_entry.bin": "unused-id-entry",
 	"testdata/wire/tables/framing/frame_duplicate_entry.bin":    "duplicate-id-entry",
 	"testdata/wire/tables/rewrite_ids_reversed.bin":             "id-table-out-of-order",
+	"testdata/wire/tables/framing/skipped_ids_out_of_order.bin": "id-table-out-of-order",
 	"testdata/wire/tables/rewrite_fields_reversed.bin":          "fields-out-of-order",
 	"testdata/wire/tables/framing/array_L2_empty.bin":           "stored-default",
 	"testdata/wire/tables/framing/union_arm_zero_in_field.bin":  "union-arm-zero",

@@ -1,0 +1,17 @@
+// AN ENUM-KEYED ARRAY IS NOT AN ARM PAYLOAD (docs/SPEC-TABLES.md §2.6, §3's arm
+// payload table, which is closed; docs/SPEC-CONFORMANCE.md §8, gap 13). The
+// check refuses the declaration, so no conforming wire carries kind 16 under
+// an arm.
+package grammararmkeyed
+
+enum Slot { A, B }
+
+union U
+{
+    keyed [Slot]int32
+}
+
+table T
+{
+    u U
+}

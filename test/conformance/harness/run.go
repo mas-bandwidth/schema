@@ -696,6 +696,10 @@ type runOptions struct {
 	// failure. The real gate (main.go) sets it; the fake-corpus tests that
 	// carry rows for three surfaces and list thirteen leave it off.
 	strictRows bool
+	// complete is a PORT's conformance run (make conformance-port): an
+	// absence of any grain fails it, and the success footer never prints
+	// beside one (docs/SPEC-CONFORMANCE.md §2: an absence is never a pass).
+	complete bool
 }
 
 // parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
@@ -933,7 +937,40 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 	}
+	if opts.complete {
+		return reportComplete(w, langs, results), nil
+	}
 	return report(w, langs, results), nil
+}
+
+// reportComplete is report for a port's conformance run: the same matrix,
+// and then every absence counted as work not done. A run with any absence
+// fails and never prints the success footer (the Zig spec port's gap 3,
+// 2026-11-22: a stub driver that answered nothing printed the footer).
+func reportComplete(w io.Writer, langs []string, results map[string]map[string]*result) bool {
+	var b strings.Builder
+	ok := report(&b, langs, results)
+	absent := 0
+	for _, l := range langs {
+		for _, s := range surfaces {
+			r := results[l][s]
+			switch {
+			case r == nil:
+			case r.absent:
+				absent += r.total
+			default:
+				absent += r.missing
+			}
+		}
+	}
+	text := b.String()
+	if absent > 0 {
+		text = strings.Replace(text, "tables conformance: every registered surface passes\n", "", 1)
+		text += fmt.Sprintf("tables conformance: NOT CONFORMING: %d case(s) answered absent, and an absence is never a pass (docs/SPEC-CONFORMANCE.md §2)\n", absent)
+		ok = false
+	}
+	_, _ = io.WriteString(w, text)
+	return ok
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker
@@ -962,7 +999,16 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		return
 	}
 	if surface == "wire" && inst.WireRefused {
-		if _, err := os.Stat(answer); err == nil {
+		// THE REFUSAL IS SPELLED `refused` AND A NEWLINE, as on every read
+		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §8 gap
+		// 4); the historical `<case>.absent` file still carries it. Any other
+		// bytes are a value the row forbids.
+		if got, err := os.ReadFile(answer); err == nil {
+			if string(got) == "refused\n" {
+				r.pass++
+				r.mark(e.name, outcomePass)
+				return
+			}
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected wire refusal, got bytes", e.name))
 			r.mark(e.name, outcomeFail)
 			return

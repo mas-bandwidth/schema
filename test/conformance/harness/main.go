@@ -172,6 +172,7 @@ func main() {
 	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
 	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run only)")
+	complete := fs.Bool("complete", false, "a port's conformance run: any absence, of a surface or a case, fails the run and the success footer is not printed, because an absence is never a pass (docs/SPEC-CONFORMANCE.md §2, §5; run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
@@ -308,6 +309,7 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
+		opts.complete = *complete
 		runSurfaces, err := parseSurfaces(*onlySurfaces)
 		if err != nil {
 			fatalf("%v", err)

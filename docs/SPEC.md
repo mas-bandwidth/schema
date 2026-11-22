@@ -531,7 +531,14 @@ from this projection rather than carried in it.
   refuses one by name (SPEC-TABLES.md §2.3). `|` opens a line's qualification
   section (§4.2, Attributes) and claims the rest of the line — the newline
   or a `//` comment terminates it, and no newline suppression applies after
-  `|` or after a `,` inside a qualification. `<=` is not in the language: a count
+  `|` or after a `,` inside a qualification. **On a DECLARATION line alone**
+  (`enum`, `flags`, `type`, `table`, `fixed table`, `union`) **the `{` that
+  opens the body also ends the section**, so the body may open on the
+  qualification's own line (`fixed table F | forms = "wire" { v int32 }`);
+  the formatter moves it to the next line. On a field, arm, variant or
+  constant line nothing but the newline or a `//` comment ends it (a `}`
+  closing the enclosing block terminates a field line as it terminates any
+  item; on a qualified VARIANT it is refused, below). `<=` is not in the language: a count
   bound is a range literal (`[..N]`, `[A..B]`), never a truncated
   comparison, and the retired `[<= N]` spelling is refused with the
   replacement named.
@@ -586,10 +593,27 @@ from this projection rather than carried in it.
 
 ### 4.2 Grammar
 
+**THE GRAMMAR IS COMPLETE AND NORMATIVE, AND IT IS WHAT A PORT READS.** A port
+of the runtime is handed `.schema` text — the conformance manifest's `unit`
+lines name source files and directories, and no other form of a schema is
+exchanged — so a port parses it with these productions, the lexical rules of
+§4.1 and the resolution rules below, and nothing else. The compiler's IR is
+internal and is never an interchange format. A spelling the parser of the
+reference compiler (`internal/parser`) accepts and these productions do not,
+or the reverse, is a defect in one of them, and the grammar corpus
+(`testdata/conformance/grammar`, docs/SPEC-CONFORMANCE.md §8) holds both.
+**The checker's refusals (§4.6, SPEC-TABLES.md §11) are `schema check`'s**:
+every unit the conformance corpus names is one the checker accepts, so a
+runtime port may take its input as checked and apply only the runtime rules.
+A port that accepts schema text from its own users runs `schema check` on it
+first, or implements §4.6 whole; it never reads a unit the checker refuses.
+
 EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option). The
 productions elide one tolerance stated in §4.1: a newline is accepted before
 any `Block`, `UnionBlock` or `VariantList` opener — Allman is the canonical
-placement and the formatter normalizes to it:
+placement and the formatter normalizes to it. A declaration's `AttrSection`
+ends at its newline or at that opener's `{` (§4.1), so `AttrSection NL
+Block` below also reads `AttrSection Block`:
 
 ```
 File        = { Declaration } .
@@ -598,6 +622,8 @@ Flags       = "flags" ident ( VariantList
             | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
                                                                    // body opens on the NEXT line
+                                                                   // in canonical form, or after
+                                                                   // the section on its own line
 Union       = "union" ident ( UnionBlock
             | AttrSection NL UnionBlock ) NL .                     // "union" contextual, §4.8;
                                                                    // the qualification carries TAGS
@@ -641,12 +667,19 @@ VariantSep  = "," | NL .                                           // a comma, o
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
-TableDecl   = "table" ident ( Block
+TableDecl   = [ "fixed" ] "table" ident ( Block               // `fixed table` declares the fixed
+                                                        // class (SPEC-TABLES.md §2.2); `fixed`
+                                                        // here is the declaration's class
+                                                        // keyword, never the fixed(I, F) scalar
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
                                                         // carries TAGS, `was` and `forms`
-                                                        // (§4.2, SPEC-TABLES.md §2.12)
+                                                        // (§4.2, SPEC-TABLES.md §2.12), and
+                                                        // the table-only keys `integrity`
+                                                        // (SPEC-TABLES.md §2.14) and `json`
+                                                        // (SPEC-TABLES.md §16.10); no other
+                                                        // valued key
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -661,7 +694,12 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = [ "?" ] [ "[" Bound "]" ] ( Scalar | Map ) .       // array bound is a PREFIX, Go's order.
+Type        = [ "?" ] [ "[" [ Bound ] "]" [ "?" ] ] ( Scalar | Map ) . // array bound is a PREFIX, Go's order.
+                                                                 // `[]` (no Bound) is the UNBOUNDED
+                                                                 // array (SPEC-TABLES.md §2.9); a "?"
+                                                                 // AFTER the bracket makes the ELEMENT
+                                                                 // optional (SPEC-TABLES.md §2.13);
+                                                                 // a second bracket is refused (§4.3)
                                                                  // "?" is the OPTIONAL prefix
                                                                  // (SPEC-TABLES.md §2.3): the value plus
                                                                  // a generated presence bool. TABLE
@@ -682,6 +720,8 @@ Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
+            | "string"                                           // UNBOUNDED text: a text-list element
+                                                                 // or a map key (SPEC-TABLES.md §2.13.1)
             | "bytes" "(" IntExpr ")"
             | "timestamp"                                        // nanoseconds since the Unix epoch
                                                                  // (§4.13); TABLE fields only
@@ -689,6 +729,8 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
+            | "*" ( "bytes" | "string" )                         // a BLOB slot at its used size
+                                                                 // (SPEC-TABLES.md §2.5); no bound
             | "*" ident                                          // a POINTER to a declared table
                                                                  // (SPEC-TABLES.md §2.1);
                                                                  // TABLE BODIES ONLY — a type
@@ -722,7 +764,12 @@ QualIdent   = ident { "::" ident } .                             // a `::`-quali
                                                                  // the global spelling the emitter
                                                                  // writes verbatim (cpp_native, §4.2)
 
-If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
+If          = "if" [ "!" ] ident Block [ [ NL ] "else" Block ] NL .
+                                                                 // `else` stands on the `}`'s line or
+                                                                 // alone on the next (Allman). With no
+                                                                 // `else`, the If ends at its `}` and its
+                                                                 // NL, and the next line is an Item: one
+                                                                 // token past the newline decides
 
                                                                  // (an ident that is a const
                                                                  // name resolves as IntExpr;
@@ -735,6 +782,20 @@ IntExpr     = integer expression over literals, const names, and enum max
 FloatExpr   = float expression over float literals, int literals and const names:
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
 ```
+
+**A FLOAT LITERAL IS A float64 FIRST, EVERYWHERE.** A float literal, alone or
+inside an expression, is rounded once to the nearest float64 (ties to even), and
+the expression is evaluated in float64. A `float32` field's default, range end or
+resolution is that float64 rounded once more to float32 (ties to even): `x
+float32 = 0.1` holds `float32(float64(0.1))`. The two roundings are the rule, not
+an approximation of a single one; a port that rounds the exact decimal once to
+float32 differs on literals within half a float64 ulp of a float32 tie, and is
+wrong there (docs/SPEC-CONFORMANCE.md §8).
+
+**A NAME IS ASCII; A `was` STRING IS UTF-8.** An identifier is `[A-Za-z_][A-Za-z0-9_]*`
+and nothing else (§4.1), so every wire id of a declared name is fnv1a64 over ASCII
+bytes. A `was = "..."` alias is a string, and its id is fnv1a64 over the string's
+UTF-8 bytes exactly as written, with no normalization.
 
 - **Integer expressions** evaluate at compile time in arbitrary precision,
   Go's untyped-constant style, with a fit-check at each use site — so
@@ -936,7 +997,8 @@ sequence    uint16
   has to be remembered as the exception. What differs per line is the VALUED
   vocabulary, which stays closed and per-line exactly as it is. `|` is never
   an operator; the language has no bitwise-or. It cannot wrap: the pipe
-  claims the rest of the line and nothing else can follow it. That
+  claims the rest of the line and nothing else can follow it (a
+  declaration's section ends at its body's `{` too, §4.1). That
   **no-exit property is a guarantee**, not an accident — nothing can be
   appended past the qualifiers, so the
   definition/qualification partition cannot erode; and the zone right of
@@ -948,9 +1010,10 @@ sequence    uint16
 - **Declaration lines take the same section**: a tag or a native-type
   binding, a flags declaration's `max` headroom —
   `type Quat | quat4`, `flags Damage | max = 8` —
-  and the body brace opens on the next line — with a qualification section
-  that is forced (the section runs to the end of the line), and everywhere
-  else it is the Allman house style (§4.1):
+  and the body brace opens on the next line in canonical form; the parser
+  also reads it on the qualification's own line, where the `{` ends the
+  section (§4.1), and the formatter moves it down. Everywhere else it is
+  the Allman house style (§4.1):
 
   ```
   type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
