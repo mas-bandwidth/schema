@@ -84,7 +84,7 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 			if value.Count < 0 || value.Count > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Count))
+			w.Put32(uint32(int64(value.Count) & 0xffffffff))
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -177,7 +177,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -190,7 +190,7 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 100 {
 					r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -358,7 +358,7 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 			if value.Count < 0 || value.Count > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Count))
+			w.Put32(uint32(int64(value.Count) & 0xffffffff))
 		}
 	}
 	if !tableRetainTail(w) {
@@ -452,7 +452,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -465,7 +465,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 100 {
 					r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -932,7 +932,7 @@ func ArchiveConfigFixedBoundsKnown0(value *ArchiveConfig) bool {
 var ArchiveConfigFixedResetImage = func() []byte {
 	var def ArchiveConfig
 	ArchiveConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var ArchiveConfigFixedHoles = tableFixedHoles(ArchiveConfigFixedPlan.Entries, ArchiveConfigFixedPlan.Count, uint32(len(ArchiveConfigFixedResetImage)))
@@ -1111,7 +1111,7 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])

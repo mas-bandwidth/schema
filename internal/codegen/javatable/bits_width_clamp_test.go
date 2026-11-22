@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestBitsFieldAndArrayWidthClampJava is the regression test for the wire-fuzz
@@ -210,14 +211,14 @@ public final class BitsClampDriver {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	mutantPath, err := filepath.Abs(filepath.Join(repo, "testdata", "wire", "tables", "fuzz-vectors", "bits_width_clamp_archive_r83429.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "BitsClampDriver", mutantPath).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "BitsClampDriver", mutantPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

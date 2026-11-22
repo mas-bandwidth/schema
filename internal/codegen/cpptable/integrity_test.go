@@ -23,6 +23,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const integritySchema = `package probe
@@ -160,10 +162,10 @@ func writeAndCompile(t *testing.T, files map[string][]byte, header, driver strin
 	}
 	bin := filepath.Join(dir, "probe")
 	args := []string{"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-I", dir, main, "-o", bin}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	return exec.Command(bin).CombinedOutput()
+	return testproc.Command(t, bin).CombinedOutput()
 }
 
 // variableDriver ports the Go oracle's TestIntegrity and flipAll

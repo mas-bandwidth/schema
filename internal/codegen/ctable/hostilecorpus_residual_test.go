@@ -13,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCHostileCorpusResidualCases pins the seven C-leg divergences the
@@ -179,12 +181,12 @@ func runCHostileResidual(t *testing.T, readerSrc, source string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if output, err := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}
 }

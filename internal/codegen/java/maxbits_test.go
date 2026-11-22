@@ -2,13 +2,14 @@ package java
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A packet type whose MaxBits exceeds 2^31 - 1 must still emit valid Java:
@@ -76,7 +77,7 @@ func compileGiant(t *testing.T, src string) {
 	if err := os.WriteFile(javaFile, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes, javaFile)
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", classes, javaFile)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
