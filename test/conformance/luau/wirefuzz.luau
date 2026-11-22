@@ -41,6 +41,8 @@
 
 type Unit = { S: any, load: any, save: any, retain: any?, align: number, measure: boolean? }
 type Entry = { u: Unit, root: string, retain: boolean }
+type MsgUnit = { S: any, M: any, ownVocab: any }
+type MsgEntry = { mu: MsgUnit, root: string }
 
 
 -- ---- LOADMEASURE (docs/SPEC-TABLES.md §6.5; internal/tablewire/extent.go) --
@@ -580,6 +582,51 @@ local function region_measure(S: any, desc: any, data: buffer, align: number): n
 	return total + (#records + 1) * 16
 end
 
+-- THE MESSAGE FORM (form 2; docs/SPEC-TABLES.md §3.3): the mutant is a message
+-- batch, read by schema_message's LoadMessages against the unit's OWN
+-- announced vocabulary (the roster carries no announcement), the bodies
+-- measured and saved by SaveMessages. A batch that does not load whole is
+-- refused: the leg answers no root, and the harness holds it to its oracle.
+local function messageReply(ok: boolean, rep: any, malformed: boolean, saved: buffer?): buffer
+	local slen = if saved ~= nil then buffer.len(saved) else -1
+	local b = buffer.create(47 + (if saved ~= nil then slen else 0))
+	buffer.writeu8(b, 0, if ok then 1 else 0)
+	buffer.writei32(b, 1, rep.unknown or 0)
+	buffer.writei32(b, 5, 0)
+	buffer.writei32(b, 9, rep.widened or 0)
+	buffer.writei32(b, 13, 0)
+	buffer.writei32(b, 17, 0)
+	buffer.writeu8(b, 21, if malformed then 1 else 0)
+	buffer.writeu8(b, 22, if ok then 0 else 1)
+	buffer.writeinteger(b, 23, -1i)
+	buffer.writei32(b, 31, 0)
+	buffer.writei32(b, 35, 0)
+	buffer.writeinteger(b, 39, integer.create(slen))
+	if saved ~= nil and slen > 0 then
+		buffer.copy(b, 47, saved, 0, slen)
+	end
+	return b
+end
+
+local function answerMessage(e: MsgEntry, wire: buffer): buffer
+	local M = e.mu.M
+	local rep: any = {}
+	local count, bodies = M.LoadMessages(e.mu.ownVocab, e.root, wire, 256, rep)
+	if count < 1 or rep.malformed or (rep.verdict or 0) ~= 0 or (rep.reason ~= nil and rep.reason ~= "") then
+		return messageReply(false, rep, rep.malformed == true, nil)
+	end
+	local srep: any = {}
+	local sz = M.MeasureMessages(e.mu.ownVocab, e.root, bodies, srep)
+	if sz < 0 then
+		return messageReply(false, rep, false, nil)
+	end
+	local out, n = M.SaveMessages(e.mu.ownVocab, e.root, bodies, srep)
+	if out == nil or n ~= sz then
+		return messageReply(false, rep, false, nil)
+	end
+	return messageReply(true, rep, false, out)
+end
+
 local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))
 	for i = 0, buffer.len(b) - 1 do
@@ -740,9 +787,46 @@ local function pipe(host: any)
 		end
 		return have
 	end
+	local mloaded: { [string]: MsgUnit | false } = {}
+	-- a unit's message codec: its schema_message module and the vocabulary its
+	-- own announcement (the TableMessageAnnouncement some module of the unit
+	-- carries) derives; nil when the unit has neither
+	local function messageUnit(key: string): MsgUnit?
+		local have = mloaded[key]
+		if have ~= nil then
+			return if have == false then nil else have
+		end
+		local base = "../../../build/conformance-luau/" .. key .. "/"
+		local ok, got = pcall(function(): MsgUnit?
+			local S = require(base .. "schema_tables")
+			local announcement: buffer? = nil
+			for _, name in units[key] or {} do
+				local okm, mod = pcall(function(): any return require(base .. name) end)
+				if okm and mod ~= nil and announcement == nil and mod.TableMessageAnnouncement ~= nil then
+					announcement = mod.TableMessageAnnouncement
+				end
+			end
+			if announcement == nil then
+				return nil
+			end
+			local M = require(base .. "schema_message")
+			local ownVocab = M.NewVocabulary()
+			if not M.AnnounceRead(ownVocab, announcement, {}) then
+				return nil
+			end
+			return { S = S, M = M, ownVocab = ownVocab }
+		end)
+		if ok and got ~= nil then
+			mloaded[key] = got
+			return got
+		end
+		mloaded[key] = false
+		return nil
+	end
 	local count = u32()
 	assert(count ~= nil, "wirefuzz: no roster")
 	local roster: { Entry | false } = {}
+	local mroster: { [number]: MsgEntry } = {}
 	local reply = buffer.create(count)
 	for i = 1, count do
 		local key = str()
@@ -751,17 +835,30 @@ local function pipe(host: any)
 		assert(fb ~= nil, "wirefuzz: the roster ended inside an entry")
 		local form, retain = buffer.readu8(fb, 0), buffer.readu8(fb, 1)
 		local entry: Entry | false = false
-		-- A FORM-2 entry is the message batch reader, which this leg does not
-		-- drive, so it answers 0 (test/conformance/README.md, "The wire-fuzz
-		-- driver"). A RETAIN entry is the retention arm, driven through
+		-- A FORM-2 entry is the message batch reader, driven through
+		-- schema_message's LoadMessages and SaveMessages over the unit's own
+		-- vocabulary (answerMessage). A RETAIN entry is the retention arm, driven through
 		-- schema_retain.luau's LoadRetain and SaveRetain.
 		-- Every entry answered 0 is NOTED by name (__luaufuzz.note, the file
 		-- LUAUFUZZ_NOTE names): make/luau-fuzz.mk holds the list to
 		-- test/conformance/luau/wire-fuzz-absent.txt, so a root that drops out
 		-- is a reviewed change and never a quieter run.
 		local why = ""
-		if form ~= 1 then
-			why = "message"
+		if form == 2 then
+			local mu = messageUnit(key)
+			if mu == nil then
+				why = "refused"
+			else
+				local okd, d = pcall(mu.S.lookup, root)
+				if okd and d ~= nil and d.table and d.fixed and retain == 0 then
+					mroster[i] = { mu = mu, root = root }
+					entry = true :: any
+				else
+					why = "no-codec"
+				end
+			end
+		elseif form ~= 1 then
+			why = "refused"
 		else
 			local u = unit(key)
 			if u == nil then
@@ -790,7 +887,12 @@ local function pipe(host: any)
 		assert(wire ~= nil, "wirefuzz: the stream ended inside a mutant")
 		local entry = roster[index + 1]
 		assert(entry, "wirefuzz: a mutant for a root this leg answered 0")
-		host.write(answer(entry.u, entry.root, wire, entry.retain))
+		local me = mroster[index + 1]
+		if me ~= nil then
+			host.write(answerMessage(me, wire))
+		else
+			host.write(answer(entry.u, entry.root, wire, entry.retain))
+		end
 	end
 end
 

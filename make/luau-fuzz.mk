@@ -33,7 +33,7 @@ LUAU_FUZZ_N    ?= 2000
 # scratch copy with one reader bug planted (tables-luau-release-negative-control)
 LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
-LUAU_WIRE_FUZZ_ABSENT_COUNT := 9
+LUAU_WIRE_FUZZ_ABSENT_COUNT := 0
 LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
 LUAU_WIRE_FUZZ_LOG          ?= build/wire-fuzz/luau.log
 LUAU_WIRE_FUZZ_ABSENT       ?= build/wire-fuzz/luau.absent
@@ -50,8 +50,7 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed $(LUAU_WIRE_FUZZ_FAILED) \
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \
-		if [ ! -f $(LUAU_WIRE_FUZZ_ABSENT) ]; then \
-			echo "tables-luau-wire-fuzz: the driver noted no absent-root list"; exit 1; fi; \
+		: >> $(LUAU_WIRE_FUZZ_ABSENT); \
 		sort $(LUAU_WIRE_FUZZ_ABSENT) > $(LUAU_WIRE_FUZZ_ABSENT).sorted; \
 		grep -v '^#' $(LUAU_WIRE_FUZZ_ABSENT_PIN) | sort > $(LUAU_WIRE_FUZZ_ABSENT).pinned; \
 		n=$$(wc -l < $(LUAU_WIRE_FUZZ_ABSENT).sorted | tr -d ' '); \
