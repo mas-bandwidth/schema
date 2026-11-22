@@ -3,7 +3,9 @@
    schema_assert stops it before the first byte. C is an assert leg: the check
    is debug-only, NDEBUG removes it, and a release build carries no write-side
    check at all. This translation unit is compiled WITHOUT NDEBUG. An assert
-   aborts, so each writer runs in a child and death by SIGABRT is the refusal. */
+   aborts, so each writer runs in a child and death by SIGABRT is the refusal.
+   The child is not dumpable, so its abort starts no crash handler (wref.c says
+   why). */
 
 #define _POSIX_C_SOURCE 200809L
 
@@ -13,6 +15,9 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined( __linux__ )
+#include <sys/prctl.h>
+#endif
 
 #include "StorageTable.h"
 
@@ -48,7 +53,11 @@ static int asserted( int save )
     }
     if ( child == 0 )
     {
-        int null = open( "/dev/null", O_WRONLY );
+        int null;
+#if defined( __linux__ )
+        (void) prctl( PR_SET_DUMPABLE, 0, 0, 0, 0 );
+#endif
+        null = open( "/dev/null", O_WRONLY );
         if ( null >= 0 )
         {
             dup2( null, 2 );

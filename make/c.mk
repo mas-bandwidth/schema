@@ -268,6 +268,66 @@ $(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test
 	@mkdir -p $(@D)
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
 
+# THE DRIVER'S OBJECTS, HANDED OVER. Side by side they are still about 280 s
+# of compile CPU at -O2, past what one runner gives a job in two minutes, and
+# both per-commit verify rows that link them (verify-leg (c, conformance):
+# build/conformance-c; (c, fuzz): build/wire-fuzz-c, which swaps main.o for
+# wire_fuzz_main.o) would each compile all of them. So the lang-clean (c K/N)
+# rows of the same run compile them as shards (C_CONFORMANCE_SHARD=K/N:
+# make/shard.sh deals the sorted sources, and `make c-conformance-objs-handoff`
+# gives the shard's objects), and the verify rows take them
+# (C_CONFORMANCE_FROM=<dir of shards>) through make/build-handoff.sh, which
+# refuses unless every object is the bytes its shard's manifest names, every
+# shard was compiled from this tree's sources and headers (the generated
+# corpus, the driver's and the runtime's) under these flags by this compiler,
+# and the shards are every source once. A refusal is an error, never a
+# compile. Nothing else sets either variable; every other target compiles
+# its objects here as before.
+C_CONFORMANCE_HANDOFF_SOURCES = $(sort $(C_CONFORMANCE_SOURCES) test/c-tables/wire_fuzz_main.c)
+C_CONFORMANCE_HANDOFF_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_HANDOFF_SOURCES:.c=.o))
+C_CONFORMANCE_HANDOFF_OPTIONS = $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES)
+# every header an object can read: those in each directory on its include
+# path and beside each source. These are globs the handoff expands when it
+# runs, after the corpus is generated; the rest of build/tables-generated-c
+# is other gates' output (the lang-clean (c) row writes cards/ beside it) and
+# is not read here.
+C_CONFORMANCE_HANDOFF_INPUTS = $(foreach d,$(sort $(patsubst -I%,%,$(filter -I%,$(C_CONFORMANCE_INCLUDES))) $(patsubst %/,%,$(dir $(C_CONFORMANCE_HANDOFF_SOURCES)))),'$(d)/*.h')
+C_CONFORMANCE_SHARD ?=
+C_CONFORMANCE_FROM ?=
+ifneq ($(C_CONFORMANCE_SHARD),)
+ifneq ($(C_CONFORMANCE_FROM),)
+$(error C_CONFORMANCE_FROM takes every object; it does not go with C_CONFORMANCE_SHARD=$(C_CONFORMANCE_SHARD))
+endif
+C_CONFORMANCE_SHARD_SOURCES := $(shell printf '%s\n' $(C_CONFORMANCE_HANDOFF_SOURCES) | sh make/shard.sh '$(C_CONFORMANCE_SHARD)')
+ifneq ($(.SHELLSTATUS),0)
+$(error C_CONFORMANCE_SHARD=$(C_CONFORMANCE_SHARD) is not a shard K/N of the driver's sources)
+endif
+C_CONFORMANCE_SHARD_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_SHARD_SOURCES:.c=.o))
+endif
+
+.PHONY: c-conformance-objs-handoff c-conformance-shard-sources
+c-conformance-shard-sources:
+	@printf '%s\n' $(if $(C_CONFORMANCE_SHARD),$(C_CONFORMANCE_SHARD_SOURCES),$(C_CONFORMANCE_HANDOFF_SOURCES))
+
+# The shard's objects only (the object directory may hold others), its
+# sources, the SHA-256 of what they read, the flags and the compiler.
+c-conformance-objs-handoff: $(C_CONFORMANCE_SHARD_OBJECTS)
+	@test -n '$(C_CONFORMANCE_SHARD)' || { echo 'c-conformance-objs-handoff: set C_CONFORMANCE_SHARD=K/N' >&2; exit 2; }
+	@rm -rf build/c-conformance-shard && mkdir -p build/c-conformance-shard
+	cd $(C_CONFORMANCE_OBJDIR) && tar cf - $(patsubst $(C_CONFORMANCE_OBJDIR)/%,%,$(C_CONFORMANCE_SHARD_OBJECTS)) | tar xf - -C $(CURDIR)/build/c-conformance-shard
+	BUILD_HANDOFF_TOOLCHAIN="$$($(CC) --version 2>&1)" sh make/build-handoff.sh give build/c-conformance-shard build/c-conformance-handoff '$(C_CONFORMANCE_HANDOFF_OPTIONS)' $(C_CONFORMANCE_SHARD_SOURCES) -- $(C_CONFORMANCE_SHARD_SOURCES) $(C_CONFORMANCE_HANDOFF_INPUTS)
+
+ifneq ($(C_CONFORMANCE_FROM),)
+# An explicit rule with no recipe outranks the pattern rule above: under
+# C_CONFORMANCE_FROM no object is compiled, every one is taken.
+$(C_CONFORMANCE_HANDOFF_OBJECTS): build/conformance-c-objs.taken ;
+
+build/conformance-c-objs.taken: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h) $(C_CONFORMANCE_HANDOFF_SOURCES)
+	@rm -f $@
+	BUILD_HANDOFF_TOOLCHAIN="$$($(CC) --version 2>&1)" sh make/build-handoff.sh take '$(C_CONFORMANCE_FROM)' $(C_CONFORMANCE_OBJDIR) '$(C_CONFORMANCE_HANDOFF_OPTIONS)' $(C_CONFORMANCE_HANDOFF_SOURCES) -- $(C_CONFORMANCE_HANDOFF_SOURCES) $(C_CONFORMANCE_HANDOFF_INPUTS)
+	@touch $@
+endif
+
 # The link still names the stamp and the driver's own sources, so the
 # prerequisite graph `make -p` prints reaches every input from this target.
 build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h) \

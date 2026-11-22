@@ -278,21 +278,25 @@ The same split is in [SECURITY.md](SECURITY.md).
 - Two of its gates are past one runner's two minutes when nothing is warm, so
   each runs as shards side by side, a `lang-clean` row per shard K/N that
   [`make/shard.sh`](../make/shard.sh) deals from a sorted list: the C format
-  gate (`lang-clean (c K/3)`, its share of the 580 generated files, dealt as
+  gate (`lang-clean (c K/5)`, its share of the 580 generated files, dealt as
   distinct content-and-name files largest first, snaked, so the rows carry equal
-  work, each formatted once and its verdict given to every copy) and the
+  work, each formatted once and its verdict given to every copy, and, when C is
+  a verify leg, its share of the conformance driver's objects) and the
   strict compile of the Elixir table corpus with the agreement gate over it
   (`lang-clean (elixir K/4)`, its share of the 42 units); the Elixir offsets
   gate has a row of its own, `lang-clean (elixir offsets)`. Nothing is kept
-  between runs. The `verify-leg (elixir, conformance)` and `(elixir, fuzz)`
-  rows (job `verify-leg-elixir`) run the whole corpus ebin and do not compile
-  it: they wait for `lang-clean` and take the four shards its Elixir rows
-  handed over in the same run
-  ([`make/elixir-ebin-handoff.sh`](../make/elixir-ebin-handoff.sh)), and only
-  if every file is the bytes of its shard's manifest, the shards were
-  compiled from this tree's sources under the same options and toolchain, and
-  they are the corpus, each unit once; anything else is red, never a
-  compile. The Elixir rows of `lang-clean` and `verify-leg` compile their
+  between runs. The `verify-leg (c|elixir, conformance)` and `(c|elixir,
+  fuzz)` rows (job `verify-leg-handoff`) link a build they do not compile:
+  the C conformance driver's objects (about 280 s of CPU at `-O2`) and the
+  Elixir corpus ebin. They wait for `lang-clean` and take the shards its C
+  rows (`C_CONFORMANCE_SHARD`, when C is a verify leg) or Elixir rows handed
+  over in the same run ([`make/build-handoff.sh`](../make/build-handoff.sh)),
+  and only if every file is the bytes of its shard's manifest, the shards
+  were compiled from this tree's sources and headers under the same options
+  and toolchain, and they are the build, each unit once; anything else is
+  red, never a compile. The C conformance driver's write-refusal children
+  write no core (`PR_SET_DUMPABLE`): a crash handler run per deliberate
+  abort made the C conformance harness take 174 s instead of 3 s. The Elixir rows of `lang-clean` and `verify-leg` compile their
   BEAM fixtures without the Erlang SSA optimizer (`[no_ssa_opt]`, which
   reports no warning, so a strict compile's verdict is the same). The BEAM a
   user's `elixirc` writes is covered by `ci-full.yml`'s nightly

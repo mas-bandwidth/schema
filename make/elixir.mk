@@ -110,14 +110,18 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
 # sixteen (§2.8, the cook's node alignment rule). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
-# outside the class writes <case>.absent rather than a wrong answer.
+# outside the class writes <case>.absent rather than a wrong answer. Each name
+# is listed once (internal/ci TestElixirTableUnitsAreListedOnce): the
+# generation below runs the units side by side, each removing its directory
+# first, so a name listed twice raced itself and failed the row with "openat
+# TableRuntime.ex: no such file or directory" (#4530, tblrt1).
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
@@ -183,7 +187,7 @@ elixir-table-shard-units:
 ELIXIR_EBIN_ERL_COMPILER_OPTIONS ?=
 
 # ELIXIR_EBIN_FROM, empty by default, is a directory of shards handed over by
-# `make elixir-tables-ebin-handoff` (make/elixir-ebin-handoff.sh carries the
+# `make elixir-tables-ebin-handoff` (make/build-handoff.sh carries the
 # checks): build/elixir-tables-ebin is then assembled from them instead of
 # compiled, and only if every shard is byte for byte the ebin it was given as,
 # was compiled from this tree's sources under these options, and the shards are
@@ -222,7 +226,7 @@ build/elixir-tables-ebin.config: elixir-tables-ebin-config-check
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex build/elixir-tables-ebin.config
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
 ifneq ($(ELIXIR_EBIN_FROM),)
-	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh take '$(ELIXIR_EBIN_FROM)' build/elixir-tables-ebin '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_TABLE_UNIT_NAMES) -- $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
+	BUILD_HANDOFF_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/build-handoff.sh take '$(ELIXIR_EBIN_FROM)' build/elixir-tables-ebin '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_TABLE_UNIT_NAMES) -- $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
 else
 	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
@@ -234,7 +238,7 @@ endif
 # options it ran under, and a manifest of every file's bytes.
 .PHONY: elixir-tables-ebin-handoff
 elixir-tables-ebin-handoff: build/elixir-tables-ebin/.stamp
-	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh give build/elixir-tables-ebin build/elixir-ebin-handoff '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_EBIN_UNIT_NAMES) -- $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
+	BUILD_HANDOFF_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/build-handoff.sh give build/elixir-tables-ebin build/elixir-ebin-handoff '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_EBIN_UNIT_NAMES) -- $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above
 # (docs/PORTING.md). A generated table module INLINES its bitstring segments

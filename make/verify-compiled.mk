@@ -233,5 +233,11 @@ _verify-elixir-bench-quick: toolchain-elixir bin/schema generated/bench/elixir/.
 	@beam_extra="$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v elixir 2>/dev/null || echo /nonexistent)"):$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v erl 2>/dev/null || echo /nonexistent)")"; \
 		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --round 0 --bare --only elixir --out build/verify/bench-elixir.csv
 
-_verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir _verify-elixir-bench-quick
+# The two longest gates come first: make -j starts prerequisites in the order
+# they are listed, and the rules in make/verify-widen-18.mk and
+# make/verify-reuse.mk add theirs after these, so verify-tablegen-elixir (one
+# strict elixirc of 148 units, 37 s on an amd-1 slot) started 46 s in, after
+# every short gate, and ended the row at 84 s; a loaded runner took that past
+# the cap (#4530). Started first, it runs beside the timed quick run.
+_verify-elixir-bench: verify-tablegen-elixir _verify-elixir-bench-quick toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir _verify-elixir-bench-quick
 	@test -s build/verify/bench-elixir.csv

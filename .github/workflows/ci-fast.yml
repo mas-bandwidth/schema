@@ -218,6 +218,7 @@ jobs:
       lint_packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
+      handoff_legs: ${{ steps.pick.outputs.handoff_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
       clean_rows: ${{ steps.pick.outputs.clean_rows }}
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
@@ -329,6 +330,8 @@ jobs:
             # cs row above intact for TestCIFullPRSelectMatchesTheFastPlan).
             case "$f" in
               internal/codegen/ccommon/*) add_leg cpp; add_leg c ;;
+              # the shards the lang-clean (c|elixir K/N) rows hand to verify-leg-handoff
+              make/build-handoff.sh) add_leg c; add_leg elixir ;;
               generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|test/packet-*/cpp/*) add_leg cpp ;;
               generated/c-*/*|generated/bench/c/*|generated/bench/tables/c/*|generated/bench/paired/c/*|bench/c/*|bench/tables/c/*|tables/cards/c/*|test/c/*|test/c-*/*|test/conformance/c/*|test/packet-*/c/*) add_leg c ;;
               generated/cs-*/*|generated/bench/cs/*|generated/bench/tables/cs/*|generated/bench/paired/cs/*|bench/cs/*|bench/tables/cs/*|tables/cards/cs/*|test/cs/*|test/cs-*/*|test/conformance/cs/*|test/packet-*/cs/*) add_leg cs ;;
@@ -557,6 +560,11 @@ jobs:
             verify_legs_json=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
             [ -n "$verify_legs_json" ] || verify_legs_json='[]'
           fi
+          # The verify legs whose conformance and fuzz rows link a build the
+          # lang-clean shards hand over (verify-leg-handoff): C's driver
+          # objects and the Elixir corpus ebin. Each is a clean leg whenever
+          # it is a verify leg, so its shards run in the same push.
+          handoff_legs_json=$(printf '%s' "$verify_legs_json" | sed 's/[]["]//g' | tr ',' '\n' | awk 'BEGIN{printf "["} $1=="c"||$1=="elixir"{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
 
           # THE GENERATED-TREE DRIFT GATE (generated-current). Runs when the
           # diff touches codegen, IR, compiler, tables, any .schema file, or
@@ -608,8 +616,12 @@ jobs:
           # keeps a verdict or an ebin from another run, so a row's time is
           # its cold time (#4530, F-218, F-221). The Elixir offsets gate
           # compiles and measures its own units (about 100 s of CPU) and has
-          # a row of its own, elixir "offsets", beside the four shards.
-          c_clean_shards=3
+          # a row of its own, elixir "offsets", beside the four shards. When C
+          # is a verify leg the C rows also compile their share of the
+          # conformance driver's objects (about 280 s of CPU at -O2) for
+          # verify-leg-handoff: three rows carrying both took 89 to 110 s on
+          # a loaded slot of amd-1, too near the cap, so there are five.
+          c_clean_shards=5
           elixir_clean_shards=4
           clean_rows_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk -v c="$c_clean_shards" -v e="$elixir_clean_shards" '
             NF {
@@ -626,6 +638,7 @@ jobs:
           echo "src_packages=$src_packages" >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
+          echo "handoff_legs=$handoff_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "clean_rows=$clean_rows_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
@@ -638,6 +651,7 @@ jobs:
             echo "* dependents of: \`${src_packages:-(none)}\`"
             echo "* legs: \`$json\`"
             echo "* verify-legs: \`$verify_legs_json\`"
+            echo "* handoff-legs: \`$handoff_legs_json\`"
             echo "* clean-legs: \`$clean_legs_json\`"
             echo "* clean-rows: \`$clean_rows_json\`"
             echo "* codegen-touched: **$codegen_touched**"
@@ -971,6 +985,13 @@ jobs:
           cd ..
           rm -rf serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - name: Check out the C runtime sibling (the conformance driver's objects)
+        if: matrix.lang == 'c'
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -995,6 +1016,7 @@ jobs:
         env:
           LANG_ROW: ${{ matrix.lang }}
           SHARD: ${{ matrix.shard }}
+          HANDOFF_LEGS: ${{ needs.plan.outputs.handoff_legs }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
@@ -1026,13 +1048,19 @@ jobs:
               # files (make/checks/c-clean-format.sh C_FORMAT_SHARD); the first
               # row also runs the zero-cost and soak-compile gates and the
               # same-bytes control (a .c and a .h of one content are judged
-              # each by its own name, F-221).
+              # each by its own name, F-221). When verify-leg-handoff runs C,
+              # each row also compiles its shard of the conformance driver's
+              # objects and hands it over (make/c.mk C_CONFORMANCE_SHARD,
+              # c-conformance-objs-handoff, uploaded below).
               case "$SHARD" in
                 1/*) c_targets="tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes tables-c-clean-same-bytes-control" ;;
                 *)   c_targets="tables-c-clean" ;;
               esac
+              case "$HANDOFF_LEGS" in
+                *'"c"'*) c_targets="$c_targets c-conformance-objs-handoff" ;;
+              esac
               # shellcheck disable=SC2086
-              C_FORMAT_SHARD="$SHARD" make -j"$(nproc)" $c_targets SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              C_FORMAT_SHARD="$SHARD" C_CONFORMANCE_SHARD="$SHARD" make -j"$(nproc)" $c_targets SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
               ;;
             js)
               if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -qx "v9.39.5"; then
@@ -1049,7 +1077,7 @@ jobs:
             elixir)
               # A K/N row strictly compiles its shard of the table corpus
               # (make/elixir.mk ELIXIR_TABLE_SHARD), hands it over for the
-              # verify-leg-elixir rows (elixir-tables-ebin-handoff, uploaded
+              # verify-leg-handoff rows (elixir-tables-ebin-handoff, uploaded
               # below) and runs the agreement gate over it. The ebin compiles
               # without the Erlang SSA optimizer
               # (ELIXIR_EBIN_ERL_COMPILER_OPTIONS: no warning comes from those
@@ -1083,13 +1111,14 @@ jobs:
               exit 1
               ;;
           esac
-      # the shard this row compiled, for verify-leg-elixir (make/elixir-ebin-handoff.sh);
-      # .manifest is a dot file, so hidden files are included
+      # the shard this row compiled, for verify-leg-handoff (make/build-handoff.sh):
+      # C's conformance driver objects, the Elixir corpus ebin; .manifest is
+      # a dot file, so hidden files are included
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.lang == 'elixir' && contains(matrix.shard, '/')
+        if: contains(matrix.shard, '/') && contains(needs.plan.outputs.handoff_legs, format('"{0}"', matrix.lang))
         with:
-          name: elixir-tables-ebin-${{ strategy.job-index }}
-          path: build/elixir-ebin-handoff
+          name: handoff-${{ matrix.lang }}-${{ strategy.job-index }}
+          path: ${{ matrix.lang == 'c' && 'build/c-conformance-handoff' || 'build/elixir-ebin-handoff' }}
           retention-days: 1
           if-no-files-found: error
           include-hidden-files: true
@@ -1189,9 +1218,14 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.verify_legs) }}
         gate: [conformance, bench, fuzz]
-        # these two run the whole Elixir table corpus ebin, which the
-        # lang-clean (elixir K/N) rows compile: verify-leg-elixir below
+        # these link a build the lang-clean (c|elixir K/N) rows compile as
+        # shards (C's conformance driver objects, the Elixir corpus ebin):
+        # verify-leg-handoff below
         exclude:
+          - leg: c
+            gate: conformance
+          - leg: c
+            gate: fuzz
           - leg: elixir
             gate: conformance
           - leg: elixir
@@ -1286,27 +1320,29 @@ jobs:
             # same three gates every night (ci-full.yml, elixir-verify), and
             # Certify fuzzes it (tables-wire-fuzz-release-elixir, test-elixir).
             # Only the bench row runs here; conformance and fuzz are
-            # verify-leg-elixir below.
+            # verify-leg-handoff below.
             elixir)
               ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-${{ matrix.leg }}-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
               ;;
             *)      make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ;;
           esac
 
-  # verify-leg (elixir, conformance) and (elixir, fuzz). Both run the whole
-  # Elixir table corpus ebin, whose strict compile is about 200 s of CPU, past
-  # what one runner gives a job in two minutes; the lang-clean (elixir K/N)
-  # rows of this same run compile it as four shards side by side and hand each
-  # one over, and these rows take them (make/elixir.mk ELIXIR_EBIN_FROM,
-  # make/elixir-ebin-handoff.sh) instead of compiling it again. A shard is
-  # used only if every file is the bytes of its manifest, it was compiled from
-  # this tree's sources under these options, and the shards are the corpus,
-  # each unit once; anything else is red, never a compile (#4530, F-217,
-  # F-218). Nothing is kept between runs.
-  verify-leg-elixir:
+  # verify-leg (c|elixir, conformance) and (c|elixir, fuzz). Each links a build
+  # past what one runner gives a job in two minutes when the job compiles it
+  # cold: C's conformance driver objects (about 280 s of CPU at -O2) and the
+  # Elixir table corpus ebin (about 200 s strict). The lang-clean (c|elixir
+  # K/N) rows of this same run compile it as shards side by side and hand
+  # each one over, and these rows take them (make/c.mk C_CONFORMANCE_FROM,
+  # make/elixir.mk ELIXIR_EBIN_FROM, make/build-handoff.sh) instead of
+  # compiling it again. A shard is used only if every file is the bytes of
+  # its manifest, it was compiled from this tree's sources under these
+  # options by this toolchain, and the shards are the build, each unit once;
+  # anything else is red, never a compile (#4530, F-217, F-218). Nothing is
+  # kept between runs.
+  verify-leg-handoff:
     needs: [plan, lang-clean]
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && contains(needs.plan.outputs.verify_legs, '"elixir"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: verify-leg (elixir, ${{ matrix.gate }})
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.handoff_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (${{ matrix.leg }}, ${{ matrix.gate }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1315,15 +1351,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.handoff_legs) }}
         gate: [conformance, fuzz]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check out the sibling runtime (pinned release)
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
         run: |
           set -euo pipefail
           cd ..
-          rm -rf serialize
+          rm -rf serialize serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          if [ "${{ matrix.leg }}" = c ]; then
+            git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          fi
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -1331,24 +1371,35 @@ jobs:
           cache: false
       # the toolchain lang-clean (elixir) compiles the shards with
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: runner.environment == 'github-hosted'
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
         with:
           otp-version: '29'
           elixir-version: '1.20'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: elixir-tables-ebin-*
-          path: ${{ runner.temp }}/elixir-ebin-shards
-      - name: make verify-elixir-${{ matrix.gate }}
+          pattern: handoff-${{ matrix.leg }}-*
+          path: ${{ runner.temp }}/handoff-shards
+      - name: make verify-${{ matrix.leg }}-${{ matrix.gate }}
         env:
-          SHARDS: ${{ runner.temp }}/elixir-ebin-shards
+          SHARDS: ${{ runner.temp }}/handoff-shards
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
             . /opt/nova/sdk/env.sh
           fi
-          # the options must be the ones the shards were compiled under
-          ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-elixir-${{ matrix.gate }}" ELIXIR_EBIN_FROM="$SHARDS" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
+          case "${{ matrix.leg }}" in
+            c)
+              make "verify-c-${{ matrix.gate }}" C_CONFORMANCE_FROM="$SHARDS"
+              ;;
+            elixir)
+              # the options must be the ones the shards were compiled under
+              ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-elixir-${{ matrix.gate }}" ELIXIR_EBIN_FROM="$SHARDS" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
+              ;;
+            *)
+              echo "::error::verify-leg-handoff has no handoff for leg '${{ matrix.leg }}'"
+              exit 1
+              ;;
+          esac
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh
