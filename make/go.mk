@@ -504,14 +504,11 @@ cards-fuzz-fixture: cards-generate
 #
 # THE SIBLING RUNTIME IS A STATED PREREQUISITE: build/conformance-go links the
 # serialize.go checkout ($(SERIALIZE_GO)), a sibling this tree does not carry.
-# A machine without it must not fail with a go.mod replacement error mid-build;
-# it skips BY NAME and the same target runs in CI, which clones the sibling.
-cards-wire-fuzz:
-	@if [ -f "$(SERIALIZE_GO)/go.mod" ]; then \
-		$(MAKE) cards-wire-fuzz-run; \
-	else \
-		echo "cards-fuzz SKIPPED: the sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; it is a stated bench prerequisite and is present in CI"; \
-	fi
+# A machine without it must not fail with a go.mod replacement error mid-build,
+# and must not go green having fuzzed nothing either: sibling-go (the #4736
+# sibling gate) stops first with one line naming 'make deps'.
+cards-wire-fuzz: sibling-go
+	@$(MAKE) --no-print-directory cards-wire-fuzz-run
 
 cards-wire-fuzz-run: build/conformance-harness build/conformance-go
 	@./build/conformance-harness wire-fuzz \

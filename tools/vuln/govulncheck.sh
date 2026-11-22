@@ -15,15 +15,13 @@
 #       AND ONLY THE TRANSPORT IS EVER FORGIVEN: a finding fails on the first
 #       attempt with no sleep and no second try, and so does every other
 #       non-zero exit the classifier does not recognise as the network. Three
-#       attempts that all failed to REACH the database exit 0 with a notice
-#       saying the gate proved NOTHING — or, under --strict, exit 1.
-#
-#       The two callers differ by that flag and nothing else. The pull-request
-#       gate forgives, because a contributor's diff cannot be judged by
-#       vuln.go.dev's uptime; the nightly certification does NOT, because a
-#       certificate is a full run at an exact SHA and an unreachable database
-#       certifies nothing. If both forgave, an outage would leave no red
-#       anywhere and the estate would believe it had been scanned.
+#       attempts that all failed to REACH the database exit 1, naming the
+#       outage: the check did not run, and a check that did not run is never
+#       green (Glenn, 2026-11-22: "Nothing is allowed to fail silently").
+#       --strict is accepted and means the same; it once separated a
+#       forgiving mode that exited 0 over an unreachable database, which no
+#       CI job used (ci-full runs "make vuln", the bare scanner; certify runs
+#       "make vuln-strict").
 #
 #   tools/vuln/govulncheck.sh classify <log>
 #       Print finding | transport | error for a failed run's log. One place
@@ -153,12 +151,9 @@ run)
             ;;
         esac
         if [ "$attempt" -ge 3 ]; then
-            if [ "$strict" -eq 1 ]; then
-                echo "::error::govulncheck could not reach its vulnerability database in three attempts. A certificate is a full run at an exact SHA, and an unreachable database certifies nothing — this run is RED on purpose. The pull-request gate forgives the same outage; this one may not."
-                exit 1
-            fi
-            echo "::notice::govulncheck could not reach its vulnerability database in three attempts — an upstream outage, not a finding. THIS GATE PROVED NOTHING on this run and is deliberately not failing a pull request for it; the nightly certification runs the same gate under --strict and goes RED until the database answers."
-            exit 0
+            mode=run; [ "$strict" -eq 1 ] && mode="run --strict"
+            echo "::error::govulncheck ($mode) could not reach its vulnerability database in three attempts: an upstream outage, not a finding, but the scan DID NOT RUN, so this gate is RED until the database answers."
+            exit 1
         fi
         echo "attempt $attempt could not reach the vulnerability database; retrying"
         sleep $((attempt == 1 ? 15 : 45))
