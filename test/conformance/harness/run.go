@@ -47,8 +47,11 @@ type result struct {
 	// writer refuses the value by that name (docs/SPEC-TABLES.md §2.5), so the
 	// answer is the refusal and not a feature the leg lacks, and the reference
 	// leg may give it.
-	named    int
-	failures []string
+	named int
+	// uncredited names the must-refuse cases the leg refused while answering
+	// none of their lawful twins (discriminate.go): refusal-only, never a pass.
+	uncredited []string
+	failures   []string
 	// outcome is what each CASE came to, by the file the driver writes:
 	// outcomePass, outcomeFail, outcomeAbsent or outcomeNamed. The nightly's
 	// claims and its coverage table read it (test/conformance/README.md, "The
@@ -740,6 +743,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		want[s] = e
 	}
 
+	// THE DISCRIMINATION PROOF (discriminate.go): a must-refuse row with no
+	// lawful twin is a row a leg passes by refusing everything, and the run
+	// refuses the corpus rather than score it.
+	disc, err := buildDiscrimination(m, reports)
+	if err != nil {
+		return false, err
+	}
+	if problems := disc.problems(); len(problems) > 0 {
+		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
+	}
+
 	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.WireRefused {
@@ -864,6 +878,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				opts.claims.enforce(d.lang, s, legWant, r)
 			}
 		}
+		disc.credit(d.lang, results[d.lang], reference)
 	}
 
 	// A run that compared no leg proved nothing: --only naming no registered
@@ -1212,11 +1227,18 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 				cell = fmt.Sprintf("FAIL %d/%d", r.pass, r.total)
 			case r.absent:
 				cell = "absent"
-			case r.missing > 0:
+			case r.missing > 0 || len(r.uncredited) > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
-				// being rounded away into a smaller total
-				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing)
+				// being rounded away into a smaller total. A REFUSAL-ONLY row
+				// (discriminate.go) is the same kind of work left: `+Nr`.
+				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total-r.missing-len(r.uncredited))
+				if r.missing > 0 {
+					cell += fmt.Sprintf(" +%da", r.missing)
+				}
+				if len(r.uncredited) > 0 {
+					cell += fmt.Sprintf(" +%dr", len(r.uncredited))
+				}
 			default:
 				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total)
 			}
@@ -1225,6 +1247,8 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+
+	b.WriteString(scoreBlock(langs, results))
 
 	var lines []string
 	for _, l := range langs {
@@ -1247,4 +1271,53 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	// not a verdict this gate can improve on
 	_, _ = io.WriteString(w, b.String())
 	return len(lines) == 0
+}
+
+// scoreBlock is the addendum's scoring (docs/SPEC-CONFORMANCE.md §4), one line
+// per leg, and the REFUSAL-ONLY list. CREDITED is a correct answer, a refusal
+// only when the leg also answered a lawful twin (discriminate.go). ABSENT and
+// REFUSAL-ONLY are counted apart and NEVER credited: a leg that refuses
+// everything, or answers nothing, scores zero, however green its cells read.
+func scoreBlock(langs []string, results map[string]map[string]*result) string {
+	var b strings.Builder
+	b.WriteString("SCORE (docs/SPEC-CONFORMANCE.md §4: absent and refusal-only are never credited)\n")
+	var refusalOnly []string
+	for _, l := range langs {
+		var total, credited, absent, uncredited int
+		for _, s := range surfaces {
+			r := results[l][s]
+			if r == nil {
+				continue
+			}
+			total += r.total
+			if r.absent {
+				absent += r.total
+				continue
+			}
+			credited += r.pass + r.named
+			absent += r.missing - r.named
+			uncredited += len(r.uncredited)
+			if len(r.uncredited) > 0 {
+				refusalOnly = append(refusalOnly, fmt.Sprintf("  %s / %s: %d row(s) refused while no lawful twin was answered: %s",
+					l, s, len(r.uncredited), firstNames(r.uncredited, 6)))
+			}
+		}
+		failed := total - credited - absent - uncredited
+		fmt.Fprintf(&b, "  %-12s credited %d of %d; absent %d; refusal-only %d; failed %d\n", l, credited, total, absent, uncredited, failed)
+	}
+	b.WriteString("\n")
+	if len(refusalOnly) > 0 {
+		b.WriteString("REFUSAL-ONLY (not credited: the leg refuses the form, so these rows never reached their rule)\n")
+		b.WriteString(strings.Join(refusalOnly, "\n"))
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+// firstNames joins up to n names and says how many more there are.
+func firstNames(names []string, n int) string {
+	if len(names) <= n {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:n], ", ") + fmt.Sprintf(", and %d more", len(names)-n)
 }

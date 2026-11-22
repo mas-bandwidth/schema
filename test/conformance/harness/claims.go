@@ -381,7 +381,9 @@ func coverageRows(langs []string, results map[string]map[string]*result, want ma
 					cr.Named++
 				case outcomeClaimedAbsent:
 					cr.AbsentClaimed++
-				case outcomeAbsent:
+				case outcomeAbsent, outcomeUncredited:
+					// a refusal-only row (discriminate.go) is work left, as
+					// an absence is: never answered
 					cr.NotCarried++
 				default:
 					// no outcome: the surface did not run for this leg, which
