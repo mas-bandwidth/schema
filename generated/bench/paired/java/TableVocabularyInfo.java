@@ -9,10 +9,10 @@
 package bench;
 
 public final class TableVocabularyInfo {
-    public String name;
+    public java.lang.String name;
 
     /** the schema file that declares it. */
-    public String file;
+    public java.lang.String file;
 
     public long max;
     public int storageBits;
@@ -20,16 +20,16 @@ public final class TableVocabularyInfo {
     /** None first for an enum and a union, then the variants in declared order. */
     public TableVariantInfo[] variants;
 
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
     static TableVocabularyInfo of(
-            String name,
-            String file,
+            java.lang.String name,
+            java.lang.String file,
             long max,
             int storageBits,
-            String doc,
-            String[] tags,
+            java.lang.String doc,
+            java.lang.String[] tags,
             TableVariantInfo[] variants) {
         TableVocabularyInfo v = new TableVocabularyInfo();
         v.name = name;

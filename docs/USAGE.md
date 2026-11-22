@@ -136,7 +136,10 @@ A default `generate --lang go` (no `--surface`) also removes stale surface
 files: any `.go` file in the output directory whose first line is the compiler's
 own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
 and that this run did not write. With `--surface` nothing is removed; only
-`.go` files the compiler itself generated are ever touched.
+`.go` files the compiler itself generated are ever touched. A file this run
+wrote is never removed, and every output lands under this run's spelling, on a
+case-insensitive volume too: renaming `Player.schema` to `player.schema` and
+regenerating leaves `player.go` and no `Player.go`, for every target's files.
 
 ---
 
@@ -1899,6 +1902,14 @@ $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
 ```
 
+The message and its announcement are one artifact in two files, so `pack`
+publishes both or neither: a run that fails leaves the earlier pair as it was.
+That holds when one run writes to an output at a time. One publisher per
+destination is the contract, as with any compiler: `schema` takes no lock, and
+two runs writing the same `--out` and `--announce` at once can leave one run's
+message beside the other's announcement. Give concurrent runs their own
+outputs, or run them one after the other.
+
 **And `schema unpack` handed the announcement ITSELF prints the vocabulary
 decoded**, one line an entry with its slot, its id, the name your closure gives
 it, its kind and its shape, which is what you read when a peer and a build
@@ -3179,7 +3190,11 @@ version, the byte order, the root, the node count and the two part sizes. And
 because the attribution is SEPARABLE, `--attribution <file>` writes the
 directory beside the cook instead of inside it: the cook then carries data
 alone for a build that ships no tooling, and `cook-check --attribution <file>`
-puts the two back together when you want to check one.
+puts the two back together when you want to check one. The cook and its
+attribution file publish together or not at all, under the same contract as
+`pack --announce`: it holds when one run writes to an output at a time, and
+two runs cooking to the same `--out` and `--attribution` at once can leave a
+mismatched pair.
 
 ### The build version: what a cooked asset is stored under
 
@@ -3375,7 +3390,7 @@ check`, and so `schema generate`, diffs against it:
 ```
 $ schema check configs/
 configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this
-edit changes what data already written MEANS, and no reader can report it; if you
+edit changes what data already written MEANS, or stops it reading; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
 schema <version>

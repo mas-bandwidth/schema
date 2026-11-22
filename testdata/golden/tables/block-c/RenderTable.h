@@ -12325,7 +12325,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* cameras */
  schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
- if(value->cameras_count>0) {
+ if(value->cameras_count > 0) {
   blockdemo_table_bit_put(w,32,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
   blockdemo_table_bit_put(w,(uint64_t)value->cameras_count-0,1);
@@ -12337,7 +12337,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* ships */
  schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
- if(value->ships_count>0) {
+ if(value->ships_count > 0) {
   blockdemo_table_bit_put(w,33,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->ships_count-0,13);
@@ -12349,7 +12349,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* turrets */
  schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
- if(value->turrets_count>0) {
+ if(value->turrets_count > 0) {
   blockdemo_table_bit_put(w,34,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
   blockdemo_table_bit_put(w,(uint64_t)value->turrets_count-0,11);
@@ -12361,7 +12361,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* missiles */
  schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
- if(value->missiles_count>0) {
+ if(value->missiles_count > 0) {
   blockdemo_table_bit_put(w,35,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->missiles_count-0,13);
@@ -12373,7 +12373,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* dynamic_props */
  schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
- if(value->dynamic_props_count>0) {
+ if(value->dynamic_props_count > 0) {
   blockdemo_table_bit_put(w,36,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->dynamic_props_count-0,13);
@@ -12385,7 +12385,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* static_props */
  schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
- if(value->static_props_count>0) {
+ if(value->static_props_count > 0) {
   blockdemo_table_bit_put(w,37,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
   blockdemo_table_bit_put(w,(uint64_t)value->static_props_count-0,15);
@@ -12397,7 +12397,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* cosmetic_props */
  schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
- if(value->cosmetic_props_count>0) {
+ if(value->cosmetic_props_count > 0) {
   blockdemo_table_bit_put(w,38,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
   blockdemo_table_bit_put(w,(uint64_t)value->cosmetic_props_count-0,14);
@@ -12409,7 +12409,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* lasers */
  schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
- if(value->lasers_count>0) {
+ if(value->lasers_count > 0) {
   blockdemo_table_bit_put(w,39,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->lasers_count-0,15);
@@ -12421,7 +12421,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  { /* explosions */
  schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
- if(value->explosions_count>0) {
+ if(value->explosions_count > 0) {
   blockdemo_table_bit_put(w,40,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->explosions_count-0,15);
@@ -14829,11 +14829,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_camera_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_camera_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -15419,11 +15416,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_ship_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_ship_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -15994,11 +15988,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_turret_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_turret_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -16578,11 +16569,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_missile_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_missile_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -17165,11 +17153,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_dynamic_prop_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_dynamic_prop_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -17752,11 +17737,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_static_prop_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_static_prop_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -18343,11 +18325,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_cosmetic_prop_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_cosmetic_prop_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -18919,11 +18898,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_laser_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_laser_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -19503,11 +19479,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        blockdemo_render_explosion_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { blockdemo_render_explosion_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {

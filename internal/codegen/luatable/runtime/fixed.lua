@@ -746,6 +746,14 @@ decode_old_value = function(T, d, node, buf, pos, rep)
         if ev == nil and d.elem.shape == "enum" then ev = false end
         t[i] = ev
       end
+      -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): the writer's record
+      -- holds fewer slots than this reader's bound; each new slot holds one
+      -- fresh default element, as the message and variable forms pad.
+      if node.kind ~= 16 and d.fixed then
+        for i = n + 1, d.bound do
+          t[i] = L.zero_elem(T, d.elem)
+        end
+      end
       return t
     end
     local n = string.unpack("<i4", buf, pos)

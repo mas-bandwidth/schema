@@ -1089,6 +1089,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
       for i = 1, #raw do
         out[i] = string.byte(raw, i)
       end
+      -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that
+      -- announced a smaller bound wrote fewer slots; each new slot is born 0.
+      if d.fixed then
+        for i = #raw + 1, d.bound do
+          out[i] = 0
+        end
+      end
       holder[key] = out
       return true
     end
@@ -1105,6 +1112,14 @@ read_value = function(R, T, f, holder, key, ctx, e)
         out[i] = false
       else
         out[i] = ev.v
+      end
+    end
+    -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that announced
+    -- a smaller bound wrote fewer elements; each new slot holds one fresh
+    -- default element, never nil and never the field's whole default.
+    if d.fixed then
+      for i = n + 1, d.bound do
+        out[i] = L.zero_elem(T, d.elem)
       end
     end
     holder[key] = out

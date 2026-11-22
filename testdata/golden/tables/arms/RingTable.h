@@ -10302,7 +10302,7 @@ inline void TrayReset( Tray & value )
         value.entries[i].plain = 0;
         value.entries[i].type = SlotsType::None;
     }
-    value.entries_count = 0;
+    value.entries_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.past = 0;
 }
 
@@ -12012,7 +12012,8 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -12067,7 +12068,8 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -18349,7 +18351,8 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -18405,7 +18408,8 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;

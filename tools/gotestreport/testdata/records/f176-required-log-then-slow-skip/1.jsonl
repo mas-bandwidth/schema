@@ -1,0 +1,11 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:16:14.208900355+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:16:14.212608275+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestEarlierLog"}
+{"Time":"2026-11-21T21:16:14.212628052+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"=== RUN   TestEarlierLog\n"}
+{"Time":"2026-11-21T21:16:14.212904751+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:44: no cargo on PATH: diagnostic from an earlier optional probe\n"}
+{"Time":"2026-11-21T21:16:14.212916853+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:45: SCHEMA_SLOW: this test shells out to cargo; set SCHEMA_SLOW=1 to run it\n"}
+{"Time":"2026-11-21T21:16:14.212930138+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"--- SKIP: TestEarlierLog (0.00s)\n"}
+{"Time":"2026-11-21T21:16:14.212934186+01:00","Action":"skip","Package":"example.org/ledgertest","Test":"TestEarlierLog","Elapsed":0}
+{"Time":"2026-11-21T21:16:14.212950576+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:16:14.213303818+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.004s\n"}
+{"Time":"2026-11-21T21:16:14.213342962+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.004}

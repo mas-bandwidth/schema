@@ -7328,11 +7328,8 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_load( tabledemo_arch
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_archive_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_archive_config_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {

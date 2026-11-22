@@ -5560,10 +5560,12 @@ namespace Tabledemo
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
                     // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
-                    // is A default elements, and that is what the writer elides
+                    // is A default elements, and that is what the writer elides; a table
+                    // element is at its default when its body is its terminator alone
+                    // (Empty), as the reference judges it (internal/tablewire encodeArray)
                     if (f.ArrayMin > 0)
                     {
-                        if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                        if (n != f.ArrayMin) { return true; }
                         for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                         return false;
                     }
