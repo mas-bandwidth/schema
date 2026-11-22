@@ -9,6 +9,7 @@ package cstable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -970,6 +971,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	// a union's names carry the table-wire id they ride under; a flags variant
 	// has none, and that missing id is what tells the two apart at runtime
 	// (docs/SPEC-TABLES.md §4, §5, §8).
+	enumDeprecated := ""
 	enumMax := "-1"
 	enumName := "null"
 	variantId := "null"
@@ -980,6 +982,16 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = enumNameLambda(capitalize(g.unit.Package), f.Type.Name)
 			variantId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
+			var depConds []string
+			for i := range ref.Variants {
+				if enumVariantDeprecated(ref, i) {
+					depConds = append(depConds, fmt.Sprintf("v == %dUL", i+1))
+				}
+			}
+			if len(depConds) > 0 {
+				// docs/SPEC-TABLES.md §2.15: a deprecated variant reads as the field's default
+				enumDeprecated = fmt.Sprintf(", EnumDeprecated = delegate (ulong v) { return %s; }", strings.Join(depConds, " || "))
+			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -1030,7 +1042,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	g.pf("        new TableFieldInfo { Name = \"%s\", Json = %s, TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayMin = %d, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
 		f.Name, jsonName, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, arrayMin, bound,
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f)+g.wireColumns(f))
+		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, enumDeprecated+g.tableStorageColumns(f)+g.wireColumns(f))
 }
 
 func rootElemSlots(st *ir.Struct) int {
@@ -1057,4 +1069,45 @@ func rootElemSlots(st *ir.Struct) int {
 // backing type.
 func enumNameLambda(pkg, enum string) string {
 	return fmt.Sprintf("delegate (ulong v) { return v <= (ulong)%sMax ? EnumName%s((global::%s.%s)v) : \"???\"; }", enum, enum, pkg, enum)
+}
+
+// enumVariantDeprecated reports whether variant idx of en carries
+// `| deprecated` (docs/SPEC-TABLES.md §2.15).
+func enumVariantDeprecated(en *ir.Enum, idx int) bool {
+	if idx < len(en.VariantDeprecated) && en.VariantDeprecated[idx] {
+		return true
+	}
+	if idx < len(en.VariantTags) {
+		if slices.Contains(en.VariantTags[idx], "deprecated") {
+			return true
+		}
+	}
+	return false
+}
+
+// enumDeprecatedCond is the C# condition that ordinal expression v names a
+// variant of en marked `| deprecated`, or "" when it has none.
+func enumDeprecatedCond(en *ir.Enum, v string) string {
+	var conds []string
+	for i := range en.Variants {
+		if enumVariantDeprecated(en, i) {
+			conds = append(conds, fmt.Sprintf("%s == %dUL", v, i+1))
+		}
+	}
+	return strings.Join(conds, " || ")
+}
+
+// fixedEnumReport is the fixed form's raw landing of an enum ordinal. A
+// DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and as None inside
+// an array, list, map or keyed array (docs/SPEC-TABLES.md §2.15).
+func fixedEnumReport(f *ir.Field, en *ir.Enum, expr string) string {
+	cond := enumDeprecatedCond(en, "v")
+	if cond == "" {
+		return fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name)
+	}
+	def := f.Type.Name + ".None"
+	if f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.IsList() && !f.IsMap() && f.HasDefault && f.DefVariant != "" {
+		def = f.Type.Name + "." + f.DefVariant
+	}
+	return fmt.Sprintf("(t, v, rep) => { %s = (%s) ? %s : (%s)v; }", expr, cond, def, f.Type.Name)
 }

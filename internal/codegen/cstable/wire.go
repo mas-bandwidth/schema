@@ -873,7 +873,7 @@ public static partial class TableWire
             // is A default elements, and that is what the writer elides
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -923,7 +923,7 @@ public static partial class TableWire
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -1346,6 +1346,8 @@ public static partial class TableWire
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -1752,7 +1754,7 @@ public static partial class TableWire
     {
         if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Zero();
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (bytes[0] != 1)
         {

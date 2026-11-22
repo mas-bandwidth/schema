@@ -723,6 +723,8 @@ public static class TableJson
         if (IsEnum(f))
         {
             ulong value = f.GetRaw(owner, index);
+            // A WRITE OF A DEPRECATED VARIANT IS REFUSED (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+            System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated enum variant is written");
             // a value no variant names has no text spelling, exactly as it has
             // no wire identity: the writer REFUSES rather than writing None
             // over it, the rule measure and save already apply (§5)
@@ -1050,7 +1052,7 @@ public static class TableJson
         // changed kind, an out-of-range value, a count or length past its
         // bound, or text that cannot be stored refuses the load. The rest of
         // the walk's failures are damage.
-        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
         {
             input.Report.Refused = true;
         }
@@ -1622,6 +1624,11 @@ public static class TableJson
             {
                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                 {
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                    // ELEMENT default inside an array) and is never counted unknown
+                    // (docs/SPEC-TABLES.md §2.15)
+                    if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                    { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                     f.SetRaw(owner, index, (ulong)v);
                     return true;
                 }
@@ -2175,7 +2182,7 @@ public static class TableJson
         // a caller with no report is off the read path this section prices: it
         // gets one rather than a branch on every counter
         input.Report = report != null ? report : new TableReport();
-        input.Report.Reason = null; input.Report.Refused = false;
+        input.Report.Zero();
         input.Bad = false;
         if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
         info.Reset(value);
