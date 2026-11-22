@@ -1881,6 +1881,13 @@ double _f64FromBits(int b) {
 // as it refuses a data cycle. A finite value rides as its bits.
 int _f32Write(double d, String field) {
   if (!d.isFinite) _refuseNonFiniteFloat(field);
+  // a float32 field holding a value past float32 range is refused (FL-23,
+  // docs/SPEC-TABLES.md §16.3): it would round to an infinity, which no form
+  // carries. A debug assert in Dart, as every write-side check here is.
+  assert(
+    (_f32Bits(d) & 0x7f800000) != 0x7f800000,
+    'float32_out_of_range: $field — a value past float32 range (docs/SPEC-TABLES.md §16.3)',
+  );
   return _f32Bits(d);
 }
 
@@ -5809,6 +5816,12 @@ String _jsonFloat(double v, bool single) {
   if (v.isNaN || v.isInfinite) {
     throw StateError('float $v has no JSON spelling (docs/SPEC-TABLES.md §16.2)');
   }
+  // a float32 field past float32 range is refused (FL-23, docs/SPEC-TABLES.md
+  // §16.3): a debug assert in Dart
+  assert(
+    !single || (_f32Bits(v) & 0x7f800000) != 0x7f800000,
+    'float $v is past float32 range (docs/SPEC-TABLES.md §16.3)',
+  );
   final low = single ? 6 : 15;
   final high = single ? 9 : 17;
   for (var digits = low; ; digits++) {

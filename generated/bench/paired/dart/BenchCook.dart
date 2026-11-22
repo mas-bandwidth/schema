@@ -236,6 +236,9 @@ final class TableCookWriteReport {
   // narrowing, exact for every finite float32 value.
   static int float32Bits(double value) {
     _cookFloat32[0] = value;
+    // a float32 past float32 range is refused by every writer (FL-23,
+    // docs/SPEC-TABLES.md §16.3): a debug assert, as the ranged checks are
+    assert((_cook32Words[0] & 0x7f800000) != 0x7f800000, 'a float32 past float32 range');
     return _cook32Words[0];
   }
 }
