@@ -133,7 +133,7 @@ packet-end-moo-negative-control: packet-end-moo
 		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not named'; cat build/packet-end/moo-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding:' build/packet-end/moo-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the non-zero padding was not named'; cat build/packet-end/moo-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-end/moo-negative/log | grep -Fvq -e 'FAILED: trailing:' -e 'FAILED: padding:'; then \
+	@if grep -F 'FAILED: ' build/packet-end/moo-negative/log | grep -Fv -e 'FAILED: trailing:' -e 'FAILED: padding:' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: the moo end-check removal failed another case'; \
 		cat build/packet-end/moo-negative/log; exit 1; fi
 	@echo 'packet end moo negative control: the removed end check accepts trailing data and non-zero padding'

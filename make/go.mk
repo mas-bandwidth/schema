@@ -453,7 +453,7 @@ cards-conformance-all:
 		fi; \
 		printf '%s\n' "$$lines"; \
 		for s in load save render parse bounds upgrade edit taskhash view; do \
-			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+			printf '%s\n' "$$lines" | grep -E "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" >/dev/null || fail=1; \
 		done; \
 	done; \
 	exit $$fail

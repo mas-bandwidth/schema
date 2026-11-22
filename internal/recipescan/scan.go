@@ -18,7 +18,12 @@
 //	unset-strict      "set +e" or "set +o pipefail"
 //	background        "cmd &" with no "wait" in the same recipe line or script,
 //	                  or a bare "wait" (no PID) after a background job: a bare
-//	                  wait returns 0 whatever the jobs did (F-068)
+//	                  wait returns 0 whatever the jobs did (F-068); or a
+//	                  "wait PID" whose status nothing reads
+//	early-exit        an early-exit reader (grep -q, grep -m, grep -l, head,
+//	                  read, awk exit, sed q) in a pipeline read as a condition
+//	                  under pipefail: the stage before it dies of SIGPIPE on a
+//	                  large input and the condition reads the opposite (PR #4588 review)
 //	nested-pipe       sh -c / bash -c text that pipes without pipefail
 //	stamp             a rule with prerequisites whose recipe skips its work
 //	                  when its own target exists ("if ! test -f $@"), so a
@@ -59,6 +64,7 @@ const (
 	RuleNestedPipe    = "nested-pipe"
 	RuleStamp         = "stamp"
 	RuleUnchecked     = "unchecked"
+	RuleEarlyExit     = "early-exit"
 )
 
 // utilities are commands whose exit status is housekeeping or a question, not
@@ -123,6 +129,8 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 				// F-068: "cmd & cmd & wait" returns 0 whatever the jobs did.
 				if hasBackground && commandStart(toks, k) && (k+1 >= len(toks) || toks[k+1].op) {
 					add(t, RuleBackground, "a bare wait returns 0 whatever the background jobs did: keep each $! and wait on it, reading its status")
+				} else if hasBackground && commandStart(toks, k) && !waitStatusRead(toks, k, ctx) {
+					add(t, RuleBackground, "nothing reads the status of this wait, so a failed background job is lost: wait \"$p\" || failed=1, or read $?")
 				}
 			case "touch":
 				// F-046: "gen && touch $@" whose status the next statements replace.
@@ -186,6 +194,9 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 			st.Pipes++
 			if PipeHook != nil {
 				PipeHook(ctx.file, ctx.baseLine+t.line, pipeUse(toks, k, ctx.depth)+"\t"+leftText(toks, k), rightText(toks, k))
+			}
+			if msg := earlyExitCondition(toks, k); msg != "" && ctx.pipefail {
+				add(t, RuleEarlyExit, msg)
 			}
 		case "&":
 			if !hasWait {

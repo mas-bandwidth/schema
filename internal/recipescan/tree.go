@@ -21,6 +21,21 @@ var skipDirs = map[string]bool{
 // no makefile recipe or no script, and for a file under make/ to be neither a
 // makefile, a script, nor a file a makefile or script reads by name.
 func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
+	return scanTree(root, roots, nil)
+}
+
+// scanTree is ScanTree reading edits[rel] (slash paths relative to root) in
+// place of the file on disk, so a test scans the tree with a mutation applied
+// and writes nothing.
+func scanTree(root string, roots []string, edits map[string]string) ([]Finding, Stats, error) {
+	readFile := func(path string) ([]byte, error) {
+		if rel, err := filepath.Rel(root, path); err == nil {
+			if src, ok := edits[filepath.ToSlash(rel)]; ok {
+				return []byte(src), nil
+			}
+		}
+		return os.ReadFile(path)
+	}
 	var out []Finding
 	var st Stats
 	isRoot := map[string]bool{}
@@ -31,7 +46,7 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 	// it: -e holds for the fragments only if every root sets it.
 	errexit := len(roots) > 0
 	for _, r := range roots {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r)))
+		src, err := readFile(filepath.Join(root, filepath.FromSlash(r)))
 		if err != nil {
 			return nil, st, fmt.Errorf("recipescan: root makefile %s: %w", r, err)
 		}
@@ -54,7 +69,7 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 		name := d.Name()
 		switch {
 		case name == "Makefile" || name == "GNUmakefile" || strings.HasSuffix(name, ".mk"):
-			src, err := os.ReadFile(path)
+			src, err := readFile(path)
 			if err != nil {
 				return err
 			}
@@ -64,7 +79,7 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 			}
 			out = append(out, ScanMakefile(rel, string(src), root, errexit, &st)...)
 		case strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".bash"):
-			src, err := os.ReadFile(path)
+			src, err := readFile(path)
 			if err != nil {
 				return err
 			}
@@ -84,7 +99,7 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 			_ = f.Close()
 			line, _, _ := strings.Cut(string(head[:n]), "\n")
 			if ShellShebang(line) {
-				src, err := os.ReadFile(path)
+				src, err := readFile(path)
 				if err != nil {
 					return err
 				}

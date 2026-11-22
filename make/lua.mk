@@ -496,7 +496,7 @@ packet-end-lua-negative-control: packet-end-lua
 		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding: accepted as 3' build/packet-end/lua-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the set padding was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-end/lua-negative/log | grep -Fvq -e 'FAILED: trailing: ' -e 'FAILED: padding: '; then \
+	@if grep -F 'FAILED: ' build/packet-end/lua-negative/log | grep -Fv -e 'FAILED: trailing: ' -e 'FAILED: padding: ' >/dev/null; then \
 		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
 	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
 

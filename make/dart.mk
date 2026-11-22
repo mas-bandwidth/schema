@@ -714,7 +714,7 @@ define dart-cookwrite-nc-leg
 		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
 		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
-			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep -q .; then \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
 		grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
 			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt; exit 1; \
@@ -765,7 +765,7 @@ tables-dart-retain-negative-control: build/conformance-harness build/conformance
 	fi
 	@grep -qE '^retain-save +FAIL' build/dart-retain-nc/log || \
 		{ cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
-	@if grep -E '^[a-z-]+ +FAIL' build/dart-retain-nc/log | grep -vqE '^retain(-save)? '; then \
+	@if grep -E '^[a-z-]+ +FAIL' build/dart-retain-nc/log | grep -vE '^retain(-save)? ' >/dev/null; then \
 		cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
 	fi
 	@grep -E '^retain(-save)? ' build/dart-retain-nc/log
@@ -1474,7 +1474,7 @@ packet-finite-dart-negative-control: packet-finite-dart
 		echo 'NEGATIVE CONTROL FAILED: Dart packet floats with no read check passed'; exit 1; fi
 	@grep -Fq 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Dart failed for another reason'; cat build/packet-finite/dart-negative/log; exit 1; }
-	@if grep -v 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log | grep -Fq 'FAILED:'; then \
+	@if grep -v 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log | grep -F 'FAILED:' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a check other than the read refusals went red'; cat build/packet-finite/dart-negative/log; exit 1; fi
 	@echo "packet finite Dart negative control: removed read check reds $$(grep -c 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log) read refusals and nothing else"
 
@@ -1958,7 +1958,7 @@ packet-end-dart-negative-control: packet-end-dart
 	@grep -Fq 'FAILED: packet-end padding accepted' build/packet-end/dart-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the final-byte padding was not the failure'; \
 		  cat build/packet-end/dart-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-end/dart-negative/log | grep -Fvq -e 'FAILED: packet-end trailing accepted' -e 'FAILED: packet-end padding accepted'; then \
+	@if grep -F 'FAILED: ' build/packet-end/dart-negative/log | grep -Fv -e 'FAILED: packet-end trailing accepted' -e 'FAILED: packet-end padding accepted' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a check other than the two end-check verdicts went red'; \
 		cat build/packet-end/dart-negative/log; exit 1; \
 	fi
@@ -2000,10 +2000,10 @@ packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 		{ echo 'NEGATIVE CONTROL FAILED: below-min was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
 	@grep -Fq 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fvq \
+	@if grep -F 'FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fv \
 		-e 'FAILED: packet-write-cfloat above-max: off-range value was written' \
 		-e 'FAILED: packet-write-cfloat below-min: off-range value was written' \
-		-e 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written'; then \
+		-e 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a case other than the three finite off-range values went red'; \
 		cat build/packet-write-cfloat/dart-negative/log; exit 1; fi
 	@grep -m1 'FAILED: packet-write-cfloat above-max: off-range value was written' build/packet-write-cfloat/dart-negative/log

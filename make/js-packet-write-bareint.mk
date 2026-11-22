@@ -32,7 +32,7 @@ define packet_write_bareint_js_control
 		echo 'NEGATIVE CONTROL FAILED: $(1) passed in the $(3) tier'; exit 1; fi
 	@grep -Fq '$(4)' build/packet-write-bareint/js-negative-$(1)/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-write-bareint/js-negative-$(1)/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-bareint/js-negative-$(1)/log | grep -Fvq 'FAILED: bareint checked/$(3) '; then \
+	@if grep -F 'FAILED: ' build/packet-write-bareint/js-negative-$(1)/log | grep -Fv 'FAILED: bareint checked/$(3) ' >/dev/null; then \
 		cat build/packet-write-bareint/js-negative-$(1)/log; echo 'NEGATIVE CONTROL FAILED: a check outside the $(3) tier went red'; exit 1; fi
 	@echo 'packet write bare integer JavaScript negative control: $(5)'
 endef

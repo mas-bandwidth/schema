@@ -1392,8 +1392,8 @@ tables-rust-wide-clamp-negative-control: build/conformance-harness build/conform
 	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variabletext.go)
 	@grep -q '^  rust / json-hostile: fixed-at-bound' $(RUST_WIDE_CONTROL)/clamp/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-at-bound"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep -q . || \
-	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep . >/dev/null || \
+	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
 	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
 
@@ -1401,7 +1401,7 @@ tables-rust-wide-text-negative-control: build/conformance-harness build/conforma
 	$(call rust-wide-control,text,$(RUST_WIDE_TEXT_SED),variabletext.go)
 	@grep -q '^  rust / json-hostile: fixed-fraction-too-fine' $(RUST_WIDE_CONTROL)/text/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-fraction-too-fine"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars' json-hostile rows went red"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; fi
 	@echo "rust wide-scalar text negative control: rounding a too-fine fixed fraction turns exactly the wide json-hostile rows red"
 

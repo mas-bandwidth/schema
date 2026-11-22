@@ -534,7 +534,7 @@ tables-elixir-retain-negative-control: build/conformance-harness
 	# retain checks decoded JSON of known fields; retain-save checks re-emitted unknown bytes
 	@grep -qE '^retain-save +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
 		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
-	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vqE '^retain(-save)? '; then \
+	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vE '^retain(-save)? ' >/dev/null; then \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
 	fi
 	@grep -E '^retain(-save)? ' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log
@@ -1079,7 +1079,7 @@ packet-finite-elixir-negative-control: packet-finite-elixir
 	$(ELIXIRC_STRICT) -o build/packet-finite/elixir-negative/beam build/packet-finite/elixir-negative/generated/*.ex
 	@if $(ELIXIR) test/packet-finite/elixir/main.exs "$(CURDIR)/build/packet-finite/elixir-negative/generated" > build/packet-finite/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir non_finite_float read check removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: non_finite_float read ' build/packet-finite/elixir-negative/log || { cat build/packet-finite/elixir-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-finite/elixir-negative/log | grep -Fvq 'FAILED: non_finite_float read '; then cat build/packet-finite/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the read refusal went red'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-finite/elixir-negative/log | grep -Fv 'FAILED: non_finite_float read ' >/dev/null; then cat build/packet-finite/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the read refusal went red'; exit 1; fi
 	@echo 'packet finite Elixir negative control: removed raw-bit read checks red the non_finite_float read vectors'
 
 test-elixir: packet-finite-elixir packet-finite-elixir-negative-control
@@ -1182,8 +1182,8 @@ tables-elixir-json-differential:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialElixir' || { echo 'tables-elixir-json-differential: TestTextDifferentialElixir did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestTextDifferentialElixir' >/dev/null || { echo 'tables-elixir-json-differential: TestTextDifferentialElixir did not run'; exit 1; }
 	@echo 'tables Elixir json differential: 200 of 200 instances agree with the engine in both directions'
 
 tables-elixir-json-differential-negative-control:
@@ -1191,8 +1191,8 @@ tables-elixir-json-differential-negative-control:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialNegativeControlElixir' || { echo 'tables-elixir-json-differential-negative-control: the control did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestTextDifferentialNegativeControlElixir' >/dev/null || { echo 'tables-elixir-json-differential-negative-control: the control did not run'; exit 1; }
 	@echo 'tables Elixir json differential negative control: a float32 capped at six digits went red on the text comparison'
 
 test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
@@ -1213,8 +1213,8 @@ tables-elixir-finite-float:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloat' || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestElixirFiniteFloat' >/dev/null || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
 	@echo 'tables Elixir finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides'
 
 tables-elixir-finite-float-negative-control:
@@ -1222,8 +1222,8 @@ tables-elixir-finite-float-negative-control:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloatNegativeControl' || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestElixirFiniteFloatNegativeControl' >/dev/null || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
 	@echo 'tables Elixir finite floats negative control: each sabotaged refusal reds exactly its own rows'
 
 test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
@@ -1668,7 +1668,7 @@ tables-elixir-cook-blob-negative-control:
 	@grep -q 'FAIL blob_equal_bytes: ' build/elixir-cook-blob-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: TestCookNumbersABlobByItsSlotElixir went red for another reason"; \
 		  cat build/elixir-cook-blob-nc/log; exit 1; }
-	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v -q 'FAIL blob_equal_bytes'; then \
+	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v 'FAIL blob_equal_bytes' >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: keying the blob by its bytes red more than blob_equal_bytes"; \
 		cat build/elixir-cook-blob-nc/log; exit 1; \
 	fi
@@ -2199,7 +2199,7 @@ define ELIXIR_COOK_MAP_CONTROL
 		grep -q "FAIL $$p" build/elixir-cook-map-nc-$(1)/log || \
 			{ cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) did not red $$p"; exit 1; }; \
 	done
-	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -q -E 'FAIL $(5)(-be)?:'; then \
+	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -E 'FAIL $(5)(-be)?:' >/dev/null; then \
 		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) red more than $(5)"; exit 1; \
 	fi
 	@echo "elixir cook map negative control: $(4) reds [$(3)]"
@@ -2258,7 +2258,7 @@ packet-end-elixir-negative-control: packet-end-elixir
 		grep -Fq 'FAILED: packet-end verdict padding.bin' build/packet-end/elixir-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the packet-end gate went red, but not on the trailing and padding vectors'; cat build/packet-end/elixir-negative/log; exit 1; }
 	@if grep -Fq 'FAILED: packet-end verdict exact.bin' build/packet-end/elixir-negative/log; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: the exact packet went red with the end check removed'; exit 1; fi
-	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fvq 'FAILED: packet-end verdict '; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fv 'FAILED: packet-end verdict ' >/dev/null; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control

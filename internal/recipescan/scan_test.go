@@ -150,24 +150,137 @@ func TestShellShebang(t *testing.T) {
 	}
 }
 
-// The repository itself: no recipe or script may lose a background job's
-// status or a stamp generator's status (F-046, F-068), and the scan must have
-// read recipes and scripts, so a scan of nothing is never green.
-func TestTreeHasNoBackgroundOrStampFinding(t *testing.T) {
+// F-068, the waited pid: "wait $p" whose status nothing reads loses the job's
+// failure as surely as a bare wait.
+func TestWaitStatusUnreadIsRed(t *testing.T) {
+	fs, _ := fragment(t, "background-wait-unread.mk")
+	got := withRule(fs, RuleBackground)
+	if len(got) != 1 {
+		t.Fatalf("want 1 background finding, got %d: %v", len(got), fs)
+	}
+	if got[0].Line != 5 || !strings.Contains(got[0].Text, "nothing reads the status of this wait") {
+		t.Errorf("want the unread wait on line 5, got %v", got[0])
+	}
+}
+
+// PR #4588 review: an early-exit reader in a pipeline read as a condition is red, one
+// finding per planted shape (lines 5 to 12); the read-all forms are green.
+func TestEarlyExitReaderInConditionIsRed(t *testing.T) {
+	fs, _ := fragment(t, "early-exit-red.mk")
+	got := withRule(fs, RuleEarlyExit)
+	lines := map[int]bool{}
+	for _, f := range got {
+		lines[f.Line] = true
+	}
+	for l := 5; l <= 12; l++ {
+		if !lines[l] {
+			t.Errorf("want an early-exit finding on line %d, got %v", l, got)
+		}
+	}
+	if len(got) != 8 {
+		t.Errorf("want 8 early-exit findings, got %d: %v", len(got), got)
+	}
+}
+
+func TestEarlyExitReadAllIsGreen(t *testing.T) {
+	fs, _ := fragment(t, "early-exit-green.mk")
+	if len(fs) != 0 {
+		t.Errorf("want no findings, got %v", fs)
+	}
+}
+
+// Without pipefail the pipeline's status is its last stage's, so a writer
+// killed by SIGPIPE changes nothing: the rule holds only where pipefail does.
+func TestEarlyExitNeedsPipefail(t *testing.T) {
+	src := "#!/bin/sh\nset -e\nif cat log | grep -q x; then exit 1; fi\n"
+	var st Stats
+	if got := withRule(ScanScript("a.sh", src, &st), RuleEarlyExit); len(got) != 0 {
+		t.Errorf("want no early-exit finding without pipefail, got %v", got)
+	}
+	src = "#!/bin/sh\nset -e -o pipefail\nif cat log | grep -q x; then exit 1; fi\n"
+	if got := withRule(ScanScript("a.sh", src, &st), RuleEarlyExit); len(got) != 1 {
+		t.Errorf("want 1 early-exit finding under pipefail, got %v", got)
+	}
+}
+
+// gatedFinding reports whether the tree may not hold f: a lost background
+// status, a stamp that skips its work (F-046, F-068), an early-exit reader in
+// a condition (PR #4588 review), and any makefile not run under "bash -o pipefail"
+// (the root losing it, an included makefile setting SHELL, or .SHELLFLAGS
+// anywhere; F-060). The other rules' findings are not gated (Glenn's ruling).
+func gatedFinding(f Finding) bool {
+	switch f.Rule {
+	case RuleBackground, RuleStamp, RuleEarlyExit:
+		return true
+	case RuleNoStrictShell:
+		return f.File == "Makefile" || f.File == "GNUmakefile" || strings.HasSuffix(f.File, ".mk") ||
+			strings.HasSuffix(f.File, "/Makefile")
+	}
+	return false
+}
+
+// treeFindings scans the repository, with edits (path -> new contents) read
+// in place of those files, and returns its gated findings. Nothing is written.
+func treeFindings(t *testing.T, edits map[string]string) []Finding {
+	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fs, st, err := ScanTree(root, RootMakefiles)
+	fs, st, err := scanTree(root, RootMakefiles, edits)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if st.Recipes == 0 || st.Scripts == 0 {
 		t.Fatalf("read %d recipe lines and %d scripts: a scan must read both", st.Recipes, st.Scripts)
 	}
+	var out []Finding
 	for _, f := range fs {
-		if f.Rule == RuleBackground || f.Rule == RuleStamp {
-			t.Errorf("%v", f)
+		if gatedFinding(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// The repository itself holds no gated finding, and the scan must have read
+// recipes and scripts, so a scan of nothing is never green. The Makefile's
+// SHELL line names this test.
+func TestTreeHasNoGatedFinding(t *testing.T) {
+	for _, f := range treeFindings(t, nil) {
+		t.Errorf("%v", f)
+	}
+}
+
+// Each way of losing pipefail goes red on the tree: the root makefile without
+// its SHELL line, an included makefile setting SHELL := sh, and a .SHELLFLAGS
+// line added to the root.
+func TestTreeLosingPipefailIsRed(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	mk := read("Makefile")
+	const shellLine = "SHELL := bash -o pipefail\n"
+	if strings.Count(mk, shellLine) != 1 {
+		t.Fatalf("the root Makefile must hold %q exactly once", shellLine)
+	}
+	frag := "make/go.mk"
+	for name, edits := range map[string]map[string]string{
+		"root SHELL line removed":   {"Makefile": strings.Replace(mk, shellLine, "", 1)},
+		"fragment sets SHELL := sh": {frag: "SHELL := sh\n" + read(frag)},
+		".SHELLFLAGS added to root": {"Makefile": strings.Replace(mk, shellLine, shellLine+".SHELLFLAGS := -e -c\n", 1)},
+	} {
+		got := withRule(treeFindings(t, edits), RuleNoStrictShell)
+		if len(got) == 0 {
+			t.Errorf("%s: want a no-strict-shell finding, got none", name)
 		}
 	}
 }

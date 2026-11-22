@@ -372,7 +372,7 @@ tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FOR
 	OUT=build/cpp-clean-format LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) check $(CPP_CLEAN_TREES)
 
 tables-cpp-warnings: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-warnings.sh make/checks/cpp-clean-one.sh $(CPP_WARN_ALLOW)
-	@if ! $(CLANGXX) --version 2>/dev/null | grep -qi clang; then \
+	@if ! $(CLANGXX) --version 2>/dev/null | grep -i clang >/dev/null; then \
 		if [ "$(SCHEMA_REQUIRE_CLANGXX)" = 1 ]; then echo "tables-cpp-clean: $(CLANGXX) is not a clang and SCHEMA_REQUIRE_CLANGXX=1"; exit 1; fi; \
 		echo "SKIP tables-cpp-warnings: $(CLANGXX) is not a clang (-Weverything is clang's)"; exit 0; \
 	fi; \
@@ -405,7 +405,7 @@ CPP_CLEAN_CONTROL := build/cpp-clean-control
 
 .PHONY: tables-cpp-warnings-negative-control
 tables-cpp-warnings-negative-control: bin/schema tools/sabotage/cpp_clean.go make/checks/cpp-clean-warnings.sh make/checks/cpp-clean-one.sh
-	@$(CLANGXX) --version 2>/dev/null | grep -qi clang || { echo "NEGATIVE CONTROL CANNOT RUN: $(CLANGXX) is not a clang"; exit 1; }
+	@$(CLANGXX) --version 2>/dev/null | grep -i clang >/dev/null || { echo "NEGATIVE CONTROL CANNOT RUN: $(CLANGXX) is not a clang"; exit 1; }
 	@test -f $(SERIALIZE)/serialize.h || { echo "NEGATIVE CONTROL CANNOT RUN: $(SERIALIZE)/serialize.h not found"; exit 1; }
 	@rm -rf $(CPP_CLEAN_CONTROL)/warn && mkdir -p $(CPP_CLEAN_CONTROL)/warn
 	./bin/schema generate --lang cpp --out $(CPP_CLEAN_CONTROL)/warn/clean examples

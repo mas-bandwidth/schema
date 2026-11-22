@@ -37,10 +37,10 @@
 # make macOS ships) ignores .SHELLFLAGS and ran plain "bash -c", so the same
 # recipe was red under make 4 and green under 3.81 (F-060); both makes run
 # "bash -o pipefail -c" from this one line. It is set once, here; no included
-# makefile may set SHELL or .SHELLFLAGS, and internal/ci
-# (TestRecipesCannotSwallowAFailure) refuses a makefile without it along with
-# every other way a recipe can lose an exit status (internal/recipescan names
-# the rules).
+# makefile may set SHELL or .SHELLFLAGS: internal/recipescan
+# (TestTreeHasNoGatedFinding) refuses the tree when this line is gone, an
+# included makefile sets SHELL, or .SHELLFLAGS appears, and
+# TestTreeLosingPipefailIsRed shows each of the three going red.
 SHELL := bash -o pipefail
 
 CXX      ?= c++
@@ -4488,7 +4488,7 @@ tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@# layout"). Both are sabotaged so the writer still lands on the extent it
 	@# measured and the cook is written, laid wrong, for the pinned cook
 	@# compare and cook-check's containment clause below to name.
-	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -qx 2 || \
+	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -x 2 >/dev/null || \
 		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the cook writer's and the cook measure's list branch"; exit 1; }
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
@@ -4769,7 +4769,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on widelist_wide"; cat build/node-align-control/$$half.log; exit 1; }; \
 		grep -q -- 'widelist_wide: .* differs at byte offset' build/node-align-control/$$half.log || \
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on a widelist_wide cook that differs"; cat build/node-align-control/$$half.log; exit 1; }; \
-		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q '/widelist_wide '; then \
+		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v '/widelist_wide ' >/dev/null; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half control went red on a row that holds no sixteen-aligned array"; exit 1; \
 		fi; \
 		echo "negative control ($$half): the tool's cook of widelist_wide goes RED and no other row does"; \
@@ -8263,7 +8263,7 @@ cards-conformance-all-goose:
 		fi; \
 		printf '%s\n' "$$lines"; \
 		for s in load save render parse bounds upgrade edit taskhash view; do \
-			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+			printf '%s\n' "$$lines" | grep -E "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" >/dev/null || fail=1; \
 		done; \
 	done; \
 	exit $$fail

@@ -108,7 +108,7 @@ tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
 	if [ "$$$$rows" -ne $(words $(call wfr_runs,$(1))) ]; then \
 		echo "tables-wire-fuzz-release-$(1): RED ($$$$rows rows for $(words $(call wfr_runs,$(1))) runs: a run landed no row)"; exit 1; fi
 	@awk -F'\t' '{ print $$$$1 " | " $$$$2 " | " $$$$3 " | " $$$$4 }' $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv
-	@if cut -f4 $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | grep -q '^RED'; then \
+	@if cut -f4 $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | grep '^RED' >/dev/null; then \
 		echo "tables-wire-fuzz-release-$(1): RED (logs and mutants under $$(WIRE_FUZZ_RELEASE_DIR)/$(1).*)"; exit 1; fi
 	@echo "tables-wire-fuzz-release-$(1): every arm passes or is owed by name, seeds $$(WIRE_FUZZ_RELEASE_SEEDS) at N=$$(WIRE_FUZZ_RELEASE_N)"
 endef
@@ -152,5 +152,5 @@ tables-wire-fuzz-release-negative-control: build/conformance-harness
 	@cat build/wire-fuzz-release-nc/*.row | awk -F'\t' '{ print $$1 " | " $$2 " | " $$3 " | " $$4 }'
 	@red=$$(cut -f4 build/wire-fuzz-release-nc/*.row | grep -cE '^RED: .*(report|read acceptance) differs'); \
 	if [ "$$red" -eq 0 ]; then echo "NEGATIVE CONTROL FAILED: the map header bounded by L left the release gate green on every seed"; exit 1; fi; \
-	if cut -f4 build/wire-fuzz-release-nc/*.row | grep -qE 'leg died|did not answer|exit [0-9]'; then echo "NEGATIVE CONTROL FAILED: the gate went red for another reason"; exit 1; fi; \
+	if cut -f4 build/wire-fuzz-release-nc/*.row | grep -E 'leg died|did not answer|exit [0-9]' >/dev/null; then echo "NEGATIVE CONTROL FAILED: the gate went red for another reason"; exit 1; fi; \
 	echo "negative control: #2400 reverted (the Dart map header bounded by L) turns the release wire-fuzz gate RED on $$red of $(words $(WIRE_FUZZ_RELEASE_SEEDS)) seeds, on the report"

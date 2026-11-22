@@ -1105,7 +1105,7 @@ tables-cs-clean-negative-control-run:
 		echo 'NEGATIVE CONTROL FAILED: tables-cs-clean stayed green over a planted violation'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
 	@grep -Eq 'A1Table\.cs.* error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the misindented statement was not named'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; }
-	@if grep -E ' error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log | grep -qv 'A1Table\.cs'; then \
+	@if grep -E ' error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log | grep -v 'A1Table\.cs' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a finding outside the planted unit'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
 	@if grep -q 'RED tables-cs-clean-negative: dotnet build' $(TABLES_CS_CLEAN_NEG)/log; then \
 		echo 'NEGATIVE CONTROL FAILED: the build half went red, not the format half'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
