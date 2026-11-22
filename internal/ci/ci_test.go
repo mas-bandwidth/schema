@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var (
@@ -74,7 +76,7 @@ func repoRoot(t *testing.T) string {
 // a failure rather than a pass: a gate over nothing proves nothing.
 func workflows(t *testing.T, root string) map[string]string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +294,7 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1521,6 +1523,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
+		"schema-moo-runs-hostile-corpus.yml:corpus",
+		"schema-moo-runs-hostile-corpus.yml:negative-control",
 		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-python-resource-bounds.yml:fast",
 		"schema-python-resource-bounds.yml:nightly",

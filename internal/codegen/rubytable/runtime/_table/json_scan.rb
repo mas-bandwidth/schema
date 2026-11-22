@@ -228,6 +228,10 @@ module SchemaRuntimeUnit
 
     def self.parse_json_text(text, max_key = 255)
       raise Refused, 'kind_mismatch' unless text.instance_of?(String)
+
+      # a binary String is the bytes entry (SPEC-TABLES 16.3): read as UTF-8 and
+      # validated the same way a text String is
+      text = text.dup.force_encoding(Encoding::UTF_8) if text.encoding == Encoding::BINARY
       raise Refused, 'invalid_utf8' unless TEXT_ENCODINGS.include?(text.encoding) && text.valid_encoding?
 
       utf8 = text.encoding == Encoding::UTF_8 ? text : text.encode(Encoding::UTF_8)

@@ -492,6 +492,34 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
         }
         answer(f[1], out);
     }
+    // message-batch <case> <connection> <root> <wire>: load with room for
+    // every body and answer the count LoadMessages returned
+    // (docs/SPEC-TABLES.md §3.3; FORMAT.md, `message-batch`).
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "message-batch" { continue; }
+        var conn: i64 = -1;
+        for i in lines.len {
+            let c = words(lines[i]);
+            if c.len >= 5 && c[0] == "connection" && c[1] == f[2] && c[2] == unit { conn = i; }
+        }
+        if conn < 0 { continue; }
+        let c = words(lines[conn]);
+        var ann: u8[>..] = [];
+        load_file(c[4], ann);
+        var wire: u8[>..] = [];
+        load_file(f[4], wire);
+        let n = conformance_message_count(f[3], ann, wire);
+        if n == -1 {
+            absent(f[1], "no message form for this root (SPEC-TABLES §3.3)");
+            continue;
+        }
+        if n == -2 {
+            write_stderr(str("driver: ", f[1], ": the announcement was refused\n"));
+            exit(1);
+        }
+        answer(f[1], str("count ", n, "\n"));
+    }
 }
 
 

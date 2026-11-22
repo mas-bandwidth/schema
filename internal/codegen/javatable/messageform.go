@@ -2957,7 +2957,10 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        if (count > cap) {\n")
 	g.pf("            report.refused = true;\n")
 	g.pf("            report.reason = \"batch_too_large\";\n")
-	g.pf("            return count;\n")
+	// A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3), the
+	// capacity refusal included: "a caller that needs room reads the wire's
+	// `M` itself", and nothing is decoded.
+	g.pf("            return 0;\n")
 	g.pf("        }\n")
 	g.pf("        TableMessage.Reader r = new TableMessage.Reader(data, 2, vocab, report);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")

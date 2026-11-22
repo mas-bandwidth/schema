@@ -1,0 +1,11 @@
+{
+  "schema": "Declarations.schema",
+  "expected": "Pong forms=wire,json carries-json=true; Record integrity=crc32c",
+  "cases": [
+    { "name": "unchanged", "view": "unchanged" },
+    { "name": "filter-form-copy", "view": "copy", "vocabulary": "forms", "omit": "json" },
+    { "name": "filter-exported-form", "view": "exported", "vocabulary": "forms", "omit": "json" },
+    { "name": "filter-integrity-copy", "view": "copy", "vocabulary": "integrity", "omit": "crc32c" },
+    { "name": "filter-exported-integrity", "view": "exported", "vocabulary": "integrity", "omit": "crc32c" }
+  ]
+}
