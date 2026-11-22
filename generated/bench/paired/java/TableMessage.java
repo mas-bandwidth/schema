@@ -439,11 +439,29 @@ public final class TableMessage {
     }
 
     public static boolean skip(Reader r, TableVocabulary.Entry e) {
-        return skipAt(r, e.shape, e.element, 0);
+        return skipAt(r, e.shape, e.element, 0, false);
+    }
+
+    // skipField skips a body FIELD: an unknown field, a kind mismatch, a field
+    // of a skipped body. A conforming writer elides an empty union field, so
+    // arm reference 0 there is damage on the skip path as on the reference
+    // read (§3.3, §4); an array element and an arm payload keep their
+    // positional None.
+    public static boolean skipField(Reader r, TableVocabulary.Entry e) {
+        return skipAt(r, e.shape, e.element, 0, true);
     }
 
     public static boolean skipAt(
             Reader r, TableVocabulary.Shape s, TableVocabulary.Shape elem, int depth) {
+        return skipAt(r, s, elem, depth, false);
+    }
+
+    public static boolean skipAt(
+            Reader r,
+            TableVocabulary.Shape s,
+            TableVocabulary.Shape elem,
+            int depth,
+            boolean atField) {
         if (depth > 128 || s == null) {
             r.err = true;
             return false;
@@ -501,6 +519,10 @@ public final class TableMessage {
                         return false;
                     }
                     if (ref == 0L) {
+                        if (atField) {
+                            r.err = true;
+                            return false;
+                        }
                         return true;
                     }
                     if (ref < 0L || ref > (long) r.vocab.count) {
@@ -638,7 +660,7 @@ public final class TableMessage {
                 r.err = true;
                 return false;
             }
-            if (!skipAt(r, e.shape, e.element, depth)) {
+            if (!skipAt(r, e.shape, e.element, depth, true)) {
                 return false;
             }
         }
@@ -675,6 +697,19 @@ public final class TableMessage {
         w.put(index, bits);
     }
 
+    // A RANGED VALUE READ BY NAME IS HELD TO THE ANNOUNCED KIND FIRST (§3.3,
+    // "A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW"): base plus
+    // offset is taken exactly, never wrapped, and a sum the announced kind
+    // cannot store refuses out_of_range before this reader's own range and
+    // domain, by the test the skip path takes (skipRanged), so a body gets one
+    // refusal whether this reader names the field or not. Inside the announced
+    // kind the sum fits that kind's own sixty-four bits, so the long sum below
+    // is exact.
+    static boolean rangedHolds(TableVocabulary.Shape s, long offLo, long offHi) {
+        long baseHi = s.kind >= 18 ? s.baseHi : (kindSigned(s.kind) && s.baseLo < 0L ? -1L : 0L);
+        return kindHolds(s.kind, offLo, offHi, s.baseLo, baseHi);
+    }
+
     public static long readSigned(
             Reader r, TableVocabulary.Shape s, long min, long max, boolean hasRange) {
         long raw = r.get((int) s.bits);
@@ -683,6 +718,10 @@ public final class TableMessage {
         }
         long v;
         if (s.packing == 1) {
+            if (!rangedHolds(s, raw, 0L)) {
+                r.report.refuse("out_of_range");
+                return hasRange ? min : 0L;
+            }
             v = raw + s.baseLo;
         } else if (s.bits > 0 && s.bits < 64) {
             int shift = 64 - (int) s.bits;
@@ -713,6 +752,10 @@ public final class TableMessage {
         if (r.err) {
             return 0L;
         }
+        if (s.packing == 1 && !rangedHolds(s, raw, 0L)) {
+            r.report.refuse("out_of_range");
+            return hasRange ? min : 0L;
+        }
         long v = (s.packing == 1) ? (raw + s.baseLo) : raw;
         if (hasRange) {
             if (Long.compareUnsigned(v, min) < 0) {
@@ -742,6 +785,10 @@ public final class TableMessage {
             if (r.err) {
                 return new long[] {0L, 0L};
             }
+            if (s.packing == 1 && !rangedHolds(s, lo, hi)) {
+                r.report.refuse("out_of_range");
+                return new long[] {0L, 0L};
+            }
             if (s.packing == 1) {
                 long sum = lo + s.baseLo;
                 long carry = Long.compareUnsigned(sum, lo) < 0 ? 1L : 0L;
@@ -751,6 +798,10 @@ public final class TableMessage {
         } else {
             long raw = r.get((int) s.bits);
             if (r.err) {
+                return new long[] {0L, 0L};
+            }
+            if (s.packing == 1 && !rangedHolds(s, raw, 0L)) {
+                r.report.refuse("out_of_range");
                 return new long[] {0L, 0L};
             }
             if (s.packing == 1) {

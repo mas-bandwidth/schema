@@ -1197,6 +1197,7 @@ _M.BenchPacketMaxBytes = 56
 -- WriteBenchPacket writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteBenchPacket(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.A) ~= "number" or v.A % 1 ~= 0 or v.A < -100 or v.A > 100 then return false end
   BITS.value = v.A + 100
   if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
@@ -1218,8 +1219,11 @@ function _M.WriteBenchPacket(stream: any, v: any): boolean
   if type(v.Flag) ~= "boolean" then return false end
   BOOL.value = v.Flag
   if not stream:serializeBool(BOOL) then return false end -- SPEC §4.3
+  if type(v.X) ~= "number" or not (math.abs(v.X) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
   if not stream:serializeFloat({ value = v.X }) then return false end
+  if type(v.Y) ~= "number" or not (math.abs(v.Y) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
   if not stream:serializeFloat({ value = v.Y }) then return false end
+  if type(v.Z) ~= "number" or not (math.abs(v.Z) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
   if not stream:serializeFloat({ value = v.Z }) then return false end
   if typeof(v.Big) ~= "integer" then return false end
   BIG.value = v.Big
@@ -1238,6 +1242,7 @@ _M.BenchIntsMaxBytes = 16
 -- WriteBenchInts writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteBenchInts(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.F0) ~= "number" or v.F0 % 1 ~= 0 or v.F0 < -100 or v.F0 > 100 then return false end
   BITS.value = v.F0 + 100
   if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
@@ -1279,6 +1284,7 @@ _M.BenchBitsMaxBytes = 24
 -- WriteBenchBits writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteBenchBits(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.B7) ~= "number" or v.B7 % 1 ~= 0 or v.B7 < 0 or v.B7 > 127 then return false end
   BITS.value = v.B7
   if not stream:serializeBits(BITS, 7) then return false end -- the declared bit width
@@ -1314,6 +1320,7 @@ _M.MixedEntityMaxBytes = 24
 -- WriteMixedEntity writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteMixedEntity(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.EntityId) ~= "number" or v.EntityId % 1 ~= 0 or v.EntityId < 0 or v.EntityId > 4095 then return false end
   BITS.value = v.EntityId
   if not stream:serializeBits(BITS, 12) then return false end -- the declared bit width
@@ -1367,6 +1374,7 @@ _M.MixedStatMaxBytes = 8
 -- WriteMixedStat writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteMixedStat(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.StatId) ~= "number" or v.StatId % 1 ~= 0 or v.StatId < 0 or v.StatId > 255 then return false end
   BITS.value = v.StatId
   if not stream:serializeBits(BITS, 8) then return false end -- the declared bit width
@@ -1384,6 +1392,7 @@ _M.MixedHitEventMaxBytes = 8
 -- WriteMixedHitEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteMixedHitEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.TargetId) ~= "number" or v.TargetId % 1 ~= 0 or v.TargetId < 0 or v.TargetId > 4095 then return false end
   BITS.value = v.TargetId
   if not stream:serializeBits(BITS, 12) then return false end -- the declared bit width
@@ -1407,6 +1416,7 @@ _M.MixedChatEventMaxBytes = 8
 -- WriteMixedChatEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteMixedChatEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Channel) ~= "number" or v.Channel % 1 ~= 0 or v.Channel < 0 or v.Channel > 3 then return false end
   BITS.value = v.Channel
   if not stream:serializeBits(BITS, 2) then return false end -- the offset from min (SPEC §4.3)
@@ -1424,6 +1434,7 @@ _M.MixedPickupEventMaxBytes = 8
 -- WriteMixedPickupEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteMixedPickupEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemId) ~= "number" or v.ItemId % 1 ~= 0 or v.ItemId < 0 or v.ItemId > 1023 then return false end
   BITS.value = v.ItemId
   if not stream:serializeBits(BITS, 10) then return false end -- the declared bit width
@@ -1440,16 +1451,20 @@ _M.MixedEventMaxBytes = 8
 
 -- WriteMixedEvent writes union MixedEvent (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteMixedEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 3 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.Hit) ~= "table" then return false end
     if not _M.WriteMixedHitEvent(stream, v.Hit) then return false end
   end
   if v.Type == 2 then
+    if type(v.Chat) ~= "table" then return false end
     if not _M.WriteMixedChatEvent(stream, v.Chat) then return false end
   end
   if v.Type == 3 then
+    if type(v.Pickup) ~= "table" then return false end
     if not _M.WriteMixedPickupEvent(stream, v.Pickup) then return false end
   end
   return true
@@ -1463,6 +1478,7 @@ _M.BenchMixedMaxBytes = 456
 -- WriteBenchMixed writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteBenchMixed(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   BITS.value = 49374
   if not stream:serializeBits(BITS, 16) then return false end -- const(49374, 16) — SPEC §4.3
   if type(v.Sequence) ~= "number" or v.Sequence % 1 ~= 0 or v.Sequence < 0 or v.Sequence > 65535 then return false end
@@ -1493,17 +1509,22 @@ function _M.WriteBenchMixed(stream: any, v: any): boolean
   BITS.value = v.ServerTime
   if not stream:serializeBits(BITS, 24) then return false end -- the Q format's raw offset (SPEC §4.3)
   if type(v.EntitiesCount) ~= "number" or v.EntitiesCount % 1 ~= 0 or v.EntitiesCount < 1 or v.EntitiesCount > 8 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Entities) ~= "table" then return false end
   BITS.value = v.EntitiesCount - 1
   if not stream:serializeBits(BITS, 3) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.EntitiesCount do
+    if type(v.Entities[_i]) ~= "table" then return false end
     if not _M.WriteMixedEntity(stream, v.Entities[_i]) then return false end
   end
   if type(v.StatsCount) ~= "number" or v.StatsCount % 1 ~= 0 or v.StatsCount < 0 or v.StatsCount > 80 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Stats) ~= "table" then return false end
   BITS.value = v.StatsCount
   if not stream:serializeBits(BITS, 7) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.StatsCount do
+    if type(v.Stats[_i]) ~= "table" then return false end
     if not _M.WriteMixedStat(stream, v.Stats[_i]) then return false end
   end
+  if type(v.GameEvent) ~= "table" then return false end
   if not _M.WriteMixedEvent(stream, v.GameEvent) then return false end
   if type(v.Loadout) ~= "buffer" or buffer.len(v.Loadout) ~= 4 then return false end
   for _i = 1, 4 do
@@ -1523,13 +1544,18 @@ function _M.WriteBenchMixed(stream: any, v: any): boolean
   BITS.value = v.PayloadLength
   if not stream:serializeBits(BITS, 5) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Payload, 0, v.PayloadLength))) then return false end -- align, then the used bytes (SPEC §4.7)
-  if v.AimX == v.AimX and v.AimX ~= math.huge and v.AimX ~= -math.huge and (v.AimX < -1.0 or v.AimX > 1.0) then return false end
+  if type(v.AimX) ~= "number" or not (math.abs(v.AimX) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.AimX < -1.0 or v.AimX > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimX }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
-  if v.AimY == v.AimY and v.AimY ~= math.huge and v.AimY ~= -math.huge and (v.AimY < -1.0 or v.AimY > 1.0) then return false end
+  if type(v.AimY) ~= "number" or not (math.abs(v.AimY) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.AimY < -1.0 or v.AimY > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimY }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
-  if v.AimZ == v.AimZ and v.AimZ ~= math.huge and v.AimZ ~= -math.huge and (v.AimZ < -1.0 or v.AimZ > 1.0) then return false end
+  if type(v.AimZ) ~= "number" or not (math.abs(v.AimZ) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
+  if v.AimZ < -1.0 or v.AimZ > 1.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.AimZ }, -1.0, 1.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if type(v.Recoil) ~= "number" or not (math.abs(v.Recoil) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)
   if not stream:serializeFloat({ value = v.Recoil }) then return false end
+  if type(v.Drift) ~= "number" or v.Drift ~= v.Drift or v.Drift == math.huge or v.Drift == -math.huge then return false end -- finite (SPEC §5.1)
   if not stream:serializeDouble({ value = v.Drift }) then return false end
   if not _Rt.isInt128(v.WideKey) then return false end
   WIDE.value = v.WideKey

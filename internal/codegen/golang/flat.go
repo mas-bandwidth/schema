@@ -309,11 +309,11 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 		if width <= 32 {
 			// SerializeBits: the runtime wrapper the Go compiler inlines
 			g.pf("%sw%d := uint32(%s)\n", ind, j, packed)
-			g.pf("%sstream.SerializeBits(&w%d, %d)\n", ind, j, width)
+			g.pf("%s_ = stream.SerializeBits(&w%d, %d) // sticky: the stream latches the first error and Err reports it\n", ind, j, width)
 			continue
 		}
 		g.pf("%sw%d := %s\n", ind, j, packed)
-		g.pf("%sstream.SerializeBits64(&w%d, %d)\n", ind, j, width)
+		g.pf("%s_ = stream.SerializeBits64(&w%d, %d) // sticky: the stream latches the first error and Err reports it\n", ind, j, width)
 	}
 }
 
@@ -332,12 +332,12 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 	for j, width := range widths {
 		if width <= 32 {
 			g.pf("%sn%d := uint32(0)\n", ind, j)
-			g.pf("%sstream.SerializeBits(&n%d, %d)\n", ind, j, width)
+			g.pf("%s_ = stream.SerializeBits(&n%d, %d) // sticky: checked once for the run below\n", ind, j, width)
 			g.pf("%sc%d := uint64(n%d)\n", ind, j, j)
 			continue
 		}
 		g.pf("%sc%d := uint64(0)\n", ind, j)
-		g.pf("%sstream.SerializeBits64(&c%d, %d)\n", ind, j, width)
+		g.pf("%s_ = stream.SerializeBits64(&c%d, %d) // sticky: checked once for the run below\n", ind, j, width)
 	}
 	g.pf("%sif stream.Err() != nil {\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
 

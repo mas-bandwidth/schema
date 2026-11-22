@@ -11,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
@@ -153,14 +155,14 @@ fixed table ByRoot
 	if err := os.WriteFile(filepath.Join(src, "probe", "Driver.java"), []byte(identityCompiledDriver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-d", classes,
+	cmd := testproc.Command(t, javac, "--release", "17", "-d", classes,
 		filepath.Join(src, "probe", "TableFixed.java"),
 		filepath.Join(src, "probe", "ByRootFixed.java"),
 		filepath.Join(src, "probe", "Driver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(java, "-ea", "-cp", classes, "probe.Driver")
+	run := testproc.Command(t, java, "-ea", "-cp", classes, "probe.Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
@@ -430,11 +432,11 @@ func TestFixedFormFU1FU2(t *testing.T) {
 	args := append([]string{"--release", "17", "-d", classes}, fu1src...)
 	args = append(args, fu2src...)
 	args = append(args, filepath.Join(src, "Driver.java"))
-	cmd := exec.Command(javac, args...)
+	cmd := testproc.Command(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
@@ -528,7 +530,7 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		if st, err := os.Stat(j); err != nil || st.IsDir() {
 			return false
 		}
-		if err := exec.Command(jc, "-version").Run(); err != nil {
+		if err := testproc.Command(t, jc, "-version").Run(); err != nil {
 			return false
 		}
 		return true
@@ -707,10 +709,10 @@ func TestFixedHostileGuardAndOrdinal(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", classes}, pkgSrc...)
 	args = append(args, filepath.Join(src, "Hostile.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Hostile").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Hostile").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

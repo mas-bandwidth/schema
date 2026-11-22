@@ -850,6 +850,11 @@ form past 65536, which is the size no conforming reader decodes
 (docs/SPEC-TABLES.md §3.4) — every read and write copies the whole of it, and
 fixed tables are for small things. --fixed-record-limit turns that advice into
 a gate: a fixed table past the limit given does not compile.
+
+pin moves every file or none: a refusal, or a write that fails part way,
+exits 1 with every generate.go the entry it was. A generate.go that is a
+symbolic link is followed: the file it names is rewritten and the link is
+left as it is.
 `)
 }
 

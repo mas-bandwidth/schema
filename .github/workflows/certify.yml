@@ -799,7 +799,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
@@ -972,7 +972,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
@@ -1186,7 +1186,7 @@ jobs:
 
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
+      # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
       # Its text is go test's own, byte for byte (summary mode), so no recipe
       # that greps it sees anything new.
       - name: report each go test package against its named budget
