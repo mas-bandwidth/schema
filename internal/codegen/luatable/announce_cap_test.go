@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/announcefit"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE ANNOUNCEMENT WRITER REFUSES A VOCABULARY ITS READERS REFUSE
@@ -26,7 +26,7 @@ func TestLuaAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		refused bool
 	}{{4096, false}, {4097, true}} {
 		src := filepath.Join(t.TempDir(), "probe.schema")
-		if err := os.WriteFile(src, []byte(announcefit.Schema(t, row.entries)), 0o644); err != nil {
+		if err := os.WriteFile(src, []byte(tablewire.AnnounceSchema(row.entries)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		files, err := Generate(luarun.LoadUnit(t, src))

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/announcefit"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -25,7 +24,7 @@ func TestGooseAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		refused bool
 	}{{4096, false}, {4097, true}} {
 		src := filepath.Join(t.TempDir(), "Probe.schema")
-		if err := os.WriteFile(src, []byte(announcefit.Schema(t, row.entries)), 0o644); err != nil {
+		if err := os.WriteFile(src, []byte(tablewire.AnnounceSchema(row.entries)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		u, err := loadSchemaPaths([]string{src})

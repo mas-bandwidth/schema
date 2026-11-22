@@ -58,7 +58,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
-	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableAnnounceTooLarge=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement), b2i(len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries))
+	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableAnnounceTooLarge=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement), b2i(len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {
 		fmt.Fprintf(&b, "0x%02x,", v)

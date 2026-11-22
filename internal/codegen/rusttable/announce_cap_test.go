@@ -28,7 +28,7 @@ func TestRustAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		files, err := Generate(unitFrom(t, strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)))
+		files, err := Generate(unitFrom(t, tablewire.AnnounceSchema(row.entries)))
 		if err != nil {
 			t.Fatal(err)
 		}

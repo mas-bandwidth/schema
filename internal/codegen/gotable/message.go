@@ -79,7 +79,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))), len(tablewire.MessageVocabulary(u)))
 	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(tablewire.Announce(u)))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&b, "const tableAnnounceTooLarge = %t\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	fmt.Fprintf(&b, "const tableAnnounceTooLarge = %t\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
 	for i, e := range tablewire.MessageVocabulary(u) {
 		fmt.Fprintf(&b, "%s,OwnSlot:%d},\n", strings.TrimSuffix(messageEntryLiteral(e), "}"), i+1)

@@ -1,7 +1,6 @@
 package cpptable
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -20,7 +19,7 @@ func TestCppAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused string
 	}{{4096, "false"}, {4097, "true"}} {
-		u := cppUnitFrom(t, strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1))
+		u := cppUnitFrom(t, tablewire.AnnounceSchema(row.entries))
 		body := `    static uint8_t ann[1 << 20];
     static TableMessageEntry entries[8192];
     const int64_t n = AnnounceMeasure(), w = Announce( ann, (int64_t) sizeof( ann ) );

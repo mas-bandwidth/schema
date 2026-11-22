@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"maps"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -20,7 +19,7 @@ func TestGoAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		schema := strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)
+		schema := tablewire.AnnounceSchema(row.entries)
 		probe := `package idcap
 
 import "testing"

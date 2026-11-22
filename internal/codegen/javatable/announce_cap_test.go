@@ -20,17 +20,9 @@ func TestJavaAnnouncementWriterRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refuses bool
 	}{{ir.TableVocabularyMaxEntries, false}, {ir.TableVocabularyMaxEntries + 1, true}} {
-		// a fixed root carries the message form: settle the variant count that
-		// gives the fixed twin exactly row.entries vocabulary entries
-		fixedTwin := func(n int) *ir.Unit {
-			return unitFrom(t, strings.Replace(tablewire.AnnounceSchema(n), "table Root", "fixed table Root", 1))
-		}
-		n := row.entries
-		u := fixedTwin(n)
-		n += row.entries - len(ir.TableVocabulary(u))
-		u = fixedTwin(n)
-		if got := len(ir.TableVocabulary(u)); got != row.entries {
-			t.Fatalf("fixed twin has %d vocabulary entries, want %d", got, row.entries)
+		u := unitFrom(t, tablewire.AnnounceSchema(row.entries))
+		if got := len(tablewire.MessageVocabulary(u)); got != row.entries {
+			t.Fatalf("schema announces %d entries, want %d", got, row.entries)
 		}
 		files, err := Generate(u)
 		if err != nil {

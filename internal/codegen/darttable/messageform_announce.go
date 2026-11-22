@@ -59,7 +59,7 @@ func dartTableAnnouncementConstant(u *ir.Unit) string {
 	out.WriteString("]);\n")
 	fmt.Fprintf(&out, "const int tableAnnouncementLength = %d;\n", len(b))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&out, "const bool tableAnnouncementTooLarge = %t;\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	fmt.Fprintf(&out, "const bool tableAnnouncementTooLarge = %t;\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	fmt.Fprintf(&out, "/// The unit's own build version, emitted beside the announcement.\nconst int tableBuildVersion = %d;\n\n", int64(ir.BuildVersion(u)))
 	return out.String()
 }

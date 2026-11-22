@@ -1,7 +1,6 @@
 package ctable
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -20,7 +19,7 @@ func TestCAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		src := strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)
+		src := tablewire.AnnounceSchema(row.entries)
 		ast, diags := parser.Parse("Idcap.schema", []byte(src))
 		if len(diags) > 0 {
 			t.Fatal(diags)

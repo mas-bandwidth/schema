@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/announcefit"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE ANNOUNCEMENT WRITER REFUSES A VOCABULARY ITS READERS REFUSE
@@ -22,7 +22,7 @@ func TestMooAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		g := generateFiles(t, map[string]string{"Cap.schema": announcefit.Schema(t, row.entries)})
+		g := generateFiles(t, map[string]string{"Cap.schema": tablewire.AnnounceSchema(row.entries)})
 		main := "--!strict\nlocal MS = require(\"./table_message\")\n" + g.requireAll() + fmt.Sprintf(`
 local T = require("./CapTable")
 local refused = %t

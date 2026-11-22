@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/announcefit"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE ANNOUNCEMENT WRITER REFUSES A VOCABULARY ITS READERS REFUSE
@@ -24,7 +24,7 @@ func TestLobsterAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		schema := announcefit.Schema(t, row.entries)
+		schema := tablewire.AnnounceSchema(row.entries)
 		g, err := generateLoadUnit(t, []string{writeSchema(t, "Probe", schema)})
 		if err != nil {
 			t.Fatal(err)

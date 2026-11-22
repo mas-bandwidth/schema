@@ -29,7 +29,7 @@ func messageModule(u *ir.Unit) string {
 	fmt.Fprintf(&b, "ANNOUNCEMENT = bytes.fromhex(%q)\n", fmt.Sprintf("%x", tablewire.Announce(u)))
 	fmt.Fprintf(&b, "BUILD_VERSION = %d\n", ir.BuildVersion(u))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&b, "_ANNOUNCE_ENTRIES = %d\n_ANNOUNCE_TOO_LARGE = %s\n", len(ir.TableVocabulary(u)), map[bool]string{true: "True", false: "False"}[len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries])
+	fmt.Fprintf(&b, "_ANNOUNCE_ENTRIES = %d\n_ANNOUNCE_TOO_LARGE = %s\n", len(tablewire.MessageVocabulary(u)), map[bool]string{true: "True", false: "False"}[len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries])
 	b.WriteString("ROOTS = frozenset((\n")
 	for _, name := range roots {
 		fmt.Fprintf(&b, "    %q,\n", name)

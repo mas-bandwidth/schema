@@ -85,7 +85,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&b, "  @announcement_too_large %t\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	fmt.Fprintf(&b, "  @announcement_too_large %t\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	records, unions := messageRecords(u)
 	b.WriteString(records)
 	b.WriteString("\n")

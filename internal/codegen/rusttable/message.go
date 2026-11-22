@@ -88,7 +88,7 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	}
 	b.WriteString("\n];\n\n")
 	b.WriteString("/// R8: the writer refuses a vocabulary past the readers' default entry maximum.\n")
-	fmt.Fprintf(&b, "pub const TABLE_ANNOUNCEMENT_TOO_LARGE: bool = %t;\n\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	fmt.Fprintf(&b, "pub const TABLE_ANNOUNCEMENT_TOO_LARGE: bool = %t;\n\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 
 	// THE WRITER's reference width is its OWN vocabulary's (§3.3): every slot
 	// of the announcement it sent, and the zero reference beside them.

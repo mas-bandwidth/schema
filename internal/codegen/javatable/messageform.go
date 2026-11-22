@@ -74,7 +74,7 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	// MORE ENTRIES THAN ir.TableVocabularyMaxEntries: every receiver at the default
 	// maximum refuses the announcement as vocabulary_too_large, so the writer refuses
 	// (-1) rather than hand it out (docs/SPEC-TABLES.md §3.3).
-	annBody = strings.ReplaceAll(annBody, "%%ANNOUNCEOVER%%", fmt.Sprint(len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries))
+	annBody = strings.ReplaceAll(annBody, "%%ANNOUNCEOVER%%", fmt.Sprint(len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries))
 	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),

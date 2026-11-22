@@ -66,7 +66,7 @@ func messageModule(u *ir.Unit, mod string) string {
 	fmt.Fprintf(&b, "module %s\n", mod)
 	fmt.Fprintf(&b, "  ANNOUNCEMENT = %s.b.freeze\n\n", rbBytesLiteral(raw))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&b, "  ANNOUNCE_ENTRIES = %d\n  ANNOUNCE_TOO_LARGE = %t\n\n", len(ir.TableVocabulary(u)), len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+	fmt.Fprintf(&b, "  ANNOUNCE_ENTRIES = %d\n  ANNOUNCE_TOO_LARGE = %t\n\n", len(tablewire.MessageVocabulary(u)), len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	b.WriteString("  def self.announce_measure\n    raise Refused, 'vocabulary_too_large' if ANNOUNCE_TOO_LARGE\n\n    ANNOUNCEMENT.bytesize\n  end\n\n")
 	b.WriteString("  def self.announce\n    raise Refused, 'vocabulary_too_large' if ANNOUNCE_TOO_LARGE\n\n    ANNOUNCEMENT\n  end\n\n")
 	b.WriteString("  class MessageVocabulary < SchemaTable::MessageVocabulary\n")

@@ -1,7 +1,6 @@
 package darttable
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -18,7 +17,7 @@ func TestDartAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused string
 	}{{4096, "false"}, {4097, "true"}} {
-		u := unitFrom(t, strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1))
+		u := unitFrom(t, tablewire.AnnounceSchema(row.entries))
 		body := `
   final n = t.announceMeasure();
   final buf = Uint8List(1 << 20);

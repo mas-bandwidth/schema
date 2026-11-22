@@ -13,7 +13,7 @@ func (g *tableGen) emitMessages() {
 	// A VOCABULARY OF MORE THAN ir.TableVocabularyMaxEntries ENTRIES HAS NO ANNOUNCEMENT TO WRITE
 	// (docs/SPEC-TABLES.md §3.3): every receiver at the default maximum refuses it as
 	// vocabulary_too_large, so the writer refuses too (-1 and an empty span).
-	if len(ir.TableVocabulary(g.unit)) > ir.TableVocabularyMaxEntries {
+	if len(tablewire.MessageVocabulary(g.unit)) > ir.TableVocabularyMaxEntries {
 		g.pf("public static int AnnounceMeasure() { return -1; }\npublic static ReadOnlySpan<byte> Announce() { return ReadOnlySpan<byte>.Empty; }\n")
 	} else {
 		g.pf("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\npublic static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")

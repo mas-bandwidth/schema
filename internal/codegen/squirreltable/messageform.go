@@ -71,7 +71,7 @@ func messageModule(m *Module) {
 		m.Printf("_M.TableMessageAnnouncement[%d] = 0x%02x;\n", i, b)
 	}
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	tooLarge := len(ir.TableVocabulary(m.Unit)) > ir.TableVocabularyMaxEntries
+	tooLarge := len(tablewire.MessageVocabulary(m.Unit)) > ir.TableVocabularyMaxEntries
 	m.Printf("_M.AnnounceMeasure <- function() { if (%t) return -1; return _M.TableMessageAnnouncement.len(); };\n", tooLarge)
 	m.Printf("_M.Announce <- function(out) {\n")
 	m.Printf("  if (%t) return -1;\n", tooLarge)

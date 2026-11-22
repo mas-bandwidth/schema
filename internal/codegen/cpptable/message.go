@@ -104,7 +104,7 @@ static const bool kTableAnnounceTooLarge = %[4]t;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
-`, len(entries), len(announcement), len(announcement), len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
+`, len(entries), len(announcement), len(announcement), len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	for _, by := range announcement {
 		fmt.Fprintf(&b, "    0x%02x,\n", by)
 	}

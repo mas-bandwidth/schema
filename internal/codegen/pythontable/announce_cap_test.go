@@ -20,7 +20,7 @@ func TestPythonAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		schema := strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)
+		schema := tablewire.AnnounceSchema(row.entries)
 		files, err := Generate(loadUnit(t, schema))
 		if err != nil {
 			t.Fatal(err)

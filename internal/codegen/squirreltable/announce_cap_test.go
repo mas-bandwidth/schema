@@ -23,7 +23,7 @@ func TestSquirrelAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		refused bool
 		want    string
 	}{{4096, false, "measure-ok announce-ok"}, {4097, true, "measure -1 announce -1"}} {
-		schema := strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)
+		schema := tablewire.AnnounceSchema(row.entries)
 		dir := t.TempDir()
 		mod := emitUnit(t, dir, "idcap", unitFromSchema(t, schema))
 		script := `local T = dofile("idcap/schema_module.nut", true).require("` + mod + `");

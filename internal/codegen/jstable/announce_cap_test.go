@@ -1,7 +1,6 @@
 package jstable
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -20,7 +19,7 @@ func TestJsAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		schema := strings.Replace(tablewire.AnnounceSchema(row.entries), "table Root", "fixed table Root", 1)
+		schema := tablewire.AnnounceSchema(row.entries)
 		u := unitFrom(t, schema)
 		probe := `
 const buf = new Uint8Array(1 << 20);
