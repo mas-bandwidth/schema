@@ -167,6 +167,9 @@ println!("case %d ok");
 }
 `, base+".wire", string(text), name, name, i != 0, i != 0, i != 0, i != 0, name, name, base+".le", base+".be", name, name, i)
 		fmt.Fprintf(&body, "{ let wire=std::fs::read(%q).unwrap(); let expected=[", base+".wire")
+		if len(wire) == 0 {
+			t.Fatal("wire is empty: the loop below would check nothing")
+		}
 		for cut := range len(wire) {
 			var report tabletext.Report
 			ok, err := tablewire.Decode(m, m.New(u.Tables["Maps"]), wire[:cut], &report)

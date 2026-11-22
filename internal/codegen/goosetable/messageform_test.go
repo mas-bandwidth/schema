@@ -238,6 +238,9 @@ type gooseMsgCase struct {
 	// announce is the PEER's announcement the load resolves against
 	// (AnnounceRead); nil reads under the unit's own (`<Root>Announce`)
 	announce []byte
+	// back is one assignment list per storage slot, applied before the load,
+	// so a sentinel shows whether the load wrote the slot
+	back [][]string
 }
 
 type gooseMsgResult struct {
@@ -310,6 +313,11 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 	}
 	if c.data != nil {
 		fmt.Fprintf(&b, "    var back: %s[%d] = [%s { .. }; %d];\n", root, c.capacity, root, c.capacity)
+		for k, as := range c.back {
+			for _, a := range as {
+				fmt.Fprintf(&b, "    back[%d]%s;\n", k, a)
+			}
+		}
 		b.WriteString("    var data: u8[>..] = [];\n    if !read_file(\"in.bin\", data) { print(\"read-failed\"); return; }\n")
 		b.WriteString("    var voc = schema_rt::MsgVocabulary { .. };\n    var vrep = schema_rt::MsgReport { .. };\n")
 		if c.announce != nil {
@@ -822,7 +830,7 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 // TestGooseMessageFormRefusesByName holds the batch surface's answers
 // (docs/SPEC-TABLES.md §3.3, THE BATCH SURFACE'S FIVE ANSWERS) to the Go
 // engine's names: M above 256 on the write, M above the caller's capacity on
-// the read (nothing decoded, the wire's count reported), a form byte this
+// the read (nothing decoded, a count of 0), a form byte this
 // reader does not carry, bytes after the pad, and damage inside a body, each
 // of the last two discarding the whole batch (§4).
 func TestGooseMessageFormRefusesByName(t *testing.T) {
@@ -861,13 +869,13 @@ func TestGooseMessageFormRefusesByName(t *testing.T) {
 		malformed bool
 		count     int64
 	}{
-		{"read_capacity_short", batch3, 2, -1, "batch_too_large", false, 3},
+		{"read_capacity_short", batch3, 2, 0, "batch_too_large", false, 0},
 		{"read_three", batch3, 3, 3, "ok", false, 0},
-		{"newer_form", append([]byte{1}, golden[1:]...), 1, -1, "newer_form", false, 0},
+		{"newer_form", append([]byte{1}, golden[1:]...), 1, 0, "newer_form", false, 0},
 		{"bytes_after_the_pad", append(append([]byte(nil), golden...), 0), 1, 0, "ok", true, 0},
 		{"damage_in_body_one", golden[:len(golden)-2], 1, 0, "ok", true, 0},
 		{"damage_in_body_three", batch3[:len(batch3)-2], 3, 0, "ok", true, 0},
-		{"empty", []byte{}, 1, -1, "ok", true, 0},
+		{"empty", []byte{}, 1, 0, "ok", true, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -405,7 +405,19 @@ func (e *msgEmit) slotRides(ind int, el *ir.Field, expr, def string) string {
 	case e.isUnion(el):
 		return expr + ".Type != 0"
 	}
-	return e.differs(el, expr, def)
+	return e.writeDiffers(el, expr, def)
+}
+
+// writeDiffers is the WRITER's "not the declared default": differs, except
+// that a compressed float compares by value, because a writer stores a
+// compressed float's -0 as +0 (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+// fixed-compressed-negzero), so its -0 against a +0 default does not ride,
+// as its +0 twin does not. A plain float's -0 still rides.
+func (e *msgEmit) writeDiffers(f *ir.Field, expr, def string) string {
+	if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+		return fmt.Sprintf("%s != %s", expr, def)
+	}
+	return e.differs(f, expr, def)
 }
 
 // differs is "not the declared default", value against value: a float by its
@@ -520,6 +532,27 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 			// (SPEC.md §5.1 row 3)
 			e.p(ind, "if %sCount < %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, f.ArrayMin)
 		}
+		if f.ElidesAtBirth() {
+			// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3,
+			// the §22.2 [M..N]T row; tablewire messageElides): exactly Min
+			// elements, each off the wire (a table by a body that is its
+			// terminator alone, a float by its bits), is not written.
+			e.p(ind, "{")
+			el := elemOf(f)
+			i := e.loopVar()
+			e.p(ind+1, "var born%s = %sCount == %d;", i, pl.val, f.ArrayMin)
+			e.p(ind+1, "var %s: i64 = 0;", i)
+			e.p(ind+1, "while born%s && %s < %d {", i, i, f.ArrayMin)
+			r := e.slotRides(ind+2, el, pl.at(i).val, def.at(i).val)
+			e.p(ind+2, "if %s { born%s = false; }", r, i)
+			e.p(ind+2, "%s += 1;", i)
+			e.p(ind+1, "}")
+			e.p(ind+1, "if %sCount != 0 && !born%s {", pl.val, i)
+			header(ind + 2)
+			e.p(ind+1, "}")
+			e.p(ind, "}")
+			break
+		}
 		e.p(ind, "if %sCount != 0 {", pl.val)
 		header(ind + 1)
 		e.p(ind, "}")
@@ -551,7 +584,7 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 1)
 		e.p(ind, "}")
 	default:
-		e.p(ind, "if %s {", e.differs(f, pl.val, def.val))
+		e.p(ind, "if %s {", e.writeDiffers(f, pl.val, def.val))
 		header(ind + 1)
 		e.p(ind, "}")
 	}
@@ -563,6 +596,9 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 		switch {
 		case f.Type.Optional, e.isUnion(f) && f.Array == ir.ArrayNone, e.isStruct(f):
 		case f.Array == ir.ArrayCounted:
+			if el := elemOf(f); f.ElidesAtBirth() && !e.isStruct(el) && !e.isUnion(el) {
+				return true
+			}
 		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		case (f.Array == ir.ArrayFixed || f.KeyEnum != "") && e.isUnion(f):
 		default:
@@ -1326,25 +1362,26 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 
 	e.loop = 0
 	e.p(0, "// %sLoadMessages reads ONE batch into values against the sender's vocabulary (AnnounceRead) and", n)
-	e.p(0, "// returns the bodies delivered: a capacity short of the wire's count is batch_too_large")
-	e.p(0, "// with report.count set and nothing decoded; damage anywhere in the batch discards the")
-	e.p(0, "// whole batch, returning 0 with every body at its declared defaults and malformed set;")
-	e.p(0, "// a non-finite float refuses the batch (§3.3, §4).")
+	e.p(0, "// returns the bodies delivered. \"A refused batch returns a count of `0`, as every refused")
+	e.p(0, "// batch does\" (§3.3): a capacity short of the wire's count is batch_too_large with nothing")
+	e.p(0, "// decoded; damage anywhere in the batch discards the whole batch with every body at its")
+	e.p(0, "// declared defaults and malformed set; a non-finite float refuses the batch (§3.3, §4).")
+	e.p(0, "// A delivered batch is never empty (M is at least 1), so 0 says refused; the report names why.")
 	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
 	e.p(2, "report.damaged = true;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "if data[0] != schema_rt::MsgForm {")
 	e.p(2, "report.reason = schema_rt::MsgRefuseNewerForm;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	if st.Integrity == "crc32c" {
 		e.p(1, "if !schema_rt::integrity_holds(data, 2) {")
 		e.p(2, "report.damaged = true;")
 		e.p(2, "report.reason = schema_rt::MsgRefuseIntegrityMismatch;")
-		e.p(2, "return -1;")
+		e.p(2, "return 0;")
 		e.p(1, "}")
 		e.p(1, "let batch = data[0..data.len - 4];")
 	} else {
@@ -1352,19 +1389,18 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p(1, "if !voc.announced {")
 	e.p(2, "report.reason = schema_rt::MsgRefuseNoVocabulary;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	// §3.3(a)(b): canon holds when the sender announced this reader's build version
 	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, canon: voc.build_version == MessageBuildVersion, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
 	e.p(2, "report.damaged = true;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "if count > values.len {")
-	e.p(2, "report.count = count;")
 	e.p(2, "report.reason = schema_rt::MsgRefuseBatchTooLarge;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "var reasoned: bool = false;")
 	e.p(1, "var i: i64 = 0;")
@@ -1387,7 +1423,6 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(3, "values[j] = %s { .. };", typ)
 	e.p(3, "j += 1;")
 	e.p(2, "}")
-	e.p(2, "if reasoned { return -1; }")
 	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "report.unknown = r.unknown;")

@@ -89,8 +89,11 @@ local function load_unit(key)
     if not before[name] then package.loaded[name] = nil end
   end
   if not ok then
-    io.stderr:write("wirefuzz.lua: unit " .. key .. ": " .. tostring(T) .. "\n")
-    return false
+    -- A unit this target GENERATED and cannot load is a broken leg, never an
+    -- absence: answered 0, its roots fell into the harness's "seeds absent"
+    -- and the run went green over fewer roots.
+    io.stderr:write("wirefuzz.lua: unit " .. key .. " was generated and does not load: " .. tostring(T) .. "\n")
+    os.exit(2)
   end
   u = { T = T, load = L, save = S, fixed = F, retain = R }
   units[key] = u

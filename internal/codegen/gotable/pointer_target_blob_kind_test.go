@@ -93,6 +93,9 @@ func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 		if err == nil {
 			t.Fatalf("NEGATIVE CONTROL FAILED: an unchecked target type left the gate green\n%s", out)
 		}
+		if len(witnesses) == 0 {
+			t.Fatal("witnesses is empty: the loop below would check nothing")
+		}
 		for _, row := range witnesses {
 			if !bytes.Contains(out, []byte("--- FAIL: TestBlobKind/"+row.name)) {
 				t.Errorf("NEGATIVE CONTROL FAILED: the gate went red, but not on %s\n%s", row.name, out)

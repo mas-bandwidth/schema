@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_TABLEDEMO_RANGESTABLE_H
-#define SCHEMA_TABLEDEMO_RANGESTABLE_H
+#ifndef SCHEMA_TABLEDEMO_Ranges_table_h
+#define SCHEMA_TABLEDEMO_Ranges_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -121,6 +121,11 @@ typedef struct tabledemo_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -361,7 +366,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==156) { w->overflow=1; return 0; }
+    if(v->count>=156) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; tabledemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -976,7 +981,7 @@ enum
    translation unit meets first declares the set; the values are the same. */
 #ifndef SCHEMA_TABLEDEMO_TABLE_MESSAGE_REASONS
 #define SCHEMA_TABLEDEMO_TABLE_MESSAGE_REASONS
-enum { SCHEMA_TABLEDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLEDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_TABLEDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLEDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE=6,SCHEMA_TABLEDEMO_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 /* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
    name with nothing decoded and no counter moved, on the form byte's own
@@ -2891,6 +2896,13 @@ static SCHEMA_UNUSED int tabledemo_table_bits_finite32( uint32_t bits ) { return
 static SCHEMA_UNUSED int tabledemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int tabledemo_table_float_finite( float f ) { return tabledemo_table_bits_finite32( tabledemo_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int tabledemo_table_double_finite( double d ) { return tabledemo_table_bits_finite64( tabledemo_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t tabledemo_table_stored_float_bits( float f ) { uint32_t b = tabledemo_table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+static SCHEMA_UNUSED uint64_t tabledemo_table_stored_double_bits( double d ) { uint64_t b = tabledemo_table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -4619,10 +4631,15 @@ typedef struct tabledemo_table_message_shape_facts_t {
 typedef struct tabledemo_table_vocabulary_t {
  tabledemo_table_message_entry_t * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
+ /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+ int strict;
 } tabledemo_table_vocabulary_t;
 #ifndef SCHEMA_TABLEDEMO_TABLE_MESSAGE_REASONS
 #define SCHEMA_TABLEDEMO_TABLE_MESSAGE_REASONS
-enum { SCHEMA_TABLEDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLEDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_TABLEDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLEDEMO_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE=6,SCHEMA_TABLEDEMO_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 static SCHEMA_UNUSED tabledemo_table_vocabulary_t tabledemo_table_vocabulary(tabledemo_table_message_entry_t * storage,int64_t capacity)
 {tabledemo_table_vocabulary_t v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
@@ -4795,6 +4812,16 @@ static SCHEMA_UNUSED int tabledemo_table_announce_once(tabledemo_table_vocabular
   if(!tabledemo_table_reader_skip_checked(&r,kind,0))goto damaged;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
+ /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+ if(v->strict && v->build_version!=SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE){
+  report->refused=1;
+  report->reason=SCHEMA_TABLEDEMO_TABLE_BUILD_VERSION_MISMATCH;
+  report->build_version_remote=v->build_version;
+  report->build_version_own=SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE;
+  return 0;
+ }
  while(at<words_bytes){
   tabledemo_table_message_entry_t * entry;
   int64_t i,began=at;
@@ -5324,7 +5351,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5332,7 +5359,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -7032,7 +7059,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  }
  { /* edges */
  schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
- if(value->edges_count>0) {
+ if(value->edges_count > 0) {
   tabledemo_table_bit_put(w,61,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->edges_count-0,3);
@@ -7625,7 +7652,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_message_body(tabledemo_tab
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
- if(!(value->edges_count>0))goto damaged;
+ if(!(value->edges_count > 0))goto damaged;
  }
  break;
  }
@@ -7653,8 +7680,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_messages(tabledemo_ranged_
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -8747,7 +8774,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  }
  { /* counts */
  schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
- if(value->counts_count>0) {
+ if(value->counts_count > 0) {
   tabledemo_table_bit_put(w,78,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->counts_count-0,3);
@@ -9316,7 +9343,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_message_body(tabledemo_t
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
- if(!(value->counts_count>0))goto damaged;
+ if(!(value->counts_count > 0))goto damaged;
  }
  break;
  }
@@ -9344,8 +9371,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_messages(tabledemo_range
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10064,8 +10091,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_load_messages(tabledemo_ranged_
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10844,15 +10871,18 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_load( tabledemo_range
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_signed_reset( &defaults ); }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_signed_reset( &defaults );
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
     }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -11440,15 +11470,18 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_load( tabledemo_ran
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_unsigned_reset( &defaults ); }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_unsigned_reset( &defaults );
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
     }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -11979,15 +12012,18 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_load( tabledemo_range
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_widths_reset( &defaults ); }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_widths_reset( &defaults );
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
     }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -15532,4 +15568,4 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_to_json( const tabledemo_ra
 }
 #endif
 
-#endif /* SCHEMA_TABLEDEMO_RANGESTABLE_H */
+#endif /* SCHEMA_TABLEDEMO_Ranges_table_h */

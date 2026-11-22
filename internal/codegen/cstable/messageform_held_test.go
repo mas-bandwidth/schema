@@ -36,6 +36,7 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"no_vocabulary", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
 		{"second_announcement", "NO RE-ANNOUNCEMENT, EVER. ... REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the connection gets."},
 		{"vocabulary_too_large", "`vocabulary_too_large` covers both bounds, the entry count and the vocabulary's bytes."},
+		{"strict_mode", "STRICT MODE IS OPT-IN, and the default is unchanged ... refused by the name `build_version_mismatch`, sets no vocabulary, keeps the peer's build version, moves no counter and is never `wire_damaged`, and is terminal."},
 		{"announcement_strict_checks", "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ... A FAILED STRICT CHECK IS MALFORMED, not a refusal."},
 		{"batch_too_large", "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME."},
 		{"damage_inside_body", "damage anywhere in a form-`2` batch refuses the whole batch, `malformed` counts, and nothing the read produced is a value to use."},
@@ -74,6 +75,10 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
+	t.Run("capacity_fixture", func(t *testing.T) {
+		t.Parallel()
+		csHeldAssert(t, out, err, "row/capacity_fixture")
+	})
 }
 
 const csHeldSchema = `package probe
@@ -316,6 +321,7 @@ static class Held
         NoVocabulary();
         SecondAnnouncement();
         VocabularyTooLarge();
+        StrictMode();
         StrictChecks();
         BatchTooLarge();
         DamageInsideBody();
@@ -396,6 +402,44 @@ static class Held
         Ok(row);
     }
 
+    // "STRICT MODE IS OPT-IN, and the default is unchanged ... an announcement
+    // whose build version is not the unit's own is refused by the name
+    // build_version_mismatch, sets no vocabulary, keeps the peer's build
+    // version, moves no counter and is never wire_damaged, and is terminal" and
+    // THE LANGUAGE-NEUTRAL SHAPE: one boolean, false when made; the refusal
+    // carries the peer's build version (remote) and the reader's own (own).
+    static byte[] Endpoint(ulong version)
+    {
+        byte[] ann = Schema.Announce().ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(ann.AsSpan(3, 8), version);
+        return ann;
+    }
+    static void StrictMode()
+    {
+        const string row = "strict_mode";
+        var probe = new TableVocabulary();
+        var own0 = new TableReport();
+        Schema.AnnounceRead(probe, Schema.Announce(), own0);
+        ulong own = probe.BuildVersion, remote = own ^ ulong.MaxValue;
+        var tolerant = new TableVocabulary();
+        if (tolerant.Strict) { Fail(row, "a vocabulary is not made tolerant"); return; }
+        var report = new TableReport();
+        if (Schema.AnnounceRead(tolerant, Endpoint(remote), report) != Schema.TableWire.Verdict.Ok || report.Refused || tolerant.BuildVersion != remote) { Fail(row, "tolerant: reason=" + report.Reason); return; }
+        var same = new TableVocabulary { Strict = true };
+        report = new TableReport();
+        if (Schema.AnnounceRead(same, Endpoint(own), report) != Schema.TableWire.Verdict.Ok || report.Refused || report.BuildVersionRemote != 0 || report.BuildVersionOwn != 0) { Fail(row, "strict same: reason=" + report.Reason); return; }
+        var strict = new TableVocabulary { Strict = true };
+        report = new TableReport();
+        if (Schema.AnnounceRead(strict, Endpoint(remote), report) != Schema.TableWire.Verdict.Refused || !report.Refused || report.Reason != "build_version_mismatch" || report.Damaged) { Fail(row, "strict other: reason=" + report.Reason); return; }
+        if (report.BuildVersionRemote != remote || report.BuildVersionOwn != own) { Fail(row, "the refusal does not carry both versions"); return; }
+        if (strict.Announced || strict.Count != 0 || strict.BuildVersion != remote) { Fail(row, "the refusal set a vocabulary or lost the peer's build version"); return; }
+        if (report.Unknown != 0 || report.Widened != 0 || report.Retained != 0 || report.RetainLost != 0) { Fail(row, "the refusal moved a counter"); return; }
+        var second = new TableReport();
+        Schema.AnnounceRead(strict, Endpoint(own), second);
+        if (!second.Refused || second.Reason != "second_announcement" || strict.Announced) { Fail(row, "after a strict refusal: reason=" + second.Reason); return; }
+        Ok(row);
+    }
+
     // "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS: the
     // build version present, exactly once, kind 9, eight bytes wide, and the
     // vocabulary present, exactly once, kind 14, element kind 6 ... A FAILED
@@ -431,8 +475,8 @@ static class Held
 
     // "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... MeasureMessages
     // and SaveMessages both refuse and return -1" and "M ABOVE THE CALLER'S
-    // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
-    // returned count to the wire's M before it returns the refusal."
+    // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... A refused batch
+    // returns a count of 0" (docs/SPEC-TABLES.md §3.3).
     static void BatchTooLarge()
     {
         const string row = "batch_too_large";
@@ -450,7 +494,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (!report.Refused || report.Reason != "batch_too_large" || report.Damaged || count != 2) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
+        if (!report.Refused || report.Reason != "batch_too_large" || report.Damaged || count != 0) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
         Ok(row);
     }
 
@@ -799,9 +843,46 @@ func csHeldRowsClass(t *testing.T) string {
 		b.WriteString(csHeldMsgMethod(msg))
 		b.WriteString("        Msg_" + msg.name + "();\n")
 	}
+	fixture, err := filepath.Abs(filepath.Join("testdata", "batch_capacity_two.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.WriteString(strings.ReplaceAll(csHeldCapacityFixture, "FIXTURE", fixture))
+	b.WriteString("        CapacityFixture();\n")
 	b.WriteString("    return bad;\n}\n}\n")
 	return b.String()
 }
+
+// csHeldCapacityFixture is the row/capacity_fixture row: the committed
+// capacity fixture, testdata/batch_capacity_two.bin (two LoginRequest bodies
+// of tables/backend, client_build 40, written by the Go engine and pinned to
+// it by test/conformance/harness
+// TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg), into storage for one
+// whose ClientBuild is the sentinel 17: "A refused batch returns a count of
+// `0`" and "refuses before it decodes anything" (docs/SPEC-TABLES.md §3.3).
+// Storage for two owes 2 and 40. A caller's capacity is a resource limit
+// (§6.5), so this row runs here, in the leg's own tests.
+const csHeldCapacityFixture = `    static void CapacityFixture()
+    {
+        const string row = "capacity_fixture";
+        byte[] wire = System.IO.File.ReadAllBytes(@"FIXTURE");
+        var vocab = new Bv();
+        var annReport = new Br();
+        Bs.AnnounceRead(vocab, Corpus("backend_conn.bin"), annReport);
+        if (!vocab.Announced) { Fail(row, "announce: " + annReport.Reason); return; }
+        var one = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest() };
+        one[0].ClientBuild = 17;
+        var report = new Br();
+        Bs.LoginRequestLoadMessages(one, wire, vocab, report, out int count);
+        if (!report.Refused || count != 0) { Fail(row, "two bodies into storage for one: count=" + count + " refused=" + report.Refused + ", and a refused batch returns 0"); return; }
+        if (one[0].ClientBuild != 17) { Fail(row, "two bodies into storage for one: ClientBuild reads " + one[0].ClientBuild + ", not the sentinel 17"); return; }
+        var two = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest(), new Backenddemo.LoginRequest() };
+        var loaded = new Br();
+        Bs.LoginRequestLoadMessages(two, wire, vocab, loaded, out int got);
+        if (got != 2 || loaded.Refused || loaded.Damaged || two[0].ClientBuild != 40 || two[1].ClientBuild != 40) { Fail(row, "two bodies into storage for two: count=" + got); return; }
+        Ok(row);
+    }
+`
 
 func csHeldConnMethod(c csHeldConn) string {
 	p := csHeldPre(c.pkg)

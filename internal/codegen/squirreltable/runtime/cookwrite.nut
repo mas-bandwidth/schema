@@ -90,7 +90,8 @@ local joinField = function(cf, fd) {
     counted = ("counted" in fd) && fd.counted,
     unbounded = ("unbounded" in fd) && fd.unbounded,
     elemAlign = cf.elemAlign, entry = ("entry" in fd) ? fd.entry : null,
-    mapkey = ("mapkey" in fd) ? fd.mapkey : null
+    mapkey = ("mapkey" in fd) ? fd.mapkey : null,
+    fmin = ("fmin" in fd) ? fd.fmin : null
   };
 };
 recordFields = function(T, name) {
@@ -280,6 +281,10 @@ scalarWrite = function(buf, at, f, val, order) {
       if (_M.CookReason == null) _M.CookReason <- "non_finite_float: " + f.nf;
       return false;
     }
+    // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+    // ruling fixed-compressed-negzero), judged after the value is narrowed;
+    // a plain float's -0 rides bit-exact
+    if (("fmin" in f) && f.fmin != null && (bits & ((f.f32 || w == 4) ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;
     put(buf, at, bits, (f.f32 || w == 4) ? 4 : 8, order);
     return true;
   }

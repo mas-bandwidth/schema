@@ -287,7 +287,7 @@ public final class TableCookInfo {
      *  base takes (§19.1). */
     public static final long maxAlign = ` + fmt.Sprintf("%dL", cookMaxAlign) + `;
 
-    public String name;
+    public java.lang.String name;
     public long typeId; // attribution entry's table id (§7.6)
     /** a UNION's tag width in bytes, its tag at offset zero; 0 for a record. A
      *  union's fields are its ARMS, each carrying the tag that selects it. */
@@ -297,7 +297,7 @@ public final class TableCookInfo {
     /** a RECORD's VALUE-INITIALIZED element: its declared defaults, which is
      *  what a counted array's slot past the live count and a fixed array's
      *  slot past the value's elements hold (§7.2); null for a union. */
-    public java.util.function.Supplier<Object> defaults;
+    public java.util.function.Supplier<java.lang.Object> defaults;
     /** the record holds a list or a map BY VALUE, at any depth: its node is its
      *  storage rounded to eight, then its EXTENT (docs/SPEC-TABLES.md §7.6). */
     public boolean hasExtent;
@@ -327,8 +327,8 @@ public final class TableCookFieldInfo {
         TableCookInfo get();
     }
 
-    public String name;
-    public String sourceName; // generated Java Value member (§7.6)
+    public java.lang.String name;
+    public java.lang.String sourceName; // generated Java Value member (§7.6)
     public int offset; // the field's offset in the record this descriptor describes
     public int size; // its whole storage there, companions included
     public int elemSize; // one element's size, for an array; the field's own otherwise
@@ -345,6 +345,8 @@ public final class TableCookFieldInfo {
     public int extentSize;
     public int extentAlign;
     public TableCookFieldInfo element;
+    /** a COMPRESSED float (§3.3): its -0 is cooked as +0, the bits +0 cooks. */
+    public boolean compressed;
 
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
@@ -357,8 +359,8 @@ public final class TableCookFieldInfo {
     }
 
     public static TableCookFieldInfo of(
-            String name,
-            String sourceName,
+            java.lang.String name,
+            java.lang.String sourceName,
             int offset,
             int size,
             int elemSize,
@@ -383,6 +385,12 @@ public final class TableCookFieldInfo {
         f.storage = storage;
         f.recordRef = record;
         return f;
+    }
+
+    /** this field as a COMPRESSED float, whose -0 the writer stores as +0 (§3.3). */
+    public TableCookFieldInfo compressed() {
+        this.compressed = true;
+        return this;
     }
 
     /** this field as a LIST or MAP holder over elements of the given size and alignment. */
@@ -492,18 +500,19 @@ func (g *cookGen) emit() {
 // <T>CookMeasureReason and <T>CookFrom. The shared writer plans and validates
 // the complete region before its first store.
 func (g *cookGen) emitWrite() {
-	g.f("    public static long cookMeasure(Object value) {\n")
+	g.f("    public static long cookMeasure(java.lang.Object value) {\n")
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
 	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
-	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	g.f("    public record MeasureReason(long bytes, java.lang.String reason) {}\n\n")
 	// a NaN or an infinity is the cook's own refusal, named non_finite_float
 	// (docs/SPEC-TABLES.md §3.3), and every other invalid value invalid_value
-	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
+	g.f("    public static MeasureReason cookMeasureReason(java.lang.Object value) {\n")
 	g.f("        boolean[] nonFinite = new boolean[1];\n")
-	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);\n")
+	g.f("        boolean[] cycle = new boolean[1];\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite, cycle);\n")
 	g.f("        long bytes = p == null ? -1 : p.total;\n")
-	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : \"invalid_value\");\n    }\n\n")
-	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
+	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : cycle[0] ? \"data_cycle\" : \"invalid_value\");\n    }\n\n")
+	g.f("    public static boolean cookFrom(java.lang.Object value, byte[] buffer, int order) {\n")
 	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
 	g.f("        if (p == null || buffer == null || buffer.length < p.total) { return false; }\n")
@@ -561,7 +570,7 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("        // reaching a fix-up pass this design does not have.\n")
 	g.f("        long magic = TableBytes.i64(data, offset);\n")
 	g.f("        if (magic != TableCookInfo.magic) {\n")
-	g.f("            return magic == Long.reverseBytes(TableCookInfo.magic) ? -2 : -1; // foreign_order : not_a_cook\n")
+	g.f("            return magic == java.lang.Long.reverseBytes(TableCookInfo.magic) ? -2 : -1; // foreign_order : not_a_cook\n")
 	g.f("        }\n")
 	g.f("        // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.f("        // file, so a refusal names the order rather than inferring it.\n")
@@ -579,7 +588,7 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("        // and the base is measured against it — so a word that is not an\n")
 	g.f("        // alignment rounds nothing and aligns nothing.\n")
 	g.f("        long alignment = TableBytes.i64(data, offset + 40);\n")
-	g.f("        if (Long.compareUnsigned(alignment, %d) < 0 || Long.compareUnsigned(alignment, %d) > 0) { return -5; } // bad_alignment\n",
+	g.f("        if (java.lang.Long.compareUnsigned(alignment, %d) < 0 || java.lang.Long.compareUnsigned(alignment, %d) > 0) { return -5; } // bad_alignment\n",
 		ir.RegionAlignFloor, cookMaxAlign)
 	g.f("        if ((alignment & (alignment - 1)) != 0) { return -5; } // a power of two\n")
 	g.f("        if ((alignment %% rootAlign) != 0) { return -5; } // and a multiple of the ROOT's own alignof\n\n")
@@ -593,15 +602,15 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("        // same refusal.\n")
 	g.f("        long dataLength = TableBytes.i64(data, offset + 24);\n")
 	g.f("        long attribution = TableBytes.i64(data, offset + 32);\n")
-	g.f("        if (Long.compareUnsigned(dataLength, bytes) > 0) { return -6; }\n")
-	g.f("        if (Long.compareUnsigned(attribution, bytes - dataLength) > 0) { return -6; }\n")
-	g.f("        if (Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) { return -6; }\n")
+	g.f("        if (java.lang.Long.compareUnsigned(dataLength, bytes) > 0) { return -6; }\n")
+	g.f("        if (java.lang.Long.compareUnsigned(attribution, bytes - dataLength) > 0) { return -6; }\n")
+	g.f("        if (java.lang.Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) { return -6; }\n")
 	g.f("        if (dataOffset + dataLength + attribution != bytes) { return -6; }\n\n")
 	g.f("        // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.f("        // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.f("        // short data part describes a root partly outside the file, and a\n")
 	g.f("        // match-and-point reader would hand back storage the caller never gave it.\n")
-	g.f("        if (Long.compareUnsigned(dataLength, rootSize) < 0) { return -6; }\n\n")
+	g.f("        if (java.lang.Long.compareUnsigned(dataLength, rootSize) < 0) { return -6; }\n\n")
 	g.f("        // THE ALIGNMENT OF THE BASE.\n")
 	g.f("        if ((offset %% alignment) != 0) { return -7; } // unaligned_base, last as in the reference\n\n")
 	g.f("        return dataOffset;\n    }\n\n")
@@ -613,7 +622,7 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("    /** openReason answers open's check as the TableRefuseReason value name\n")
 	g.f("     *  (internal/codegen/gotable/refusal.go), \"ok\" for a cook that opens:\n")
 	g.f("     *  the cook-reason surface (test/conformance/README.md). */\n")
-	g.f("    public static String openReason(byte[] data, int offset, long length) {\n")
+	g.f("    public static java.lang.String openReason(byte[] data, int offset, long length) {\n")
 	g.f("        TableCookLayout.verify();\n")
 	g.f("        long check = openCheck(data, offset, length);\n")
 	g.f("        if (check >= 0) { return \"ok\"; }\n")
@@ -703,7 +712,7 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 	}
 	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")
-	b.WriteString(`    private static void record(String what, int size, int align, int[] offsets, TableCookInfo info) {
+	b.WriteString(`    private static void record(java.lang.String what, int size, int align, int[] offsets, TableCookInfo info) {
         number(what + " size", size, info.size);
         number(what + " align", align, info.align);
         number(what + " field count", offsets.length, info.numFields);
@@ -712,9 +721,9 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
         }
     }
 
-    private static void number(String what, int accessors, int descriptors) {
+    private static void number(java.lang.String what, int accessors, int descriptors) {
         if (accessors != descriptors) {
-            throw new IllegalStateException(
+            throw new java.lang.IllegalStateException(
                     "schema cook layout: "
                             + what
                             + " is "

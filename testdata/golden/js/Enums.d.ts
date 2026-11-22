@@ -7,7 +7,7 @@
 //
 // The TypeScript declarations of Enums.js (SPEC §6.3).
 
-export declare const Team: Readonly<{
+export declare const Team: globalThis.Readonly<{
   None: 0;
   Red: 1;
   Blue: 2;
@@ -16,7 +16,7 @@ export type Team = (typeof Team)[keyof typeof Team];
 export declare const TeamMax: 2;
 export declare function EnumNameTeam(value: number): string;
 
-export declare const ShipType: Readonly<{
+export declare const ShipType: globalThis.Readonly<{
   None: 0;
   Fighter: 1;
   Corvette: 2;
@@ -28,7 +28,7 @@ export type ShipType = (typeof ShipType)[keyof typeof ShipType];
 export declare const ShipTypeMax: 5;
 export declare function EnumNameShipType(value: number): string;
 
-export declare const MissileType: Readonly<{
+export declare const MissileType: globalThis.Readonly<{
   None: 0;
   Heatseeker: 1;
   Torpedo: 2;
@@ -38,7 +38,7 @@ export type MissileType = (typeof MissileType)[keyof typeof MissileType];
 export declare const MissileTypeMax: 3;
 export declare function EnumNameMissileType(value: number): string;
 
-export declare const PropType: Readonly<{
+export declare const PropType: globalThis.Readonly<{
   None: 0;
   Asteroid: 1;
   Chunk: 2;
@@ -51,7 +51,7 @@ export type PropType = (typeof PropType)[keyof typeof PropType];
 export declare const PropTypeMax: 6;
 export declare function EnumNamePropType(value: number): string;
 
-export declare const Pending: Readonly<{
+export declare const Pending: globalThis.Readonly<{
   None: 0;
 }>;
 export type Pending = (typeof Pending)[keyof typeof Pending];

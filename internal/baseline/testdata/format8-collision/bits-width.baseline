@@ -1,0 +1,10 @@
+schema-tables-baseline 8
+package sample
+
+table Root
+    field items id=0x3e7884bf4f412c6f kind=14 elem=4 array=bounded bound=4
+    field marker id=0xeddcb72b15486e77 kind=6 bits=7
+
+## history
+### 2026-11-21 (UTC) — fixture from bits-width compiler
+- baseline created over 1 table — data written BEFORE this point is not covered by it

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/format"
@@ -91,8 +92,8 @@ type Compiler struct {
 	// them to stderr.
 	OnWarn func(msg string)
 
-	gens      map[string]Generator // every accepted --lang spelling
-	canonical []string             // one per registered generator, its first name
+	gens      map[string]*registration // every accepted --lang spelling
+	canonical []string                 // one per registered generator, its first name
 }
 
 // New returns a driver with every built-in generator this build carries
@@ -333,7 +334,7 @@ func FormatFile(path string) (canonical []byte, rewrote bool, err error) {
 	if string(out) == string(data) {
 		return out, false, nil
 	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, out, 0o644); err != nil {
 		return nil, false, err
 	}
 	return out, true, nil
@@ -357,7 +358,7 @@ func MigrateFile(path string) (canonical []byte, rewrote bool, err error) {
 	if string(out) == string(data) {
 		return out, false, nil
 	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, out, 0o644); err != nil {
 		return nil, false, err
 	}
 	return out, true, nil

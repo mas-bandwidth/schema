@@ -161,6 +161,23 @@ else — but it is what lets `conformance-negative-control-js` point the SAME
 driver at a sabotaged copy of the generated modules and require the matrix to go
 red. A leg whose generated tree is baked in has nothing for a control to aim at.
 
+## A filter that selects nothing is red
+
+`run` takes filters: `--only <lang>`, `--skip <langs>` and `--surfaces <list>`.
+A filter that leaves nothing to compare must never print a green matrix, so the
+harness exits non-zero, naming the filters, when:
+
+- no leg ran (`--only` names no registered driver, or `--skip` removed every leg);
+- the surfaces selected hold zero rows (`--surfaces` names surfaces with no
+  expectation in the corpus): `conformance selected ZERO rows`;
+- every selected cell was absent, so no leg answered one case (`--only <lang>`
+  with a `--surfaces` list the leg leaves out of `list`): `conformance ran ZERO legs`;
+- `--surfaces` names a word that is not a surface (a typo).
+
+The same footgun in Go's own runner (`go test -run` matching no test and
+printing ok) is closed by `make test-run`, see docs/CONTRIBUTING.md.
+`emptyselection_test.go` holds the proofs.
+
 ## The surfaces
 
 One process per surface, so a runtime starts once rather than once per case.
@@ -214,6 +231,15 @@ boundary. It starts with the Go leg: `TestWriteRefusalPacket` in
 and runs the battery behind `slowtest.Gate`, then runs a negative control that
 changes the emitter's upper-bound comparison and requires the boundary row to
 go red.
+
+The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
+Squirrel, MOO, Goose, Lobster) share one schema and one row list,
+`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
+`writerefusalpacket_test.go` and its own probe: the test generates the unit,
+runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal
+counted only by the mechanism SPEC section 5.1 names for that leg), and a
+negative control removes one emitter check and requires `FAILED: <row>`.
 
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.

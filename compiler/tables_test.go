@@ -166,6 +166,9 @@ func TestCppEmitsTableHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Table.h") {
 			t.Fatalf("a table-free unit emitted %s", name)
@@ -187,6 +190,9 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		got, ok := with[name]
 		if !ok {
@@ -205,6 +211,9 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	// (§8.3, §8.5), which nothing declares either and which a consumer
 	// compiles only if it walks declarations (§8.4). The type wire stays
 	// header-only, so no packet file appears or moves.
+	if len(with) == 0 {
+		t.Fatal("with is empty: the loop below would check nothing")
+	}
 	for name := range with {
 		if _, ok := without[name]; ok {
 			continue
@@ -678,6 +687,9 @@ table NativeRoot
 	}
 	sort.Strings(emittedNames)
 
+	if len(emittedNames) == 0 {
+		t.Fatal("emittedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range emittedNames {
 		if !tablenames.Registered(name) {
 			t.Errorf("the C# table emitter emits %s and internal/tablenames does not register it — "+
@@ -685,7 +697,11 @@ table NativeRoot
 				"(with the backends that define it) in internal/tablenames", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Cs) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Cs)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Cs) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the C# backend defines %s, but nothing in the emitted "+
 				"C# names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -698,7 +714,11 @@ table NativeRoot
 	// written. Whether it is ALSO refused with no table in sight follows the
 	// view file and nothing else (docs/SPEC-TABLES.md §11), which
 	// TestViewFileNamesAreClaimedInEveryUnit measures.
-	for _, name := range tablenames.Claimed() {
+	allClaimed := tablenames.Claimed()
+	if len(allClaimed) == 0 {
+		t.Fatal("tablenames.Claimed() is empty: the loop below would check nothing")
+	}
+	for _, name := range allClaimed {
 		t.Run(name, func(t *testing.T) {
 			refused := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
 			errs := checkErrors(t, refused)
@@ -803,12 +823,18 @@ func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 	}
 	sort.Strings(names)
 	claimed := tablenames.ClaimedInEveryUnit()
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !tablenames.InEveryUnit(name) {
 			t.Errorf("a generated view file spells %s and internal/tablenames does not mark it View: "+
 				"a table-free unit's view defines the descriptor surface (docs/SPEC-TABLES.md §8.2), so "+
 				"that name has to be claimed in every unit", name)
 		}
+	}
+	if len(claimed) == 0 {
+		t.Fatal("claimed is empty: the loop below would check nothing")
 	}
 	for _, name := range claimed {
 		if !found[name] {

@@ -4,7 +4,7 @@ defmodule PacketWriteCFloatTest do
 
   def fail(what) do
     IO.puts("FAILED: packet-write-cfloat #{what}")
-    Process.put(:failed, true)
+    Process.put(:failed, Process.get(:failed, 0) + 1)
   end
 
   def check(true, _what), do: :ok
@@ -86,21 +86,24 @@ defmodule PacketWriteCFloatTest do
   end
 
   def run(path) do
-    for [name, text, verdict | rest] <- cases(path) do
-      value = value(text)
-      want = expected(text, rest)
+    list = cases(path)
 
-      case verdict do
-        "refused" -> refused(name, value)
-        "written" -> written(name, value, want)
-        other -> fail("#{name}: unknown verdict #{inspect(other)}")
+    for fields <- list do
+      case fields do
+        [name, text, "refused" | _rest] -> refused(name, value(text))
+        [name, text, "written" | rest] -> written(name, value(text), expected(text, rest))
+        other -> fail("malformed case line: #{inspect(other)}")
       end
     end
 
-    if Process.get(:failed) do
+    # One unit per shared case: tools/mustrun holds the count to the one the
+    # recipe registers, so an emptied or shortened cases.txt is red.
+    ran = length(list)
+    failed = Process.get(:failed, 0)
+    IO.puts("packet-write-cfloat Elixir: ran #{ran}, failed #{failed}")
+
+    if failed != 0 or ran == 0 do
       System.halt(1)
     end
-
-    IO.puts("OK")
   end
 end

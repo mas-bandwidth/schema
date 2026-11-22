@@ -107,7 +107,24 @@ def main() -> None:
     if Frame().choice.type != MixedType.None_:
         fail("union field construction")
 
-    for name, wire in read_goldens().items():
+    # The goldens file must name exactly the cases build() knows: an emptied or
+    # shortened file would otherwise run fewer cases, or none, and still print ok.
+    goldens = read_goldens()
+    known = [
+        "mixed-none",
+        "mixed-ping",
+        "mixed-pong",
+        "mixed-payload",
+        "frame-ping",
+        "tags-none",
+        "tags-pong",
+        "single-ack",
+        "empty-none",
+    ]
+    if sorted(goldens) != sorted(known):
+        fail("goldens.txt names " + repr(sorted(goldens)) + ", want " + repr(sorted(known)))
+
+    for name, wire in goldens.items():
         value = build(name)
         got = value.write()
         if got != wire:

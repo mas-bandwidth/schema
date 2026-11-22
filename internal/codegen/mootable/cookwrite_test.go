@@ -146,6 +146,9 @@ func TestMooCookWriteMatchesTheTool(t *testing.T) {
 		t.Fatalf("answered %d of %d cook-write cases", answered, want)
 	}
 	t.Logf("%d cook-write cases (%d instances in both byte orders) equal the tool's files", answered, len(rows))
+	if len(cache) == 0 {
+		t.Fatal("cache is empty: the loop below would check nothing")
+	}
 	for key, g := range cache {
 		if out := g.analyze(t); out != "" {
 			t.Errorf("unit %s: moo-analyze is not silent:\n%s", key, out)
@@ -662,6 +665,9 @@ func TestMooCookWideListExtent(t *testing.T) {
 	}
 	if answered != 2 {
 		t.Fatalf("wide list answered %d of 2 byte orders", answered)
+	}
+	if len(cache) == 0 {
+		t.Fatal("cache is empty: the loop below would check nothing")
 	}
 	for key, g := range cache {
 		if out := g.analyze(t); out != "" {

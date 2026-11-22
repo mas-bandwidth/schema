@@ -286,7 +286,10 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 // figure that drifts moves a pinned wire.
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := len(wireBytes(t, c.Wire)); got != 280 {
 		t.Errorf("the announcement is %d bytes, want 280", got)
 	}
@@ -471,7 +474,10 @@ func TestTheBatch(t *testing.T) {
 // damage (docs/SPEC-TABLES.md §3.3, §11).
 func TestTheMessageFormRefusesByName(t *testing.T) {
 	m, model, vocabulary := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	announcement := wireBytes(t, c.Wire)
 	message := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
 
@@ -529,7 +535,10 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 			t.Error("second_announcement: the refused announcement moved the vocabulary")
 		}
 		// and a DIFFERENT second announcement changes nothing either
-		vc, _ := m.LookupConnection("vocab_conn")
+		vc, err := m.LookupConnection("vocab_conn")
+		if err != nil {
+			t.Fatal(err)
+		}
 		var other tabletext.Report
 		derr = vocabulary.AnnounceRead(wireBytes(t, vc.Wire), &other)
 		refusal("second_announcement (another unit)", derr, tablewire.ReasonSecondAnnouncement, other)
@@ -570,7 +579,12 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// refused for want of one
 	{
 		bounded := tablewire.Vocabulary{MaxEntries: 4}
-		_ = bounded.AnnounceRead(announcement, &tabletext.Report{})
+		var announceReport tabletext.Report
+		aerr := bounded.AnnounceRead(announcement, &announceReport)
+		refusal("vocabulary_too_large (4 entries)", aerr, tablewire.ReasonVocabularyTooLarge, announceReport)
+		if bounded.Announced() {
+			t.Error("a refused announcement set a vocabulary")
+		}
 		var report tabletext.Report
 		inst := model.New(model.Lookup("LoginRequest"))
 		_, derr := tablewire.DecodeMessage(model, inst, message, &bounded, &report)
@@ -581,10 +595,12 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 // TestTheFiveAnswers holds the batch surface's stated answers (§3.3): M above
 // 256 on the write side refuses by name and writes nothing, M above the
 // caller's capacity on the read side refuses by name with the returned count
-// reading the wire's M and nothing decoded, and damage anywhere in a batch
-// delivers no body (§4). Red if a leg writes consecutive batches, decodes a
-// body before refusing on capacity, leaves the returned count at the caller's
-// capacity, or delivers any body of the damaged batch.
+// reading 0 ("A refused batch returns a count of `0`, as every refused batch
+// does; a caller that needs room reads the wire's `M` itself") and nothing
+// decoded, the storage exactly as the caller handed it in, and damage anywhere
+// in a batch delivers no body (§4). Red if a leg writes consecutive batches,
+// decodes a body before refusing on capacity, reports any count but 0 for a
+// refused batch, or delivers any body of the damaged batch.
 func TestTheFiveAnswers(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -615,6 +631,7 @@ func TestTheFiveAnswers(t *testing.T) {
 		eight := make([]*tabletext.Instance, 8)
 		for i := range eight {
 			eight[i] = model.New(login)
+			setU64(t, eight[i], "client_build", 17)
 		}
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, eight, wide, vocabulary, &report)
@@ -625,11 +642,16 @@ func TestTheFiveAnswers(t *testing.T) {
 		if !report.Refused || report.Unknown != 0 || report.Widened != 0 {
 			t.Errorf("256 into 8: the refusal moved a counter: %+v", report)
 		}
-		if count != 256 {
-			t.Errorf("256 into 8: the returned count reads %d, not the wire's 256", count)
+		if count != 0 {
+			t.Errorf("256 into 8: a refused batch returns a count of 0 (§3.3), and the returned count reads %d", count)
 		}
-		if instU64(t, eight[0], "client_build") != 0 {
-			t.Error("256 into 8: a body was decoded before the refusal")
+		if n, err := tablewire.MessageCount(wide, vocabulary); err != nil || n != 256 {
+			t.Errorf("256 into 8: MessageCount reads %d (%v), not the wire's 256 a caller sizes its storage from", n, err)
+		}
+		for i := range eight {
+			if got := instU64(t, eight[i], "client_build"); got != 17 {
+				t.Errorf("256 into 8: slot %d holds %d after the refusal, not the 17 it held: the storage was touched", i, got)
+			}
 		}
 		// and the recovery is one call with capacity at or above it
 		room := make([]*tabletext.Instance, 256)
@@ -977,7 +999,10 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 // malformed whole and sets nothing, and the unit's own announcement reads.
 func TestTheReservedIdsInAnAnnouncement(t *testing.T) {
 	m, _, _ := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, row := range []string{"build_version", "vocabulary", "second_node_table"} {
 		wire := wireBytes(t, "testdata/wire/tables/announce_reserved_"+row+".bin")
 		var v tablewire.Vocabulary

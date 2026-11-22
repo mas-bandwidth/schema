@@ -12,7 +12,11 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 	t.Parallel()
 	c := New()
 	u := unitFromSource(t, "package probe\ntable Plain\n{\n    x int32\n}\ntable Ledger | integrity = \"crc32c\"\n{\n    x int32\n}\n")
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryIntegrity) {
 			if err != nil {
@@ -32,7 +36,11 @@ func TestIntegrityRefusedOffGo(t *testing.T) {
 	// A FIXED TABLE takes the key (§2.14, §3.4: once per form-3 file): Go
 	// generates it and every other target refuses it by the same central name.
 	fixed := unitFromSource(t, "package probe\nfixed table Reading | integrity = \"crc32c\"\n{\n    x int32\n}\n")
-	for _, lang := range c.Targets() {
+	allTargetss := c.Targets()
+	if len(allTargetss) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargetss {
 		_, err := c.Generate(fixed, lang, nil)
 		if carries(lang, carryIntegrity) {
 			if err != nil {

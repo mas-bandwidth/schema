@@ -8,11 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 // Clauses carries every generated declaration of Clauses.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -21,8 +16,9 @@ public final class Clauses {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -117,13 +113,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW13(W13 value) {
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW13(W13 value) {
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
     }
 
@@ -182,7 +178,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -239,13 +235,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW17(W17 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW17(W17 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
@@ -304,7 +300,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -361,13 +357,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW26(W26 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW26(W26 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
@@ -426,7 +422,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -483,13 +479,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW1(W1 value) {
-        Arrays.fill(value.items, (byte) 0);
+        java.util.Arrays.fill(value.items, (byte) 0);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW1(W1 value) {
-        Arrays.fill(value.items, (byte) 0);
+        java.util.Arrays.fill(value.items, (byte) 0);
         value.itemsCount = 0;
     }
 
@@ -548,7 +544,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -605,13 +601,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW52(W52 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW52(W52 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
@@ -672,7 +668,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -731,13 +727,13 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW50(W50 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW50(W50 value) {
-        Arrays.fill(value.items, 0L);
+        java.util.Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
@@ -798,7 +794,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -856,12 +852,12 @@ public final class Clauses {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroF13(F13 value) {
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initF13(F13 value) {
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
     }
 
     // checkWriteF13 is the contract walk of writeF13Bits, called once
@@ -915,7 +911,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1023,7 +1019,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1143,7 +1139,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1261,7 +1257,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1574,7 +1570,7 @@ public final class Clauses {
 
     // enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameEmptyUnionType(long value) {
+    public static java.lang.String enumNameEmptyUnionType(long value) {
         if (value == EmptyUnionType.NONE) {
             return "None";
         }
@@ -1663,7 +1659,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1786,7 +1782,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1848,9 +1844,9 @@ public final class Clauses {
     // construction.
     public static void zeroStrs(Strs value) {
         value.lead = 0;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
-        Arrays.fill(value.b, (byte) 0);
+        java.util.Arrays.fill(value.b, (byte) 0);
         value.bLength = 0;
         value.tail = 0;
     }
@@ -1858,9 +1854,9 @@ public final class Clauses {
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initStrs(Strs value) {
         value.lead = 0;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
-        Arrays.fill(value.b, (byte) 0);
+        java.util.Arrays.fill(value.b, (byte) 0);
         value.bLength = 0;
         value.tail = 0;
     }
@@ -1933,7 +1929,7 @@ public final class Clauses {
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
         flushBits(data, pos, scratch);
-        System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
+        java.lang.System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
         pos += value.sLength * 8;
         scratch = loadBits(data, pos);
         scratch = putBits(data, pos, scratch, (value.bLength) & 0xfL, 4);
@@ -1943,7 +1939,7 @@ public final class Clauses {
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
         flushBits(data, pos, scratch);
-        System.arraycopy(value.b, 0, data, pos >>> 3, value.bLength);
+        java.lang.System.arraycopy(value.b, 0, data, pos >>> 3, value.bLength);
         pos += value.bLength * 8;
         scratch = loadBits(data, pos);
         scratch = putBits(data, pos, scratch, value.tail & 0x7L, 3);
@@ -1971,7 +1967,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1997,7 +1993,7 @@ public final class Clauses {
         if ((long) bitsRead + value.sLength * 8L > numBits) {
             return -1;
         }
-        System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
+        java.lang.System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
         bitsRead += value.sLength * 8;
         for (int utf8Index = 0; utf8Index < value.sLength; ) {
             int utf8Lead = value.s[utf8Index++] & 0xFF;
@@ -2046,7 +2042,7 @@ public final class Clauses {
         if ((long) bitsRead + value.bLength * 8L > numBits) {
             return -1;
         }
-        System.arraycopy(data, bitsRead >>> 3, value.b, 0, value.bLength);
+        java.lang.System.arraycopy(data, bitsRead >>> 3, value.b, 0, value.bLength);
         bitsRead += value.bLength * 8;
         if ((long) bitsRead + 3 > numBits) {
             return -1;
@@ -2177,7 +2173,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -2300,7 +2296,7 @@ public final class Clauses {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;

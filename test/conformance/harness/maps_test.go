@@ -77,7 +77,11 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 			t.Errorf("%s: the text did not read back clean: %+v\n%s", name, r2, text)
 			continue
 		}
-		round, _ := tablewire.Encode(m, back)
+		round, rerr := tablewire.Encode(m, back)
+		if rerr != nil {
+			t.Errorf("%s: text round trip did not save: %v", name, rerr)
+			continue
+		}
 		if hex.EncodeToString(round) != hex.EncodeToString(data) {
 			t.Errorf("%s: text round trip moved bytes", name)
 		}

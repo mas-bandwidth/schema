@@ -2,7 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -103,8 +105,13 @@ func TestStaleMapFailsUntilRegenerate(t *testing.T) {
 	}
 }
 
+// ignoredRootOutputs are the directories .gitignore ignores at the repository
+// root: build and toolchain output, never repo content.
+var ignoredRootOutputs = map[string]bool{"bin": true, "build": true, "dist": true, "runtimes": true, "tmp": true}
+
 func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	root := testRoot(t)
+	files := 0
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -114,8 +121,17 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 			case ".git", "testdata", "node_modules":
 				return filepath.SkipDir
 			}
+			// The root's gitignored output trees (.gitignore: /bin/,
+			// /build/, /tmp/, /runtimes/, /dist) hold no repo content: make
+			// fetches the serialize sibling checkouts into build/, each with
+			// its own CLAUDE.md, so a `go test ./...` whose other packages ran
+			// make first went red here.
+			if filepath.Dir(path) == root && ignoredRootOutputs[d.Name()] {
+				return filepath.SkipDir
+			}
 			return nil
 		}
+		files++
 		if d.Name() == "CLAUDE.md" {
 			rel, _ := filepath.Rel(root, path)
 			t.Errorf("%s stands beside AGENTS.md; Glenn, 2026-09-18: AGENTS.md alone — no CLAUDE.md, no pointer file, no symlink", filepath.ToSlash(rel))
@@ -124,6 +140,9 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if files == 0 {
+		t.Fatal("the walk read no file: a search that looked at nothing found no CLAUDE.md")
 	}
 }
 
@@ -162,4 +181,78 @@ func testRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+// TestSkippedDirectoriesHoldNoTrackedFile holds the map's skip rule to git. The
+// map leaves a directory out by NAME (skipNames, and every dot-directory but
+// mappedDotDirs), on the claim that such a directory is build output or a
+// machine's own. A directory the repository tracks is neither: skipped, it is a
+// source tree no page lists and no row guards. .claude-plugin was one.
+func TestSkippedDirectoriesHoldNoTrackedFile(t *testing.T) {
+	root := testRoot(t)
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		t.Skipf("%s is not a git checkout (%v): which directories are tracked is git's to say", root, err)
+	}
+	issues, err := trackedButSkipped(root, catalog, func(dir string) ([]string, error) {
+		cmd := exec.Command("git", "-C", root, "ls-files", "--", dir)
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+		return strings.Fields(string(out)), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range issues {
+		t.Error(s)
+	}
+}
+
+// TestTrackedButSkippedNegativeControl plants a tree whose skipped directories
+// are one tracked and two not, and requires the tracked one alone to be named.
+func TestTrackedButSkippedNegativeControl(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, sub := range []string{"alpha/bin", "alpha/src", ".plugin", "build", ".editor"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cat := []Entry{page("alpha", "the mapped tree", "go test", "go test"), e("alpha/src", "source", "go test", "go test")}
+	tracked := map[string][]string{"alpha/bin": {"alpha/bin/tool.dart"}, ".plugin": {".plugin/manifest.json"}}
+	lookedAt := 0
+	issues, err := trackedButSkipped(dir, cat, func(d string) ([]string, error) {
+		lookedAt++
+		return tracked[d], nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lookedAt != 4 {
+		t.Errorf("asked about %d skipped directories, want 4 (.editor, .plugin, build, alpha/bin)", lookedAt)
+	}
+	if len(issues) != 2 || !strings.Contains(issues[0], ".plugin holds 1 tracked file") || !strings.Contains(issues[1], "alpha/bin holds 1 tracked file") {
+		t.Errorf("issues = %q, want .plugin and alpha/bin, each named", issues)
+	}
+}
+
+// trackedButSkipped names every directory the map skips by name that holds a
+// file the repository tracks, as trackedFiles reports them.
+func trackedButSkipped(root string, cat []Entry, trackedFiles func(dir string) ([]string, error)) ([]string, error) {
+	skipped, err := SkippedDirs(root, cat)
+	if err != nil {
+		return nil, err
+	}
+	var issues []string
+	for _, dir := range skipped {
+		files, err := trackedFiles(dir)
+		if err != nil {
+			return nil, err
+		}
+		if len(files) > 0 {
+			issues = append(issues, dir+" holds "+strconv.Itoa(len(files))+" tracked file(s) and the map skips it by name: a tracked directory is source, so catalog it (tools/agentsmap/catalog.go; a dot-directory also joins mappedDotDirs) or stop tracking it")
+		}
+	}
+	return issues, nil
 }

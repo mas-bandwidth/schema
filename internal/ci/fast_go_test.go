@@ -140,7 +140,11 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if branches := workflowTriggerBranches(wfs[name])["pull_request"]; len(branches) != 0 {
 			t.Fatalf("%s pull_request filters bases %v; it must run whatever the base is", name, branches)
 		}
-		for nameJob, body := range yamlJobs(wfs[name]) {
+		allYamlJobs := yamlJobs(wfs[name])
+		if len(allYamlJobs) == 0 {
+			t.Fatal("yamlJobs(wfs[name]) is empty: the loop below would check nothing")
+		}
+		for nameJob, body := range allYamlJobs {
 			if !strings.Contains(jobRunsOn(body), "self-hosted") {
 				continue
 			}
@@ -179,7 +183,12 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
 	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
-	for nameJob := range yamlJobs(wfs["ci-fast.yml"]) {
+	fastJobs := yamlJobs(wfs["ci-fast.yml"])
+	if len(fastJobs) == 0 {
+		t.Fatal("ci-fast.yml has no jobs: the push-to-main check below would check nothing")
+	}
+	checkedOnPush := 0
+	for nameJob := range fastJobs {
 		if leg, ok := strings.CutPrefix(nameJob, "leg-gate-"); ok && !strings.Contains(mainPush.PlanLegs, `"`+leg+`"`) {
 			continue // a leg's own rows run when the plan selects that leg (leg_gate_plan_test.go)
 		}
@@ -193,6 +202,10 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if !runs {
 			t.Fatalf("ci-fast.yml %s does not run on a push to main", nameJob)
 		}
+		checkedOnPush++
+	}
+	if checkedOnPush == 0 {
+		t.Fatal("every ci-fast.yml job was skipped: no job was checked to run on a push to main")
 	}
 }
 

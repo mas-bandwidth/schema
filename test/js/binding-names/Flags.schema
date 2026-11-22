@@ -1,0 +1,41 @@
+package bindingflags
+
+flags number
+{
+    a
+    b
+}
+
+flags bigint
+{
+    c
+}
+
+flags symbol
+{
+    d
+}
+
+flags unknown
+{
+    e
+}
+
+flags never
+{
+    f
+}
+
+type Packet
+{
+    n number
+    s symbol
+}
+
+table Row
+{
+    n number
+    b bigint
+    u unknown
+    v never
+}

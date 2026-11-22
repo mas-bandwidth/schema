@@ -317,15 +317,24 @@ func TestGooseIdDistinctnessWork(t *testing.T) {
 
 func TestGooseIdDistinctnessWorkNegativeControl(t *testing.T) {
 	t.Parallel()
-	for name, a := range idWorkAnswers(t, "4097") {
+	got := idWorkAnswers(t, "4097")
+	if len(got) != 2*len(idWorkShapes()) {
+		t.Fatalf("got %d answers, want %d", len(got), 2*len(idWorkShapes()))
+	}
+	checked := 0
+	for name, a := range got {
 		if strings.HasSuffix(name, "_repeat") {
 			continue // the pairwise scan stops at the repeat
 		}
+		checked++
 		if a[1] != 4096*4095/2 {
 			t.Errorf("%s: the pairwise scan made %d comparisons, want %d", name, a[1], 4096*4095/2)
 		}
 		if a[1] <= idWorkBudget {
 			t.Errorf("%s: the pairwise scan's %d comparisons fit the budget, so the guard cannot see it", name, a[1])
 		}
+	}
+	if checked != len(idWorkShapes()) {
+		t.Fatalf("checked %d distinct shapes, want %d", checked, len(idWorkShapes()))
 	}
 }

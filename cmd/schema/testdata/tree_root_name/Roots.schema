@@ -1,0 +1,13 @@
+package treecorpus
+
+fixed table Player
+{
+    level uint32 | json = "Player"
+    score uint32
+}
+
+fixed table Plain
+{
+    level uint32
+    score uint32
+}

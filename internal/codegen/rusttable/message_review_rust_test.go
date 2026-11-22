@@ -359,6 +359,9 @@ fixed table Root
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, data := range files {
 		if name != MessageRuntimeModule+".rs" && !strings.HasSuffix(name, "_message.rs") {
 			continue

@@ -135,6 +135,7 @@ static class Program
         string dir = args.Length > 0 ? args[0] : "test/packet-write-cfloat";
         string cases = Path.Combine(dir, "cases.txt");
         int written = 0;
+        int ran = 0;
         foreach (string raw in File.ReadAllLines(cases))
         {
             string line = raw.Trim();
@@ -142,6 +143,7 @@ static class Program
             {
                 continue;
             }
+            ran++;
             string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (fields.Length < 3)
             {
@@ -170,11 +172,10 @@ static class Program
             float want = Quantized(value);
             Check(Bits(got) == Bits(want), name + " reads back its quantized value");
         }
-        if (failed != 0)
-        {
-            return 1;
-        }
-        Console.WriteLine("packet-write-cfloat C#: refused cases refused, " + written + " lawful cases read back quantized");
-        return 0;
+        // the count line build/mustrun holds to the registered count: a case
+        // file that lost its rows runs nothing and is red
+        Check(ran > 0, "the shared cases in " + cases + " name at least one case");
+        Console.WriteLine("packet-write-cfloat C# (" + written + " lawful cases read back quantized): ran " + ran + ", failed " + failed);
+        return failed == 0 ? 0 : 1;
     }
 }

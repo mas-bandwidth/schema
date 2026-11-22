@@ -644,7 +644,11 @@ func luauGroupDUnit(t *testing.T, c luauGroupDCase) (*ir.Unit, *luauGroupDGenera
 func TestLuauFixedProofGroupD(t *testing.T) {
 	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
-	for _, c := range luauGroupDCases() {
+	allLuauGroupDCases := luauGroupDCases()
+	if len(allLuauGroupDCases) == 0 {
+		t.Fatal("luauGroupDCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allLuauGroupDCases {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			u, g := luauGroupDUnit(t, c)
@@ -689,7 +693,11 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = "\t\twriteStruct(d, root, v, rec)\n"
 	const planted = anchor + "\t\tbuffer.writeu8(rec, fixed.recordBytes - 1, bit32.bxor(buffer.readu8(rec, fixed.recordBytes - 1), 1))\n"
-	for _, c := range luauGroupDCases() {
+	allLuauGroupDCases := luauGroupDCases()
+	if len(allLuauGroupDCases) == 0 {
+		t.Fatal("luauGroupDCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allLuauGroupDCases {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			u, g := luauGroupDUnit(t, c)

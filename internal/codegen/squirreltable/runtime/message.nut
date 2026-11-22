@@ -12,6 +12,12 @@ local refuse = function(r, why) {
   if (r != null) { r.refused = true; r.reason = why; }
   return -1;
 };
+// refuseLoad is a batch read's refusal: "A refused batch returns a count of
+// `0`, as every refused batch does" (docs/SPEC-TABLES.md §3.3).
+local refuseLoad = function(r, why) {
+  refuse(r, why);
+  return 0;
+};
 
 local equalBytes = function(a, b) {
   if (a.len() != b.len()) return false;
@@ -346,6 +352,18 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
     }
   }
   if(state.bad||state.at!=bodyEnd||state.nextRef!=ids.len()+1||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+  // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with v.Strict set, an
+  // announcement whose build version is not the unit's own is refused
+  // build_version_mismatch, sets no vocabulary, keeps the peer's build
+  // version and names both versions in report.remote and report.own.
+  if(("Strict" in v)&&v.Strict){
+    local own=_M.BuildVersion(T.TableMessageAnnouncement);
+    if(build!=own){
+      setSlot(v,"BuildVersion",build);
+      if(report!=null){setSlot(report,"remote",build);setSlot(report,"own",own);}
+      return refuseAnnouncement(v,report,"build_version_mismatch");
+    }
+  }
   local parsed=parseVocabulary(words);
   if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   if(parsed[0].len()>maxEntries){v.BuildVersion<-build;return refuseAnnouncement(v,report,"vocabulary_too_large");}
@@ -693,6 +711,28 @@ defaultValue = function(fd, value, owner) {
 
 local writeBody;
 local writePayload;
+// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md section 3.3 and
+// the 22.2 [M..N]T row, the Go engine's messageElides): a plain counted field
+// holding exactly Min elements that each stay off the wire (a table element by
+// its body being its terminator alone, a float by its bits) is not written.
+local bornElides = function(T, fd, value, depth) {
+  if (fd.shape != "arr" || typeof value != "array") return false;
+  if (!(("counted" in fd) && fd.counted) || (("list" in fd) && fd.list)) return false;
+  if (fd.min <= 0 || value.len() != fd.min) return false;
+  if (("optional" in fd) && fd.optional) return false;
+  if (("required" in fd) && fd.required) return false;
+  if (("keyvariants" in fd) && fd.keyvariants != null) return false;
+  local e = fd.elem;
+  for (local i = 0; i < value.len(); i++) {
+    if (e.shape == "tab") {
+      local pw = newWriter(null, true);
+      pw.owner = null;
+      writeBody(T, pw, T.Descriptors[e.table], value[i], depth + 1);
+      if (pw.bad || pw.bits > T.TableMessageRefBitsHere) return false;
+    } else if (!defaultValue(e, value[i], value)) return false;
+  }
+  return true;
+};
 local readBody;
 local readPayload;
 local kindWidens;
@@ -959,6 +999,24 @@ local sameBuild = function(T, v) {
   return ("Announced" in own) && own.Announced && v.BuildVersion == own.BuildVersion;
 };
 
+// ONE DEFAULT ELEMENT PER SLOT A GROWN BOUND ADDS (docs/SPEC-TABLES.md §21.1,
+// "a grown bound"): a fixed array written under a smaller bound reads as the
+// writer's elements, then each new slot born as the record's constructor bears
+// it — an empty union, a record at its declared defaults, a null enum or
+// reference, a zero scalar — a fresh one per slot, never the field's default
+// and never nothing (the Go engine's message decoder)
+local bornElem = function(T, e) {
+  if (e.shape == "tab") return T.Descriptors[e.table].make();
+  if (e.shape == "union") return T[e.table + "Descriptor"].make();
+  if (e.shape == "enum" || e.shape == "ptr") return null;
+  if (e.shape == "str") return "";
+  if (e.shape == "bytes") return blob(0);
+  if (e.shape == "bool") return false;
+  if (e.shape == "float") return 0.0;
+  if (("width" in e) && e.width == 16) return [0, 0];
+  return 0;
+};
+
 readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false) {
   if (depth > 128) { r.bad = true; return; }
   if (fd.shape == "str") {
@@ -1012,6 +1070,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
       // past Max does (docs/SPEC.md §5.1 row 3; tablewire messagedecode.go)
       if(fd.counted&&n<fd.min){refuseRead(r,"count_over_bound");return;}
       local size=((fd.list||fd.counted)?n:fd.bound),a=array(size,fd.elem.def);
+      for(local i=n;i<size;i++)a[i]=bornElem(T,fd.elem);
       for(local i=0;i<n;i++){readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;a[i]=holder.value;}
       owner[member]=a;return;
     }
@@ -1055,6 +1114,7 @@ writeBody = function(T, w, d, value, depth) {
     if(!(fd.member in value))continue;
     local val=value[fd.member];
     if(defaultValue(fd,val,value))continue;
+    if(bornElides(T,fd,val,depth))continue;
     // AN ALL-DEFAULT NESTED BODY ELIDES (docs/SPEC-TABLES.md §3.3): the
     // table is written once, and when it came to its reference and the
     // terminator alone it is rolled back to the mark, as the Go engine's
@@ -1163,17 +1223,19 @@ _M.SaveMessages <- function(T, root, values, out, report) {
 // to its declared defaults, and rows it never reached are untouched: the Go
 // engine's LoadMessages, which resets values[0..i] and, on a bad batch end,
 // values[0..count-1]. Damage answers 0 with bodyDamaged and wire_damaged; a
-// named refusal (kind_mismatch, out_of_range, length_over_bound,
-// count_over_bound, non_finite_float) answers -1 with that name.
+// named refusal (no_vocabulary, newer_form, batch_too_large, kind_mismatch,
+// out_of_range, length_over_bound, count_over_bound, non_finite_float)
+// answers 0 with that name: "A refused batch returns a count of `0`, as
+// every refused batch does" (§3.3). A delivered batch is never empty.
 _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   reset(report);
-  if(v==null||!("Announced" in v)||!v.Announced)return refuse(report,"no_vocabulary");
-  if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return -1;}
-  if((bytes[0]&0xff)!=2)return refuse(report,"newer_form");
+  if(v==null||!("Announced" in v)||!v.Announced)return refuseLoad(report,"no_vocabulary");
+  if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return 0;}
+  if((bytes[0]&0xff)!=2)return refuseLoad(report,"newer_form");
   local count = (bytes[1]&0xff)+1;
-  if(count>storage.len())return refuse(report,"batch_too_large");
+  if(count>storage.len())return refuseLoad(report,"batch_too_large");
   local d=T.Descriptors[root];
-  if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
+  if(d==null||!d.fixed)return refuseLoad(report,"message_form_plain_table:"+root);
   // THE BATCH AS AN ARRAY OF BYTES: indexing a blob is a native metamethod,
   // and the interpreter cannot grow its stack inside one, so a deep but legal
   // nesting would die in the bit reader rather than at the depth bound.
@@ -1183,7 +1245,7 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   if(report!=null){report.unknown=r.unknown;report.widened=r.widened;}
   if(whole)return count;
   for(local i=0;i<r.written;i++)storage[i]=d.make();
-  if(r.refusal!=null)return refuse(report,r.refusal);
+  if(r.refusal!=null)return refuseLoad(report,r.refusal);
   if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}
   return 0;
 };

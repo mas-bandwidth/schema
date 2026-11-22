@@ -1,0 +1,6 @@
+package fixture
+
+table Save
+{
+    points int32 | min = 0, max = 50
+}

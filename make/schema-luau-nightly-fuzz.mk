@@ -531,20 +531,59 @@ mkdir -p "$$(dirname "$$out")"
 	done
 	echo "}"
 } > "$$out"
+# a seed table with no wire seed or no text seed starts the campaign from
+# nothing: both finds above end in a pipe, so an empty tree is not an error
+bins=$$(grep -c 'kind = "bin"' "$$out" || true)
+txts=$$(grep -c 'kind = "txt"' "$$out" || true)
+if [ "$$bins" -eq 0 ] || [ "$$txts" -eq 0 ]; then
+	echo "luau fuzz seeds: $$bins wire seed(s) and $$txts text seed(s); both must be non-zero" >&2
+	exit 1
+fi
+echo "luau fuzz seeds: $$bins wire, $$txts text"
 endef
 
+# THE REPLAY SET IS REGISTERED BY NAME. <corpus>/INPUTS lists every saved
+# input, one .bin name per line, and the generator holds the directory to that
+# list both ways: a listed input without its .bin or its .bin.meta, a .bin or
+# .bin.meta that is not listed, an empty list, a missing list and a missing
+# directory each stop the replay. It used to skip a .bin with no .meta and
+# take a missing directory for an empty one, so removing sidecars replayed 1
+# or 0 of the 3 saved inputs and exited 0. The count it writes beside the
+# table is the count the replay must report (luau-nightly-fuzz-replay).
 define LUAU_NF_REPLAYGEN
 #!/bin/sh
 set -eu
 dir=$$1
 out=$$2
+fail() { echo "luau replay corpus $$dir: $$1" >&2; exit 1; }
+[ -d "$$dir" ] || fail "the directory does not exist"
+[ -f "$$dir/INPUTS" ] || fail "no INPUTS file registers its saved inputs"
+# a last line with no newline is a line `read` returns false on: the loops
+# below would drop it, and the replay would count one input fewer and agree
+[ -z "$$(tail -c 1 "$$dir/INPUTS")" ] || fail "INPUTS does not end in a newline, so its last line would not be read"
+n=0
+while IFS= read -r name; do
+	[ -n "$$name" ] || fail "INPUTS holds an empty line"
+	[ -f "$$dir/$$name" ] || fail "registered input $$name is missing"
+	[ -f "$$dir/$$name.meta" ] || fail "registered input $$name has no $$name.meta"
+	for key in kind unit root; do
+		[ -n "$$(sed -n "s/^$$key=//p" "$$dir/$$name.meta")" ] || fail "$$name.meta has no $$key="
+	done
+	n=$$((n + 1))
+done < "$$dir/INPUTS"
+[ "$$n" -gt 0 ] || fail "INPUTS registers no input"
+[ -z "$$(sort "$$dir/INPUTS" | uniq -d)" ] || fail "INPUTS registers an input twice"
+for f in "$$dir"/*.bin "$$dir"/*.bin.meta; do
+	[ -e "$$f" ] || continue
+	name=$$(basename "$$f" .meta)
+	grep -qxF "$$name" "$$dir/INPUTS" || fail "$$(basename "$$f") is not registered in INPUTS"
+done
 mkdir -p "$$(dirname "$$out")"
 {
 	echo "return {"
-	for f in "$$dir"/*.bin; do
-		[ -e "$$f" ] || continue
+	while IFS= read -r name; do
+		f="$$dir/$$name"
 		meta="$$f.meta"
-		[ -f "$$meta" ] || continue
 		kind=$$(sed -n 's/^kind=//p' "$$meta")
 		unit=$$(sed -n 's/^unit=//p' "$$meta")
 		root=$$(sed -n 's/^root=//p' "$$meta")
@@ -554,9 +593,10 @@ mkdir -p "$$(dirname "$$out")"
 		esc=$$(od -An -v -tx1 "$$f" | tr -d ' \n' | sed 's/../\\x&/g')
 		printf '\t{ name = "%s", kind = "%s", unit = "%s", root = "%s", pending = "%s", reason = "%s", data = buffer.fromstring("%s") },\n' \
 			"$$name" "$$kind" "$$unit" "$$root" "$$pending" "$$reason" "$$esc"
-	done
+	done < "$$dir/INPUTS"
 	echo "}"
 } > "$$out"
+echo "$$n" > "$$out.count"
 endef
 
 .PHONY: luau-nightly-fuzz luau-nightly-fuzz-replay luau-nightly-fuzz-negative-control luau-nightly-fuzz-toolchain luau-nf-dir
@@ -665,11 +705,60 @@ luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau
 	fi; \
 	if ! grep -q '^FUZZ-DONE|' $(LUAU_NF)/fuzz.log; then \
 		echo "luau nightly fuzz: no FUZZ-DONE line (hang, assert or a dead harness)"; exit 1; fi; \
+	if ! grep -qE '^FUZZ-DONE\|iterations=[1-9][0-9]*\|findings=0\|hits=[0-9]+\|roots=[1-9][0-9]*\|seeds=[1-9][0-9]*\|' $(LUAU_NF)/fuzz.log; then \
+		echo "luau nightly fuzz: the FUZZ-DONE line does not report iterations, roots and seeds above zero; a run of nothing is not clean"; exit 1; fi; \
 	echo "luau nightly fuzz: clean ($$(grep '^FUZZ-DONE|' $(LUAU_NF)/fuzz.log))"
 
-luau-nightly-fuzz-replay: luau-nightly-fuzz-toolchain build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF)/gen-replay.sh
+luau-nightly-fuzz-replay: luau-nightly-fuzz-replay-controls luau-nightly-fuzz-toolchain build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF)/gen-replay.sh
 	@sh $(LUAU_NF)/gen-replay.sh $(LUAU_NF_CORPUS) $(LUAU_NF)/replaydata.luau
-	@$(LUAU) $(LUAU_NF)/replay.luau > $(LUAU_NF)/replay.log 2>&1; status=$$?; cat $(LUAU_NF)/replay.log; exit $$status
+	@$(LUAU) $(LUAU_NF)/replay.luau > $(LUAU_NF)/replay.log 2>&1; status=$$?; cat $(LUAU_NF)/replay.log; \
+	[ $$status -eq 0 ] || exit $$status; \
+	n=$$(cat $(LUAU_NF)/replaydata.luau.count); \
+	if ! grep -q "^REPLAY-DONE|inputs=$$n|" $(LUAU_NF)/replay.log; then \
+		echo "luau replay: $(LUAU_NF_CORPUS)/INPUTS registers $$n input(s) and the replay did not report inputs=$$n" >&2; exit 1; fi; \
+	echo "luau replay: all $$n registered input(s) replayed"
+
+# THE REPLAY SET'S CONTROLS, run before every replay (no toolchain, a few
+# milliseconds). They are built from their own three-input fixture, never from
+# the saved corpus, so they mean the same whatever the corpus holds (a corpus
+# of one input used to fail the one-sidecar control, which kept its only
+# sidecar). The fixture itself must be accepted with count 3; then eight
+# broken copies of it must each be refused. one-sidecar and no-sidecars are
+# the two that replayed 1 and 0 inputs green before INPUTS, missing-directory
+# the third, and no-final-newline is the list whose last line a shell read
+# drops.
+.PHONY: luau-nightly-fuzz-replay-controls
+luau-nightly-fuzz-replay-controls: $(LUAU_NF)/gen-replay.sh
+	@c=$(LUAU_NF)/replay-controls; rm -rf $(LUAU_NF)/replay-controls; mkdir -p $$c/good; \
+	for n in a b c; do \
+		printf '\001' > $$c/good/$$n.bin; \
+		printf 'seed=1\niteration=1\nkind=load\nunit=u\nroot=r\nreason=fixture\n' > $$c/good/$$n.bin.meta; \
+	done; \
+	printf 'a.bin\nb.bin\nc.bin\n' > $$c/good/INPUTS; \
+	if ! sh $(LUAU_NF)/gen-replay.sh $$c/good $$c/good.luau > $$c/good.log 2>&1; then \
+		echo "luau replay control failed: the healthy fixture was refused ($$(cat $$c/good.log))" >&2; exit 1; fi; \
+	[ "$$(cat $$c/good.luau.count)" = 3 ] && [ "$$(grep -c 'name = ' $$c/good.luau)" = 3 ] || \
+		{ echo "luau replay control failed: the healthy fixture of 3 inputs emitted $$(cat $$c/good.luau.count)" >&2; exit 1; }; \
+	echo "luau replay control: the healthy fixture is accepted with 3 inputs"; \
+	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry no-final-newline; do \
+		cp -r $$c/good $$c/$$case || exit 1; done; \
+	rm $$c/one-sidecar/b.bin.meta $$c/one-sidecar/c.bin.meta; \
+	rm $$c/no-sidecars/a.bin.meta $$c/no-sidecars/b.bin.meta $$c/no-sidecars/c.bin.meta; \
+	rm $$c/no-binary/a.bin; \
+	cp $$c/good/a.bin $$c/unregistered/zz-unregistered.bin; \
+	: > $$c/empty-registry/INPUTS; \
+	rm $$c/no-registry/INPUTS; \
+	printf 'a.bin\nb.bin\nc.bin' > $$c/no-final-newline/INPUTS; \
+	refused=0; \
+	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry no-final-newline missing-directory; do \
+		if sh $(LUAU_NF)/gen-replay.sh $$c/$$case $$c/$$case.luau > $$c/$$case.log 2>&1; then \
+			echo "luau replay control failed: a corpus with $$case was accepted" >&2; exit 1; fi; \
+		[ -s $$c/$$case.log ] || { echo "luau replay control failed: $$case was refused without a reason" >&2; exit 1; }; \
+		echo "luau replay control: $$case is refused ($$(cat $$c/$$case.log))"; \
+		refused=$$((refused + 1)); \
+	done; \
+	[ $$refused -eq 8 ] || { echo "luau replay controls: $$refused of 8 ran" >&2; exit 1; }; \
+	echo "luau replay controls: 8 of 8 broken corpora refused"
 
 # THE NEGATIVE CONTROL (make/negative-controls.json, tools/negativecontrols):
 # a scratch copy of the generated readers has the id-table count's sign check
@@ -714,8 +803,8 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		echo "negative control failed: the fuzzer did not find the planted reader bug" >&2; exit 1; fi; \
 	echo "negative control: the fuzzer found the planted reader bug"
 	@rm -rf $(LUAU_NF_NC)/findings && mkdir -p $(LUAU_NF_NC)/findings; \
-	line=$$(grep '^FINDING-MIN|' $(LUAU_NF_NC)/fuzz.log | head -1); \
-	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | head -1); \
+	line=$$(grep '^FINDING-MIN|' $(LUAU_NF_NC)/fuzz.log | sed -n 1p); \
+	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | sed -n 1p); \
 	echo "$$line" | while IFS='|' read -r _ kind unit root seed iter why hex; do \
 		f=$(LUAU_NF_NC)/findings/nc-input.bin; \
 		printf '%s' "$$hex" | xxd -r -p > "$$f"; \
@@ -723,6 +812,7 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		  echo root=$$root; echo "reason=$$why"; } > "$$f.meta"; \
 	done; \
 	[ -s $(LUAU_NF_NC)/findings/nc-input.bin ] || { echo "negative control failed: no input saved" >&2; exit 1; }
+	@echo nc-input.bin > $(LUAU_NF_NC)/findings/INPUTS
 	@sh $(LUAU_NF_NC)/gen-replay.sh $(LUAU_NF_NC)/findings $(LUAU_NF_NC)/replaydata.luau
 	@set +e; \
 	$(LUAU) $(LUAU_NF_NC)/replay.luau > $(LUAU_NF_NC)/replay.log 2>&1; status=$$?; \

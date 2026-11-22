@@ -208,7 +208,7 @@ do
 	for _, w in { "msgA", "msgYs" } do
 		local r: any = {}
 		local n = M.LoadMessages(voc, "Msg", inputs[w], 256, r)
-		row("msg/read/" .. w, if n < 0 then tostring(r.reason) else "loaded")
+		row("msg/read/" .. w, if n == 0 then tostring(r.reason) else "loaded")
 	end
 	local r: any = {}
 	local n, bodies = M.LoadMessages(voc, "Msg", inputs.msgTwin, 256, r)

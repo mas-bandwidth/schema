@@ -88,7 +88,8 @@ func TestTheEntryIsAnonymousInTheBaseline(t *testing.T) {
 	if got := entryLines(baseline.Render(unit(t, renamed)).Text()); got != entryLines(text) {
 		t.Errorf("a was rename moved the entry's lines:\n--- before ---\n%s--- after ---\n%s", entryLines(text), got)
 	}
-	for _, f := range mapDiff(t, mapFixtureSrc, renamed, baseline.DefaultTokenPolicy) {
+	allMapDiff := mapDiff(t, mapFixtureSrc, renamed, baseline.DefaultTokenPolicy)
+	for _, f := range allMapDiff {
 		if strings.Contains(f.Where, "entry:") || strings.Contains(f.What, "map key") || strings.Contains(f.What, "array shape") {
 			t.Errorf("a was rename of a map field reported against the construct: %s", f)
 		}
@@ -130,7 +131,8 @@ func TestTheKeyKindIsFixed(t *testing.T) {
 	// DISCRIMINATION: the same field, the same map, a value kind that widens
 	// nothing about the key — the key rows must not fire.
 	widened := editOf(t, mapFixtureSrc, "by_id map[uint32]int32", "by_id map[uint32]int64")
-	for _, f := range mapDiff(t, mapFixtureSrc, widened, baseline.DefaultTokenPolicy) {
+	allMapDiff := mapDiff(t, mapFixtureSrc, widened, baseline.DefaultTokenPolicy)
+	for _, f := range allMapDiff {
 		if strings.Contains(f.What, "map key") {
 			t.Errorf("a VALUE edit reported against the key: %s", f)
 		}
@@ -197,6 +199,9 @@ func TestKeyboundToUnboundedIsGrowth(t *testing.T) {
 // short. Warned, never refused: nothing already written changes meaning.
 func TestTheArrayToMapEditWarns(t *testing.T) {
 	fs := mapDiff(t, mapPairSrc, mapFixtureSrc, baseline.DefaultTokenPolicy)
+	if len(fs) == 0 {
+		t.Fatal("fs is empty: the loop below would check nothing")
+	}
 	for _, f := range fs {
 		if f.Verdict == baseline.Refuse {
 			t.Errorf("the [..N]Pair -> map[K]V edit refuses: %s", summary(fs))
@@ -245,7 +250,8 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 	// DISCRIMINATION: fixed to bounded is the shape move the wire absorbs, and
 	// the row must stay silent for it (§3).
 	fixedSrc := editOf(t, mapPairSrc, "ships [..4]Pair", "ships [4]Pair")
-	for _, f := range mapDiff(t, mapPairSrc, fixedSrc, baseline.DefaultTokenPolicy) {
+	allMapDiff := mapDiff(t, mapPairSrc, fixedSrc, baseline.DefaultTokenPolicy)
+	for _, f := range allMapDiff {
 		if strings.Contains(f.What, "array shape") {
 			t.Errorf("fixed <-> bounded reported a shape move: %s", f)
 		}

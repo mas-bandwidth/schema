@@ -13,7 +13,7 @@ python-retain-0: dist-python
 python-retain-1: dist-python
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolvedPayload|PathIndex|Tail|RequiredContainers|PathIndexNegativeControl|TailNegativeControl|NodeRemapNegativeControl|TotalIDKnownLast|TotalIDDroppedDefaultSlot|KnownIDNegativeControl|KnownOnlyIDOverflow|MapEntryIDBudget|KnownKeyedIDLimit)$$' ./internal/codegen/pythontable/
 python-retain-2: dist-python
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(UnionArrayCapture|RootBodyInternal|TableArrayInternal|EnumArrayCapture|NestedBodyInternal|NodeBodyInternal|CrossVersionInternal|UnionEnumArrayArm|UnionUnionArrayArm|OptionalEnumArray|OptionalTableArray|PointerArrayIdentity)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(UnionArrayCapture|RootBodyInternal|TableArrayInternal|EnumArrayCapture|NestedBodyInternal|NodeBodyInternal|CrossVersionInternal|UnionEnumArrayArm|UnionUnionArrayArm|OptionalEnumArray|OptionalTableArray|PointerArrayIdentity|ResetsBeforeOpen|RefusalEmptiesTheStore)$$' ./internal/codegen/pythontable/
 python-retain-3: dist-python
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(KeyedAndMapInternal|FixedRefusal|SelectedRuntime|OptionalMap|KeyedEnum|FixedArrayGrowth|ArrayWideningReport|GuardedBody|Depth128|ZeroIDField|MapNestedZeroHash|MapNestedZeroHashNegativeControl|ContainerWidening|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
 python-retain-negative-control: dist-python

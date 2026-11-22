@@ -160,6 +160,9 @@ function readCorpus(dir, basename) {
     process.stderr.write(
       `missing corpus ${path} — run from the schema repo root (or pass --wire-dir/--variant-dir)\n`
     );
+    // a corpus file this leg cannot read is a failed gate, never a quiet pass:
+    // main() skips the fixed-form gates when the corpus check returns false.
+    failed = true;
     return null;
   }
   gGoldensLoaded.set(basename, bytes);

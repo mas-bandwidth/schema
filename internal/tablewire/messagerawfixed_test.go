@@ -53,6 +53,9 @@ func TestMessageRawFixedReadsAtStorageWidth(t *testing.T) {
 			if ir.TableKindSigned(tc.kind) {
 				values = append([]int64{-16}, values...)
 			}
+			if len(values) == 0 {
+				t.Fatal("values is empty: the loop below would check nothing")
+			}
 			for _, value := range values {
 				t.Run(fmt.Sprintf("%d", value), func(t *testing.T) {
 					wire := rawFixedSave(t, m, value)

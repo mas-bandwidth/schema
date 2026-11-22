@@ -491,6 +491,9 @@ func goReferenceDescriptors(t *testing.T, u *ir.Unit) map[string]goRefTable {
 	}
 
 	// Pass 2: collect all <T>TableFields across all *Table.go files.
+	if len(sortedNames) == 0 {
+		t.Fatal("sortedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range sortedNames {
 		f, ok := parsedFiles[name]
 		if !ok {

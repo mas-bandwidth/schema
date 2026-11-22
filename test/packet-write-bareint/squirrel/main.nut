@@ -177,5 +177,10 @@ outcome(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = -128; }), "
 outcome(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = 128; }), "refused", "an arm payload above the width is refused");
 outcome(c, "Arm", arm(c.ArmType.Elements, function(v) { v.Elements = elements([0, 200], [0]); }), "refused", "an arm payload's array element above the width is refused");
 
-if (failed > 0) throw "packet write bare-int squirrel: " + failed + " check(s) failed";
+// The last stdout line on a pass is the count tools/mustrun reads; sq exits 0
+// on a runtime error, so a run that dies prints no count line.
+print("packet write bare-int Squirrel count: ran " + checked + ", failed " + failed + "\n");
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || checked == 0) return 1;
 print("packet write bare-int Squirrel: " + cases + " shared cases and " + checked + " checks OK\n");
+return 0;

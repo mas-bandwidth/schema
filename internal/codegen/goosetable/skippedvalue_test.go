@@ -182,30 +182,32 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 		inlineText[c.name] = []byte(c.text)
 		jsonRows = append(jsonRows, jsonRow{name: c.name, root: "Root", want: c.want})
 	}
-	if len(jsonRows) > 0 {
-		files, err := goose.Generate(u)
-		if err != nil {
-			t.Fatalf("goose type surface: %v", err)
-		}
-		tables, err := Generate(u)
-		if err != nil {
-			t.Fatalf("goose table surface: %v", err)
-		}
-		maps.Copy(files, tables)
-		probeDir := t.TempDir()
-		jsonProbe(t, u, files, probeDir, jsonRows, false)
-		out := string(gooserun.Run(t, probeDir, "main.goose", skippedValueJSONInputs(t, jsonRows, inlineText)))
-		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-		if len(lines) != len(jsonRows) {
-			t.Fatalf("the JSON probe printed %d lines for %d rows:\n%s", len(lines), len(jsonRows), out)
-		}
-		for i, row := range jsonRows {
-			if lines[i] != row.want {
-				t.Errorf("%s: the JSON read answered %q, want %q", row.name, lines[i], row.want)
-			}
+	// the inline rows alone make this non-empty, so the JSON leg always runs
+	files, err := goose.Generate(u)
+	if err != nil {
+		t.Fatalf("goose type surface: %v", err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatalf("goose table surface: %v", err)
+	}
+	maps.Copy(files, tables)
+	probeDir := t.TempDir()
+	jsonProbe(t, u, files, probeDir, jsonRows, false)
+	out := string(gooserun.Run(t, probeDir, "main.goose", skippedValueJSONInputs(t, jsonRows, inlineText)))
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != len(jsonRows) {
+		t.Fatalf("the JSON probe printed %d lines for %d rows:\n%s", len(lines), len(jsonRows), out)
+	}
+	for i, row := range jsonRows {
+		if lines[i] != row.want {
+			t.Errorf("%s: the JSON read answered %q, want %q", row.name, lines[i], row.want)
 		}
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		if row.form != "message" {
 			continue

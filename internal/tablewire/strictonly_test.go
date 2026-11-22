@@ -21,6 +21,9 @@ func TestEngineHasNoTolerantPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue

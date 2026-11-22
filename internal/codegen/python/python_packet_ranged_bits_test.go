@@ -249,6 +249,9 @@ func TestPythonPacketRangedBits(t *testing.T) {
 	}
 	sort.Strings(names)
 	want := []string{"bench_bits", "bench_ints", "probebits"}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for _, name := range want {
 		if !slices.Contains(names, name) {
 			t.Fatalf("the ranged/bits golden set is %v, want %s carried (docs/PORT-PYTHON.md, THE PACKET CORE CUT)", names, name)
@@ -272,6 +275,9 @@ func TestPythonPacketRangedBits(t *testing.T) {
 		return loadPythonUnit(t, abs...)
 	}
 
+	if len(pins) == 0 {
+		t.Fatal("pins is empty: the loop below would check nothing")
+	}
 	for _, pin := range pins {
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()

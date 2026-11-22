@@ -109,11 +109,14 @@ const tableRegionCookSource = `
             w.Put(at, tag, f.Arms.NativeTagSize); TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || RegionPackField(ref w, at + f.Arms.NativeArmOffset, union.Arm(f), arm, extentAt, ref extent);
         }
-        w.Put(at, NativeWord(value.Slot(f, index), f.NativeElementSize), f.NativeElementSize); return true;
+        // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+        UInt128 word = NativeWord(value.Slot(f, index), f.NativeElementSize);
+        if (f.Kind == 10) { word = StoredRaw(unchecked((ulong)word), f); }
+        w.Put(at, word, f.NativeElementSize); return true;
     }
     static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment, bool finite = false)
     {
-        alignment = Math.Max(8, type.StorageAlign); long extent = 0;
+        alignment = global::System.Math.Max(8, type.StorageAlign); long extent = 0;
         if (!RegionExtentSize(value, type, ref extent)) { return -1; }
         long rootExtent = extent;
         long at = checked(NativeRecordBytes(type) + extent);
@@ -121,7 +124,7 @@ const tableRegionCookSource = `
         {
             ref RegionNode node = ref graph.Entries[i]; TableTypeInfo child = node.BlobKind == 0 ? type.PointerType(node.TypeId) : null;
             int align = child == null ? 8 : child.StorageAlign;
-            alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+            alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
             if (child == null) { at = checked(at + 8 + node.Blob.Length + (node.BlobKind == 12 ? 1 : 0)); }
             else
             {
