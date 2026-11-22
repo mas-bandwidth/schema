@@ -203,7 +203,7 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
     return false;
   }
-  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+  if (!globalThis.Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
     return false;
   }
   NUMBER_SCRATCH.value = value.version;
@@ -289,7 +289,7 @@ export function ZeroProbeBits(value) {
 }
 
 export function WriteProbeBits(stream, value) {
-  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+  if (!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
     return false;
   }
   NUMBER_SCRATCH.value = value.small;
@@ -1319,21 +1319,21 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+  if (!globalThis.Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.d;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+  if (!globalThis.Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.e;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
+  if (!globalThis.Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f;
