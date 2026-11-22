@@ -249,7 +249,9 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(log, "run %d: %s (%s)\n", run.ID, verdict, why)
+	if _, err := fmt.Fprintf(log, "run %d: %s (%s)\n", run.ID, verdict, why); err != nil {
+		return fmt.Errorf("write the log: %w", err)
+	}
 	if verdict == Quiet {
 		return nil
 	}
@@ -275,7 +277,9 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 
 	if verdict == Green {
 		if issue == nil || issue.State != "OPEN" {
-			fmt.Fprintf(log, "no open %s issue: nothing to close\n", Label)
+			if _, err := fmt.Fprintf(log, "no open %s issue: nothing to close\n", Label); err != nil {
+				return fmt.Errorf("write the log: %w", err)
+			}
 			return nil
 		}
 		note := fmt.Sprintf("Green again: [run %d](%s) on `%s`, %s. Closing.\n", run.ID, run.HTMLURL, short(run.HeadSHA), run.StartedAt)
@@ -285,7 +289,9 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 		if _, err := gh.Run([]string{"issue", "close", strconv.Itoa(issue.Number), "--repo", repo}, nil); err != nil {
 			return fmt.Errorf("close #%d: %w", issue.Number, err)
 		}
-		fmt.Fprintf(log, "closed #%d\n", issue.Number)
+		if _, err := fmt.Fprintf(log, "closed #%d\n", issue.Number); err != nil {
+			return fmt.Errorf("write the log: %w", err)
+		}
 		return nil
 	}
 
@@ -323,7 +329,9 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 		if _, err := gh.Run([]string{"issue", "pin", strconv.Itoa(n), "--repo", repo}, nil); err != nil {
 			return fmt.Errorf("pin #%d: %w", n, err)
 		}
-		fmt.Fprintf(log, "opened and pinned #%d\n", n)
+		if _, err := fmt.Fprintf(log, "opened and pinned #%d\n", n); err != nil {
+			return fmt.Errorf("write the log: %w", err)
+		}
 		return nil
 	}
 	num := strconv.Itoa(issue.Number)
@@ -334,12 +342,16 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 		if _, err := gh.Run([]string{"issue", "pin", num, "--repo", repo}, nil); err != nil {
 			return fmt.Errorf("pin #%d: %w", issue.Number, err)
 		}
-		fmt.Fprintf(log, "reopened and pinned #%d\n", issue.Number)
+		if _, err := fmt.Fprintf(log, "reopened and pinned #%d\n", issue.Number); err != nil {
+			return fmt.Errorf("write the log: %w", err)
+		}
 	}
 	if _, err := gh.Run([]string{"issue", "comment", num, "--repo", repo, "--body-file", "-"}, []byte(summary)); err != nil {
 		return fmt.Errorf("comment on #%d: %w", issue.Number, err)
 	}
-	fmt.Fprintf(log, "posted the summary to #%d\n", issue.Number)
+	if _, err := fmt.Fprintf(log, "posted the summary to #%d\n", issue.Number); err != nil {
+		return fmt.Errorf("write the log: %w", err)
+	}
 	return nil
 }
 
@@ -426,7 +438,8 @@ func Summary(run Run, jobs []Job, verdict Verdict, why string, firstErrors map[i
 		b.WriteString(cancelNote + "\n\n")
 	}
 	failed := failedJobs(jobs)
-	if verdict == Incomplete {
+	switch {
+	case verdict == Incomplete:
 		counts := map[string]int{}
 		for _, j := range jobs {
 			c := j.Conclusion
@@ -440,9 +453,9 @@ func Summary(run Run, jobs []Job, verdict Verdict, why string, firstErrors map[i
 			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
 		}
 		fmt.Fprintf(&b, "There is no nightly result for this commit. Its %d job(s): %s.\n", len(jobs), strings.Join(parts, ", "))
-	} else if len(failed) == 0 {
+	case len(failed) == 0:
 		b.WriteString("No job inside the run failed: the run itself ended " + run.Conclusion + " (open it for the reason).\n")
-	} else {
+	default:
 		fmt.Fprintf(&b, "%d failed job(s):\n\n| job | first error line |\n| --- | --- |\n", len(failed))
 		for i, j := range failed {
 			if i == maxRows {
