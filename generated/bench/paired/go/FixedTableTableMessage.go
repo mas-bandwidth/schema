@@ -157,9 +157,9 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 }
 
 // FixedTableLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -172,6 +172,11 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
+		if !ok {
+			for j := range values {
+				FixedTableReset(&values[j])
+			}
+		}
 	}()
 	if count < 0 {
 		return 0, false
@@ -182,16 +187,10 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 	}
 	for i := range count {
 		if !FixedTableLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				FixedTableReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			FixedTableReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true

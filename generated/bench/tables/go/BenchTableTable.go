@@ -8829,9 +8829,19 @@ func TableEntityFixedSaveReason(values []TableEntity, buffer []byte) (int64, err
 }
 
 // TableEntityFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
+// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
+// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
 func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	n := fixedLoadWalkTableEntity(values, data, plan, report)
+	if n < 0 {
+		for j := range values {
+			TableEntityReset(&values[j])
+		}
+	}
+	return n
+}
+
+func fixedLoadWalkTableEntity(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -8943,9 +8953,6 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !TableEntityFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				TableEntityReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -9090,9 +9097,19 @@ func TableStatFixedSaveReason(values []TableStat, buffer []byte) (int64, error) 
 }
 
 // TableStatFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
+// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
+// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
 func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	n := fixedLoadWalkTableStat(values, data, plan, report)
+	if n < 0 {
+		for j := range values {
+			TableStatReset(&values[j])
+		}
+	}
+	return n
+}
+
+func fixedLoadWalkTableStat(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -9204,9 +9221,6 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !TableStatFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				TableStatReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -9576,9 +9590,19 @@ func TableMixedFixedSaveReason(values []TableMixed, buffer []byte) (int64, error
 }
 
 // TableMixedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
+// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
+// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
 func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	n := fixedLoadWalkTableMixed(values, data, plan, report)
+	if n < 0 {
+		for j := range values {
+			TableMixedReset(&values[j])
+		}
+	}
+	return n
+}
+
+func fixedLoadWalkTableMixed(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -9688,9 +9712,6 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 		if why := TableMixedFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				TableMixedReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -9698,9 +9719,6 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !TableMixedFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				TableMixedReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
