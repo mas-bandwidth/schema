@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 10
 package declsnext
 
 table Holder
