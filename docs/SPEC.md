@@ -1279,9 +1279,9 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.3), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
+  (serialize v2.1.6), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
   JavaScript (serialize.js v2.1.2), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.1.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  (serialize.cs v2.2.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
@@ -1603,7 +1603,7 @@ All compile errors with positions:
   (`type`, `match`, `impl`, `func`, `class`, `end`, `after`, ...), or that
   collides with another name after Go export-casing (`atRest` → `AtRest`), is
   rejected, with one diagnostic per name listing every language it collides
-  with; every collision in the unit is reported in the same run. Outside the Go escape below there is no escaping
+  with; every collision in the unit is reported in the same run. Outside the Go escape and the platform names below there is no escaping
   machinery; rename at the source.
 
   **The reserved-word table.** The rule is an EXACT, CASE-SENSITIVE match of
@@ -1639,6 +1639,27 @@ All compile errors with positions:
   change, before its target registers (the compiler refuses to register a
   target whose language has no row); from that change on, its words are
   refused for every target.
+- **Platform names are the emitter's to carry.** A name no language reserves
+  can still be one a target's platform defines, and where the target can
+  say the name, its emitter does; nothing here is refused. In C and C++ a
+  declared type may spell a libc type, function or macro (`type uint8_t`,
+  `type memcpy`, `type NULL`): the emitters write the declared types under a
+  marker the pass after them maps back (`internal/codegen/cqualify`), so the
+  emitter's own `uint8_t`, `memcpy(` and `NULL` stay the platform's. C++
+  then names the platform's from the global root where a declared type hides
+  it (`::uint8_t`, `::memcpy(`), and a type spelled like a macro the
+  headers define takes its C++ spelling with one trailing underscore
+  (`type NULL` is `struct NULL_`); C prefixes every declaration with the
+  package already. A C header's include guard keeps the file base's case and
+  spells every other byte in hex (`my_file.schema` guards with
+  `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one.
+  C# names `global::System.Math`, and a unit with a type named in
+  lowercase letters only disables CS8981 in its generated files. Elixir
+  lowers a declaration to the module `<Ns>.<Name>` with its first letter
+  raised (`type memcpy` is `Probe.Memcpy`). Every one of these is the target's
+  spelling and nothing else: the wire name, every id, every projection, the
+  descriptors and every diagnostic keep the schema name. The cases are
+  `testdata/name-buildability-emit`, built by each target's toolchain.
 - **The Go escape.** Go is the one target that carries a reserved word
   instead of refusing it. In every command, a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go

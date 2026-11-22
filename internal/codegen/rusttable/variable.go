@@ -25,11 +25,9 @@ import (
 // (§5) beside its kind byte (§3).
 //
 // The modules are emitted STAND-ALONE. [cardVariableModules] carries the
-// boundary refusal (§11) on the card's own path, while
-// [scopedVariableModules] — GenerateLineage's entry point — leaves a variable
-// table whose constructs this leg does not carry ABSENT rather than refusing
-// the unit whole, so the fixed-form corpus (rusttable_test.go's `pointered`)
-// still emits its fixed form beside a variable table it does not encode.
+// boundary refusal (§11) on the card's own path, and GenerateLineage refuses
+// by name, before [scopedVariableModules] runs, any closure table this leg
+// does not carry (refuseUncarriedClosure): no table is left without its codec.
 const VariableRuntimeModule = "variable_runtime"
 
 // cardVariableModules returns the variable wire's modules for a unit whose
@@ -47,13 +45,12 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // scopedVariableModules is the GENERATE-path entry point: the same modules as
-// [cardVariableModules], but WITHOUT the whole-unit refusal. A variable table
-// whose constructs this leg does not carry is left ABSENT — its wire is not
-// emitted and nothing is mis-encoded — so a unit that mixes a fixed table with
-// a variable table carrying a union (rusttable_test.go's `pointered`) still
-// emits the fixed form. The by-name refusal lives on the card's own path, in
-// [cardVariableModules], where a unit that gains an excluded construct is
-// refused naming table, field and construct (docs/SPEC-TABLES.md §11).
+// [cardVariableModules], gated on the closure rather than the variable tables.
+// It used to leave a table this leg did not carry ABSENT, silently; that gate
+// was the incremental carry's (3e20307eaa, 6e59c4a0bb) and every construct it
+// named is now carried, escaped (escape.go) or refused by the checker, so
+// GenerateLineage refuses whatever remains by name first
+// (refuseUncarriedClosure, docs/SPEC-TABLES.md §11).
 //
 // A closure that holds only FIXED tables takes the modules too: a fixed table
 // rides the variable form as well as its own (docs/SPEC-TABLES.md §2.2, §3),

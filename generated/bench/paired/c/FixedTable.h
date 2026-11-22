@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package bench — protocol id 0xc52a41defad6ebb0 */
 
-#ifndef SCHEMA_BENCH_FIXED_TABLE_H
-#define SCHEMA_BENCH_FIXED_TABLE_H
+#ifndef SCHEMA_BENCH_FixedTable_h
+#define SCHEMA_BENCH_FixedTable_h
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
@@ -22,4 +22,4 @@ extern "C" {
 }
 #endif
 
-#endif /* SCHEMA_BENCH_FIXED_TABLE_H */
+#endif /* SCHEMA_BENCH_FixedTable_h */
