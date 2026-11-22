@@ -91,8 +91,9 @@ int main( int argc, char ** argv )
 
     KeyedRoot storage[1];
     std::memset( (void *) storage, 0xA5, sizeof( storage ) );
-    KeyedRoot before[1];
+    KeyedRoot before[1]; // R4: a refusal leaves the row handed in at its declared defaults, over the same bytes
     std::memcpy( (void *) before, (const void *) storage, sizeof( storage ) );
+    KeyedRootReset( before[0] );
     std::vector<TableFixedEntry> plan( 4096 );
     TableReport r;
     const int64_t n = KeyedRootFixedLoad( storage, 1, data, len, plan.data(), 4096, NULL, &r );
@@ -105,7 +106,7 @@ int main( int argc, char ** argv )
         }
         if ( std::memcmp( (const void *) storage, (const void *) before, sizeof( storage ) ) != 0 )
         {
-            std::printf( "%s: a refused load wrote the caller's destination\n", argv[1] );
+            std::printf( "%s: a refused load left the caller's row off its declared defaults\n", argv[1] );
             return 1;
         }
         return 0;

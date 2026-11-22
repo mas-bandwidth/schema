@@ -324,7 +324,8 @@ const cppHeldStrictChecks = `
 // refused batch returns a count of `0`" (docs/SPEC-TABLES.md §3.3). The read
 // side loads the committed capacity fixture, testdata/batch_capacity_two.bin
 // (two LoginRequest bodies, client_build 40, written by the Go engine), into
-// storage for one holding the sentinel 17, then into storage for two.
+// storage for one holding the sentinel 17 (left at its declared default by the
+// refusal, ruling R4), then into storage for two.
 const cppHeldBatchTooLarge = `
     LoginRequest huge[kTableMessageBatchMax + 1];
     for ( int64_t i = 0; i < kTableMessageBatchMax + 1; ++i ) LoginRequestReset( huge[i] );
@@ -349,8 +350,9 @@ const cppHeldBatchTooLarge = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( storage, &count, vocabulary, fixture.data(), (int64_t) fixture.size(), &r ) || count != 0 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.damaged )
         { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d (a refused batch returns a count of 0)\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.damaged ); return 1; }
-    if ( storage[0].client_build != 17 )
-        { printf( "TableMessageReason::batch_too_large read: client_build reads %u, not the sentinel 17: the refusal decoded a body\n", (unsigned) storage[0].client_build ); return 1; }
+    LoginRequest defaults; LoginRequestReset( defaults ); // R4: a refusal leaves every value handed in at its declared defaults
+    if ( defaults.client_build == 17 || storage[0].client_build != defaults.client_build )
+        { printf( "TableMessageReason::batch_too_large read: client_build reads %u, not its declared default %u\n", (unsigned) storage[0].client_build, (unsigned) defaults.client_build ); return 1; }
     LoginRequest room[2]; LoginRequestReset( room[0] ); LoginRequestReset( room[1] );
     int64_t got = 2;
     TableReport loaded; memset( &loaded, 0, sizeof( loaded ) );
