@@ -51,7 +51,7 @@ func TestSpecGoS6MeasureAndRetention(t *testing.T) {
 		},
 		{
 			name: "§6.5 FromJson on a locked builder",
-			want: "the builder `FromJson` and `FromJsonWith` answer `false` on before they read, leaving the report empty",
+			want: "the builder `FromJson` and `FromJsonWith` answer `false` on before that first act, leaving the report exactly as the caller passed it",
 		},
 		{
 			name:  "§6.6 backend status names Go",
