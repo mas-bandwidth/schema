@@ -80,10 +80,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   `<case>.json` holding `refused` and a newline. The driver loads `<wire file>`
   at `<root>`, then applies `<damage>` in code: `none` writes the value as
   loaded (a graph one past the depth cap); `narrow:<field>` sets that top-level
-  text field's storage to the bytes `61 FF 62`, ill-formed UTF-8; and
-  `wide:<field>` sets that wide field's storage to the units `0061 D800 0062`,
-  an unpaired surrogate. No wire and no text can deliver either, so only a
-  program can build them, and the writer refuses them rather than writing a
+  text field's storage to the bytes `61 FF 62`, ill-formed UTF-8. (`wide:` is
+  RETIRED with wide text, docs/SPEC-TABLES.md §3's kind `33`: no row names it,
+  and a row that did would be a corpus defect.) No wire and no text can
+  deliver the damage, so only a program can build it, and the writer refuses it rather than writing a
   replacement. A leg whose storage cannot hold the bytes the row names holds
   the nearest value that is not text in that leg and says so in its driver.
 - **`write-refusal`** is one row of the WRITE CONTRACT's battery
@@ -92,14 +92,25 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   Save for a variable root, the fixed form's FixedSave for a declared fixed
   root. `<wire>` is the root's current-form instance (`instance` line), read
   by that same form. `<path>` is dotted
-  field names with `[i]` element indexes, from the root. `<kind>` says what the
+  field names with `[i]` element indexes, from the root. A path STEP is: a
+  field name; `[i]` on an array, the element at index `i` from 0; `[i]` on a
+  MAP, its `i`-th entry in ascending key order (the canonical wire's order),
+  followed by `.key` or `.value`; `[i]` on an enum-keyed array, the slot of
+  the enum's `(i+1)`-th declared variant (slot 0 is the first variant after
+  None); and an ARM's name on a union, which selects that arm — at the arm's
+  declared defaults when it was not the taken arm — and continues into its
+  payload. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
-  count of the array at `<path>` (a new element is a copy of element 0),
+  count of the array at `<path>` (a new element is a copy of element 0, or the
+  element's declared default when the array was empty),
   `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
-  an enum by its raw ordinal, `tag` a union by its raw tag (a lawful tag takes
-  its arm at the arm's declared defaults), `float` one of `nan`, `inf` or
-  `-inf`, `bytes` a narrow text's exact bytes in hex, and `units` a wide text's
-  exact UTF-16 units, four hex digits each. `<verdict>` is `refused` or `wrote`,
+  an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
+  the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
+  arm's declared defaults, and a tag past the last arm holds no payload and is
+  the value the writer refuses (rows `wref_union_tag_none`, `fref_`, `mref_`,
+  `jref_union_tag_none`, tag `0`, which write) — `float` one of `nan`, `inf` or
+  `-inf`, and `bytes` a narrow text's exact bytes in hex. (`units`, a wide
+  text's UTF-16 units, is retired with wide text.) `<verdict>` is `refused` or `wrote`,
   and the derived manifest withholds it. The driver writes `refused`, `wrote`
   or, where the leg's own types cannot hold the value at all, `unrepresentable`,
   which answers a `refused` row and no other.

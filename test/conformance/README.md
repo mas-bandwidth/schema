@@ -197,6 +197,37 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
+**FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §8):
+
+- **The `framing` surface reads its root through the root's VARIABLE TWIN.**
+  Its vectors are form-`1` files, and every one names `tblr1 Cfg`, a declared
+  `fixed table`. A read at a fixed root refuses form `1` as `previous_form`
+  (docs/SPEC-TABLES.md §3.4), and the `report` rows `previous_form_*` hold
+  that, so the `framing` surface is NOT a read at the fixed root: the driver
+  reads the file as the variable class of the SAME declaration (same package,
+  fields, ids and defaults, the root's class variable), lands that value in
+  the fixed root's storage through its §16 text, and answers the fixed root's
+  own text and its form-`3` write-back in `<case>.wire`. The reference is the
+  Go driver's `tblr1CfgVariableLoad` (test/conformance/go/fixed.go) and the
+  harness's `framingVariableUnit` (harness/generate.go). Every other surface
+  reads a fixed root as a fixed root, and refuses form `1`.
+- **A fixed root's binary read takes a batch capacity of ONE on every surface
+  but `wire`.** The `report` and `framing` reads are single-value reads, so a file of two records refuses `batch_too_large`
+  (row `report fixedevo_v3_batch2`); the `wire` surface reads with room for
+  any batch the file holds.
+- **A fixed root's older layouts come from the unit's `schema.lock`.** The
+  lineage a read matches a file's hash against (docs/FIXED-FORM-ALGORITHM.md
+  §5.2-§5.3) is the `lineage` lines of the `schema.lock` beside the unit's
+  schema, read whole, oldest first, with the reader's own layout last; a port
+  compiles its plans from them (`COMPILE(lock, T)`) at generate time or at
+  load, its choice. Rows `report fixedevo_v1_as_v3` and `fixedevo_v2_as_v3`
+  read under `test/tables/fixedevo/schema.lock`.
+- **A port declares its gated keys by its answers.** A port outside the
+  repository has no entry in `compiler/carries.go`; a case whose unit uses a
+  key the port does not carry is answered ABSENT (`<case>.absent`, or the
+  surface exits 2), which `make conformance-port` counts as work not done
+  (`--complete`, docs/SPEC-CONFORMANCE.md §5) and never as a pass.
+
 **The four table-form `write-refusal` surfaces hold the write contract**
 (docs/SPEC.md §5.1): each row loads one wire, sets ONE field to a value its
 declaration does or does not admit, and runs the writer its surface names. A
