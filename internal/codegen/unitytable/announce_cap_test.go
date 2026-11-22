@@ -28,8 +28,8 @@ int n = Schema.AnnounceMeasure();
 if (n <= 0) throw new Exception("4096 entries: AnnounceMeasure refused");
 var bytes = Schema.Announce();
 if (bytes.Length != n) throw new Exception("4096 entries: Announce length");
-var report = new TableReport();
-if (!Schema.AnnounceRead(new TableVocabulary(), bytes, ref report)) throw new Exception("4096 entries: the default-maximum read refused");
+var report = new Schema.TableReport();
+if (!Schema.AnnounceRead(new Schema.TableVocabulary(), bytes, ref report)) throw new Exception("4096 entries: the default-maximum read refused");
 `)
 	run(4097, `
 if (Schema.AnnounceMeasure() >= 0) throw new Exception("4097 entries: AnnounceMeasure did not refuse");
