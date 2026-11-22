@@ -2737,6 +2737,7 @@ final class TableMixedCookWire {
         order,
       );
     }
+    assert(value.entities.length >= 1);
     assert(value.entities.length <= 8);
     out?.setInt32(at + 576, value.entities.length, order);
     for (var i = 0; i < 8; i++) {

@@ -2731,7 +2731,7 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.serverTime !== "number" || !globalThis.Number.isInteger(value.serverTime)) { return false; }
   if (value.serverTime < 0 || value.serverTime > 16776960) { return false; }
   if (!globalThis.Array.isArray(value.entities) && !(value.entities instanceof globalThis.Uint8Array)) { return false; }
-  if (typeof value.entitiesCount !== "number" || !globalThis.Number.isInteger(value.entitiesCount) || value.entitiesCount < 0 || value.entitiesCount > 8) { return false; }
+  if (typeof value.entitiesCount !== "number" || !globalThis.Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8) { return false; }
   for (let i1 = 0; i1 < value.entitiesCount; i1++) {
     if (value.entities[i1] === null || typeof value.entities[i1] !== "object") { return false; }
     if (!MixedEntityFixedCheckBody(value.entities[i1])) { return false; }
@@ -2822,7 +2822,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   {
     const n = view.getInt32(at + 52, true);
-    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    if (n < 1 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     for (let i = 0; i < n; i++) {
       { let n;
         n = view.getUint32(at + 56 + i * 51, true);
@@ -3000,7 +3000,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   if (value.serverTime < 0 || value.serverTime > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
   {
     let n = view.getInt32(at + 52, true);
-    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    if (n < 1 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     value.entitiesCount = n;
   }
   {
@@ -3235,7 +3235,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
   }
   {
     const n = view.getInt32(at + 52, true);
-    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    if (n < 1 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     for (let i = 0; i < n; i++) {
       { let n;
         n = view.getUint32(at + 56 + i * 51, true);
@@ -3415,7 +3415,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
     if (e1.serverTime < 0 || e1.serverTime > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
     {
       let n = view.getInt32(at + 52, true);
-      if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+      if (n < 1 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
       e1.entitiesCount = n;
     }
     {
@@ -3574,7 +3574,7 @@ export function FixedTableFixedCheckRead(view, at, report) {
   }
   {
     const n = view.getInt32(at + 52, true);
-    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    if (n < 1 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     for (let i = 0; i < n; i++) {
       { let n;
         n = view.getUint32(at + 56 + i * 51, true);

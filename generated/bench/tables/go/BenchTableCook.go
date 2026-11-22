@@ -614,7 +614,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	used := int32(1)
 	if f.Counted {
 		used = *(*int32)(unsafe.Add(base, f.CountOffset))
-		if used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
+		if used < f.ArrayMin || used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
 			return false
 		}
 		w.put(at+int64(f.CookCountOffset), uint64(used), 4)

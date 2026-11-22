@@ -946,6 +946,7 @@ defmodule Bench.BenchFixed do
     c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
     c = R.clamps(c, n_entities, 0, 8)
+    c = R.held_min(c, n_entities, 1)
     {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
     c = R.clamps(c, n_stats, 0, 80)
     {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)

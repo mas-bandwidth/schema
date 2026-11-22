@@ -4427,7 +4427,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
-          if (end - r.pos < 2) { r.pos = end; break; }
+          if (end - r.pos < 2) { r.report.refuse('count_over_bound'); return; }
           final elemKind = r.readByte();
           final count = r.readLeb();
           if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
@@ -4436,6 +4436,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           v.entities = <TableEntity>[];
           var keep = count;
           if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 1) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -6739,6 +6740,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonAtLeast holds a counted [A..B] array read from text to its minimum A,
+// wherever the field sits, a union arm included (ruling R10,
+// docs/SPEC-TABLES.md §3.4): a list shorter than A refuses count_over_bound.
+List<T> _jsonAtLeast<T>(List<T> out, dynamic val, TableTextReport r, int min) {
+  if (val is List && out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -7867,6 +7876,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
+        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');

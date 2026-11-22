@@ -2328,6 +2328,10 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       report.widened++;
     }
     let keep = count;
+    // a counted [A..B] below A is out of range wherever the array stands, a
+    // union arm included (docs/SPEC-TABLES.md section 3.3): counted, and the
+    // one read refuses the whole load as it does a count past B
+    if (fd.min && count < fd.min) { report.oor++; if (fd.tl && !report.oorField) { report.oorField = fd.field; } }
     if (fd.list) {
       if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
     } else if (count > fd.bound) {
@@ -4292,7 +4296,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   let placed = 0;
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; if (fd.min && placed < fd.min) { report.oor++; } return true; }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -4312,7 +4316,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; if (fd.min && placed < fd.min) { report.oor++; } return true; }
     inp.bad = true;
     return false;
   }
@@ -5212,10 +5216,10 @@ export const TableCookWrite = (() => {
         {k:"int",n:"world_time",at:40,w:8,sg:1},
         {k:"int",n:"frame_tick",at:48,w:8,sg:0},
         {k:"int",n:"server_time",at:56,w:4,sg:1},
-        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
-        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
+        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,min:1,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
+        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,min:0,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
         {k:"union",n:"game_event",at:1224,tagW:1,armAt:4,arms:3,var:1,arm:[{k:"rec",n:"value",at:0,t:"MixedHitEvent",an:"hit"},{k:"rec",n:"value",at:0,t:"MixedChatEvent",an:"chat"},{k:"rec",n:"value",at:0,t:"MixedPickupEvent",an:"pickup"}]},
-        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
+        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,min:0,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
         {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
         {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
         {k:"f32",n:"aim_x",at:1288,c:1},
@@ -5382,7 +5386,7 @@ export const TableCookWrite = (() => {
       if (!globalThis.Array.isArray(arr)) { return false; }
       count = arr.length;
     } else { count = parent[fd.n + "Count"]; }
-    if (!globalThis.Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (!globalThis.Number.isInteger(count) || count < (fd.min || 0) || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
     // a counted array's slots past the live count are DEAD BYTES and stay the
     // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
