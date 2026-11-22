@@ -113,6 +113,18 @@ return function(ctx: any): { [string]: Surface }
 			local n = wrefWhole(text)
 			if n == nil then return true end
 			holder[key] = n
+		elseif what == "int" and (d.cls == "I64" or d.cls == "U64" or d.cls == "I128" or d.cls == "U128") then
+			-- A WIDE INTEGER FIELD holds its class's limbs, never a double:
+			-- tonumber rounds 18446744073709551615 to 2^64, which no uint64
+			-- holds, and the writer refused a value the declaration admits
+			-- (wref_var_u64_ok). The class's own parse reads the token modulo
+			-- its width, so a token it does not spell back is one the field
+			-- cannot hold: unrepresentable.
+			local ser: any = ctx.module(unitKey, "serialize")
+			local C: any = ser[({ I64 = "Int64", U64 = "Uint64", I128 = "Int128", U128 = "Uint128" })[d.cls]]
+			local ok, x = pcall(C.parse, text)
+			if not ok or C.toString(x) ~= text then return true end
+			holder[key] = x
 		elseif what == "int" then
 			local num = tonumber(text) :: number
 			holder[key] = if d.cls == "fx" then num / 65536 else num
