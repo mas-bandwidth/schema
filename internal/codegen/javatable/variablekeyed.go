@@ -19,6 +19,46 @@ func variableElement(f *ir.Field) *ir.Field {
 	return &one
 }
 
+// variableBornCount is the count a variable value's [A..B]T list is born
+// with: A (ir.Field.BornCount). Maps and keyed arrays are not counted lists.
+func variableBornCount(f *ir.Field) int64 {
+	if f.Array != ir.ArrayCounted || f.KeyEnum != "" || f.IsMap() {
+		return 0
+	}
+	return f.BornCount()
+}
+
+// variableBornElement is one value-initialized slot of a born list: the
+// element type at zero, whatever default the field itself declares, as Go's
+// reset clears a counted array's storage.
+func variableBornElement(f *ir.Field) *ir.Field {
+	one := variableElement(f)
+	one.HasDefault = false
+	one.DefBytes = nil
+	one.DefInt = nil
+	one.DefVariant = ""
+	one.DefBool = false
+	one.DefFloat = 0
+	return one
+}
+
+// variableArrayRides is the elision test of a non-required array field. A
+// list born at A (variableBornCount) is elided when it holds A elements, each
+// at its birth value, as Go's writer elides it (internal/tablewire
+// encodeArray's allBirth, gotable emitCountedBirthRides); any other list
+// rides when it holds an element. It may emit the loop that decides, and
+// returns the condition under which the field rides.
+func variableArrayRides(b *strings.Builder, f *ir.Field, m string) string {
+	n := variableBornCount(f)
+	if n == 0 || f.Required || f.Type.Optional {
+		return "!v." + m + ".isEmpty()"
+	}
+	one := variableBornElement(f)
+	fmt.Fprintf(b, "        boolean rides_%s = v.%s.size() != %d;\n", m, m, n)
+	fmt.Fprintf(b, "        for (int i = 0; !rides_%s && i < %d; i++) { if (!(%s)) { rides_%s = true; } }\n", m, n, variableDefaultTest(one, "v."+m+".get(i)"), m)
+	return "rides_" + m
+}
+
 func variableDefaultTest(f *ir.Field, expr string) string {
 	if variableWide(f) && f.Type.Width > 64 {
 		return expr + ".equals(" + variableWideDefault(f) + ")"

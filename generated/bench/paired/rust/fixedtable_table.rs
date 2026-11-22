@@ -753,6 +753,8 @@ pub fn fixed_table_json_ptr(jr: &mut Jr) -> Option<Rc<FixedTable>> {
                 b'}' => { jr.p += 1; jr.refer::<FixedTable>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<FixedTable>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);

@@ -365,13 +365,18 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
+    /// the root is a VARIABLE table (docs/SPEC-TABLES.md §16.7): its text
+    /// carries &node labels, and the label rules hold in a skipped value
+    /// too. A fixed table root's text has no labels, and a skipped value
+    /// there is skipped whole.
+    pub graph: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new(), graph: false }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -901,11 +906,17 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
+        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
+        let at = self.p;
+        self.p = p;
+        // the label is followed by its object's , or } and nothing else
+        // (§16.7; RFC 8259's value-separator): a second key with no comma
+        // before it is not JSON, and neither is a fraction or an exponent
+        // after the digits
+        if !matches!(self.peek(), b',' | b'}') {
+            self.p = at;
             return None;
         }
-        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
-        self.p = p;
         Some(v)
     }
     /// A REFERENCE (docs/SPEC-TABLES.md §16.7): a label the text has defined,
@@ -948,6 +959,10 @@ impl<'a> Jr<'a> {
                  self.p += 1;
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
+                 let mut first = true;
+                 // the label a definition this skipped object opened: it
+                 // closes with the object, and a later reference reads null
+                 let mut opened: Option<u64> = None;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -958,6 +973,9 @@ impl<'a> Jr<'a> {
                      if self.b[self.p] == b'}' {
                          self.p += 1;
                          self.depth -= 1;
+                         if let Some(label) = opened {
+                             self.labels.insert(label, JsonLabel::Dropped);
+                         }
                          return;
                      }
                      let key = self.read_name();
@@ -981,23 +999,47 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
-                    // label followed by a field keeps its label as Dropped, so a
-                    // reference to it reads null; an &node alone is a reference
-                    // and defines nothing.
-                    let mut labelled = false;
-                    if key.as_deref() == Some("&node")
-                        && let Some(label) = self.read_label()
-                    {
-                        labelled = true;
-                        self.space();
-                        if self.p < self.b.len() && self.b[self.p] == b',' {
-                            self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                    // THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7), under a
+                    // variable root: an &-prefixed key is &node and the
+                    // object's first key, its label is a label; a label alone
+                    // (a trailing comma allowed) REFERS and must name a closed
+                    // definition; a label with fields DEFINES, must be new,
+                    // and stays open until this object closes, then reads null.
+                    if self.graph && key.as_deref().is_some_and(|k| k.starts_with('&')) {
+                        if !first || key.as_deref() != Some("&node") {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
                         }
+                        let Some(label) = self.read_label() else {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        };
+                        let defined = self.labels.get(&label).map(|e| !matches!(e, JsonLabel::Open));
+                        if self.peek() == b',' {
+                            self.p += 1;
+                        }
+                        if self.peek() == b'}' {
+                            self.p += 1;
+                            self.depth -= 1;
+                            if defined != Some(true) {
+                                self.damaged = true;
+                            }
+                            return;
+                        }
+                        if defined.is_some() {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        }
+                        self.labels.insert(label, JsonLabel::Open);
+                        opened = Some(label);
+                        first = false;
+                        continue;
                     }
-                    if !labelled {
-                        self.skip_value();
-                    }
+                    first = false;
+                    self.skip_value();
                     if self.damaged {
                         self.depth -= 1;
                         return;
@@ -1248,7 +1290,7 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 	if f.Array != ir.ArrayNone {
 		if f.Array == ir.ArrayCounted {
 			if f.ArrayMin > 0 {
-				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, rustLenUnder(x, f.ArrayMin), x, f.ArrayBound)
+				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, lenUnder(x, f.ArrayMin), x, f.ArrayBound)
 			} else if f.ArrayBound > 0 {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
 			}
@@ -1379,7 +1421,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		}
 		switch f.Type.Kind {
 		case ir.TBool:
-			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
+			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, unparen(x))
 		case ir.TFloat32:
 			// a float32 range is compared at float32 (docs/SPEC.md §4.6), and a
 			// compressed float's -0 is written as +0
@@ -1613,6 +1655,8 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                b'}' => { jr.p += 1; jr.refer::<%s>(label) }\n", st.Name)
 	fmt.Fprintf(b, "                b',' => {\n")
 	fmt.Fprintf(b, "                    jr.p += 1;\n")
+	fmt.Fprintf(b, "                    // a label alone with a trailing comma is still a REFERENCE (§16.7)\n")
+	fmt.Fprintf(b, "                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<%s>(label); }\n", st.Name)
 	fmt.Fprintf(b, "                    // a label already defined, or still open, takes no second definition\n")
 	fmt.Fprintf(b, "                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "                    jr.labels.insert(label, JsonLabel::Open);\n")
@@ -1724,9 +1768,9 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-			// fewer elements than the declared minimum refuse count_over_bound
-			// (§16.2; internal/tabletext readArray)
-			fmt.Fprintf(b, "%s    if %s { jr.damaged = true; }\n", in, rustLenUnder(field, f.ArrayMin))
+			// fewer elements than the declared minimum refuses the read
+			// (internal/tabletext readArray, count_over_bound)
+			fmt.Fprintf(b, "%s    if %s { jr.damaged = true; }\n", in, lenUnder(field, f.ArrayMin))
 		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
@@ -1932,6 +1976,11 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
 	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
+	if !st.FixedDeclared {
+		// a VARIABLE root's text carries labels (§16.7), so the label rules
+		// hold in every value it skips
+		fmt.Fprintf(b, "    jr.graph = true;\n")
+	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
 	fmt.Fprintf(b, "    if jr.missing_required == 0 {\n")
@@ -2040,22 +2089,4 @@ func tableTextOpening(f *ir.Field) byte {
 		return '['
 	}
 	return '{'
-}
-
-// rustLenUnder and rustLenAtLeast compare a Vec's length with a declared
-// minimum (§3) in the form clippy's len_zero accepts: a minimum of 1 is the
-// emptiness test, written with is_empty, never as len() < 1 or len() >= 1
-// (tables-rust-clippy denies both).
-func rustLenUnder(x string, min int64) string {
-	if min == 1 {
-		return x + ".is_empty()"
-	}
-	return fmt.Sprintf("%s.len() < %d", x, min)
-}
-
-func rustLenAtLeast(x string, min int64) string {
-	if min == 1 {
-		return "!" + x + ".is_empty()"
-	}
-	return fmt.Sprintf("%s.len() >= %d", x, min)
 }
