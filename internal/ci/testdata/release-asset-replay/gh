@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+case "$1 $2" in
+  'release view') printf '%s\n' schema_v0.0.0_linux.tar.gz SHA256SUMS ;;
+  'release download') mkdir -p "$5"; cp "$ASSET_CORPUS_REMOTE/"* "$5/" ;;
+  'release edit') touch "$ASSET_CORPUS_PUBLISHED" ;;
+  *) exit 2 ;;
+esac

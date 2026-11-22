@@ -331,8 +331,12 @@ end
 
 local skip_value: (Input, number, any, boolean?) -> boolean
 
--- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
--- label with no node, so a later reference reads null (§16.7). text says the
+-- a skipped OBJECT may still be a pointer's, and the label rules hold in it as
+-- they do for a placed pointer (§16.7): `{"&node": N}` alone REFERS, so N must
+-- be defined earlier in the text and closed; `&node` opening an object with
+-- fields DEFINES, so N must be new to the whole text, and it stays open until
+-- the skipped object closes. A defined label has no node, so a later reference
+-- reads null. text says the
 -- walk is the TABLE walk, where a skipped string or object key is held to the
 -- text rules of a placed one (docs/SPEC-TABLES.md §16.3); the JSON layer's
 -- own grammar probe passes it false.
@@ -340,13 +344,18 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
+  local defined: any = nil
   -- A DUPLICATE KEY IN A SKIPPED OBJECT IS MALFORMED, exactly as in a read
   -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
   -- value rather than guessing which occurrence wins.
   local keys: { [string]: boolean } = {}
   while true do
     local c = peek(inp)
-    if c == close then inp.p = inp.p + 1; return true end
+    if c == close then
+      inp.p = inp.p + 1
+      if defined ~= nil then defined.open = false end
+      return true
+    end
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
@@ -361,13 +370,26 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
         if not first or key ~= "&node" then inp.bad = true; return false end
         local label = scan_label(inp)
         if label == nil then return false end
-        if graph[label] == nil then graph[label] = { node = nil, st = nil, open = false } end
         first = false
         labelled = true
         c = peek(inp)
-        if c == close then inp.p = inp.p + 1; return true end
-        if c ~= ',' then inp.bad = true; return false end
-        inp.p = inp.p + 1
+        if c == ',' then
+          inp.p = inp.p + 1
+          c = peek(inp)
+          if c ~= close then
+            if graph[label] ~= nil then inp.bad = true; return false end
+            defined = { node = nil, st = nil, open = true }
+            graph[label] = defined
+          end
+        elseif c ~= close then
+          inp.bad = true; return false
+        end
+        if c == close then
+          local entry = graph[label]
+          if entry == nil or entry.open then inp.bad = true; return false end
+          inp.p = inp.p + 1
+          return true
+        end
       end
     end
     if not labelled then
@@ -378,6 +400,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
         inp.p = inp.p + 1
       elseif c == close then
         inp.p = inp.p + 1
+        if defined ~= nil then defined.open = false end
         return true
       else
         inp.bad = true
@@ -1134,7 +1157,13 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   if label == nil then return false end
   local entry = graph[label]
   c = peek(inp)
-  if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
+  -- the label is a member like any other: a comma or the object's close
+  -- follows it, never the next key (§16.2)
+  if c == ',' then
+    inp.p = inp.p + 1; c = peek(inp)
+  elseif c ~= '}' then
+    inp.bad = true; return false
+  end
   local bare = c == '}'
   if bare ~= (entry ~= nil) then inp.bad = true; return false end
   if bare then

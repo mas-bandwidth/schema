@@ -62,7 +62,7 @@ func TestJsMessageRangedScalarReadRefuses(t *testing.T) {
 // reader's scalar reads on the MESSAGE, VARIABLE and JSON forms
 // (docs/SPEC-TABLES.md §3.3, §4, §16.2): a value past this reader's
 // declaration — a ranged integer past its range, bits past their width, or a
-// compressed float past its range — is refused with the Go engine's reason, never clamped to an edge and
+// compressed float past its range — is refused as the Go engine refuses it (the verdict alone), never clamped to an edge and
 // counted. Each case's verdict is the engine's, taken first; the in-range
 // control reads, and an enum variant this reader cannot name is unknown,
 // never out of range.
@@ -163,13 +163,16 @@ voc.Init(new Array(64));
 if (!AnnounceRead(voc, new Uint8Array(readFileSync(%q)), {})) { throw new Error("announce refused"); }
 const mrep = {};
 const n = MLoadMessages([new M()], voc, new Uint8Array(readFileSync(%q)), mrep);
-console.log("JS message loaded=" + (n === 1 && !mrep.Damaged) + "|reason=" + (mrep.Reason ?? "") + "|oor=" + (mrep.Oor ?? 0));
+console.log("JS message loaded=" + (n === 1 && !mrep.Damaged));
+console.log("diagnostic message reason=" + (mrep.Reason ?? "") + "|oor=" + (mrep.Oor ?? 0));
 const vrep = new TableVariableReport();
 const v = VLoad(new Uint8Array(readFileSync(%q)), vrep);
-console.log("JS variable loaded=" + (v !== null) + "|reason=" + (vrep.err() ?? ""));
+console.log("JS variable loaded=" + (v !== null));
+console.log("diagnostic variable reason=" + (vrep.err() ?? ""));
 const jrep = new TableVariableReport();
 const j = VFromJson(%q, jrep);
-console.log("JS json loaded=" + (j !== null) + "|reason=" + (jrep.err() ?? ""));
+console.log("JS json loaded=" + (j !== null));
+console.log("diagnostic json reason=" + (jrep.err() ?? ""));
 `, announcePath, batchPath, wirePath, tc.json)
 			probePath := filepath.Join(dir, tc.name+".mjs")
 			if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
@@ -181,10 +184,12 @@ console.log("JS json loaded=" + (j !== null) + "|reason=" + (jrep.err() ?? ""));
 			if err != nil {
 				t.Fatalf("node probe failed: %v\n%s", err, out)
 			}
+			// the verdict alone on every path: the reason is per-language detail
+			// (rulings refusal-verdict-only)
 			want := map[string]string{
-				"message":  fmt.Sprintf("loaded=%t|reason=%s|oor=0", tc.reason == "", tc.reason),
-				"variable": fmt.Sprintf("loaded=%t|reason=%s", tc.reason == "", tc.reason),
-				"json":     fmt.Sprintf("loaded=%t|reason=%s", tc.reason == "", tc.reason),
+				"message":  fmt.Sprintf("loaded=%t", tc.reason == ""),
+				"variable": fmt.Sprintf("loaded=%t", tc.reason == ""),
+				"json":     fmt.Sprintf("loaded=%t", tc.reason == ""),
 			}
 			got := map[string]string{}
 			for line := range strings.SplitSeq(string(out), "\n") {

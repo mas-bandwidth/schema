@@ -611,6 +611,16 @@ def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, 
         _write_scalar(writer, shape, v)
 
 
+def _grown_slot(element: Any) -> object:
+    """One fresh default element for a slot a grown fixed bound added."""
+    from . import descriptor
+    if element.codec == "table":
+        return descriptor.new_by_name(element.target)
+    if element.codec in ("union", "union_array"):
+        return descriptor.new_union_by_name(element.target)
+    return element.default
+
+
 def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int, in_field: bool = False, existing: object = None, same_shape: bool = False) -> object:
     from typing import Any, cast
     from . import descriptor
@@ -656,8 +666,12 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             raise Refused("count_over_bound", fd.name)
         values = [_read_value(reader, element, shape.inner, vocab, own_version, keys, stats, depth + 1) for _ in range(count)]
         if fd.array_kind == 1 and count < fd.bound:
+            # A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that
+            # announced a smaller bound wrote fewer elements; each new slot
+            # holds one fresh default element of the reader's element kind (a
+            # table, or a union with no arm), never the field's whole default.
             for _ in range(fd.bound - count):
-                values.append(descriptor.new_by_name(element.target) if element.codec == "table" else element.default)
+                values.append(_grown_slot(element))
         return bytes(cast(list[int], values)) if fd.codec == "bytes" else values
     if shape.kind == 30:
         entry = _reference(reader, vocab)

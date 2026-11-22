@@ -1,0 +1,5 @@
+# F-177: one go test of the lane recorded a passing run and a second left an
+# empty file: the second recorded nothing, and the first does not cover it.
+args: -require-record -provides tool:rust
+exit: 1
+want: NO RECORD       1 of 2 record file(s) hold no go test event (record #[2])

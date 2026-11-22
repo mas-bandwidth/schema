@@ -710,11 +710,11 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.pf("%sif %s { %s.Put8(1) } else { %s.Put8(0) }\n", ind, expr, writer, writer)
 	case tkF32, tkF64:
 		g.needsMath = true
-		bits, plus := ir.TableKindWidth(kind)*8, ""
-		if kind == tkF32 && f.HasFloatRange { // a compressed float's -0 is stored as +0 (SPEC-TABLES §3.3): IEEE -0 + 0 is +0
-			plus = " + 0"
+		bits, zero := 32<<(kind-tkF32), "" // tkF64 is tkF32+1: 32 or 64 bits
+		if f.HasFloatRange {
+			zero = " + 0" // a compressed float's -0 is stored as +0, and -0 + 0 is +0 (SPEC-TABLES §3.3, fixed-compressed-negzero)
 		}
-		g.pf("%s%s.Put%d(math.Float%dbits(%s%s))\n", ind, writer, bits, bits, expr, plus)
+		g.pf("%s%s.Put%d(math.Float%dbits(%s%s))\n", ind, writer, bits, bits, expr, zero)
 	default:
 		width := ir.TableKindWidth(kind) * 8
 		switch {

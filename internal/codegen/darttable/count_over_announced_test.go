@@ -74,7 +74,7 @@ func countOverAnnouncedVocabulary(t *testing.T, u *ir.Unit) []ir.TableVocabulary
 type countOverCase struct {
 	name   string
 	wire   []byte
-	reason string // "" is a load
+	reason string // "" is a load; else the recommended reason, never compared (rulings refusal-verdict-only)
 	check  string // a Dart expression over `value` that holds on a load
 }
 
@@ -126,7 +126,7 @@ func countOverAnnouncedProbe(ann []byte, cases []countOverCase) string {
 		if tc.reason == "" {
 			fmt.Fprintf(&b, "    report(%q, count == 1 && !rep.refused && (%s), count, rep);\n", tc.name, tc.check)
 		} else {
-			fmt.Fprintf(&b, "    report(%q, count == 0 && rep.refused && rep.reason == %q, count, rep);\n", tc.name, tc.reason)
+			fmt.Fprintf(&b, "    report(%q, count == 0 && rep.refused, count, rep);\n", tc.name) // the verdict alone (refusal-verdict-only)
 		}
 		fmt.Fprintf(&b, "  } // %d\n", i)
 	}
@@ -135,7 +135,7 @@ func countOverAnnouncedProbe(ann []byte, cases []countOverCase) string {
 }
 
 // TestDartMessageCountOverAnnounced holds the emitted Dart batch read to the
-// reference's reason for a count above the announced maximum.
+// reference's verdict for a count above the announced maximum.
 func TestDartMessageCountOverAnnounced(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, countOverAnnouncedSchema)
@@ -165,8 +165,8 @@ func TestDartMessageCountOverAnnounced(t *testing.T) {
 		case n != 1 || g.Refused:
 			reason = "refused without a reason"
 		}
-		if reason != tc.reason {
-			t.Fatalf("%s: the Go reference answered %q, the case says %q", tc.name, reason, tc.reason)
+		if (reason == "") != (tc.reason == "") { // the verdict alone: the reason is per-language detail (refusal-verdict-only)
+			t.Fatalf("%s: the Go reference answered %q, the case says %q (\"\" is a load)", tc.name, reason, tc.reason)
 		}
 	}
 

@@ -1,0 +1,18 @@
+package referents
+
+table First
+{
+    n int32
+}
+
+table Second
+{
+    n    int32
+    owed int32 | required
+}
+
+table Root
+{
+    item   First
+    anchor Second
+}

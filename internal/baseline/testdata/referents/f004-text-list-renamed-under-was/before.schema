@@ -1,0 +1,6 @@
+package referents
+
+table Root
+{
+    cells []string(3)
+}
