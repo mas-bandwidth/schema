@@ -167,6 +167,8 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 			}(w)
 		}
 		wg.Wait()
+	} else {
+		t.Fatalf("shard %d selected none of the %d required shapes: the test would check nothing", shard, len(cases))
 	}
 	for idx, p := range prepared {
 		needMypy := mypyFailed[idx]

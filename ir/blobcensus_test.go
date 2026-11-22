@@ -74,7 +74,11 @@ func TestBlobPointerFieldsIsASupersetOfEveryRootsReachableSet(t *testing.T) {
 		roots++
 		// every declaration the walk from this root could have answered with
 		// is one the census names, so the reachable set is inside it
-		for _, q := range reachedBlobDeclarations(t, u, st) {
+		allReachedBlobDeclarations := reachedBlobDeclarations(t, u, st)
+		if len(allReachedBlobDeclarations) == 0 {
+			t.Fatal("reachedBlobDeclarations(t, u, st) is empty: the loop below would check nothing")
+		}
+		for _, q := range allReachedBlobDeclarations {
 			if !named[q] {
 				t.Errorf("%s reaches %s and the unit's census does not name it", name, q)
 			}

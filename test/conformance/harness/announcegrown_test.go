@@ -203,7 +203,10 @@ func TestLimitTheGrownRowsReachADriver(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, g := range m.Grown {
-		msg, _ := m.LookupMessage(g.Message)
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			t.Fatalf("%s: %v", g.Name, err)
+		}
 		grown, c := grownAnnouncement(t, m, g)
 		if !bytes.Equal(wireBytes(t, g.File), grown) {
 			t.Errorf("%s: the materialised announcement is not the grown one", g.Name)

@@ -363,6 +363,9 @@ func TestRubyPacketClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(matches) == 0 {
+			t.Fatal("matches is empty: the loop below would check nothing")
+		}
 		for _, p := range matches {
 			key := filepath.ToSlash(filepath.Join(dir, filepath.Base(p)))
 			if !known[key] {
@@ -370,7 +373,11 @@ func TestRubyPacketClose(t *testing.T) {
 			}
 		}
 	}
-	for _, pin := range packetPins() {
+	allPacketPins := packetPins()
+	if len(allPacketPins) == 0 {
+		t.Fatal("packetPins() is empty: the loop below would check nothing")
+	}
+	for _, pin := range allPacketPins {
 		if pin.name == "bench_table" {
 			continue
 		}
@@ -1139,6 +1146,9 @@ puts "yjit=#{yjit} variants=#{values.length} bytes=#{size}"
 		{"straight-line", straightFiles},
 		{"descriptor-walk", descFiles},
 	} {
+		if len(jits) == 0 {
+			t.Fatal("jits is empty: the loop below would check nothing")
+		}
 		for _, jitFlag := range jits {
 			t.Run(shape.name+"/"+jitFlag, func(t *testing.T) {
 				dir := t.TempDir()

@@ -95,7 +95,11 @@ func typedRun(t *testing.T, b builtUnit, files map[string][]byte) (agree, differ
 
 func TestLuaTypedSaveEqualsDescriptorSave(t *testing.T) {
 	t.Parallel()
-	for _, key := range instanceUnits(t) {
+	allInstanceUnits := instanceUnits(t)
+	if len(allInstanceUnits) == 0 {
+		t.Fatal("instanceUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, key := range allInstanceUnits {
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()
 			b := buildManifestUnit(t, key)

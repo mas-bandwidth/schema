@@ -2733,7 +2733,7 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 56,
-        TableCookWriteReport.float32Bits(value.serverTime),
+        TableCookWriteReport.float32Bits((value.serverTime == 0 ? 0.0 : value.serverTime)),
         order,
       );
     }
@@ -2792,7 +2792,7 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 1288,
-        TableCookWriteReport.float32Bits(value.aimX),
+        TableCookWriteReport.float32Bits((value.aimX == 0 ? 0.0 : value.aimX)),
         order,
       );
     }
@@ -2800,7 +2800,7 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 1292,
-        TableCookWriteReport.float32Bits(value.aimY),
+        TableCookWriteReport.float32Bits((value.aimY == 0 ? 0.0 : value.aimY)),
         order,
       );
     }
@@ -2808,7 +2808,7 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 1296,
-        TableCookWriteReport.float32Bits(value.aimZ),
+        TableCookWriteReport.float32Bits((value.aimZ == 0 ? 0.0 : value.aimZ)),
         order,
       );
     }
@@ -2834,7 +2834,7 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 1328,
-        TableCookWriteReport.float32Bits(value.ping),
+        TableCookWriteReport.float32Bits((value.ping == 0 ? 0.0 : value.ping)),
         order,
       );
     }

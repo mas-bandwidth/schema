@@ -157,6 +157,9 @@ func TestMooTableSaveNegativeControl(t *testing.T) {
 	units, _ := readManifest(t)
 	rows := instanceRows(t)
 	const anchor = "\tif not required and at_default(fd, val) then\n"
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, key := range sortedKeys(rows) {
 		g := generateUnit(t, units, key)
 		if g.err != nil {

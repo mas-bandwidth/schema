@@ -165,7 +165,11 @@ func TestUnityIsNeverALanguage(t *testing.T) {
 	if names["cs"] != "C# (modern)" || names["unity"] != "C# (unity)" {
 		t.Errorf("cs is %q and unity is %q; want \"C# (modern)\" and \"C# (unity)\"", names["cs"], names["unity"])
 	}
-	for _, l := range All() {
+	allAll := All()
+	if len(allAll) == 0 {
+		t.Fatal("All() is empty: the loop below would check nothing")
+	}
+	for _, l := range allAll {
 		if l.Name == "Unity" || l.Name == "C#" {
 			t.Errorf("%s is listed as %q", l.Target, l.Name)
 		}
@@ -267,18 +271,29 @@ func TestNoPageMiscountsLanguages(t *testing.T) {
 		}
 		return n
 	}
+	langClaims, targetClaims := 0, 0
 	for _, page := range countPages {
 		text := space.ReplaceAllString(readPage(t, page), " ")
 		for _, m := range langRe.FindAllStringSubmatch(text, -1) {
+			langClaims++
 			if value(m[1]) != Languages() {
 				t.Errorf("%s says %q; there are %d languages (%d targets)", page, m[0], Languages(), Targets())
 			}
 		}
 		for _, m := range targetRe.FindAllStringSubmatch(text, -1) {
+			targetClaims++
 			if value(m[1]) != Targets() {
 				t.Errorf("%s says %q; there are %d targets", page, m[0], Targets())
 			}
 		}
+	}
+	// docs/SPEC.md, docs/FAQ.md and docs/CONTRIBUTING.md state both counts
+	// today: a pattern that finds none of them has stopped checking the pages.
+	if langClaims == 0 {
+		t.Fatal("no page states a count of languages: the languages check checked nothing")
+	}
+	if targetClaims == 0 {
+		t.Fatal("no page states a count of targets: the targets check checked nothing")
 	}
 }
 

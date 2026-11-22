@@ -136,7 +136,13 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	var lineage map[string][]mootable.FixedLineageEntry
 	if len(paths) > 0 {
-		if lock, ok, lerr := lockfile.Open(paths); lerr == nil && ok && lock != nil {
+		lock, ok, lerr := lockfile.Open(paths)
+		if lerr != nil {
+			// a lock that is there and cannot be read is not "no lock": the
+			// lineage it promises would silently be left out of the unit
+			return nil, fmt.Errorf("the unit's lock cannot be read: %w", lerr)
+		}
+		if ok && lock != nil {
 			lineage = map[string][]mootable.FixedLineageEntry{}
 			for _, st := range ir.TableFixedFormRoots(u) {
 				for _, e := range lockfile.Lineage(lock, st.WireName()) {

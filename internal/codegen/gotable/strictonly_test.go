@@ -74,6 +74,9 @@ func TestStrictOnlyGoNoTolerantEntry(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		check("standalone/"+name, string(standalone[name]))
 	}
@@ -87,6 +90,9 @@ func TestStrictOnlyGoNoTolerantEntry(t *testing.T) {
 		sharedNames = append(sharedNames, name)
 	}
 	sort.Strings(sharedNames)
+	if len(sharedNames) == 0 {
+		t.Fatal("sharedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range sharedNames {
 		check("shared/"+name, string(shared[name]))
 	}

@@ -118,6 +118,7 @@ var catalog = []Entry{
 	e("internal/tabletext", "table JSON text", "go test ./internal/tabletext", "go test ./internal/tabletext"),
 	e("internal/testproc", "bounded child processes for tests", "go test ./internal/testproc", "go test ./internal/testproc"),
 	e("internal/tablewire", "table wire codecs", "go test ./internal/tablewire", "go test ./internal/tablewire"),
+	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
 	e("internal/viewlisting", "view listing vs IR", "go test ./internal/viewlisting", "go test ./internal/viewlisting"),
 
@@ -215,6 +216,7 @@ var catalog = []Entry{
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
+	e("tools/vacuoustests", "vacuous-test analyzer command", "go test ./internal/vacuous", "go run ./tools/vacuoustests -all"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
 
 	// test/

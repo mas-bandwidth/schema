@@ -358,9 +358,9 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindBool:
 		g.pf("%s%s.putByte(%s ? 1 : 0);\n", ind, p, e)
 	case wireKindF32:
-		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
+		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, dartStoredFloat(f, e), g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
+		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, dartStoredFloat(f, e), g.floatOwner(f))
 	default:
 		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
 			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))

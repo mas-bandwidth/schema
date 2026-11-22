@@ -1320,9 +1320,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, off int64, buf, at, expr string
 	case ir.TBool:
 		g.pf("%sTableFixed.put8(%s, %s + %d, %s ? 1 : 0);\n", ind, buf, at, off, expr)
 	case ir.TFloat32:
-		g.pf("%sTableFixed.put32(%s, %s + %d, java.lang.Float.floatToRawIntBits(%s));\n", ind, buf, at, off, expr)
+		// a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+		g.pf("%sTableFixed.put32(%s, %s + %d, java.lang.Float.floatToRawIntBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	case ir.TFloat64:
-		g.pf("%sTableFixed.put64(%s, %s + %d, java.lang.Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, expr)
+		g.pf("%sTableFixed.put64(%s, %s + %d, java.lang.Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	default:
 		if w == 16 {
 			// the LOW 64-bit half then the HIGH, the type wire's own order (§3)

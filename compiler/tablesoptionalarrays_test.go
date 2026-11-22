@@ -87,7 +87,11 @@ func TestOptionalArraysAreLegal(t *testing.T) {
 func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		if target == "goose" {
 			files, err := c.Generate(u, target, Options{})
 			gooseCarriesTableWire(t, files, err)

@@ -44,7 +44,11 @@ func TestMapPresenceRefusedOffGo(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
-		for _, lang := range c.Targets() {
+		allTargets := c.Targets()
+		if len(allTargets) == 0 {
+			t.Fatal("c.Targets() is empty: the loop below would check nothing")
+		}
+		for _, lang := range allTargets {
 			_, err := c.Generate(u, lang, nil)
 			if carries(lang, carryOptionalMap) {
 				if err != nil {
@@ -61,6 +65,9 @@ func TestMapPresenceRefusedOffGo(t *testing.T) {
 				t.Errorf("%s: target %s refusal does not name the construct and the target: %s", tc.name, lang, msg)
 			}
 		}
+	}
+	if len(plainMapProbes) == 0 {
+		t.Fatal("plainMapProbes is empty: the loop below would check nothing")
 	}
 	for _, p := range plainMapProbes {
 		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {

@@ -1,0 +1,12 @@
+package fixture
+
+fixed table ShipConfig
+{
+    hull int32
+}
+
+table Fleet
+{
+    ships map[string(32)]ShipConfig
+    by_id map[uint32]int32
+}

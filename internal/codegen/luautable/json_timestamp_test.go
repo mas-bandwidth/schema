@@ -206,7 +206,11 @@ func TestLuauJsonTimestampStrictRFC3339(t *testing.T) {
 		t.Fatal("the Go reference unit has no Root table")
 	}
 
-	for _, tc := range jsonTimestampCases() {
+	allJsonTimestampCases := jsonTimestampCases()
+	if len(allJsonTimestampCases) == 0 {
+		t.Fatal("jsonTimestampCases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allJsonTimestampCases {
 		text := `{"at":` + strconv.Quote(tc.text) + `}`
 		inst := model.New(st)
 		var rep tabletext.Report
