@@ -830,6 +830,7 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			// the ORDINAL is the variant's POSITION IN THE LAYOUT, from 1, and
 			// 0 is None — which is the value the declaration already carries
 			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(r.Variants))
+			g.pf("%s", deprecatedVariantAssert(ind, expr, r))
 			g.storeTag(ind, fixedOff(base, at), int64(r.StorageBits/8), expr)
 			return
 		}

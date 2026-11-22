@@ -4254,6 +4254,7 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		g.pf("%s", deprecatedVariantAssert(ind, expr, e))
 		return
 	}
 	if f.Type.Blob() {
@@ -4297,4 +4298,23 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
 		}
 	}
+}
+
+// deprecatedVariantAssert: a strict write refuses a variant marked
+// `| deprecated` (docs/SPEC-TABLES.md section 2.15); Dart is an assert leg.
+func deprecatedVariantAssert(ind, expr string, e *ir.Enum) string {
+	var conds []string
+	for i := range e.Variants {
+		dep := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			dep = true
+		}
+		if dep {
+			conds = append(conds, fmt.Sprintf("%s == %d", expr, i+1))
+		}
+	}
+	if len(conds) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%sassert(!(%s));\n", ind, strings.Join(conds, " || "))
 }

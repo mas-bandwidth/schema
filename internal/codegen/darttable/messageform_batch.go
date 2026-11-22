@@ -742,6 +742,7 @@ func (g *fixedModule) emitMessageWriteScalar128(f *ir.Field, entry ir.TableVocab
 
 func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+	g.pf("%s", deprecatedVariantAssert(ind, expr, e))
 	g.pf("%sif (%s == 0) {\n", ind, expr)
 	g.pf("%s  w.put(0, tableMessageRefBits);\n%s} else {\n", ind, ind)
 	g.pf("%s  switch (%s) {\n", ind, expr)

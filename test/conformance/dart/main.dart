@@ -1085,6 +1085,22 @@ void _f2w_cooktorture_TortureFixedWref(cooktorture_fixed.TortureFixedWref f, coo
   }
 }
 
+void _w2f_cooktorture_TortureFixedMin(cooktorture.TortureFixedMin w, cooktorture_fixed.TortureFixedMin f) {
+  f.fewCount = w.few.length;
+  for (var i = 0; i < w.few.length && i < 4; i++) {
+    f.few[i] = w.few[i];
+  }
+  f.phase = (w.phase as dynamic);
+}
+
+void _f2w_cooktorture_TortureFixedMin(cooktorture_fixed.TortureFixedMin f, cooktorture.TortureFixedMin w) {
+  if (f.fewCount < 0 || f.fewCount > 4) {
+    throw StateError('count_over_bound');
+  }
+  w.few = List<int>.generate(f.fewCount, (i) => f.few[i]);
+  w.phase = (f.phase as dynamic);
+}
+
 String _f2wUtf8Strict(Uint8List buf, int len) {
   if (len < 0 || len > buf.length) {
     throw StateError('length_over_bound');
@@ -2317,6 +2333,18 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
       }
       return _fixedResave(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
+    case 'cooktorture TortureVarWref':
+      return _wireResaveOne(wire, cooktorture.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorture.tortureVarWrefWireLoad, cooktorture.tortureVarWrefWireSave);
+    case 'cooktorture TortureFixedMin':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = cooktorture.TableWireReport();
+        final w = cooktorture.tortureFixedMinWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = cooktorture_fixed.TortureFixedMin();
+        _w2f_cooktorture_TortureFixedMin(w, f);
+        return _fixedSaveOne(f, cooktorture_fixed.tortureFixedMinFixedMeasure, cooktorture_fixed.tortureFixedMinFixedSave);
+      }
+      return _fixedResave(wire, cooktorture_fixed.TortureFixedMin.new, cooktorture_fixed.tortureFixedMinFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedMinFixedLoad, cooktorture_fixed.tortureFixedMinFixedMeasure, cooktorture_fixed.tortureFixedMinFixedSave);
     case 'cooktorturewide TortureWideCook':
       return _wireResaveOne(wire, cooktorturewide.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave);
     case 'listdemo Army':
@@ -2752,6 +2780,18 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = cooktorture_fixed.TortureFixedWref();
       _w2f_cooktorture_TortureFixedWref(w, f);
       return _fixedSaveOne(f, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
+    case 'cooktorture TortureVarWref':
+      final rep = cooktorture.TableTextReport();
+      final v = cooktorture.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return cooktorture.tortureVarWrefWireSave(v);
+    case 'cooktorture TortureFixedMin':
+      final rep = cooktorture.TableTextReport();
+      final w = cooktorture.tortureFixedMinFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = cooktorture_fixed.TortureFixedMin();
+      _w2f_cooktorture_TortureFixedMin(w, f);
+      return _fixedSaveOne(f, cooktorture_fixed.tortureFixedMinFixedMeasure, cooktorture_fixed.tortureFixedMinFixedSave);
     case 'cooktorturewide TortureWideCook':
       final rep = cooktorturewide.TableTextReport();
       final v = cooktorturewide.tortureWideCookFromJson(text, rep);
@@ -3147,6 +3187,23 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = cooktorture.TortureFixedWref();
       _f2w_cooktorture_TortureFixedWref(f, w);
       return cooktorture.tortureFixedWrefToJson(w);
+    case 'cooktorture TortureVarWref':
+      final rep = cooktorture.TableWireReport();
+      final v = cooktorture.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return cooktorture.tortureVarWrefToJson(v);
+    case 'cooktorture TortureFixedMin':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = cooktorture.TableWireReport();
+        final w = cooktorture.tortureFixedMinWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return cooktorture.tortureFixedMinToJson(w);
+      }
+      final f = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedMin.new, cooktorture_fixed.tortureFixedMinFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedMinFixedLoad);
+      if (f == null) return null;
+      final w = cooktorture.TortureFixedMin();
+      _f2w_cooktorture_TortureFixedMin(f, w);
+      return cooktorture.tortureFixedMinToJson(w);
     case 'cooktorturewide TortureWideCook':
       final rep = cooktorturewide.TableWireReport();
       final v = cooktorturewide.tortureWideCookWireLoad(wire, rep);
@@ -3632,6 +3689,10 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       final rep = cooktorture.TableWireReport();
       cooktorture.tortureCookWireLoad(wire, rep);
       return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'cooktorture TortureVarWref':
+      final rep = cooktorture.TableWireReport();
+      cooktorture.tortureVarWrefWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'cooktorturewide TortureWideCook':
       final rep = cooktorturewide.TableWireReport();
       cooktorturewide.tortureWideCookWireLoad(wire, rep);
@@ -3746,6 +3807,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo3_fixed.evoMsgFixedLoad);
     case 'cooktorture TortureFixedWref':
       return _fixedReportLine(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), cooktorture_fixed.tortureFixedWrefFixedLoad);
+    case 'cooktorture TortureFixedMin':
+      return _fixedReportLine(wire, cooktorture_fixed.TortureFixedMin.new, cooktorture_fixed.tortureFixedMinFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), cooktorture_fixed.tortureFixedMinFixedLoad);
   }
   return null;
 }
@@ -6260,6 +6323,73 @@ void _mutateTortureFixedWrefFixed(cooktorture_fixed.TortureFixedWref fx, String 
   }
 }
 
+bool _mutateTortureVarWrefWire(cooktorture.TortureVarWref w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'raw length':
+      w.raw = 'a' * int.parse(text);
+      return true;
+    case 'opt_arr count':
+      w.hasOptArr = true;
+      w.optArr = List<int>.filled(int.parse(text), 0);
+      return true;
+    case 'arm_arr.a_arr count':
+      w.armArr.aArr = List<int>.filled(int.parse(text), 0);
+      return true;
+    case 'arm_raw.a_raw length':
+      w.armRaw.aRaw = 'a' * int.parse(text);
+      return true;
+    case 'arm_bits.a_bits int':
+      w.armBits.aBits = int.parse(text);
+      return true;
+    case 'arm_range.a_range int':
+      w.armRange.aRange = int.parse(text);
+      return true;
+    case 'arm_str.a_str length':
+      w.armStr.aStr = 'a' * int.parse(text);
+      return true;
+    case 'chan_lim[1] int':
+      w.chanLim[1] = int.parse(text);
+      return true;
+    case 'phase ordinal':
+      w.phase = (int.parse(text) as dynamic);
+      return true;
+    default:
+      throw StateError('unsupported TortureVarWref wire mutation $path $vkind');
+  }
+}
+
+bool _mutateTortureFixedMinWire(cooktorture.TortureFixedMin w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'few count':
+      final n = int.parse(text);
+      while (w.few.length < n) {
+        w.few.add(0);
+      }
+      if (w.few.length > n) {
+        w.few = w.few.sublist(0, n);
+      }
+      return true;
+    case 'phase ordinal':
+      w.phase = (int.parse(text) as dynamic);
+      return true;
+    default:
+      throw StateError('unsupported TortureFixedMin wire mutation $path $vkind');
+  }
+}
+
+void _mutateTortureFixedMinFixed(cooktorture_fixed.TortureFixedMin fx, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'few count':
+      fx.fewCount = int.parse(text);
+      break;
+    case 'phase ordinal':
+      fx.phase = (int.parse(text) as dynamic);
+      break;
+    default:
+      throw StateError('unsupported TortureFixedMin fixed mutation $path $vkind');
+  }
+}
+
 void _mutateSimStateFixed(scalardemo_fixed.SimState fx, String path, String vkind, String text) {
   final n = int.parse(text);
   switch ('$path $vkind') {
@@ -6464,6 +6594,40 @@ int surfaceWriteRefusal(String outDir, String surface) {
           final n = cooktorture_fixed.tortureFixedWrefFixedMeasure(1);
           final out = Uint8List(n);
           return cooktorture_fixed.tortureFixedWrefFixedSave(<cooktorture_fixed.TortureFixedWref>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'cooktorture TortureVarWref') {
+      final rep = cooktorture.TableWireReport();
+      final w = cooktorture.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateTortureVarWrefWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          cooktorture.tortureVarWrefWireSave(w);
+          return 0;
+        });
+      }
+    } else if ('$unit $root' == 'cooktorture TortureFixedMin') {
+      final fx = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedMin.new, cooktorture_fixed.tortureFixedMinFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedMinFixedLoad);
+      if (fx == null) return 1;
+      if (surface == 'write-refusal') {
+        final w = cooktorture.TortureFixedMin();
+        _f2w_cooktorture_TortureFixedMin(fx, w);
+        if (!_mutateTortureFixedMinWire(w, path, vkind, text)) {
+          answer = 'unrepresentable';
+        } else {
+          answer = _catchWrite(() {
+            cooktorture.tortureFixedMinWireSave(w);
+            return 0;
+          });
+        }
+      } else {
+        _mutateTortureFixedMinFixed(fx, path, vkind, text);
+        answer = _catchWrite(() {
+          final n = cooktorture_fixed.tortureFixedMinFixedMeasure(1);
+          final out = Uint8List(n);
+          return cooktorture_fixed.tortureFixedMinFixedSave(<cooktorture_fixed.TortureFixedMin>[fx], 1, out) == n ? 0 : -1;
         });
       }
     } else if ('$unit $root' == 'backenddemo StorePurchase') {
