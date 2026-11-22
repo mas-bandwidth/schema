@@ -1623,19 +1623,22 @@ code. The admission is limited to the observed kinds in `make/cpp-warn-allow.txt
 the normal shrink-only rule, new-kind rejection, stale-entry rejection and source
 negative control remain in force. The format inventory is unchanged.
 
-**One-time packetunions inventory, warning and format.** The corpus unit
-`test/tables/packetunions` (PR #4450) generates C++ that was absent from both
-censuses. A second reader generated it with the baseline compiler and with the
-PR and got byte-identical files, so the findings are the emitter's existing
-forms, not a change in it. On the warning ratchet it adds five paths and 21
-path/kind pairs: the table files carry exactly `A1Table`'s kinds, and the packet
-files (`PacketUnions.h`, `PacketUnionsWire.h`) only the three packet kinds the
-list's header names. On the format ratchet it adds two files,
-`PacketUnionsTable.cpp` and `PacketUnionsTable.h`; the packet files are
-format-clean and not listed. clang++ and clang-format report exactly these
-entries. This is the format ratchet's only admitted addition. No existing entry
-changed, and the normal shrink-only rule, new-kind and new-file rejection,
-stale-entry rejection and the source negative controls remain in force.
+**One-time packetunions and valuedefaults inventory, warning and format.** The
+two corpus units PR #4450 adds, `test/tables/packetunions` and
+`test/tables/ValueDefaults.schema`, generate C++ that was absent from both
+censuses. The table emitter is unchanged by the PR, so their findings are its
+existing forms on new files: inventory, not a raised ratchet. On the warning
+ratchet they add ten lines, five paths per unit and 21 path/kind pairs per unit,
+and each line carries exactly the kinds a sibling unit's same file already
+carries (the `<Name>Table.cpp` lines `A1Table.cpp`'s set, `ValueDefaultsTable.cpp`
+`CookTortureTable.cpp`'s, which adds `cast-align`; the `<Name>Table.h` lines
+`A1Table.h`'s; the view lines `Tbla1View`'s; the packet files only the three
+packet kinds the list's header names). On the format ratchet they add four
+lines, `PacketUnionsTable.cpp`, `PacketUnionsTable.h`, `ValueDefaultsTable.cpp`
+and `ValueDefaultsTable.h`, the same two files every sibling table unit lists;
+the packet files are format-clean and not listed. No existing entry changed,
+and the normal shrink-only rule, new-kind and new-file rejection, stale-entry
+rejection and the source negative controls remain in force.
 
 **Targets:** clean
 

@@ -24,13 +24,16 @@
 # One-time widelist inventory: these new paths instantiate existing table,
 # view and list templates. Keep the exact observed kinds; new kinds and
 # stale entries still fail. This does not change the format inventory.
-# One-time packetunions inventory (docs/PORTING.md J4): the new corpus unit
-# test/tables/packetunions adds five paths and 21 path/kind pairs, each kind
-# one the same emitter form already carries elsewhere (the table files A1Table's
-# exact kinds, the packet files only the three packet kinds above). Its C++ is
-# byte-identical from the baseline compiler and from PR #4450, and a clang
-# census reports exactly these entries. No existing entry changed; new kinds
-# and stale entries still fail.
+# One-time packetunions and valuedefaults inventory (docs/PORTING.md J4): the
+# two corpus units PR #4450 adds, test/tables/packetunions and
+# test/tables/ValueDefaults.schema, add ten lines here (five paths each, 21
+# path/kind pairs each). They are new files from an unchanged emitter, and each
+# line carries exactly the kinds a sibling unit's same file already carries:
+# the <Name>Table.cpp lines A1Table.cpp's set (ValueDefaultsTable.cpp
+# CookTortureTable.cpp's, which adds cast-align), the <Name>Table.h lines
+# A1Table.h's, the view lines Tbla1View's, and the packet files only the three
+# packet kinds above. No existing entry changed; new kinds and stale entries
+# still fail.
 build/tables-generated/a1/A1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/a1/A1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/a1/Tbla1View.cpp old-style-cast
