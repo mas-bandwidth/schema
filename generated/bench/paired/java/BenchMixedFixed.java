@@ -356,11 +356,6 @@ public final class BenchMixedFixed {
             }
             v.entitiesCount = n;
         }
-        if (v.entitiesCount < 1) {
-            if (live) {
-                r.refuse(TableFixed.Reason.countOverBound);
-            }
-        }
         if (live && checkDead) {
             for (int deadZ = 0; deadZ < (8 - v.entitiesCount) * 51; deadZ++) {
                 if (b[(at) + (56 + v.entitiesCount * 51) + deadZ] != 0) {
