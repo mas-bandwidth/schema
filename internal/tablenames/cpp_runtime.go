@@ -237,7 +237,7 @@ var cppSharedNames = []string{
 	"TableOpenVerdict", "TableRetainIds", "TableRetainIn", "TableRetainOut", "TableRetainPath",
 	"TableRetainStep", "TableStringAt", "TableStringEmplace", "TableStringView", "TableTextFormEdit",
 	"TableUtf8Valid", "kTableAlign", "kTableAllocFailed", "kTableAnnounce",
-	"kTableAnnounceBytes", "kTableBytesTypeId", "kTableFixedBool", "kTableFixedConst", "kTableFixedCopy",
+	"kTableAnnounceBytes", "kTableAnnounceTooLarge", "kTableBytesTypeId", "kTableFixedBool", "kTableFixedConst", "kTableFixedCopy",
 	"kTableFixedCount", "kTableFixedEntryBytes", "kTableFixedForm", "kTableFixedHashAt",
 	"kTableFixedHeaderBytes", "kTableFixedLayoutHeaderBytes", "kTableFixedMaxDepth", "kTableFixedOrdinal",
 	"kTableFixedPresent", "kTableFixedPresentDefaults", "kTableFixedRecordMaxBytes", "kTableFixedText", "kTableFixedTextBytes",

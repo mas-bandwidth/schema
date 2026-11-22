@@ -27,6 +27,7 @@ func init() {
 		// They are spelled at column zero of the home module, so a schema
 		// declaration of the same name is a second binding.
 		Name{Name: "TableAnnounceRead", What: "read one announcement into a direction's vocabulary (§3.3)"},
+		Name{Name: "TableAnnounceTooLarge", What: "whether the vocabulary is past the readers' entry maximum, so the writer refuses (§3.3)"},
 		Name{Name: "TableFixedTextOk", What: "whether the used text is well-formed: UTF-8, or paired UTF-16 with no zero unit"},
 		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement bytes, a compile-time constant (§3.3)"},
 		Name{Name: "TableMessageBatchReader", What: "a reader over one message-form batch"},
@@ -232,6 +233,7 @@ func init() {
 		Name{Name: "TableMessageOpenRefused", What: "open verdict 1: the receiver refused"},
 		Name{Name: "TableMessageOpenDamaged", What: "open verdict 2: the bytes are damaged"},
 		Name{Name: "TableAnnounceRead", What: "§3.3's announce reader: resolves the receiver once and reads the packet"},
+		Name{Name: "TableAnnounceTooLarge", What: "whether the vocabulary is past the readers' entry maximum, so the writer refuses (§3.3)"},
 		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement packet as bytes (§3.3)"},
 		Name{Name: "TableMessageVersionId", What: "the reserved version id constant (BigInt)"},
 		Name{Name: "TableMessageVocabularyId", What: "the reserved vocabulary id constant (BigInt)"},

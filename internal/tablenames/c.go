@@ -80,6 +80,7 @@ func init() {
 		Name{Name: "announce_read", What: "the C message and announcement runtime"},
 		Name{Name: "kTableAnnounce", What: "the C message and announcement runtime"},
 		Name{Name: "kTableAnnounceBytes", What: "the C message and announcement runtime"},
+		Name{Name: "kTableAnnounceTooLarge", What: "the C message and announcement runtime: 1 when the vocabulary is past the readers' entry maximum and the writer refuses (§3.3)"},
 		Name{Name: "kTableMessageBatchMax", What: "the C message and announcement runtime"},
 		Name{Name: "kTableMessageEntriesHere", What: "the C message and announcement runtime"},
 		Name{Name: "kTableMessageEntryKeyBytes", What: "the C message exact encoded-entry proof"},

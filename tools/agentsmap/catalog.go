@@ -96,6 +96,7 @@ var catalog = []Entry{
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
 	e("internal/goname", "Go member spelling (initialisms)", "go test ./internal/goname", "go test ./internal/goname"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
+	e("internal/idcapwire", "the retain-writer id cap test file builder", "go test ./internal/tablewire", "go test ./internal/tablewire"),
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/languages", "the supported-language list, derived", "go test ./internal/languages", "go test ./internal/languages"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),

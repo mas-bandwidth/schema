@@ -110,6 +110,8 @@ func init() {
 		Name{Name: "Entry", What: "one message vocabulary entry", Scoped: true},
 		Name{Name: "MessageVocabulary", What: "one connection's announced message vocabulary", Scoped: true},
 		Name{Name: "BuildVersionMismatch", What: "a strict message connection's version refusal", Scoped: true},
+		Name{Name: "announce", What: "the announcement writer: the bytes, or the vocabulary-too-large refusal", Scoped: true},
+		Name{Name: "announce_measure", What: "the announcement writer's size, -1 when refused", Scoped: true},
 		Name{Name: "announce_read", What: "resolve a message vocabulary once", Scoped: true},
 		Name{Name: "resolve_vocabulary", What: "compare announced message kinds with a unit", Scoped: true},
 		Name{Name: "load_messages", What: "load a message batch", Scoped: true},

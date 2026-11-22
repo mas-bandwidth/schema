@@ -91,6 +91,7 @@ func init() {
 		Name{Name: "TableMessageWriter", What: "the announced message bit codec"},
 		Name{Name: "TableVocabulary", What: "the announced message bit codec"},
 		Name{Name: "tableAnnounceRead", What: "the announced message bit codec"},
+		Name{Name: "tableAnnounceTooLarge", What: "the announced message bit codec: the writer refuses a vocabulary past the readers' entry maximum (§3.3)"},
 		Name{Name: "tableAnnouncement", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchClose", What: "the announced message bit codec"},
 		Name{Name: "tableMessageBatchOpen", What: "the announced message bit codec"},

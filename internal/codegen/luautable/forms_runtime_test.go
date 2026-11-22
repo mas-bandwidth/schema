@@ -121,7 +121,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // f3f17d1ea9d78bab. Moved again when the locals a module binds its requires to
 // became _F_<base> (LUAU-2, review 2026-11-21), so a file named M or Rt
 // never collides with the generator's own locals.
-const wantUndeclaredSchemaDigest = "f4627518f8bec3a3a3811474b549533358bd5cf5fea5fe0ef0bd730465bc1d47"
+// Moved again by the R8 follow-up: the table now carries Announce and
+// AnnounceMeasure (the announcement writer, refusing past 4096 entries).
+const wantUndeclaredSchemaDigest = "0453a74993d5cea72227d33dbd5718e692ae7aeacf3b4a3c374fc74e84c3ba6d"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned

@@ -23,7 +23,7 @@ const Lua Backend = 1 << 9
 // by the file that returns the table.
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
-		"AnnounceRead", "Announcement", "BlockForm", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
+		"Announce", "AnnounceMeasure", "AnnounceRead", "Announcement", "BlockForm", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
 		"FixedFields", "FixedLoad", "FixedMeasure", "FixedSave", "FixedUnions", "Keyed", "LoadMessages", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
 		"MessageVocabularyId", "NeedsBlockEligibility", "Package", "ReadFixed", "RegionAlign", "Registry", "SaveMessages",

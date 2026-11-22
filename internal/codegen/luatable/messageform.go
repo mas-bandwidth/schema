@@ -62,11 +62,11 @@ func emitMessageForm(m *Module) error {
 	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3): Announce
 	// answers nil and the reason, AnnounceMeasure answers -1.
 	if len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries {
-		m.Printf("function _M.AnnounceMeasure() return -1 end\n")
-		m.Printf("function _M.Announce() return nil, \"vocabulary_too_large\" end\n\n")
+		m.Printf("function _M.AnnounceMeasure()\n  return -1\nend\n")
+		m.Printf("function _M.Announce()\n  return nil, \"vocabulary_too_large\"\nend\n\n")
 	} else {
-		m.Printf("function _M.AnnounceMeasure() return #_M.Announcement end\n")
-		m.Printf("function _M.Announce() return _M.Announcement end\n\n")
+		m.Printf("function _M.AnnounceMeasure()\n  return #_M.Announcement\nend\n")
+		m.Printf("function _M.Announce()\n  return _M.Announcement\nend\n\n")
 	}
 	m.Printf("_M.MessageVersionId = %s\n", idLit(messageVersionID))
 	m.Printf("_M.MessageVocabularyId = %s\n", idLit(messageVocabularyID))

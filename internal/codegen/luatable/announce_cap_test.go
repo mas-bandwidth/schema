@@ -39,10 +39,10 @@ func TestLuaAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 				text = string(data)
 			}
 		}
-		refused := strings.Contains(text, "function _M.AnnounceMeasure() return -1 end") &&
-			strings.Contains(text, `function _M.Announce() return nil, "vocabulary_too_large" end`)
-		served := strings.Contains(text, "function _M.AnnounceMeasure() return #_M.Announcement end") &&
-			strings.Contains(text, "function _M.Announce() return _M.Announcement end")
+		refused := strings.Contains(text, "function _M.AnnounceMeasure()\n  return -1\nend") &&
+			strings.Contains(text, "function _M.Announce()\n  return nil, \"vocabulary_too_large\"\nend")
+		served := strings.Contains(text, "function _M.AnnounceMeasure()\n  return #_M.Announcement\nend") &&
+			strings.Contains(text, "function _M.Announce()\n  return _M.Announcement\nend")
 		if text == "" || refused != row.refused || served == row.refused {
 			t.Fatalf("%d entries: refused=%t served=%t, want refused=%t", row.entries, refused, served, row.refused)
 		}

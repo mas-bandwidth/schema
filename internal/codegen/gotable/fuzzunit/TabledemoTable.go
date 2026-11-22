@@ -29,8 +29,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xb9f6e38dc91be5cf)
-const _ = uint64(0xb9f6e38dc91be5cf - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xe8c48b8c90e8b5e2)
+const _ = uint64(0xe8c48b8c90e8b5e2 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -287,6 +287,8 @@ func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
 }
 
 const TableMessageBatchMax = goruntime.TableMessageBatchMax
+
+const tableAnnounceTooLarge = goruntime.TableAnnounceTooLarge
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
 
