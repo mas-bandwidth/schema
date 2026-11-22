@@ -703,11 +703,6 @@ func writeBase64(w *writer, data []byte) {
 	w.put('"')
 }
 
-// writeFloat spells a float by §16.14's W12: C's `%.*g` at the first precision
-// from 6 (float32) or 15 (float64) whose text reads back as the same value at
-// the field's own width, and at 9 or 17 when no earlier one does. Non-finite values have no JSON spelling at all and the
-// writer REFUSES rather than losing one silently — the rule measure and save
-// already apply to an enum value no variant names (§5).
 // StoredFloat is the value every writer stores for a float cell: the cell
 // itself, except that a COMPRESSED float's -0 is stored as +0, the same bits
 // +0 stores (docs/SPEC-TABLES.md §3.3, the special values; docs/rulings.json
@@ -722,6 +717,11 @@ func StoredFloat(f *ir.Field, v float64) float64 {
 	return v
 }
 
+// writeFloat spells a float by §16.14's W12: C's `%.*g` at the first precision
+// from 6 (float32) or 15 (float64) whose text reads back as the same value at
+// the field's own width, and at 9 or 17 when no earlier one does. Non-finite values have no JSON spelling at all and the
+// writer REFUSES rather than losing one silently — the rule measure and save
+// already apply to an enum value no variant names (§5).
 func writeFloat(w *writer, value float64, single bool) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("float %v has no JSON spelling — the writer refuses it rather than losing it silently (docs/SPEC-TABLES.md §16.2)", value)
