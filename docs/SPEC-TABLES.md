@@ -14366,7 +14366,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch  FixedFromText
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
