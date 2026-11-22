@@ -127,7 +127,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	case key.Type.Width > 32:
 		hashType = "java.lang.Long"
 	}
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear(); java.util.HashSet<%s> seen_%s=new java.util.HashSet<>();\n", m, hashType, m)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} if((%s)+1>TableJson.In.MAX_JSON_DEPTH){in.bad=true;return;} in.p++; v.%s.clear(); java.util.HashSet<%s> seen_%s=new java.util.HashSet<>();\n", depth, m, hashType, m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} java.lang.String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
 		if key.Type.TextUnbounded() {
@@ -156,7 +156,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report()); number.space(); if(number.bad||number.p!=0||mapKey.isEmpty()){in.bad=true;return;} number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length){in.bad=true;return;} if(!TableJson.integerToken(mapKey)){accepted=false;in.rep.refuse(\"kind_mismatch\");}else{java.math.BigInteger n=TableJson.exactIntegerToken(mapKey); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
-	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)
+	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,(%s)+1);\n", st.Name, m, depth)
 	fmt.Fprintf(b, "                    if(in.bad)return; if(!seen_%s.add(entry.key)){in.rep.refuse(\"text_damaged\");}else v.%s.add(entry); }\n", m, m)
 	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
 }
