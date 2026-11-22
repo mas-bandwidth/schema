@@ -1091,7 +1091,13 @@ func emitEnumText(b *strings.Builder, e *ir.Enum) {
 	fmt.Fprintf(b, "pub fn %s(v: %s) -> &'static str {\n", write, e.Name)
 	fmt.Fprintf(b, "    match v {\n")
 	fmt.Fprintf(b, "        %s::None => \"None\",\n", e.Name)
-	for _, v := range e.Variants {
+	for i, v := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+			// a write-side check, so a debug assert in this language (SPEC.md §5.1)
+			fmt.Fprintf(b, "        %s::%s => { debug_assert!(false, \"a deprecated variant is never written to JSON (docs/SPEC-TABLES.md §2.15)\"); %q }\n", e.Name, rustVariant(v), v)
+			continue
+		}
 		fmt.Fprintf(b, "        %s::%s => %q,\n", e.Name, rustVariant(v), v)
 	}
 	fmt.Fprintf(b, "    }\n}\n\n")
