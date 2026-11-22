@@ -529,13 +529,13 @@ table Fleet
 	}
 }
 
-// TestStdNamedBodyStaysOffTheVariableWire pins the one fixed table the Rust
-// variable form leaves off by name (docs/SPEC-TABLES.md §11): a body named
+// TestStdNamedTableIsEscaped pins the Rust escape (escape.go): a table named
 // after a standard type the codec spells unqualified (VOLD_nested_append's
-// `fixed table Vec`) would shadow it crate-wide, so it and every table that
-// reaches it are refused on the variable wire with the name in the reason,
-// no `pub struct Vec` is emitted, and the fixed form (§3.4) still is.
-func TestStdNamedBodyStaysOffTheVariableWire(t *testing.T) {
+// `fixed table Vec`) would shadow it crate-wide, so it is emitted as
+// `VecTable` and rides the variable wire (docs/SPEC-TABLES.md §3, §11) with
+// every table that reaches it, its wire ids the declared name's; no
+// `pub struct Vec` is emitted, and the fixed form (§3.4) still is.
+func TestStdNamedTableIsEscaped(t *testing.T) {
 	t.Parallel()
 
 	src := `package probe
@@ -556,14 +556,19 @@ fixed table Other
     n int32 = 0
 }
 `
-	vc := newVariableClass(unitFrom(t, src))
-	for _, n := range []string{"Vec", "Lineage"} {
-		if vc.carried(n) || !strings.Contains(vc.reason[n], "Vec") {
-			t.Errorf("%s rides the variable wire or its refusal does not name Vec: %q", n, vc.reason[n])
-		}
+	u := unitFrom(t, src)
+	esc := rustEscapeTables(u)
+	if st := esc.Tables["VecTable"]; st == nil || st.DeclaredName() != "Vec" || st.WireName() != "Vec" {
+		t.Fatalf("Vec is not escaped to VecTable keeping its declared name: %+v", st)
 	}
-	if !vc.carried("Other") {
-		t.Errorf("Other reaches no standard name and was refused: %s", vc.reason["Other"])
+	if u.Tables["Vec"] == nil || u.Tables["Vec"].SchemaName != "" {
+		t.Fatal("the escape touched the caller's unit")
+	}
+	vc := newVariableClass(esc)
+	for _, n := range []string{"VecTable", "Lineage", "Other"} {
+		if !vc.carried(n) {
+			t.Errorf("%s is left off the variable wire: %s", n, vc.reason[n])
+		}
 	}
 	out := generate(t, src)
 	for name, data := range out {
@@ -574,7 +579,9 @@ fixed table Other
 	if !strings.Contains(string(out["probe_fixed.rs"]), "lineage_fixed_load") {
 		t.Error("the fixed form of Lineage was not emitted")
 	}
-	if !strings.Contains(string(out["probe_table.rs"]), "pub fn other_load(") {
-		t.Error("Other lost its form-1 codec")
+	for _, want := range []string{"pub fn other_load(", "pub fn lineage_load(", "pub fn vec_table_load("} {
+		if !strings.Contains(string(out["probe_table.rs"]), want) {
+			t.Errorf("the form-1 codec is missing %s", want)
+		}
 	}
 }
