@@ -1,9 +1,21 @@
 // test/packet-defaults/squirrel/main.nut — the SQUIRREL leg of the packet
 // value-defaults fixture (test/packet-defaults/README.md; SPEC §4.2, §4.8, §5).
 //
-// usage: sq main.nut [golden-dir] [defaults-dir] [plain-dir]
-
-local argv = vargv;
+// usage: sq main.nut [golden-dir] [defaults-dir] [plain-dir] --vectors <golden .bin file>...
+//
+// The arguments after "--vectors" are the vector directory's own listing of
+// *.bin (the make recipe passes it): a vector on disk this driver does not
+// read, a vector it reads that is not listed, and an empty listing each fail
+// the run. The last stdout line is "<name>: ran N, failed M", N the checks
+// that ran (tools/mustrun reads it; sq exits 0 on a runtime error, so a run
+// that dies prints no count line and is red for that).
+local argv = [];
+local listed = null;
+foreach (a in vargv) {
+  if (listed != null) { listed[a] <- false; }
+  else if (a == "--vectors") { listed = {}; }
+  else { argv.append(a); }
+}
 local goldenDir = argv.len() >= 1 ? argv[0] : "testdata/wire/packet-defaults";
 local defaultsDir = argv.len() >= 2 ? argv[1] : "build/packet-defaults/squirrel/defaults";
 local plainDir = argv.len() >= 3 ? argv[2] : "build/packet-defaults/squirrel/plain";
@@ -13,7 +25,9 @@ local d = dofile(defaultsDir + "/schema_module.nut", true).require("Defaults");
 local p = dofile(plainDir + "/schema_module.nut", true).require("Plain");
 
 local failed = 0;
+local ran = 0;
 local check = function(ok, what) {
+  ran++;
   if (!ok) {
     print("FAILED: " + what + "\n");
     failed++;
@@ -167,6 +181,10 @@ local checkRead = function(name, wire, bits, initial, want) {
 };
 
 local pin = function(name, fileName, value, initialFn, wantFn) {
+  if (listed != null) {
+    check((fileName + ".bin") in listed, "pinned golden " + fileName + ".bin is not in the directory listing");
+    listed[fileName + ".bin"] <- true;
+  }
   local wantBytes = readBytes(goldenDir + "/" + fileName + ".bin");
   local wantBits = readText(goldenDir + "/" + fileName + ".bits").tointeger();
   local w = write(d, name, value);
@@ -299,5 +317,13 @@ for (local attempt = 0; attempt < 2; attempt++) {
   checkRead("Choice", offW.bytes, offW.bits, output, want);
 }
 
-if (failed > 0) throw "packet defaults squirrel: " + failed + " check(s) failed";
+if (listed == null || listed.len() == 0) {
+  check(false, "the vector directory listing is empty");
+} else {
+  foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
+}
+print("packet defaults Squirrel: ran " + ran + ", failed " + failed + "\n");
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || ran == 0) return 1;
 print("packet defaults Squirrel: constructors, eight C++ goldens and reused storage OK\n");
+return 0;

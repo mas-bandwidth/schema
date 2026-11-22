@@ -480,12 +480,12 @@ func TestSquirrelFixedEvolutionReports(t *testing.T) {
 
 	gc := sqEvoGenerate(t, newer, lineage)
 	gc.plant(t, "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n  _M.FixedWidened <- 0;\n", "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n  if (!(\"FixedWidened\" in _M)) _M.FixedWidened <- 0;\n")
-	if got, _ := gc.exec(t, sqEvoDumper(gc)+seq, inputs); strings.TrimSpace(got) == want {
+	if got, err := gc.exec(t, sqEvoDumper(gc)+seq, inputs); err == nil && strings.TrimSpace(got) == want {
 		t.Errorf("the negative control: a widened count that accumulates across loads still reads w4 each time")
 	}
 	gc = sqEvoGenerate(t, newer, lineage)
 	gc.plant(t, "_M.NFixedLoad <- function(b, out, cap) {\n  _M.FixedReason <- null;\n  _M.FixedField <- null;\n", "_M.NFixedLoad <- function(b, out, cap) {\n  if (!(\"FixedReason\" in _M)) _M.FixedReason <- null;\n  if (!(\"FixedField\" in _M)) _M.FixedField <- null;\n")
-	if got, _ := gc.exec(t, sqEvoDumper(gc)+seq, inputs); strings.TrimSpace(got) == want {
+	if got, err := gc.exec(t, sqEvoDumper(gc)+seq, inputs); err == nil && strings.TrimSpace(got) == want {
 		t.Errorf("the negative control: a reason that outlives its load still reads null after a refusal")
 	}
 }

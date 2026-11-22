@@ -190,7 +190,11 @@ func TestBlockForgeryFuzz(t *testing.T) {
 	if s := os.Getenv("N"); s != "" {
 		n = int(parseUint(t, s))
 	}
-	for _, unit := range blocksUnderTest() {
+	allBlocksUnderTest := blocksUnderTest()
+	if len(allBlocksUnderTest) == 0 {
+		t.Fatal("blocksUnderTest() is empty: the loop below would check nothing")
+	}
+	for _, unit := range allBlocksUnderTest {
 		image := wire(t, unit.path)
 		// the unmutated image must open, or the fuzzer is mutating nothing
 		base, extent, intact := place(image, int64(len(image)), 0)

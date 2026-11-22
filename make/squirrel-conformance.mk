@@ -112,8 +112,8 @@ conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
 		echo "SQUIRREL WIRE PIN FAILED: the wire surface has a failure above" >&2; \
 		exit 1; \
 	fi; \
-	cell=$$(grep '^wire ' build/squirrel-wire-pin.log | head -1); \
-	if ! printf '%s\n' "$$cell" | grep -q 'pass '; then \
+	cell=$$(grep '^wire ' build/squirrel-wire-pin.log | sed -n 1p); \
+	if ! printf '%s\n' "$$cell" | grep 'pass ' >/dev/null; then \
 		echo "SQUIRREL WIRE PIN FAILED: the wire cell does not read a pass ($$cell)" >&2; \
 		exit 1; \
 	fi; \
@@ -173,3 +173,14 @@ conformance-negative-control-squirrel-write-refusal-message: build/conformance-h
 	@sh test/conformance/squirrel/write-refusal-control write-refusal-message
 
 test-squirrel: conformance-negative-control-squirrel-write-refusal conformance-negative-control-squirrel-write-refusal-fixed conformance-negative-control-squirrel-write-refusal-message
+
+# THE WIRE LIBRARY'S OWN TEST (test/conformance/squirrel/lib/wire_test.nut):
+# the assertions over lib/wire.nut. No recipe or Go test ran this file before
+# this target; it is a prerequisite of test-squirrel now, under build/mustrun
+# with its registered count, so it cannot stop running or run fewer
+# assertions unseen.
+.PHONY: squirrel-wire-lib-test
+squirrel-wire-lib-test: toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name squirrel-wire-lib-test -count 50 -- "$(SQ)" test/conformance/squirrel/lib/wire_test.nut
+
+test-squirrel: squirrel-wire-lib-test

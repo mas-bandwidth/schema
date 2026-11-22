@@ -377,6 +377,9 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
 		}
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		if !reached[row.file] {
 			t.Errorf("MANIFEST.tsv row %s was not reached", row.file)

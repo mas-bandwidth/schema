@@ -21,7 +21,11 @@ func TestTargetLuaCarriesRequired(t *testing.T) {
 	c := New()
 	// Package name avoids colliding with Lobster runtime binding "t".
 	u := unitFromSource(t, "package requiredprobe\ntable Ship\n{\n    name string(32) | required\n}\n")
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		files, err := c.Generate(u, lang, nil)
 		if lang == "lua" {
 			if !carries(lang, carryRequired) {

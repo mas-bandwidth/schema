@@ -36,11 +36,18 @@ static class Program
     static bool failed;
     static string wireDir;
 
+    // every Check is one counted unit: Main prints "ran N, failed M" and
+    // build/mustrun holds N to the count the recipe registers
+    static int ran;
+    static int failures;
+
     static void Check(bool ok, string what)
     {
+        ran++;
         if (!ok)
         {
             Console.WriteLine("FAILED: " + what);
+            failures++;
             failed = true;
         }
     }
@@ -1805,11 +1812,12 @@ static class Program
         {
             failed = true;
         }
-        if (failed)
+        if (!failed)
         {
-            return 1;
+            Console.WriteLine("OK");
         }
-        Console.WriteLine("OK");
-        return 0;
+        int failedCount = failed ? Math.Max(failures + LudicrousSuite.Failures, 1) : 0;
+        Console.WriteLine("unitytest: ran " + (ran + LudicrousSuite.Ran) + ", failed " + failedCount);
+        return (failed || ran == 0 || LudicrousSuite.Ran == 0) ? 1 : 0;
     }
 }

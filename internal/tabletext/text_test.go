@@ -361,7 +361,11 @@ func TestArrayBounds(t *testing.T) {
 // ToJson -> FromJson -> ToJson is byte-stable for every table in the corpus.
 func TestWriteReadWriteIsStable(t *testing.T) {
 	m := tabletext.NewModel(unit(t))
-	for _, name := range m.Roots() {
+	allRoots := m.Roots()
+	if len(allRoots) == 0 {
+		t.Fatal("m.Roots() is empty: the loop below would check nothing")
+	}
+	for _, name := range allRoots {
 		st := m.Lookup(name)
 		inst := m.New(st)
 		first, err := m.Write(inst)

@@ -75,6 +75,9 @@ func TestCFixedUnionTagBoundaries(t *testing.T) {
 		}
 	}
 	// A scalar in the overlapping alternative retains one unchanged copy.
+	if len(plan) == 0 {
+		t.Fatal("plan is empty: the loop below would check nothing")
+	}
 	for _, e := range plan {
 		if e.Op == ir.TableFixedOpCopy && len(e.GuardLinks) == 1 && e.GuardLinks[0].Arg == 3 {
 			found := false

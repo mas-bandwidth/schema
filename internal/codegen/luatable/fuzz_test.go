@@ -638,6 +638,9 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	slowtest.Gate(t, luaFuzzCost)
 	res := runLuaFuzzDifferential(t, nil)
 	t.Log(luaFuzzSummary(res))
+	if res.roots == 0 || res.mutants == 0 {
+		t.Fatalf("%s: the differential compared nothing", luaFuzzSummary(res))
+	}
 	if path := os.Getenv("SCHEMA_LUA_FUZZ_DIVERGENCES"); path != "" {
 		// every divergence, one per paragraph, for a reader classifying a red
 		if err := os.WriteFile(path, []byte(strings.Join(res.divergences, "\n")+"\n"), 0o644); err != nil {

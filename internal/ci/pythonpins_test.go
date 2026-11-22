@@ -118,6 +118,7 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 	envPythonRE := regexp.MustCompile(`/usr/bin/env\s+python`)
 	execPythonRE := regexp.MustCompile(`(Command|LookPath)\("python`)
 
+	codeLines := 0
 	for _, f := range legFiles {
 		rel, err := filepath.Rel(root, f)
 		if err != nil {
@@ -140,9 +141,13 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
+			codeLines++
 			if barePython3RE.MatchString(line) || envPythonRE.MatchString(line) || execPythonRE.MatchString(line) {
 				t.Errorf("%s:%d runs an interpreter from PATH: %s", rel, i+1, trimmed)
 			}
 		}
+	}
+	if codeLines == 0 {
+		t.Fatal("no non-comment line was read from the Python leg files: the PATH-interpreter check checked nothing")
 	}
 }
