@@ -540,7 +540,7 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string) -> bool
                 let arm_sl = uv.arm
                 assert arm_sl
                 let av = arm_sl.cell
-                if kind == "float":
+                if kind == "float" or kind == "real":
                     av.f = wr_float(text)
                 elif kind == "bytes":
                     av.s = wr_hex(text)
@@ -630,7 +630,9 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string) -> bool
                 elif arm.s != "void":
                     v.arm = schema_rt.new_slot(arm)
         else:
-            assert kind == "float"
+            // a `real` is a finite decimal set on a float (the harness's write-refusal
+            // kinds), held as the float the decimal names
+            assert kind == "float" or kind == "real"
             v.f = wr_float(text)
     return true
 

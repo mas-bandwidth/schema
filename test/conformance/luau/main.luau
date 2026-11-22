@@ -1235,8 +1235,18 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		local arr = holder[key]
 		if owner[fd.slot .. "Count"] ~= nil then
 			owner[fd.slot .. "Count"] = n
-			for i = #arr + 1, n do
-				arr[i] = wrefDeepCopy(arr[1])
+			if type(arr) == "buffer" then
+				-- a byte-sized element array is one buffer: the count says how
+				-- much of it is live, and it grows (zero filled) to hold n
+				if buffer.len(arr) < n then
+					local grown = buffer.create(n)
+					buffer.copy(grown, 0, arr, 0, buffer.len(arr))
+					holder[key] = grown
+				end
+			else
+				for i = #arr + 1, n do
+					arr[i] = wrefDeepCopy(arr[1])
+				end
 			end
 		else
 			for i = #arr + 1, n do
