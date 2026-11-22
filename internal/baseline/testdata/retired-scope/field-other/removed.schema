@@ -1,0 +1,5 @@
+package sample
+table First {
+ keep int32
+}
+table Second { elsewhere int32 }

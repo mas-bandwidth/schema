@@ -93,17 +93,18 @@ var usageChecks = []usageCheck{
 		stale:   "exactly one newline, and every reader",
 	},
 	{
-		name:    "text form's strict FromJson",
+		// the one read: no tolerant twin exists in Go (review finding F-173)
+		name:    "text form's one read",
 		section: "### The text form:",
 		end:     "### Carrying a table over a text channel",
-		want:    "FromJsonTolerant",
+		want:    "There is no tolerant twin.",
 		stale:   "`FromJson` returns false with",
 	},
 	{
-		name:    "Tables from Go's strict LoadBuilder",
+		name:    "Tables from Go's one read",
 		section: "### Tables from Go",
 		end:     "### Text lists and array-root tables",
-		want:    "LoadBuilderTolerant",
+		want:    "with no tolerant twin",
 		stale:   "which keeps what it decoded and reads on",
 	},
 	{
@@ -114,10 +115,10 @@ var usageChecks = []usageCheck{
 		stale:   "appends (false past either bound)",
 	},
 	{
-		name:    "integrity's tolerant reader",
+		name:    "integrity's one read",
 		section: "### A checksum on a saved file:",
 		end:     "### Generated tests:",
-		want:    "LedgerLoadTolerant",
+		want:    "the one read every entry point is (§6.5)",
 		stale:   "the tolerant\n`LedgerLoad` sets `malformed`",
 	},
 	{

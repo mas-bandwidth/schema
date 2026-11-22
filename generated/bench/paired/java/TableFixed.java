@@ -54,8 +54,9 @@ public final class TableFixed {
     public static final byte opCopy = 0;
 
     /**
-     * a count: clamp it to the ENTRY's bound -- which the compiled plan sets to the WRITER's (5.3
-     * step 11) -- and refuse countOverBound if out of bound.
+     * a count: refuse countOverBound past the ENTRY's bound -- which the compiled plan sets to the
+     * WRITER's (5.3 step 11). The count is held at the bound only so the walk stays inside its
+     * storage; the refused load is discarded whole.
      */
     public static final byte opCount = 1;
 
@@ -257,7 +258,8 @@ public final class TableFixed {
      * THE LOAD PATH'S HEADER, reused per thread: a read allocates nothing on its success path
      * (docs/FIXED-FORM-ALGORITHM.md §4.2). readHeader fills it.
      */
-    private static final ThreadLocal<Header> loadHeader = ThreadLocal.withInitial(Header::new);
+    private static final java.lang.ThreadLocal<Header> loadHeader =
+            java.lang.ThreadLocal.withInitial(Header::new);
 
     static Header header() {
         return loadHeader.get();
@@ -324,14 +326,14 @@ public final class TableFixed {
     // so nothing in it can be read as anything but a byte — and the bytes are
     // the same bytes either way.
     /** rebuild a constant byte run from its string chunks; each char is one byte. */
-    public static byte[] bytes(String... parts) {
+    public static byte[] bytes(java.lang.String... parts) {
         int n = 0;
-        for (String p : parts) {
+        for (java.lang.String p : parts) {
             n += p.length();
         }
         final byte[] out = new byte[n];
         int at = 0;
-        for (String p : parts) {
+        for (java.lang.String p : parts) {
             for (int i = 0; i < p.length(); i++) {
                 out[at++] = (byte) p.charAt(i);
             }
@@ -581,7 +583,7 @@ public final class TableFixed {
          * THE FIELD A nonFiniteFloat REFUSAL NAMES, {@code <Table>.<field>}, the first one the read
          * met (docs/SPEC-TABLES.md §3.3), and null on every other path.
          */
-        public String nonFiniteFloat;
+        public java.lang.String nonFiniteFloat;
 
         /**
          * THE FILE'S OWN LAYOUT HASH, and it is LAST on this report by rule (ALG 5.9 #15): a new
@@ -614,7 +616,7 @@ public final class TableFixed {
          * refuse a NaN or an infinity by name (docs/SPEC-TABLES.md §3.3): it outranks every other
          * verdict, and the first field met is the one named.
          */
-        public void refuseNonFinite(String field) {
+        public void refuseNonFinite(java.lang.String field) {
             if (reason != Reason.nonFiniteFloat) {
                 nonFiniteFloat = field;
             }
@@ -632,7 +634,8 @@ public final class TableFixed {
      * THE LOAD PATH'S DISCARD REPORT for a rollback, reused per thread: a refusal reports on the
      * caller's report and never makes a new one per record.
      */
-    private static final ThreadLocal<Report> loadDiscard = ThreadLocal.withInitial(Report::new);
+    private static final java.lang.ThreadLocal<Report> loadDiscard =
+            java.lang.ThreadLocal.withInitial(Report::new);
 
     static Report discard() {
         return loadDiscard.get();
@@ -808,7 +811,7 @@ public final class TableFixed {
                             report.damaged = true;
                             return;
                         }
-                        System.arraycopy(src, srcAt + p.src, image, p.dst, p.size);
+                        java.lang.System.arraycopy(src, srcAt + p.src, image, p.dst, p.size);
                         break;
                     }
                 case opCount:
@@ -852,7 +855,7 @@ public final class TableFixed {
                             return;
                         }
                         put32(image, p.dst, v);
-                        System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
+                        java.lang.System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
                         break;
                     }
                 case opDead:
@@ -919,7 +922,7 @@ public final class TableFixed {
                         final long raw = getUint(src, srcAt + p.src, p.size);
                         final int n = remap[p.aux] & 0xFFFF;
                         long v = 0;
-                        if (raw != 0 && Long.compareUnsigned(raw, n) <= 0) {
+                        if (raw != 0 && java.lang.Long.compareUnsigned(raw, n) <= 0) {
                             v = remap[p.aux + (int) raw] & 0xFFFF;
                         }
                         // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT LANDS None
@@ -929,8 +932,8 @@ public final class TableFixed {
                         // knows of and this reader does not lands None too — that
                         // one is a version difference and counts nothing. Slack
                         // of a counted array is not this op's: scatter walks the
-                        // LIVE count, so unused slots never reach a clamp.
-                        if (Long.compareUnsigned(raw, n) > 0) {
+                        // LIVE count, so unused slots never reach this check.
+                        if (java.lang.Long.compareUnsigned(raw, n) > 0) {
                             report.refuse(Reason.outOfRange);
                         }
                         putUint(image, p.dst, v, p.dstsize);
@@ -969,7 +972,11 @@ public final class TableFixed {
                         // subnormals included. A NaN or an infinity stays one, and the
                         // scatter's finite test refuses it by name afterwards.
                         final int bits = get32(src, srcAt + p.src);
-                        put64(image, p.dst, Double.doubleToRawLongBits(Float.intBitsToFloat(bits)));
+                        put64(
+                                image,
+                                p.dst,
+                                java.lang.Double.doubleToRawLongBits(
+                                        java.lang.Float.intBitsToFloat(bits)));
                         report.widened++;
                         break;
                     }
@@ -1013,13 +1020,15 @@ public final class TableFixed {
      * §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves, straight-line over
      * the record image after the plan run and before the scatter. spec is a flat array of {dst,
      * width, signed, lo, hi} rows, one per leaf the writer declared, or null when the entry bounds
-     * nothing — the reader's range is the wider one, so clamping to it would land a value the old
-     * writer could not have written (bill §12.5). Every clamp COUNTS, once per leaf per record,
-     * exactly as the scatter's own pass counts the reader's. The comparison is in the field's own
-     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is
-     * past the max and never below the min (an unsigned kind's bounds are never negative).
+     * nothing — the reader's range is the wider one, so checking only it would accept a value
+     * the old writer could not have written (bill §12.5). A leaf off the WRITER's range refuses
+     * the load as outOfRange, exactly as the scatter's own pass refuses the reader's; the value
+     * stored at the bound is never seen, because the refused load is discarded whole
+     * (strict-only-read). The comparison is in the field's own type: signed for a signed kind,
+     * UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the max and never below
+     * the min (an unsigned kind's bounds are never negative).
      */
-    public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
+    public static void checkWriterBounds(long[] spec, byte[] image, Report report) {
         if (spec == null || spec.length == 0 || image == null) {
             return;
         }
@@ -1037,11 +1046,17 @@ public final class TableFixed {
                 if (signed) {
                     final long loHi = lo < 0 ? -1L : 0L;
                     final long hiHi = hi < 0 ? -1L : 0L;
-                    below = (vHi != loHi) ? (vHi < loHi) : (Long.compareUnsigned(vLo, lo) < 0);
-                    above = (vHi != hiHi) ? (vHi > hiHi) : (Long.compareUnsigned(vLo, hi) > 0);
+                    below =
+                            (vHi != loHi)
+                                    ? (vHi < loHi)
+                                    : (java.lang.Long.compareUnsigned(vLo, lo) < 0);
+                    above =
+                            (vHi != hiHi)
+                                    ? (vHi > hiHi)
+                                    : (java.lang.Long.compareUnsigned(vLo, hi) > 0);
                 } else {
-                    below = (vHi == 0L) && (Long.compareUnsigned(vLo, lo) < 0);
-                    above = (vHi != 0L) || (Long.compareUnsigned(vLo, hi) > 0);
+                    below = (vHi == 0L) && (java.lang.Long.compareUnsigned(vLo, lo) < 0);
+                    above = (vHi != 0L) || (java.lang.Long.compareUnsigned(vLo, hi) > 0);
                 }
                 if (below || above) {
                     final long landed = below ? lo : hi;
@@ -1056,10 +1071,10 @@ public final class TableFixed {
             }
             final long v = signed ? getInt(image, at, width) : getUint(image, at, width);
             long landed = v;
-            if (signed ? v < lo : Long.compareUnsigned(v, lo) < 0) {
+            if (signed ? v < lo : java.lang.Long.compareUnsigned(v, lo) < 0) {
                 landed = lo;
                 report.refuse(Reason.outOfRange);
-            } else if (signed ? v > hi : Long.compareUnsigned(v, hi) > 0) {
+            } else if (signed ? v > hi : java.lang.Long.compareUnsigned(v, hi) > 0) {
                 landed = hi;
                 report.refuse(Reason.outOfRange);
             }
@@ -1561,7 +1576,9 @@ public final class TableFixed {
             if (2 * (poolUsed + chainLen) > pool.length) {
                 pool =
                         java.util.Arrays.copyOf(
-                                pool, Math.max(2 * (poolUsed + chainLen), 2 * pool.length + 16));
+                                pool,
+                                java.lang.Math.max(
+                                        2 * (poolUsed + chainLen), 2 * pool.length + 16));
             }
             final int at = poolUsed;
             for (int j = 0; j < chainLen; j++) {
@@ -1692,7 +1709,7 @@ public final class TableFixed {
             if (src < 0
                     || units < 0
                     || stride < 0
-                    || bytes > Integer.MAX_VALUE
+                    || bytes > java.lang.Integer.MAX_VALUE
                     || countAt < 0
                     || countAt + 4 > theirBytes) {
                 recordTooLarge = true;
@@ -1938,7 +1955,7 @@ public final class TableFixed {
                     final int head = live ? 4 : 0;
                     final int theirN = theirElem != 0 ? (theirSize - head) / theirElem : 0;
                     final int myN = myElem != 0 ? (mySize - head) / myElem : 0;
-                    final int n = Math.min(theirN, myN);
+                    final int n = java.lang.Math.min(theirN, myN);
                     if (live) {
                         // THE COUNT'S BOUND IS THE WRITER'S theirN (5.2 EMIT kind 14,
                         // 5.3 step 11: BOUNDS runs against the PLAN's bounds). The
@@ -2042,9 +2059,9 @@ public final class TableFixed {
                     // -- landed no tag at all from the plan and was answered by the
                     // PREFILL over the hole. That answer was right and silent:
                     // dstsize carries THE WRITER'S ARM COUNT for this one entry, and
-                    // the read loop counts a clamp for a raw tag past that set, so
-                    // the compiled plan counts what the identity plan's decode bound
-                    // counts (schema#1254, 5.4, 5.8 row 12). Entries apply in push
+                    // the read loop refuses a raw tag past that set as outOfRange, so
+                    // the compiled plan refuses what the identity plan's decode bound
+                    // refuses (schema#1254, 5.4, 5.8 row 12). Entries apply in push
                     // order, so the arm that matches overwrites this one and it
                     // stands when none does -- at the same value the prefill wrote.
                     c.push(
@@ -2178,7 +2195,7 @@ public final class TableFixed {
                 }
             case 12:
                 { // text: the length, then min( their units, my units )
-                    final int units = Math.min(mySize - 4, theirSize - 4);
+                    final int units = java.lang.Math.min(mySize - 4, theirSize - 4);
                     if (deadAllowed) {
                         c.pushDeadTail(theirAt + 4, theirSize - 4, 1, theirAt, guard, arg);
                     }
@@ -2279,7 +2296,7 @@ public final class TableFixed {
         for (int i = 0; i < count; i++) {
             if (plan[i].guard == noGuard) {
                 final Entry e = plan[i];
-                System.arraycopy(plan, split, plan, split + 1, i - split);
+                java.lang.System.arraycopy(plan, split, plan, split + 1, i - split);
                 plan[split] = e;
                 split++;
             }
@@ -2437,7 +2454,7 @@ public final class TableFixed {
      */
     public static Prefill prefill(Entry[] plan, int count, int bodyBytes) {
         final byte[] cover = new byte[bodyBytes];
-        final int[] out = new int[Math.max(2, bodyBytes * 2)];
+        final int[] out = new int[java.lang.Math.max(2, bodyBytes * 2)];
         final int n = holes(plan, count, cover, out);
         return new Prefill(out, n);
     }
@@ -2518,11 +2535,11 @@ public final class TableFixed {
     }
 
     private static long satAdd(long a, long b) {
-        return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
+        return a > java.lang.Long.MAX_VALUE - b ? java.lang.Long.MAX_VALUE : a + b;
     }
 
     private static long satMul(long a, long b) {
-        return a != 0 && b > Long.MAX_VALUE / a ? Long.MAX_VALUE : a * b;
+        return a != 0 && b > java.lang.Long.MAX_VALUE / a ? java.lang.Long.MAX_VALUE : a * b;
     }
 
     /**
@@ -2612,13 +2629,13 @@ public final class TableFixed {
             // lineage lane rather than escaping as an initializer exception.
             final long room64 =
                     satAdd(satAdd(me.count, theirs.count), satAdd(deadRoom(theirs, 0), 1));
-            if (room64 > Integer.MAX_VALUE / 2) {
+            if (room64 > java.lang.Integer.MAX_VALUE / 2) {
                 out[i] = new Plan(null, 0, null, 0, Reason.planTooLarge, null);
                 continue;
             }
             final int room = (int) room64;
             final Entry[] p = plan(room);
-            final short[] table = new short[Math.max(1024, room * 2)];
+            final short[] table = new short[java.lang.Math.max(1024, room * 2)];
             final Report census = new Report();
             final int made = compile(theirs, me, dest, p, table, census);
             if (made >= 0) {

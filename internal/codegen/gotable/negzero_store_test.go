@@ -24,8 +24,9 @@ table Probe {
 var float32PutRE = regexp.MustCompile(`\.Put32\(math\.Float32bits\(([^()]+)\)\)`)
 
 // TestCompressedFloatVariableWriteFoldsNegativeZero is the fast half: every
-// variable-form put of a compressed float sits in the zero test's else arm, so
-// its -0 stores the +0 bits; a plain float's put has no such test.
+// variable-form put of a compressed float adds +0 to its value (IEEE -0 + 0 is
+// +0, every other value is itself), so its -0 stores the +0 bits; a plain
+// float's put stores the value as it is.
 func TestCompressedFloatVariableWriteFoldsNegativeZero(t *testing.T) {
 	t.Parallel()
 	var src strings.Builder
@@ -36,8 +37,7 @@ func TestCompressedFloatVariableWriteFoldsNegativeZero(t *testing.T) {
 	compressed, plain := 0, 0
 	for _, at := range float32PutRE.FindAllStringSubmatchIndex(text, -1) {
 		expr := text[at[2]:at[3]]
-		before := text[max(0, at[0]-200):at[0]]
-		folded := strings.Contains(before, "if "+expr+" == 0 {") && strings.Contains(before, ".Put32(0)")
+		folded := strings.HasSuffix(expr, " + 0")
 		switch {
 		case strings.Contains(expr, "Half") || strings.Contains(expr, "Many"):
 			compressed++

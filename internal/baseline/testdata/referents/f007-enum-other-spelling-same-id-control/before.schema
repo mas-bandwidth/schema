@@ -1,0 +1,15 @@
+package referents
+
+enum First { Red }
+
+enum Second
+{
+    Crimson | was = "Red"
+}
+
+table Root
+{
+    selected First
+    anchor_a First
+    anchor_b Second
+}

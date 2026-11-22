@@ -1,0 +1,52 @@
+// PriorNarrow.schema — the READER's half of the PRIOR-WRITER pair
+// (docs/SPEC-TABLES.md §3.3, §4; testdata/conformance/tables/FORMAT.md,
+// `message-prior`). PriorWide is an earlier release and PriorNarrow is
+// today's: every ranged value of Prior is declared twice as wide by the writer
+// as by the reader, one field per shape a ranged value takes in a message.
+// A value the writer may lawfully send and the reader's declaration does not
+// hold refuses the read `out_of_range`; no reader clamps it. Three fields
+// change KIND instead: the writer's int32 is the reader's int16 (`narrowed`)
+// and string(16) (`retyped`), which refuse `kind_mismatch`, and its int64
+// (`widened`), the lawful widening, which reads. The two files differ in
+// these declarations and nothing else, which
+// TestMessagePriorWriterIsRangesApart holds.
+package tblprior
+
+enum Axis { X, Y }
+
+type Inner
+{
+    level int32 | min = 0, max = 50
+}
+
+fixed table Cell
+{
+    depth int32 | min = 0, max = 50
+}
+
+union Arm
+{
+    idle
+    amount int32 | min = 0, max = 50
+    inner  Inner
+}
+
+fixed table Prior
+{
+    keep   uint32
+    scalar int32      | min = 0, max = 50
+    small  uint8      | min = 0, max = 50
+    wide   int64      | min = 0, max = 50
+    mask   bits(5)
+    pair   [2]int32   | min = 0, max = 50
+    list   [..4]int32 | min = 0, max = 50
+    keyed  [Axis]int32 | min = 0, max = 50
+    arm    Arm
+    nested Inner
+    cells  [2]Cell
+    quant  float32    | min = 0, max = 50, resolution = 0.5
+    fx     ufixed(16, 16) | min = 0, max = 50
+    narrowed int16
+    retyped  string(16)
+    widened  int64
+}

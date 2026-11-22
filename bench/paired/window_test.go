@@ -391,7 +391,7 @@ func TestFinalWriteFailureRetainsJournalAndRefusesSeal(t *testing.T) {
 // terminate its own child when the synthetic monitor sees a foreign compiler.
 func TestQuietWindowChild(t *testing.T) {
 	if os.Getenv("SCHEMA_WINDOW_TEST_CHILD") != "1" {
-		return
+		t.Skip("helper for TestQuietWindowStopsOwnedRunnerAndRetainsRefusal")
 	}
 	fmt.Print("child ready\n")
 	time.Sleep(30 * time.Second)

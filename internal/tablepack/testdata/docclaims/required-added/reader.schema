@@ -1,0 +1,7 @@
+package claims
+
+table Profile
+{
+    name  string(16)
+    level int32 = 1 | required
+}

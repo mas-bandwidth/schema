@@ -2663,8 +2663,9 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 }
 
 // keys are field keys: an unknown one is skipped and counted, a repeated one is
-// last-wins and counted, null puts a pointer back at null, and a value of the
-// wrong JSON shape is skipped and counted, never coerced (§16.2)
+// counted and refuses the whole read (the strict mark), null puts a pointer back
+// at null, and a value of the wrong JSON shape is counted and refuses the read
+// too, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new Set();
   const seenKeys = new Set();

@@ -34,7 +34,6 @@ static const ConformanceCodec codecs[] = {
 int conformance_write_refusal_set_tabledemo( const char * root, void * value, const char * path,
                                              const char * kind, const char * text )
 {
-    const long long n = strtoll( text, NULL, 10 );
     if ( strcmp( root, "RootConfig" ) == 0 )
     {
         tabledemo_root_config_t * v = (tabledemo_root_config_t *) value;
@@ -55,8 +54,8 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
             return end != NULL && *end == 0;
         }
         if ( v->weapons_count < 1 ) { return 0; } /* every weapons[0] path needs element 0 */
-        if ( strcmp( path, "weapons[0].penetration" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->penetration = (int32_t) n; return 1; }
-        if ( strcmp( path, "weapons[0].channel" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->channel = (uint32_t) n; return 1; }
+        if ( strcmp( path, "weapons[0].penetration" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( w0->penetration, text ); }
+        if ( strcmp( path, "weapons[0].channel" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( w0->channel, text ); }
         if ( strcmp( path, "weapons[0].damage" ) == 0 && strcmp( kind, "float" ) == 0 )
         {
             char * end = NULL;
@@ -78,18 +77,19 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         }
         if ( strcmp( path, "weapons[0].effect" ) == 0 && strcmp( kind, "tag" ) == 0 )
         {
+            CONFORMANCE_WREF_UNSIGNED( w0->effect.type, text );
             /* a lawful tag takes its arm at the arm's declared defaults */
-            if ( n == TABLEDEMO_EFFECT_TYPE_BUFF ) { tabledemo_effect_select_buff( &w0->effect ); }
-            else if ( n == TABLEDEMO_EFFECT_TYPE_DEBUFF ) { tabledemo_effect_select_debuff( &w0->effect ); }
-            else { w0->effect.type = (tabledemo_effect_type_t) n; }
+            if ( w0->effect.type == TABLEDEMO_EFFECT_TYPE_BUFF ) { tabledemo_effect_select_buff( &w0->effect ); }
+            else if ( w0->effect.type == TABLEDEMO_EFFECT_TYPE_DEBUFF ) { tabledemo_effect_select_debuff( &w0->effect ); }
             return 1;
         }
         if ( strcmp( path, "weapons" ) == 0 && strcmp( kind, "count" ) == 0 )
         {
             /* new elements are copies of element 0; past storage only the count
                moves, and the writer must refuse before it reads past the array */
-            for ( i = v->weapons_count; i < (int32_t) n && i < weapons; i++ ) { v->weapons[i] = v->weapons[0]; }
-            v->weapons_count = (int32_t) n;
+            const int32_t count = conformance_write_refusal_count( text );
+            for ( i = v->weapons_count; i < count && i < weapons; i++ ) { v->weapons[i] = v->weapons[0]; }
+            v->weapons_count = count;
             return 1;
         }
         return 0;
@@ -97,7 +97,7 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
     if ( strcmp( root, "LoadoutConfig" ) == 0 )
     {
         tabledemo_loadout_config_t * v = (tabledemo_loadout_config_t *) value;
-        if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->grade = (tabledemo_grade_t) n; return 1; }
+        if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->grade, text ); }
     }
     return 0;
 }

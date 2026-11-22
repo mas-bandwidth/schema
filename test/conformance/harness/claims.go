@@ -250,7 +250,11 @@ func walkCases(m *Manifest, add func(surface, name, unit, root string) error) er
 		}
 	}
 	for _, md := range m.MessageDrifts {
-		if err := add("message", md.Name, md.Unit, md.Root); err != nil {
+		surface := "message"
+		if md.Prior() {
+			surface = "message-prior"
+		}
+		if err := add(surface, md.Name, md.Unit, md.Root); err != nil {
 			return err
 		}
 	}

@@ -1,0 +1,6 @@
+package probe
+
+table Ship
+{
+    name string(32) | required
+}

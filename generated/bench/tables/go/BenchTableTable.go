@@ -5229,11 +5229,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if value.ServerTime != value.ServerTime || value.ServerTime < 0.0 || value.ServerTime > 65535.0 {
 				return false
 			}
-			if value.ServerTime == 0 {
-				w.Put32(0)
-			} else {
-				w.Put32(math.Float32bits(value.ServerTime))
-			}
+			w.Put32(math.Float32bits(value.ServerTime + 0))
 		}
 	}
 	{
@@ -5581,11 +5577,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
 				return false
 			}
-			if value.AimX == 0 {
-				w.Put32(0)
-			} else {
-				w.Put32(math.Float32bits(value.AimX))
-			}
+			w.Put32(math.Float32bits(value.AimX + 0))
 		}
 	}
 	{
@@ -5596,11 +5588,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
 				return false
 			}
-			if value.AimY == 0 {
-				w.Put32(0)
-			} else {
-				w.Put32(math.Float32bits(value.AimY))
-			}
+			w.Put32(math.Float32bits(value.AimY + 0))
 		}
 	}
 	{
@@ -5611,11 +5599,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 				return false
 			}
-			if value.AimZ == 0 {
-				w.Put32(0)
-			} else {
-				w.Put32(math.Float32bits(value.AimZ))
-			}
+			w.Put32(math.Float32bits(value.AimZ + 0))
 		}
 	}
 	{
@@ -5667,11 +5651,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if value.Ping != value.Ping || value.Ping < 0.0 || value.Ping > 250.0 {
 				return false
 			}
-			if value.Ping == 0 {
-				w.Put32(0)
-			} else {
-				w.Put32(math.Float32bits(value.Ping))
-			}
+			w.Put32(math.Float32bits(value.Ping + 0))
 		}
 	}
 	{

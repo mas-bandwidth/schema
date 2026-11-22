@@ -111,7 +111,15 @@ func TestNewLegZigWritesSkeletonAndFixturePasses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mod := "module newleg_zig_fixture\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n"
+	// The fixture module carries the import path the scaffold has in the
+	// repository, internal/codegen/zig. The skeleton imports the compiler's
+	// internal packages (internal/codegen/genheader since #4428), and Go allows
+	// that only to a package whose path lies under the module root: under any
+	// other module path the fixture fails with "use of internal package ... not
+	// allowed" although the scaffold is right where new-leg puts it. The
+	// replaced repository has no internal/codegen/zig, so the path is the
+	// fixture's alone.
+	mod := "module github.com/mas-bandwidth/schema/v2/internal/codegen/zig\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
 		t.Fatal(err)
 	}

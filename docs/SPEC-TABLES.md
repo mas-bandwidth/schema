@@ -26,8 +26,9 @@ tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
 guarded by the protocol id: same-or-refuse. Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
-belongs there. The table wire is the opposite contract: **any reader reads
-any data**, and the differences are reported, never fatal.
+belongs there. The table wire is the opposite contract: **a reader reads
+another build's data across every lawful edit**, and the differences are
+reported; what it cannot read whole it refuses whole, by name (§4).
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
@@ -1145,9 +1146,8 @@ moves, in either direction.
 **`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
 rides as a node index under its own kind `17` (§3.1), because a body that may
 be named twice cannot also sit inline at one of its names. So moving a field
-between a pointer and either of the other two is a REPORTED edit: §4's kind
-mismatch, counted, with the field taking its declared default and the rest of
-the body reading on. A shared kind would have made that edit silent — a stored
+between a pointer and either of the other two is a REFUSED edit: §4's kind
+mismatch, and the whole load refuses `kind_mismatch`. A shared kind would have made that edit silent — a stored
 index reading back as a plausible length — and the wire spends a kind rather
 than allow it.
 
@@ -1385,6 +1385,7 @@ enum is keyed.
   from. **The shift is never written at a call site**: the accessor is the
   only place it appears.
 
+<!-- example: fragment -->
   ```cpp
   fleet.ships[ ship_type ]   // runtime key: refuses None and past Max, reads slots[ key - 1 ]
   ```
@@ -1459,6 +1460,7 @@ enum is keyed.
   `1 .. E.Max` over storage `0 .. E.Max − 1` — yielding the KEY beside the
   ELEMENT:
 
+<!-- example: fragment -->
   ```cpp
   for ( auto [ ship_type, ship ] : fleet.ships )   // ship_type is the KEY, never an index
   {
@@ -2647,6 +2649,7 @@ red:
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 FleetBuilder builder;                                   // the arena, and the root
 Fleet * fleet = builder.GetRoot();
@@ -3278,6 +3281,7 @@ corpus row or instance that meets it, and the one instrument that goes red.
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 SaveBuilder builder;                                    // the arena, and the root
 Save * save = builder.GetRoot();
@@ -3878,8 +3882,8 @@ one: a field may still be named `timestamp`, and a declaration of that name
 still wins.
 
 **Its kind is its own and it widens into nothing.** On the variable wire a
-field respelled between `int64` and `timestamp` is a kind mismatch, skipped
-and counted in both directions (§4), and the widening family is closed to the
+field respelled between `int64` and `timestamp` is a kind mismatch, and the
+whole load refuses in both directions (§4); the widening family is closed to the
 pair: refused, by name, until it is ruled. What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
@@ -4057,7 +4061,9 @@ generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
 holding `string(M)`, or `?string(M)` for the `?` spelling. It is reached only
 through the list that generates it, so it has no `Save`, `Load` or `Open` of its
 own, and in the projections (§18.1, §20.2) it takes a map entry's anonymous key,
-`<holder id>.<field id>`, so a `was` rename moves no line. The storage of the
+`<holder id>.<field id>`, so a `was` rename moves no line; the list field's own
+`type=` spells the record from the holder's and the field's WIRE names, so it
+moves no line either. The storage of the
 list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
 why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
@@ -4599,6 +4605,25 @@ ONLY PLACE A VALUE IS ASSIGNED.** This is the rule, stated once, that every
 other section cites. It is five rules and none of them is a form's own
 business.
 
+**WHAT IS IMPLEMENTED TODAY, stated before the rules because two arms do not
+yet follow the first sentence.** The three FORMS — variable `1`, message `2`
+and fixed `3` — are live and every file of one begins with its form byte. The
+two ACCELERATORS, the COOK (§7) and the BLOCK (§19), are implemented and
+shipped too, and a file of either begins with its own EIGHT-BYTE MAGIC and
+carries no form byte: `SCHMCOOK` opens a little-endian cook (§7.1) and
+`SCHMABLK` a little-endian block (§19.1), each byte-reversed in a file written
+big-endian. Bytes `4` and `5` are RESERVED for them, and what is planned is the
+BYTE, never the format: no build writes or reads either byte. **So a tool that
+names a file reads the MAGIC first and the form byte second.** The two cannot
+be confused, because no byte the registry assigns or reserves is the first byte
+of either magic in either order (`0x53` and `0x4B`). `schema check` names all
+five from their leading bytes and names the command that validates each —
+`schema unpack` for a form, `schema cook-check` for a cook, and the generated
+`BlockOpen` for a block, which no command reads — and every other first byte is
+refused by name with the list of what is recognised. One part schema writes has
+no leading bytes of its own: a cook's SEPARATED ATTRIBUTION part (§7.1) is the
+directory alone, is read only beside its cook, and is named by no tool.
+
 - **A SCHEMA FILE IS A UNION OF FIVE ARMS AND THE FORM BYTE IS ITS TAG** —
   *"so in effect, form byte is like a union id"*, the project owner. It is
   therefore under exactly the rule the baseline lock (§18) enforces for a union
@@ -4624,8 +4649,9 @@ business.
   ```
 
   The hash is **OVER THE LAYOUT** for the fixed form and for the message form,
-  and **OVER THE BUILD** for the cook and the block form, both planned (§7,
-  §19). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
+  and **OVER THE BUILD** for the cook and the block form, for which THIS HEADER
+  is planned: both are implemented under a header of their own today (§7.1,
+  §19.1). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
   header pays it whether or not the form maps its body today: **the fixed form
   does not need the alignment and pads anyway**, so that the bytes do not move a
   second time the day the cook and the block form join the registry under this
@@ -4671,8 +4697,10 @@ the connection announced once, and none of this section's byte framing rides
 in it. The FIXED FORM, form byte `3`, is a hash and a record of values at their
 bounds under a LAYOUT, and none of this section's framing rides in it
 either. **§3.4 carries the registry**, whose other two rows — `4` the cook and
-`5` the block form — are PLANNED, and THE FIRST BYTE above is the rule for
-adding to it.
+`5` the block form — are RESERVED BYTES that nothing writes yet: the cook and
+the block themselves are implemented, and a file of either begins with its
+magic (§7.1, §19.1). THE FIRST BYTE above is the rule for adding to the
+registry.
 
 - **The FORM BYTE is `1` for a file, and it is the whole header** — the
   variable form is the one arm with no hash to carry and no body to align
@@ -4800,7 +4828,7 @@ one document rather than two.
   | `30` enum | the VARIANT ID reference, `0` for `None` |
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the load, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
@@ -8615,8 +8643,8 @@ reader refuses it by name.
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
 | `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 |
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
-| `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
-| `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
+| `4` | **the COOK** — the BYTE is PLANNED and no build writes it; the cook is implemented and a file of it begins with the magic `SCHMCOOK` (§7.1). Under this byte the header's hash is over the BUILD | §7 |
+| `5` | **the BLOCK form** — the BYTE is PLANNED and no build writes it; the block is implemented and a file of it begins with the magic `SCHMABLK` (§19.1). Under this byte the header's hash is over the BUILD | §19 |
 
 **THE RULE FOR ADDING ONE, restated from §3.3's own precedent and from §3's
 union-tag rule.** A form byte with no reader outside the tree that defines it is
@@ -8687,7 +8715,17 @@ added moves it without anyone remembering to.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
-  no first byte at all.
+  no first byte at all. **AND THE MAGIC BEFORE THE BYTE**: a cook and a block
+  in either byte order are named `COOK` and `BLOCK FORM` from their magic, each
+  line names the command that validates the file, and an unknown first byte's
+  refusal lists what is recognised. One classifier, `ir.ClassifyFile`, answers
+  for `check`, for the cook's own readers, and for `unpack`, `cook`,
+  `cook-check` and `uncook` when they are handed a file of a format they do not
+  read. `cmd/schema/fileclass_test.go` drives every writing command the CLI's
+  source dispatches and holds that `check` names each file it leaves, that the
+  command the line names accepts that file, and that a command with a write
+  the test does not drive fails it; `ir/fileformat_test.go` holds the table
+  against the registry.
 - **A BYTE-FLIP FUZZ OVER A WHOLE FILE, UNDER A SANITIZER, and it is not
   optional.** A record carries no lengths and no terminators, so EVERY OFFSET
   THIS READER USES IS ARITHMETIC OVER SIZES A STRANGER WROTE DOWN — a layout
@@ -9175,7 +9213,10 @@ only.
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
 | a field's wire KIND, or an array's ELEMENT kind, changed | refuses `kind_mismatch` | **refuses** | **moves** |
 | a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the widening runs ONE WAY, so the old build reading the NEW file refuses `kind_mismatch`, and a mixed fleet has readers on both sides | **moves** |
-| an array changed between keyed and positional, or its KEY enum swapped | refuses `kind_mismatch` | **refuses** | **moves** |
+| an array changed between keyed and positional | refuses `kind_mismatch` | **refuses** | **moves** |
+| an enum-keyed array's KEY enum swapped for another (§2.4) | `unknown` for each stored slot keyed by a variant name the new enum does not declare, and the slot is dropped; the new enum's unreached slots read their defaults | **refuses**, unless the new enum declares every variant name the old one did (§18.2) | **moves** |
+| a counted array's MINIMUM count moved, or gained or lost with the array's shape (SPEC §4.6) | refuses `count_over_bound` on a count below a raised minimum; silent on an array the writer elided at its born count, which reads back as the READER's minimum of default elements | **refuses** — the `mincount=` token is the array's born count as well as its floor (§18.1) | **moves** |
+| an enum VARIANT deprecated in place (§2.15) | silent — a stored value naming it reads as the field's declared default, and nothing is counted | **warns** | no |
 | a field or a union ARM changed between an `enum` and its raw integer | refuses `kind_mismatch` | **refuses** | **moves** |
 | a union ARM's declared TYPE changed | refuses `kind_mismatch` where the arm's kind moved, `wire_damaged` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | refuses `out_of_range` on a value past the new bounds | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
@@ -9609,6 +9650,7 @@ the same struct is §19's.
 
 Its whole surface is three free functions, name first:
 
+<!-- example: fragment -->
 ```cpp
 ChatMessage msg;
 int64_t size = ChatMessageMeasure( msg );          // exact wire bytes
@@ -9695,6 +9737,7 @@ A file-format-scale structure is not a struct you copy. It is built
 mutable, then locked const, and read through a region and a root pointer.
 The state machine is MONOTONIC — there is no unlock:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;                        // MUTABLE: an arena
 Scene * root = builder.GetRoot();
@@ -9791,6 +9834,7 @@ functions, no overloading and no templates, so the same surface is free
 functions under the root's own name, and the two things C++ distinguishes by
 TYPE are distinguished by a nullable member here:
 
+<!-- example: fragment -->
 ```c
 SceneBuilder builder;                       /* the mutable life */
 scene_builder_init( &builder );               /* the arena, and the root node */
@@ -10421,6 +10465,7 @@ load and save outcomes; `SaveRetain` requires a report.
 
 **THE SURFACE: the caller's buffer, threaded through three calls.**
 
+<!-- example: fragment -->
 ```cpp
 uint8_t storage[ 64 * 1024 ];              // the caller owns it and sizes it
 TableRetain::Id ids[ 64 * 1024 / 8 ];      // an id and its slot, an entry
@@ -10987,6 +11032,7 @@ and have it work.
 that can be memory mapped, endian-fixed and loaded quickly by a build at
 the exact version it was cooked to. That is cooking.
 
+<!-- example: fragment -->
 ```cpp
 const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
@@ -11309,6 +11355,7 @@ the wire, and keeps the flexibility that comes with it.
   spelling and not a description of one.** One free function per root, name
   first (§6.1), taking the caller's bytes and returning the root or `NULL`:
 
+<!-- example: fragment -->
   ```cpp
   const Scene * SceneOpen( const void * bytes, uint64_t length );
   ```
@@ -11347,6 +11394,7 @@ the wire, and keeps the flexibility that comes with it.
   pointer target and is the same call in a locked region and an opened cook,
   because they are the same encoding (§6.3):
 
+<!-- example: fragment -->
   ```cpp
   const Node * next = NodeAt( node->next );   // one add; NULL when the delta is zero
   ```
@@ -11405,6 +11453,7 @@ the wire, and keeps the flexibility that comes with it.
   form's accessors — and the type is `<Root>Cook`, a name §11's list has claimed
   on every closure member all along:
 
+<!-- example: fragment -->
   ```csharp
   if ( !SceneCook.Open( out SceneCook cook, pointer, length ) )
       return;                       // wrong build, corrupt, truncated, foreign order
@@ -11439,6 +11488,7 @@ the wire, and keeps the flexibility that comes with it.
   not its value, because a self-relative delta means nothing without the address
   it is relative to:
 
+<!-- example: fragment -->
   ```csharp
   ListNodeRow * next = ListNodeCook.At( &node->Next );   // one add; null when the delta is zero
   ```
@@ -12200,6 +12250,7 @@ language and a runtime in any other."*
 **THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`
 — a FIXED table's takes the value:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SettingsCookMeasure( const Settings & value );
 bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
@@ -12208,6 +12259,7 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
 **THE C SURFACE** uses pointers and explicit contexts, retaining the same
 measure/write contract:
 
+<!-- example: fragment -->
 ```c
 int64_t settings_cook_measure(const Settings * value);
 int settings_cook(const Settings * value, void * out, uint64_t capacity, TableByteOrder order);
@@ -12225,6 +12277,7 @@ names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 **THE GO SURFACE** is the claimed name-first triple, and it is held to the
 tool's bytes byte for byte as the C and C++ writers are:
 
+<!-- example: fragment -->
 ```go
 func SettingsCookMeasure(value *Settings) int64
 func SettingsCookMeasureReason(value *Settings) (int64, error)
@@ -12291,6 +12344,7 @@ and the surface takes the two forms the wire's own entries take (§6.2) — a
 region root, or a builder — never a value, because a pointered root is a region
 and a root pointer rather than a struct you copy:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SceneCookMeasure( const Scene * root, TableAllocator allocator = TableDefaultAllocator() );
 bool    SceneCook( const Scene * root, void * out, uint64_t capacity, TableByteOrder order,
@@ -12957,6 +13011,7 @@ in declaration-name order. Its native `TestLobsterUnitViewListing` compares ever
 table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
 registries remain follow-ons (§15).
 
+<!-- example: fragment -->
 ```cpp
 struct ViewConstant
 {
@@ -13538,7 +13593,14 @@ without `--surface` removes from the output directory every `.go` file whose
 first line is exactly the compiler's own header naming a `.schema` file of this
 unit (`// Code generated by the schema compiler from <file>.schema. DO NOT EDIT.`) or this unit's package (`// Code generated by the schema compiler for package <pkg>. DO NOT EDIT.`) and that this run did not write; with `--surface`
 it removes nothing; no other file is ever touched; `--verbose` lists each
-removal.
+removal. The `<file>` in the header is compared without regard to case, so a
+source renamed only in case (`Player.schema` to `player.schema`) leaves no
+`Player.go` beside this run's `player.go`. Whether a file is one this run
+wrote is the file system's answer, never a comparison of names: on a volume
+that takes two spellings of a name for one entry, the entry is renamed to this
+run's spelling before it is written, for every target, and is never removed.
+After one run the directory holds this run's files, one per output, under this
+run's spelling.
 
 ## 9. Relocatable, and built wide
 
@@ -15858,6 +15920,7 @@ unit's mode — but paying for it is a build decision, not an include.
 
 For every FIXED-SIZE table in a unit's closure, name first, C++:
 
+<!-- example: fragment -->
 ```cpp
 TableReport report;
 ShipConfig ship;
@@ -15885,6 +15948,7 @@ includes the walk needs.
 
 The same three, in C#:
 
+<!-- example: fragment -->
 ```csharp
 TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
@@ -15914,6 +15978,7 @@ that never calls the form pays the assembly's share of one walker.
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
 
+<!-- example: fragment -->
 ```cpp
 SceneFromJson( builder, text, text_bytes, &report );
 ```
@@ -16728,6 +16793,7 @@ its text form reads through the BUILDER, and writes from the CONST root of a
 region — what `Lock` and `Load` both produce. The surface is §16.1's with the
 class's own forms in the first argument:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 TableReport report;
@@ -17941,7 +18007,8 @@ file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
-the shape has one, for a keyed
+the shape has one, a counted array's MINIMUM count where its range starts
+above zero (`mincount=`), for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
 capacity), string and bytes capacity, a `bits(N)` field's `N` (`bits=`), a byte buffer's `type=string` or
 `type=bytes` (the blob node's shape, §2.5), the declared
@@ -17952,7 +18019,8 @@ default as exact canonical text (a fixed default as the RAW integer its
 storage holds, a string or bytes default as `bytes:` and its bytes in hex,
 so a space in a default cannot split the token, and a flags default as the
 mask its names spell), and the `was` alias; then each enum's variants in order with their ids and,
-on a renamed variant, `was=` and its alias, each flags'
+on a renamed variant, `was=` and its alias, and on a variant deprecated in
+place (§2.15) `deprecated=true`, each flags'
 variants in positional order, and each union's arms in order with their ids
 and their own wire facts.
 
@@ -18037,6 +18105,28 @@ have carried. **Every other token keeps judging exactly as it did**: `elem=`,
 element retyped, a referent swapped or a kind changed refuses under the shape
 that was there and under the shape that replaces it alike.
 
+**A COUNTED ARRAY'S MINIMUM IS RECORDED, and it is not an extent that only
+tightens.** A `[Min..N]T` whose range starts above zero renders `mincount=Min`
+after its `bound=`, wherever a counted array can stand: a field, a field of a
+nested record, a union arm, a map's value. The minimum is two reader facts at
+once. A present array holding fewer elements than the reader's minimum refuses
+the load `count_over_bound` (§4). And the minimum is the array's BORN count
+(SPEC §4.6), which a writer elides, so an array left at its born value reads
+back with the READER's minimum of default elements, raised or lowered, and no
+counter fires. That second half is the class a changed specified default is
+in, so any move of the minimum is refused (§18.2). A `[..N]T` renders no
+token, and its absence is a minimum of zero. The token is judged, so it takes
+the rendering version: a file written before it refuses on check and names
+`--update` as the remedy (§18.4), and is never read as "no minimum".
+
+**RENDERING `9` RECORDS ALL THREE, AND `8` IS REFUSED WHATEVER IT HOLDS.** Two
+unreleased renderings were both numbered `8`: one added `bits=` alone, the
+other `mincount=` and `deprecated=true` alone. A file opening with `8` may
+lack either fact, so the check reads no `8` at all; it refuses the file by its
+version and names `--update` as the remedy, exactly as for any older
+rendering. Rendering `9` records all three. A rendering number names one set
+of facts and is never issued again for another.
+
 **UNBOUNDED TEXT (§2.13.1) RENDERS ITS OWN LINE.** A text list's unbounded
 `value` renders with no `size=` token, and an unbounded map key as
 `keybound=0`, a value no `string(N)` key carries (`N >= 2`), so neither line is
@@ -18058,7 +18148,7 @@ range is recorded as `min=` and `max=`. A `bits(N)` field's implied
 `[0, 2^N − 1]` is recorded as `bits=N`, because the `kind` cannot hold it:
 `bits(9)` through `bits(16)` and `uint16` are all kind `7`, so an N narrowed
 inside one storage bucket would move no other token. `bits=` is judged as an
-extent (§18.2), and it is why the rendering version is `8`. A fixed field's bounds
+extent (§18.2). A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
@@ -18077,11 +18167,27 @@ is a kind change and is refused (§4.1). This restores the pre-existing
 presence evolution contract rather than adding a ban to justify read-side
 elision.
 
-It carries no protocol id and no packet fact: the type wire, the wire-shape
-projection and the protocol id are untouched by all of it (§10).
+It carries no protocol id, and ONE packet fact: the type wire, the
+wire-shape projection and the protocol id are untouched by all of it (§10).
+
+**A PACKET'S KEYED ARRAY IS RECORDED, because the protocol id cannot see its
+key enum swapped.** On the packet wire an enum-keyed array's slots are
+POSITIONS, and `[Team]T`, `[Axis]T` and `[2]T` are one layout and one
+protocol id (SPEC §4 item 4), so a key enum swapped for another of the same
+size reads every stored or sent slot under the new enum's name in the same
+place: bytes written as `Red = 11, Blue = 22` read as `East = 11,
+West = 22`, and no id moves. So the file renders, after the closure, a
+`packet <Name>` section for each `type` or packet union that holds an
+enum-keyed array, one line per array: `keyed <member> key=<Enum> bound=<N>
+slots=<names in slot order>`. The check REFUSES a key enum swapped under the
+same bound when the slot names differ, naming each renamed slot. A swap whose
+slot names line up, a move to the positional spelling, and an edit that moves
+the bound pass here: the first two rename nothing, and the last moves the
+layout, which the protocol id reports. Nothing else of the packet wire is
+recorded. The section takes the rendering version: `10`.
 
 ```
-schema-tables-baseline 8
+schema-tables-baseline 10
 package shipdemo
 
 table ShipConfig
@@ -18118,7 +18224,15 @@ committed file whenever one is there, and:
   a byte buffer's `type=string` or `type=bytes` moved between the two, or
   dropped, because the slot then meets a record of another node type (§2.5);
   an array changed between the keyed and the positional spelling,
-  or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
+  or an enum-keyed array's KEY enum swapped for another that does not declare
+  every variant name the old one did — a keyed slot rides under its variant's
+  NAME id (§3.2), so each stored slot keyed by a name the new enum lacks is
+  dropped and counts `unknown`, and the new enum's unreached slots read their
+  defaults; a counted array's MINIMUM count moved, in either direction, or a
+  minimum gained or lost on a shape change (§18.1) — raised, a file holding
+  fewer elements refuses `count_over_bound`, and moved either way a file whose
+  writer elided the array at its born value reads back with the new minimum of
+  default elements and nothing reports it; a field's REFERENT
   dropped, or replaced by one that cannot STAND IN for it — every identity
   survives AND, for a table or a union arm's payload, the facts under the
   shared field ids are unchanged (§18.3). **An ARM is judged by the FIELD
@@ -18148,7 +18262,9 @@ committed file whenever one is there, and:
   of its kind's width where it declares none (`uint16` to `bits(9)` warns,
   `uint16 | max = 300` to `bits(9)` does not); a text list's `total=` lowered, or declared where the list had
   none (§2.13); an
-  enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
+  enum variant or a union arm removed; an enum variant DEPRECATED in place
+  (§2.15), because stored values naming it then read as the field's declared
+  default and nothing is counted; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
   a field ADDED in one table in one edit, which is the shape a bare rename
   leaves — the warning names both and says how to declare it, and it is a
@@ -18167,8 +18283,9 @@ committed file whenever one is there, and:
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
-  which is the largest growth there is; a bounded array made fixed or the
-  reverse; a field moved between `T` and `?T` (a field moved to or from `*T` is a
+  which is the largest growth there is; a bounded array that declares no
+  minimum made fixed, or the reverse; an enum variant's `deprecated` marker
+  taken off; a field moved between `T` and `?T` (a field moved to or from `*T` is a
   kind change and is refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
@@ -18249,11 +18366,26 @@ and each vocabulary's standard is its own (§3):
   carrying the same id under a different specified default rewrites the
   meaning of every stored body, and that is the flagship class this file
   exists to refuse. The facts are judged by the same rules a field's own
-  facts are, so the two paths cannot disagree.
-- An **enum** value is its variant NAME hash, so it stands in when every
-  variant name survives.
-- A **union** body opens with its arm NAME hash, and each arm is a field
-  line (§2.6), so it stands in when every arm name survives AND THE FACTS
+  facts are, so the two paths cannot disagree. **Both sides are walked**: a
+  field the new declaration adds is absorbed, unless it is `| required` —
+  every body stored under the old declaration lacks it, and a reader
+  refuses each one `missing_required`, exactly as for a required field added
+  in place (§2.3).
+- A **pointer**'s target is the one referent the wire NAMES: its node
+  carries the table's type id (§3.1, §5). So a pointer slot — scalar, array
+  element or map value — admits no stand-in at all, however alike the two
+  bodies: a stored node of the old type refuses the whole load
+  `wire_damaged` where the reader still declares that type, and reads null
+  counted `unknown` where it does not. Only a rename under `was` keeps the
+  type id, and that one moves no `type=`. A table renamed bare where it is a
+  pointer target is an edit in place, and warns as the read reports it.
+- An **enum** value is its variant's WIRE ID — the hash of its first name,
+  the `was` alias after a rename — so it stands in when every variant id
+  survives. Spelling is not identity: a same-spelled variant under another
+  `was` is a different id, and a differently spelled one whose `was` names
+  the old variant is the same one.
+- A **union** body opens with its arm's WIRE ID, and each arm is a field
+  line (§2.6), so it stands in when every arm id survives AND THE FACTS
   UNDER THOSE ARMS ARE UNCHANGED. The facts are judged by the same rules a
   field's own facts are, the arm's payload included, which is the table
   rule above applied one level in: a union whose arm names all survive
@@ -18272,8 +18404,8 @@ still an edit a save game may not survive.
 **AN ARM'S REFERENT IS JUDGED BY THE SAME THREE STANDARDS**, selected by the
 same token, because an arm's line is a field's line (§18.1, §2.6): an arm
 naming a table or a `type` stands in when the ids and the facts under them
-survive, an arm naming an enum when the names do, an arm naming a union
-when the arm names and the facts under them do, an arm naming a `flags`
+survive, an arm naming an enum when the variant ids do, an arm naming a union
+when the arm ids and the facts under them do, an arm naming a `flags`
 when the bits do. An arm that names NO declaration — a scalar, a
 string, an array of scalars — has its kind and its shape tokens instead.
 Those admit no substitute at all, so any change to one refuses: there is
@@ -18300,7 +18432,8 @@ rewrites nothing.
 
 **A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
 reused** (issue #441). The `## retired` section records every field, enum
-variant and union arm a `--update` removes — its vocabulary, its
+variant and union arm a `--update` removes, and every declaration name it
+frees (below) — its vocabulary, its
 fully-qualified name, the wire id it rode under and the day it was retired —
 and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
 history, so this is the one record in the file the live projection cannot
@@ -18312,6 +18445,21 @@ reuse is legal once it is deliberate: `--update --reason "..."` writes
 `revived=<date>` on the entry, which is the acknowledgment, and the entry
 itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
 cost.
+
+**A freed DECLARATION NAME is retired too.** A table, enum, flags or union
+whose name an update frees — by removing it, by renaming it without `was`, or
+in the same update as a package rename — leaves a `table`, `enum`, `flags` or
+`union` entry under the id its name hashes to. A table's wire name IS its node
+records' type id (§3.1): a later table declared under a freed name is the type
+a save made before then names, so its pointers would read those records as the
+new table. The check refuses the reuse exactly as it refuses a member's, until
+`--update --reason` acknowledges it, and the same holds for an enum, a flags
+and a union, strict, because a reused declaration name is an edit no other row
+of the diff sees. A `was` rename keeps the wire name and frees nothing. An
+update over a renamed package's baseline still retires what the previous
+projection carried, because it parsed: a package rename is not a way to free
+a name. A package name itself needs no entry, because the check refuses ANY
+change of package until `--update` regenerates over it (above).
 
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one
@@ -18571,6 +18719,7 @@ estate's usual shape — allocates `<Table>BlockMaxBytes + 63` bytes through it,
 and aligns the 64-byte base inside them, because a malloc guarantee is not a
 cache line's. `Destroy` releases through the same pair.
 
+<!-- example: fragment -->
 ```cpp
 struct TableBlockAllocator
 {
@@ -18613,6 +18762,7 @@ happens once and is never grown.
 **The LAYOUT is settled once per block, from the counts**, before any worker
 starts:
 
+<!-- example: fragment -->
 ```cpp
 RenderFrameBlockStorage storage;              // the allocation: max-sized, 64-aligned
 if ( !storage.Create( TableBlockDefaultAllocator() ) )
@@ -18647,6 +18797,7 @@ page says so here rather than leaving a caller to find it at sixty hertz.
 
 **Then the fill, and the fill is the requirement:**
 
+<!-- example: fragment -->
 ```cpp
 RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
@@ -18739,6 +18890,7 @@ declaration, the contract of §19.3 is asserted either way, and a consumer
 picks by what it is doing: reflection to walk anything, the struct to read
 one thing fast.
 
+<!-- example: fragment -->
 ```csharp
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;               // and the caller falls back, or reports
@@ -18755,6 +18907,7 @@ ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;   // contiguous: the pitch 
 spelling and Go's differs where §11 leaves it free to: the claimed verbs stay
 free functions, and the row accessors and per-array constants are members.
 
+<!-- example: fragment -->
 ```go
 var block blockdemo.RenderFrameBlock
 if !blockdemo.RenderFrameBlockOpen( &block, pointer, bytes ) {
@@ -20203,7 +20356,7 @@ fixed form writes it as held too, and §22.6 says so.
 |---|---|---|
 | a bare integer, `bool`, `bits(N)`, an enum, a `flags` mask, a fixed-point value, a 128-bit integer, a `timestamp` | it equals its declared default (zero when none is declared) | the kind of §3's mapping, the payload at its width |
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
-| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
+| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the value's bit pattern, except that a `-0` is stored as `+0`, the bits `+0` stores (§3.3; ruled 2026-11-10, docs/rulings.json fixed-compressed-negzero) |
 | `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |

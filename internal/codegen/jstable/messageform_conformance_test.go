@@ -180,7 +180,11 @@ func stampRecipe(t *testing.T, target string) string {
 }
 
 // manifestMessageRoots is the manifest's distinct (unit, root) pairs, its unit
-// taken from the `connection` line each `message` row names, sorted.
+// taken from the `connection` line each `message` row names, sorted. A
+// `message-drift` row is a message row too: the harness hands the driver its
+// own connection on the READER's unit and a message on it (harness run.go), so
+// its (unit, root) is one the driver's row list must carry or the row reads
+// ABSENT.
 func manifestMessageRoots(t *testing.T) []string {
 	t.Helper()
 	_, connections, rows := parseMessageManifest(t)
@@ -192,6 +196,31 @@ func manifestMessageRoots(t *testing.T) []string {
 			t.Fatalf("message %s names connection %s, which no connection row declares", row.name, row.connection)
 		}
 		key := conn.unit + "/" + row.root
+		if !seen[key] {
+			seen[key] = true
+			roots = append(roots, key)
+		}
+	}
+	// the `message-prior` rows (testdata/conformance/tables/FORMAT.md) ride
+	// the same row table on their own surface, and so do the `message-drift`
+	// rows:
+	// message-prior <name> <unit> <root> ...
+	// message-drift <name> <unit> <peer-conn> <root> <file> <peer wire> <resaved wire>
+	data, err := os.ReadFile("../../../testdata/conformance/tables/MANIFEST.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		var key string
+		switch {
+		case len(f) >= 4 && f[0] == "message-prior":
+			key = f[2] + "/" + f[3]
+		case len(f) == 8 && f[0] == "message-drift":
+			key = f[2] + "/" + f[4]
+		default:
+			continue
+		}
 		if !seen[key] {
 			seen[key] = true
 			roots = append(roots, key)

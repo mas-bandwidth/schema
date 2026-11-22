@@ -61,8 +61,10 @@ func TestLuaCookRead(t *testing.T) {
 			}
 			cooked, err := tablecook.Cook(m, inst, tablecook.Options{})
 			if err != nil {
-				// the tool refuses to write this cook; there is no cook to read.
-				t.Skipf("the tool writes no cook for %s: %v", row.caseName, err)
+				// The strict read accepted this instance, so it has a cook:
+				// the refused rows left by name above. An error here is the
+				// tool failing on an eligible case, never a row to skip.
+				t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.caseName, err)
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)

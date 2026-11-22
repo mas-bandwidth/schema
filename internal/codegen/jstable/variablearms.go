@@ -932,7 +932,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       report.mismatch++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      // KEYS NEVER CLAMP: the count refuses the whole read (§2.8, the strict mark)
       report.oor++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {

@@ -115,6 +115,22 @@ conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtim
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 
+# THE GO DRIVER'S OWN UNIT TESTS (F-100, F-101): the write-refusal driver's one
+# checked store, held to every integer kind's range, and the reviewer's repro
+# with her controls (an ordinal or a tag of 256 or 4294967296 is never
+# narrowed into a lawful member and reported `wrote`; 0 and 1 write; 9
+# refuses); and the wire surface's refusal answered as a reasoned .absent,
+# never an abort (F-089's shape in this driver). They live in package main of the test/conformance/go module, which
+# `go test ./...` from the root never sees, and they need the generated Go the
+# driver links, so they are a gate target of their own, a row of their own in
+# ci-fast.yml beside the two rows halves.
+.PHONY: conformance-go-driver-unit
+conformance-go-driver-unit: build/tables-generated-go/.stamp cards-generate
+	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-driver-unit \
+		'TestWriteRefusalNeverNarrowsAnOrdinalOrATag TestWriteRefusalStoreHoldsEveryKindToItsRange TestWriteRefusalCountLengthAndRealAreChecked TestWireRefusalIsAnAnswerNeverAnAbort' \
+		. -count=1 -run '^(TestWriteRefusalNeverNarrowsAnOrdinalOrATag|TestWriteRefusalStoreHoldsEveryKindToItsRange|TestWriteRefusalCountLengthAndRealAreChecked|TestWireRefusalIsAnAnswerNeverAnAbort)$$'
+test-go: conformance-go-driver-unit
+
 # The reversed witness, modelled on projection-variant-order-negative-control:
 # plant one failing row without touching a tracked file, via `go test -overlay`
 # adding a new file, and require the gate to go red ON that row. The planted
@@ -177,6 +193,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/varevo1 test/tables/varevo/VarEvo1.schema' \
 		'build/tables-generated-go/varevo2 test/tables/varevo/VarEvo2.schema' \
 		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
+		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
 		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
 		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
 		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
@@ -221,6 +238,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,varevo1,tblvarevo1)
 	$(call go_table_module,varevo2,tblvarevo2)
 	$(call go_table_module,varevo3,tblvarevo3)
+	$(call go_table_module,prior,tblprior)
 	$(call go_table_module,cooktorture,cooktorture)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
 	$(call go_table_module,shapes,shapes)
@@ -1029,11 +1047,14 @@ tables-go-clean: build/tables-generated-go/.stamp
 GO_CLEAN_UNITS ?= build/tables-generated-go/*
 .PHONY: tables-go-clean-units
 tables-go-clean-units:
-	@set -e; for d in $(GO_CLEAN_UNITS); do \
+	@set -e; n=0; for d in $(GO_CLEAN_UNITS); do \
 		[ -f "$$d/go.mod" ] || continue; \
 		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
 		(cd "$$d" && go vet ./...); \
-	done
+		n=$$((n + 1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "tables-go-clean: no generated Go unit under $(GO_CLEAN_UNITS); nothing was formatted or vetted"; exit 1; }; \
+	echo "tables-go-clean: $$n generated Go units gofmt-canonical and vet-clean"
 tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg build
 	bench/tables/go/leg run --gate

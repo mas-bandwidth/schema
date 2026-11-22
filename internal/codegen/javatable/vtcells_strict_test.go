@@ -53,8 +53,8 @@ var javaVarCellAnchors = map[string]struct {
 	"vt/text-form/java": {
 		src: "test/conformance/java/src/Driver.java",
 		want: []string{
-			`byte[] answer = withValue(codec, value, "read\n");`,
-			`byte[] saved = writeBackWire(f[2], f[3], codec, value);`,
+			`answer = withValue(codec, value, "read\n");`,
+			`saved = writeBackWire(f[2], f[3], codec, value);`,
 			`spill(out, f[1] + ".wire", saved);`,
 		},
 	},
