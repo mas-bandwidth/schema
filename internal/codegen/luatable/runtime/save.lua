@@ -485,8 +485,7 @@ write_field = function(T, ids, nodes, fd, v, w)
         end
         if fd.total ~= nil and fd.total > 0 and spent > fd.total then return false end
       end
-      w_leb(w, id_ref(ids, fd.id))
-      w_u8(w, 14)
+      local ref = id_ref(ids, fd.id)
       local body = W()
       w_u8(body, fd.elem_kind)
       w_leb(body, n)
@@ -513,6 +512,8 @@ write_field = function(T, ids, nodes, fd, v, w)
           return true
         end
       end
+      w_leb(w, ref)
+      w_u8(w, 14)
       w_leb(w, body.n)
       w_raw(w, table.concat(body.parts))
     end
