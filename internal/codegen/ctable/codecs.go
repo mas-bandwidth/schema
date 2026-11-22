@@ -506,18 +506,34 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
-		if f.Required {
-			if lo, hi, ok := ir.TableRawRange(f); ok {
-				clampMin, clampMax := tableClampEnds(f, width)
+		// ROWS 1 AND 2 OF THE WRITE CONTRACT (docs/SPEC.md §5.1): a ranged
+		// integer or a fixed/ufixed raw value off its min/max, and a bits(N)
+		// value wider than N. A `| required` field refuses in every build; any
+		// other field holds them as this assert leg's debug assert, so no
+		// build where the check is active writes a value the reader refuses.
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			clampMin, clampMax := tableClampEnds(f, width)
+			if f.Required {
 				if clampMin {
 					g.pf("%sif ( %s < %s ) { return 0; }\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
 				}
 				if clampMax {
 					g.pf("%sif ( %s > %s ) { return 0; }\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
 				}
-			} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
-				mask := (uint64(1) << f.Type.Width) - 1
+			} else {
+				if clampMin {
+					g.pf("%sschema_assert( !( %s < %s ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
+				}
+				if clampMax {
+					g.pf("%sschema_assert( !( %s > %s ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
+				}
+			}
+		} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+			mask := (uint64(1) << f.Type.Width) - 1
+			if f.Required {
 				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
+			} else {
+				g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
 			}
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
