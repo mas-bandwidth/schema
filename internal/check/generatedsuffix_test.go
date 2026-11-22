@@ -201,6 +201,9 @@ func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read Go table emitter directory: %v", err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for _, entry := range files {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue

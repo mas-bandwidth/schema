@@ -54,7 +54,11 @@ for order in (1,2):
         else: raise AssertionError("dead-slot")
     print(raw.hex())
 `, dead)
-	for pin, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for pin, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "wire": wire}))

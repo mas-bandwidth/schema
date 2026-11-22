@@ -93,7 +93,12 @@ fail_void("payload arm declared defaults") unless fresh.payload.count == -1 && f
 fail_void("union field construction") unless Packetvoidruby::Frame.new.choice.type == Packetvoidruby::MixedType::None
 
 goldens_path = File.join(__dir__, "goldens.txt")
-read_goldens(goldens_path).each do |name, wire|
+goldens = read_goldens(goldens_path)
+# The goldens file must name exactly the cases build_case knows: an emptied or
+# shortened file would otherwise run fewer cases, or none, and still print ok.
+known = %w[mixed-none mixed-ping mixed-pong mixed-payload frame-ping tags-none tags-pong single-ack empty-none]
+fail_void("goldens.txt names #{goldens.keys.sort.inspect}, want #{known.sort.inspect}") if goldens.keys.sort != known.sort
+goldens.each do |name, wire|
   value, klass, want_bits = build_case(name)
   got = value.write
   fail_void("write #{name}: got #{got.unpack1("H*")} want #{wire.unpack1("H*")}") if got != wire

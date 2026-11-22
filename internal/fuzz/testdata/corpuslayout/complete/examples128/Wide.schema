@@ -1,0 +1,7 @@
+// A corpus layout fixture for TestCorpusUnitsRefuseAMissingCorpus (F-048).
+package layout
+
+type Wide
+{
+    y uint16
+}

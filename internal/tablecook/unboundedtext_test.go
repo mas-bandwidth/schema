@@ -160,7 +160,12 @@ func TestUnboundedTextAllShapesAndGeneratedGoEquivalence(t *testing.T) {
 		}
 	}
 
-	if os.Getenv("SCHEMA_SLOW") == "1" {
+	// The generated-Go half compiles and runs a go test. It used to run only
+	// under SCHEMA_SLOW=1, so a run the test's own gate admitted through
+	// SCHEMA_REQUIRE_CORPUS went green with the equivalence unchecked; it now
+	// runs whenever the slow half is enabled (slowtest.Enabled).
+	t.Run("generated-go-equivalence", func(t *testing.T) {
+		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated table code)")
 		dir := t.TempDir()
 		goFiles, err := golang.Generate(u)
 		if err != nil {
@@ -247,7 +252,7 @@ func TestGeneratedMatchesNeutral(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generated Go test failed: %v\n%s", err, out)
 		}
-	}
+	})
 }
 
 func TestUnboundedTextHostileControls(t *testing.T) {

@@ -39,7 +39,11 @@ for order in (1,2):
         cook.check_cook(Root, data)
     print(data.hex())
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		lines := strings.Split(strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))), "\n")
 		if len(lines) != 3 {
 			t.Fatalf("%s: expected wire and two cooks, got %q", name, lines)

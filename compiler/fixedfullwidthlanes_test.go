@@ -82,7 +82,11 @@ func TestFixedUnionArm256CarriesItsOwnOrdinal(t *testing.T) {
 	if top != 256 {
 		t.Fatalf("the 256th arm's guard value is 256, the plan's highest is %d (§5.8 row 5)", top)
 	}
-	for leg, h := range bothFixedRuntimes(t, src) {
+	allBothFixedRuntimes := bothFixedRuntimes(t, src)
+	if len(allBothFixedRuntimes) == 0 {
+		t.Fatal("bothFixedRuntimes(t, src) is empty: the loop below would check nothing")
+	}
+	for leg, h := range allBothFixedRuntimes {
 		if !strings.Contains(h, "uint64_t arg") {
 			t.Errorf("%s: the guard's ordinal is a byte lane, so arm 256 is arm 1 (§5.8 row 5)", leg)
 		}
@@ -147,7 +151,11 @@ func TestFixedEnumRemapIsTheWritersVariantCount(t *testing.T) {
 		fmt.Fprintf(&b, "    v%d,\n", i)
 	}
 	b.WriteString("}\n\nfixed table Root { pick Many = v0 }\n")
-	for leg, h := range bothFixedRuntimes(t, b.String()) {
+	allBothFixedRuntimes := bothFixedRuntimes(t, b.String())
+	if len(allBothFixedRuntimes) == 0 {
+		t.Fatal("bothFixedRuntimes(t, b.String()) is empty: the loop below would check nothing")
+	}
+	for leg, h := range allBothFixedRuntimes {
 		if !strings.Contains(h, "const uint32_t n = te.children;") {
 			t.Errorf("%s: the remap's length is not the writer's variant count (§5.8 row 14)", leg)
 		}

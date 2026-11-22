@@ -97,6 +97,9 @@ func TestLuaViewDescriptorsMatchGo(t *testing.T) {
 		}
 		// A declared table's row count is what the listing declared: an extra
 		// row in the dump means the module writes a field the schema does not.
+		if len(order) == 0 {
+			t.Fatal("order is empty: the loop below would check nothing")
+		}
 		for _, line := range order {
 			if _, ok := want[line]; ok {
 				continue

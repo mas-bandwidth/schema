@@ -574,18 +574,31 @@ static void TestViewWalksEveryField() {
     std::printf("PASS TestViewWalksEveryField\n");
 }
 
+// one counted unit per test function: main prints "ran N, failed M" and
+// build/mustrun holds N to the count the recipe registers
+static int gTestsRan = 0;
+static int gTestsFailed = 0;
+#define RUN(test)                                    \
+    do {                                             \
+        const int failuresBefore = gFailures;        \
+        ++gTestsRan;                                 \
+        test();                                      \
+        if (gFailures > failuresBefore) ++gTestsFailed; \
+    } while (0)
+
 int main() {
-    TestCardRoundTripsThePopulatedFixture();
-    TestCardBoundsRefuseBeforePublishing();
-    TestParseRenderMatchesGo();
-    TestUpgradeMatchesGo();
-    TestTaskHashFramesLogicalFields();
-    TestFieldEditLeavesTheTaskHashAlone();
-    TestViewWalksEveryField();
+    RUN(TestCardRoundTripsThePopulatedFixture);
+    RUN(TestCardBoundsRefuseBeforePublishing);
+    RUN(TestParseRenderMatchesGo);
+    RUN(TestUpgradeMatchesGo);
+    RUN(TestTaskHashFramesLogicalFields);
+    RUN(TestFieldEditLeavesTheTaskHashAlone);
+    RUN(TestViewWalksEveryField);
     if (gFailures != 0) {
         std::printf("cards_test: %d failure(s)\n", gFailures);
-        return 1;
+    } else {
+        std::printf("cards_test: ok\n");
     }
-    std::printf("cards_test: ok\n");
-    return 0;
+    std::printf("cards-cpp-test: ran %d, failed %d\n", gTestsRan, gTestsFailed);
+    return (gFailures != 0 || gTestsRan == 0) ? 1 : 0;
 }

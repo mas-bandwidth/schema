@@ -369,7 +369,11 @@ func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
 	root, files, written := strictGateWrite(t, generated)
 	// The runtime is in the analyzed set by name, every module of both
 	// surfaces' runtimes.
-	for name := range strictGateRuntime() {
+	allStrictGateRuntime := strictGateRuntime()
+	if len(allStrictGateRuntime) == 0 {
+		t.Fatal("strictGateRuntime() is empty: the loop below would check nothing")
+	}
+	for name := range allStrictGateRuntime {
 		found := false
 		for _, f := range files {
 			if filepath.Base(f) == name {

@@ -44,6 +44,9 @@ func TestRustEmitsTableModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if name != "lib.rs" && !strings.HasSuffix(name, ".rs") {
 			continue
@@ -54,6 +57,9 @@ func TestRustEmitsTableModules(t *testing.T) {
 		}
 	}
 	// and adding a table moves not one byte of the PACKET modules
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		if name == "lib.rs" {
 			continue // the crate root grows the table modules' declarations
@@ -100,6 +106,9 @@ table Node
 	}
 	if cooks == 0 {
 		t.Error("--lang rust emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")
+	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
 	}
 	for name, data := range files {
 		if !strings.HasSuffix(name, "_cook.rs") {
@@ -184,6 +193,9 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !tablenames.Registered(name) {
 			t.Errorf("the Rust table emitter emits %s and internal/tablenames does not register it — "+
@@ -191,7 +203,11 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 				"(with the backends that define it) in internal/tablenames", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Rust) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Rust)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Rust) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the Rust backend defines %s, but nothing in the emitted "+
 				"Rust names it — drop the registration or fix the backend", name)

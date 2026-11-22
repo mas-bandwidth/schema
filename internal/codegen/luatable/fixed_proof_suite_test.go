@@ -107,8 +107,9 @@ func TestLuaFixedLiveExtents(t *testing.T) {
 // Functional (luaBinary): run with SCHEMA_SLOW=1.
 //
 // TestLuaFixedBatch4097Roundtrip proves that 4,097 fixed records save and read
-// back when the caller sets capacity 4,097, that a caller's 4,096 refuses them,
-// and that omitting the capacity (or passing nil) applies the 4,096 default.
+// back when the caller sets capacity 4,097 or omits it (an omitted or nil
+// capacity is the file's own count, with no limit of the runtime's own), and
+// that a caller's 4,096 refuses them.
 func TestLuaFixedBatch4097Roundtrip(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
@@ -131,12 +132,10 @@ local m = T.FixedMeasure("Point", 4097)
 assert(m > 0, "FixedMeasure(4097) returned " .. tostring(m))
 local wire = T.FixedSave("Point", r)
 assert(#wire == m, string.format("#wire=%%d want %%d", #wire, m))
-local okOmitted, errOmitted = pcall(function() return T.FixedLoad("Point", wire) end)
-assert(not okOmitted, "expected refusal for 4097 records with the capacity omitted, got ok")
-assert(tostring(errOmitted):find("batch_too_large", 1, true), "omitted capacity refused without batch_too_large: " .. tostring(errOmitted))
-local okNil, errNil = pcall(function() return T.FixedLoad("Point", wire, nil) end)
-assert(not okNil, "expected refusal for 4097 records with a nil capacity, got ok")
-assert(tostring(errNil):find("batch_too_large", 1, true), "nil capacity refused without batch_too_large: " .. tostring(errNil))
+local omitted = T.FixedLoad("Point", wire)
+assert(#omitted == 4097, "omitted capacity read " .. tostring(#omitted))
+local nilcap = T.FixedLoad("Point", wire, nil)
+assert(#nilcap == 4097, "nil capacity read " .. tostring(#nilcap))
 local back = T.FixedLoad("Point", wire, 4097)
 assert(#back == 4097, "#back=" .. tostring(#back))
 assert(back[1].x == 1 and back[1].y == -1, "record 1 mismatch")
@@ -327,50 +326,8 @@ print("OK")
 	return ""
 }
 
-// luaDefaultBatchCapacity is the runtime's default when the caller omits the
-// capacity or passes nil; a caller that wants more passes its own bound.
-const luaDefaultBatchCapacity = 4096
-
-// luaWireRecords is the record count a fixed file states for root, or -1 when
-// the header, layout length or record size does not parse.
-func luaWireRecords(u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte) int {
-	if len(wire) < 20 {
-		return -1
-	}
-	hash := binary.LittleEndian.Uint64(wire[8:16])
-	layoutLen := int(binary.LittleEndian.Uint32(wire[16:20]))
-	if layoutLen < 0 || len(wire) < 20+layoutLen {
-		return -1
-	}
-	record := int64(0)
-	for _, e := range lineage[root] {
-		if e.Wire == hash {
-			record = e.Record
-			break
-		}
-	}
-	if record == 0 {
-		if own, ok := fixedproof.LineageEntryOf(u, root); ok && own.Wire == hash {
-			record = own.Record
-		}
-	}
-	if record <= 8 {
-		return -1
-	}
-	rest := int64(len(wire) - 20 - layoutLen)
-	if rest < 0 || rest%record != 0 {
-		return -1
-	}
-	return int(rest / record)
-}
-
 func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte, fixedproof.LoadCounters) {
 	t.Helper()
-	if cap < 0 {
-		if n := luaWireRecords(u, root, lineage, wireBytes); n > luaDefaultBatchCapacity {
-			t.Skipf("%d records with no capacity (schema-fixedproof-x1's row): lua's default batch capacity stays 4,096 by contract, and only a caller-set capacity goes above it. TestLuaFixedBatch4097Roundtrip proves the caller-set 4,097 path and the 4,096 refusal.", n)
-		}
-	}
 	var files map[string][]byte
 	var err error
 	if lmap := toLuaLineage(lineage); lmap != nil {
@@ -384,11 +341,13 @@ func (luaFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, li
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	mod := luatable.ModuleName(u)
-	// The shared driver's cap < 0 means "the leg's default capacity": pass nil
-	// so the runtime applies its own 4,096 default rather than an explicit
-	// caller bound. A caller-set capacity is passed through unchanged, and
-	// TestLuaFixedBatch4097Roundtrip owns the caller-set larger path.
-	capArg := "nil"
+	// The shared driver's cap < 0 means "the leg's default capacity", the
+	// suite's 4,096 (a caller's resource limit, outside the verdict contract,
+	// docs/SPEC-TABLES.md §6.5): pass it as the caller's explicit bound. The
+	// runtime has no limit of its own: an omitted capacity reads the whole
+	// file, which TestLuaFixedBatch4097Roundtrip and
+	// TestLuaFixedLoadWithNoCapacityIsUnbounded hold.
+	capArg := "4096"
 	if cap >= 0 {
 		capArg = fmt.Sprintf("%d", cap)
 	}

@@ -21,9 +21,14 @@
 #include "BenchWire.h"
 #include "RealWorldWire.h"
 
+/* every check is one counted unit: main prints "ran N, failed M" and
+   build/mustrun holds N to the count the recipe registers */
+static int g_ran = 0;
+
 #define check( condition )                                                    \
     do                                                                        \
     {                                                                         \
+        g_ran++;                                                              \
         if ( !( condition ) )                                                 \
         {                                                                     \
             printf( "FAILED: %s (%s:%d)\n", #condition, __FILE__, __LINE__ ); \
@@ -95,7 +100,7 @@ PIN_SHAPE( bench_bits, bench_bench_bits_t, bench_write_bench_bits, bench_read_be
 PIN_SHAPE( bench_mixed, bench_bench_mixed_t, bench_write_bench_mixed, bench_read_bench_mixed, 438, "BENCH-STANDARD.md §1.3" )
 PIN_SHAPE( real_packet, realworld_real_packet_t, realworld_write_real_packet, realworld_read_real_packet, 204, "RealWorld.schema" )
 
-int main( void )
+static int run_all( void )
 {
     int i;
 
@@ -213,4 +218,12 @@ int main( void )
 
     printf( "OK\n" );
     return 0;
+}
+
+int main( void )
+{
+    int status = run_all();
+    int failed = status != 0 ? 1 : 0;
+    printf( "schema_test_bench_c: ran %d, failed %d\n", g_ran, failed );
+    return ( failed != 0 || g_ran == 0 ) ? 1 : 0;
 }

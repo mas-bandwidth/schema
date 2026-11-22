@@ -193,6 +193,9 @@ func TestGooseBuildVersionNegativeControl(t *testing.T) {
 			if len(red[ctl.red[0]]) == 0 {
 				t.Fatalf("%s: the %s clause stayed green", ctl.name, ctl.red[0])
 			}
+			if len(red) == 0 {
+				t.Fatal("red is empty: the loop below would check nothing")
+			}
 			for clause, why := range red {
 				owned := false
 				for _, c := range ctl.red {

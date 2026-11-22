@@ -312,8 +312,10 @@ func TestLobsterImportsResolveInsideTheUnitOnly(t *testing.T) {
 	}
 	imp := regexp.MustCompile(`(?m)^import (.*)$`)
 	local := regexp.MustCompile(`^\.([A-Za-z0-9_]+)$`)
+	imports := 0
 	for name, data := range files {
 		for _, m := range imp.FindAllStringSubmatch(string(data), -1) {
+			imports++
 			lm := local.FindStringSubmatch(m[1])
 			if lm == nil {
 				t.Errorf("%s: import %s is not a .<module> import inside the unit", name, m[1])
@@ -323,6 +325,9 @@ func TestLobsterImportsResolveInsideTheUnitOnly(t *testing.T) {
 				t.Errorf("%s: import %s names a module the unit does not emit", name, m[1])
 			}
 		}
+	}
+	if imports == 0 {
+		t.Fatalf("no import line was found in the unit's %d files: the import rule was held to nothing", len(files))
 	}
 	dir := t.TempDir()
 	writeAll(t, dir, files)

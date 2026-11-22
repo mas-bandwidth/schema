@@ -210,4 +210,9 @@ test("TestViewMatchesTheCorpus"):
     eq(cards.View(), read(EXPECTED + "view.txt"), "view")
 
 print("cards (lobster): {passed} passed, {failed} failed")
-assert failed == 0
+// The count tools/mustrun reads, and the exit status. It was `assert failed ==
+// 0`, which --runtime-no-asserts compiles away; a run of no test is a failure.
+let ran = passed + failed
+print("cards (lobster): ran {ran}, failed {failed}")
+if failed != 0 or ran == 0:
+    set_exit_code(1)

@@ -34,7 +34,7 @@ conformance-go-cook-write: build/conformance-harness build/conformance-go
 .PHONY: conformance-go-cook-write-negative-control
 conformance-go-cook-write-negative-control: build/conformance-harness build/conformance-go
 	@rm -rf $(COOK_WRITE_NEG) && mkdir -p $(COOK_WRITE_NEG)
-	@src=$$(grep -l 'func (w \*tableCookWriter) value' build/tables-generated-go/examples/*.go | head -n 1); \
+	@src=$$(grep -l 'func (w \*tableCookWriter) value' build/tables-generated-go/examples/*.go | sed -n 1p); \
 	[ -n "$$src" ] || { echo "NEGATIVE CONTROL FAILED: the generated Go cook runtime was not found"; exit 1; }; \
 	sed '/^func (w \*tableCookWriter) field(/,/^}/ s/count = used/_ = used/' "$$src" > $(COOK_WRITE_NEG)/runtime.go; \
 	cmp -s "$$src" $(COOK_WRITE_NEG)/runtime.go && { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }; \

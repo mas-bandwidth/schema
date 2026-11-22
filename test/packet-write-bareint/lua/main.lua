@@ -123,14 +123,17 @@ local notIntegers = {
 for _, t in ipairs(kinds) do
   for _, c in ipairs(notIntegers) do
     local what = t .. " " .. c[1]
+    count = count + 1
     if write(t, c[2], what) == true then
       fail(what .. " refused", "the writer wrote a value that is not an integer")
     end
   end
 end
 
-if failures ~= 0 then
+-- The last stdout line is the count tools/mustrun reads: the cases of
+-- cases.txt plus the not-an-integer cases above, and the failures among them.
+print(string.format("packet-write-bareint Lua: ran %d, failed %d", count, failures))
+if failures ~= 0 or count == 0 then
   io.stderr:write(string.format("packet-write-bareint Lua: %d failures over %d cases\n", failures, count))
   os.exit(1)
 end
-print(string.format("OK: packet-write-bareint Lua, %d cases; each out-of-width and non-integer value refused, each boundary written and read back", count))
