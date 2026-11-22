@@ -1,5 +1,7 @@
 # schema — tables
 
+> **Conformance:** the test cases a correct implementation must pass, and how they are run and judged, are the normative [conformance addendum](SPEC-CONFORMANCE.md).
+
 **Schema has two wires: types and tables — and the types wire leads.**
 Types are serialized bitpacked, versioned by the protocol id: the
 hardcoded, same-build wire that is the key feature of the library. Tables
