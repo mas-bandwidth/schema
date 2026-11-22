@@ -56,3 +56,57 @@ print('ok')
 		t.Fatalf("mypy --strict: %s", out)
 	}
 }
+
+// The write's depth cap counts table values only (docs/SPEC-TABLES.md W2): an
+// empty array, map, union or flags value at layout depth 129 nests nothing and
+// is written; a table at 129 is refused.
+func TestPythonJsonWriteDepthCountsTablesOnly(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonwdepth
+flags Caps {
+    Read
+    Write
+}
+union Pick {
+    n int32
+    s string(8)
+}
+table Node {
+    link *Node
+    items []int32
+    m map[string(8)]int32
+    caps Caps
+    pick Pick
+}`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonwdepth import Node, InvalidValue
+head = Node()
+cur = head
+for _ in range(128):
+    nxt = Node()
+    cur.link = nxt
+    cur = nxt
+out = head.to_json()
+assert '"items": []' in out
+cur.link = Node()
+try:
+    head.to_json()
+except InvalidValue:
+    pass
+else:
+    raise AssertionError('a table at depth 129 was written')
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe)}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
