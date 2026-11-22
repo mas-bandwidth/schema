@@ -113,7 +113,7 @@ matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
 
-## Ruling rows: R14, R15 and R16 (2026-11-22)
+## Ruling rows: R14, R15, R16 and R17 (2026-11-22)
 
 Each ruling lands three ways: the sentence in the specification, a test that
 goes red when the old behaviour is planted back, and the shared rows below,
@@ -129,6 +129,9 @@ twin, the accepted row of the same surface, unit and root.
 | | `report r14_child_value_as_pointer` (to `*T`) | `report r14_features_twin` |
 | R15: a ranged announcement is checked per value: the base at the announcement, each value on the body (SPEC-TABLES.md §3.3, A RANGED ANNOUNCEMENT IS CHECKED PER VALUE) | `message-prior prior_band_past` (245 against the reader's 200..240) | `message-prior prior_band_inside` (the writer announces `uint8 \| min = 200, max = 250`, and 230 reads) |
 | R16: optional is a widening and runs one way: `T` to `?T` passes, `?T` to `T` is refused by the baseline naming the field (SPEC-TABLES.md §2.3, §4, §18.2, §21.1; VERSIONING.md) | `internal/baseline` `TestBaselineOptionalIsOneWay`, `TestRefusals/an_optional_field_made_plain`, `TestEvolutionTableFrames`; the lock, `TestLockOptionalAddRefuses` | `report r16_optional_plain_as_optional` (`Part` read as `?Part`, present) |
+| R17: the newer reader reads old data, never the other way, so kind `31` (the escape) is HELD BY NAME AND NEVER WRITTEN, and a reader that meets it ANYWHERE (a field it cannot name, one it names, an arm, an element kind, a message announcement or body, under retain-unknown) refuses the WHOLE load, as for `33` and `34` (SPEC-TABLES.md §3 kind table, `31` IS HELD BY NAME, WHERE THE READER MEETS KIND `32`, §3.3 entry shapes; VERSIONING.md promise 6) | `framing varevo_kind31_escape` (unnamed field, `refused`); `report escape_unnamed_field`, `escape_named_field`, `escape_arm`, `escape_element`, `varevo_kind31_report` | `framing fixed_array_rides_absent` (same unit and root, reads) |
+| | `retain varevo_kind31_retain`, `retain varevo_2hop_step1_v1`, `retain varevo_2hop_step2_v2` (owe `refused`) | `retain varevo_retain_v3_via_v1` |
+| | an announcement entry under kind `31`: `test/conformance/harness` `TestTheRetiredAndReservedKindsRefuseTheAnnouncement`; the engine, `internal/tablewire` `TestKindHeldEscapeRefuses` | `report varevo_v3_compat_as_v1`; `instance message_open` (`messagedemo ToolMessage`, the escape rows' unit, reads) |
 
 The file-form writers are under `test/tables/r14/`: each is the
 `featurewitnesses` schema with one declaration edited, and its wire is

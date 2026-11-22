@@ -52,10 +52,11 @@ named in its section below.
    exactly the build version that wrote it, by a header match, and otherwise
    refuses: `Open` returns null, and the tool's `uncook` names the mismatch.
    They are never read across a version.
-6. **The kind set is closed within a major, and every future kind is
-   skippable.** Kind `31` is the escape: its payload is a length and that
-   many bytes, a kind added in a later major rides inside it, and a reader of
-   this major skips it, counts it as unknown, and continues (#434).
+6. **The kind set is closed within a major, and the newer reader reads old
+   data, never the other way** (R17). A kind outside the set is damage to a
+   reader of this major wherever it is met, and the whole load refuses. Kind
+   `31`, once the escape a later major would have ridden for an older reader
+   to skip (#434), is held by name and never written.
 7. **Ids are 64 bits, and the wire form is versioned.** Every id on the table
    wire is a 64-bit name hash, carried in an id table and named by a
    reference: once per FILE under the variable form, and once per CONNECTION under
@@ -606,27 +607,26 @@ the integers by width and sign, the floats, string, table, array,
 union, keyed array, pointer index, the 128-bit integers, the fixed-point
 widths, a
 kind of its own for enums so that an enum and its raw integer can never be
-confused on the wire, the escape kind, and the payload-free kind a union arm
+confused on the wire, and the payload-free kind a union arm
 takes. **A kind is spent only to close a silent
-edit**; blocks spend none. Two numbers outside the set are HELD BY NAME and
-never written. `33` is RETIRED: wide text is not part of schema, and text is
+edit**; blocks spend none. Three numbers outside the set are HELD BY NAME and
+never written. `31` was the escape a later major would have ridden for an
+older reader to skip; the newer reader reads old data and never the other way
+(R17), so it is gone. `33` is RETIRED: wide text is not part of schema, and text is
 UTF-8 `string` (SPEC.md §4.12), so the number that once named it is never
 reused. `34` is RESERVED for `float16` (SPEC.md §4.10), so the construct a
 later major adds has its number written down before it is built. A reader of
-this major meets either one only as damage.
+this major meets any of the three only as damage.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
-a closed set, and it is why a new kind is a wire change. Two rules make that
-survivable across a major. First, **kind `31` is reserved, its payload `L`
-then `L` bytes**, opaque; a kind added in a later major is introduced as that
-framing carrying its own inner encoding, so a reader of this major skips it,
-counts it `unknown`, and continues (#434). Second, **the file's first byte is
-the wire form's version**, so a reader can say "newer form" rather than
-"malformed" when it meets one (#435). Neither is an
+a closed set, and it is why a new kind is a wire change: a later major's
+reader reads it, and a reader of this major refuses it (R17). **The file's
+first byte is the wire form's version**, so a reader can say "newer form"
+rather than "malformed" when it meets one (#435). It is not an
 envelope: no identity, no magic and no content hash ride on the table wire,
 and a file that needs to say what it is puts a field on its root table,
-`format uint32 = 3`, which an older reader still reads, a foreign file
-defaults, and that default is the provenance signal.
+`format uint32 = 3`, which a foreign file defaults, and that default is the
+provenance signal.
 
 **The layout.** After the form byte comes the body, every id a reference and
 every width variable: a field is `ref, kind, payload`, and the field list ends
@@ -1252,8 +1252,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   form 2 write refuses by name and whose form 2 read is not built.
 - #554: the `column` projection token, reserved by name on the packet wire and
   emitted nowhere.
-- #434: the reserved escape kind. The C++ reference and `internal/tablewire`
-  carry it; what is owed is the eight ports (#511 to #518).
+- #434: the reserved escape kind, REMOVED by R17 (2026-11-22): the newer
+  reader reads old data, never the other way, so kind `31` is held by name
+  and every reader refuses it.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention

@@ -4790,11 +4790,12 @@ registry.
   there is nothing to count. **The form byte is read FIRST**, before the
   trailer and before any body, so a file that is both a newer form and damaged
   is a refusal and never damage. On a form the reader knows, a trailer it
-  cannot read is `wire_damaged` (below). The ESCAPE KIND (below) covers a new
-  KIND inside this form, and the form byte covers a new FRAMING. **Nothing else rides in
+  cannot read is `wire_damaged` (below). A kind this major does not name is
+  damage too (below): the newer reader reads old data, never the other way
+  (R17), and the form byte covers a new FRAMING. **Nothing else rides in
   front**: no magic, no identity, no content hash, no build version. A file
   that must say what it is puts a field on its root table, `format uint32 = 3`,
-  which an older reader reads like any other field.
+  which a file written without it defaults like any other field.
 - **The ROOT BODY follows the form byte and ENDS AT ITS OWN ZERO
   REFERENCE**, wherever that falls.
 - **The ID TABLE is the trailer**, and a reader locates it from the END of
@@ -4862,8 +4863,20 @@ bit, is malformed on the same rule.
 i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
-fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `36` timestamp.
+fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum,
+`32` no payload, `36` timestamp. `31` is held (below).
+
+**`31` IS HELD BY NAME AND NEVER WRITTEN** (R17; the maintainer,
+2026-11-22: "the newer reader can read old data, but never the other
+way"). It was the ESCAPE, a kind a later major's writer could carry so that a
+reader of this major stepped over it by its `L`. That served only an OLDER
+reader meeting NEWER data, which is not a requirement, and no writer of this
+major emits it, so no reader ever meets it in data this major wrote. **A
+reader meets `31` ANYWHERE only as DAMAGE** — at a field it cannot name, at
+one it declares, as an arm's kind, as an element kind, in a message
+announcement or body, and under retain-unknown — and refuses the WHOLE load,
+on the terms `33` and `34` take below. The number is held so that it is
+never reused.
 
 **`33` IS RETIRED: wide text is not part of schema; text is UTF-8 `string`**
 (SPEC.md §4.12). The number is HELD BY NAME AND NEVER REUSED, no writer emits
@@ -4876,14 +4889,11 @@ AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
 writer emits it, and no reader has a rule for it. The construct is declined
 here, the spelling a program uses today is `bits(16)` with the conversion in
 application code, and the number is held only so that the kind a LATER MAJOR
-spends on half floats is the one every page already names. **A conforming
-later-major writer that wants this major to survive its file carries the new
-kind under the ESCAPE KIND `31`** (#434), which is what the escape is for, so
-a reader of this major skips it by its `L` and counts it `unknown`. **A
-reader of this major therefore meets `34` only as DAMAGE** — a kind it cannot
-skip, exactly as it meets `37` or `200` — and that is the correct answer,
-because a bare `34` on the wire is a writer that ignored the escape rather
-than a value this reader was ever meant to read. Reserving a number costs no
+spends on half floats is the one every page already names. **A reader of this
+major meets `34` only as DAMAGE** — a kind it cannot skip, exactly as it meets
+`31`, `37` or `200` — and that is the correct answer: the newer reader reads
+old data and never the other way (R17), so a file carrying a later major's
+kind is not one this reader was ever meant to read. Reserving a number costs no
 byte and no rule, and it keeps the kind table and the declined-construct list
 one document rather than two.
 
@@ -4905,7 +4915,7 @@ one document rather than two.
   | `20`–`24` fixed8/16/32/64/128 | 1/2/4/8/16 bytes, the RAW scaled integer of a `fixed(I, F)` whose storage is that width (I + F bits), two's complement |
   | `25`–`29` ufixed8/16/32/64/128 | 1/2/4/8/16 bytes, the raw scaled integer of a `ufixed(I, F)` of that width, unsigned |
   | `30` enum | the VARIANT ID reference, `0` for `None` |
-  | `31` escape | `L`, then `L` bytes, opaque |
+  | `31` held by name | none: no writer emits it, and a reader meets it only as damage (R17) |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
@@ -4998,20 +5008,19 @@ one document rather than two.
   `wire_damaged` (§4, §6.5), exactly as for a fixed-width arm whose
   `L` is not its width.
 
-  **KIND `31` IS THE ESCAPE, and no declaration maps to it.** Its payload is
-  `L` and `L` bytes, opaque, and this major never writes one. It exists so
-  that the closed set can be added to across a major without the addition
-  reading as damage: a kind introduced in a later major rides as this framing
-  carrying its own inner encoding, and a reader of this major steps over it
-  cleanly and says so. It is the only kind whose meaning a reader is licensed
-  not to know.
+  **KIND `31` IS HELD BY NAME AND NEVER WRITTEN, and no declaration maps to
+  it** (R17). It was the escape that let a later major add a kind for a
+  reader of this major to step over; the newer reader reads old data and never
+  the other way, so there is no kind whose meaning a reader is licensed not to
+  know. A later major's kind is read by a later major's reader.
 
-  **WHERE THE READER MEETS KINDS `31` AND `32` DECIDES WHAT IT ANSWERS.** At a position the reader CANNOT name, kind `31` is skipped by its
-  `L` and counted `unknown`, exactly as a field whose id the reader cannot
-  name is. At a position the reader DOES name, a field or an arm that arrives
-  under kind `31` or kind `32` where the declaration says otherwise is an
-  ordinary kind mismatch, and the read refuses `kind_mismatch` (§4). One rule decides it, and it is the
-  rule every other kind already takes.
+  **WHERE THE READER MEETS KIND `32` DECIDES WHAT IT ANSWERS; KIND `31` IS
+  DAMAGE WHEREVER IT IS MET.** At a position the reader DOES name, a field or
+  an arm that arrives under kind `32` where the declaration says otherwise is
+  an ordinary kind mismatch, and the read refuses `kind_mismatch` (§4), the
+  rule every other kind already takes. Kind `31` at ANY position — a field
+  the reader cannot name, one it does, an arm, an element — is DAMAGE, and the
+  whole load refuses `wire_damaged` (§4), exactly as for `33` and `34`.
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
   For kinds `14` and `16` a reader first holds the body's element kind to the
@@ -5166,7 +5175,7 @@ one document rather than two.
     or keyed body without this check. **No declaration produces `14`, `16`,
     `31`, `32`, `33`, `34`, `35` or `36`** under either body kind: arrays of
     arrays are refused, so no element is an array or a keyed body; `31` is
-    the escape, `32` the payload-free kind, `33` is retired, `34` is
+    held by name and never written, `32` the payload-free kind, `33` is retired, `34` is
     reserved, `35` is the fixed layout's wrapper and never a wire kind, and
     `36` (timestamp) is a bare table field with no array spelling. A kind ON
     the body kind's list that differs from the reader's own element kind
@@ -5188,7 +5197,7 @@ one document rather than two.
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
-  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`
+  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`
   and `32` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
   and stops there if it is `0`, else reads the kind byte, then `L`, and skips
   `L` bytes.
@@ -5197,8 +5206,9 @@ one document rather than two.
   rather than an addition. At a position the reader names and at one it
   cannot alike, the failed skip is damage and the whole load is discarded (§4),
   so no counter the read moved on the way is defined
-  (`frame_kind_unknown_37`, `frame_kind_unknown_37_named`). Kind `31` is the one way a later major adds one
-  without becoming that change (above).
+  (`frame_kind_unknown_37`, `frame_kind_unknown_37_named`). Kind `31` is one of
+  these: held by name, never written, and damage wherever it is met (above;
+  R17).
 
 **The id table is the last thing in the file, and a reader finds it from the
 END.** The final eight bytes are the ENTRY COUNT, a fixed little-endian u64.
@@ -5437,7 +5447,6 @@ under 128, two under 16,384, and so on.
 | a union holding a set arm of `L` bytes | header + the arm reference + one kind byte + `L` + `L` bytes |
 | a union holding `None` | nothing: it elides |
 | a pointer | header + the index |
-| the escape kind | header + `L` + `L` bytes |
 | a payload-free arm | the arm reference + one kind byte + one zero byte |
 | the whole file's framing | 1 for the form byte, 8 for the entry count, 8 an entry |
 
@@ -5492,14 +5501,15 @@ that instrument goes red.
   writes one id into two entries, and leaves a byte between the root's
   terminator and the first entry. Red if a leg decodes a body under any of
   them rather than refusing `wire_damaged` once for the wire.
-- **The kind set, the enum kind and the escape kind.** The fuzzer's kind-swap
+- **The kind set, the enum kind and the held kind `31`.** The fuzzer's kind-swap
   pass writes every kind byte to every other value, `0` and one past the last
   kind included, at field positions, at arm positions and in an array header's
   element-kind byte. A `report` row plants kind `31` at a field the reader
   cannot name, at a field it CAN name, at an arm, and as an element kind, one
   at each of the three depths at which `tables/messages` carries a union
-  (§2.6). Red if the unnameable position does not read (the value written back
-  equals the canonical bytes), or if a named position reads.
+  (§2.6), and the `varevo_kind31_*` and `varevo_2hop_*` rows plant it under
+  framing, report and retain-unknown. Red if ANY of them reads: kind `31` is
+  held by name and refused wherever it is met (R17).
 - **The enum kind against the raw integer.** A `report` row written with an
   enum field and read with the field respelled `uint16`, and the reverse.
   Red if either direction reads; each refuses, writes nothing.
@@ -6360,7 +6370,7 @@ zero pad to the next byte boundary                 (verified zero)
   the pad is zero**, which is the packet wire's rule for the same reason (SPEC.md
   §4.3). A batch's length in bytes is `ceil(bits / 8)`.
 - **EVERY ALIGN'S PAD BITS INSIDE A BATCH ARE VERIFIED ZERO, NOT ONLY THE FINAL
-  PAD.** A `string(N)`, a `bytes(N)` and an escape each align to
+  PAD.** A `string(N)` and a `bytes(N)` each align to
   the next byte boundary, and a reader that finds a non-zero pad bit at any of
   them refuses the batch as `wire_damaged`, not only at the final flush.
 
@@ -6593,7 +6603,7 @@ and that is its integer.
   | `16` enum-keyed array | `slots`, `element kind (u8)`, the element's own shape | the present-slot count is `bits_required(0, slots)` bits, then a key reference and an element a slot |
   | `17` pointer index | nothing | announced as the unit's vocabulary describes it, and never in a body: a fixed root numbers no node, so a kind-`17` entry met in a body is damage |
   | `30` enum | nothing | a reference naming the variant's name, `0` for `None` |
-  | `31` escape | nothing | align, a thirty-two bit `L`, then `L` bytes, opaque. No writer of this major emits one |
+  | `31` held by name | none | no entry names it: an announcement entry under `31` is malformed and refused whole, as one under `33` or `34` is (R17) |
   | `32` no payload | nothing | nothing rides |
 
 **AN ARRAY OR KEYED SHAPE'S ELEMENT KIND IS NEVER `14` OR `16`, and an
@@ -6690,11 +6700,11 @@ different build it cannot infer that maximum from the shape alone. A quantized
 float's index above `count` refuses as the packet wire refuses it (the
 quantization paragraph, above).
 
-**THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
-because an announcement carrying a kind outside the closed set is malformed and
-refused WHOLE (below), so a later major cannot introduce a kind and be read at
-all, and what it can do is ride a payload this reader steps over by an explicit
-length.
+**A LATER MAJOR HAS NO PATH ONTO THIS FORM'S READER**, and needs none: the
+newer reader reads old data and never the other way (R17). An announcement
+carrying a kind outside the closed set is malformed and refused WHOLE (below),
+and kind `31`, which was the escape a later major would have ridden, is held by
+name and refused there exactly as `33` and `34` are.
 
 **THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE VOCABULARY.**
 The build version and the vocabulary are the announcement's own transport, they
@@ -6907,7 +6917,7 @@ The ways a batch is damaged, at bit granularity:
   to keep the value, because it is the next bit's meaning that is in doubt and
   not the value's.
 - **A LENGTH OR COUNT WHOSE PAYLOAD RUNS PAST THE BATCH.** A string
-  length, an array count or an escape's `L` that would read beyond
+  length or an array count that would read beyond
   the batch's bits is damage at the field that carried it.
 - **EXHAUSTION, AND ITS OPPOSITE.** The bits run out inside a field, or the
   count promised `M` bodies and fewer terminators arrive, or the trailing pad to
@@ -9634,10 +9644,10 @@ has:
   kind, because kind `15` is the one payload whose framing a skipper has to
   know (§3);
 - **a kind swap**, every kind byte to every other value, `0` and one past the
-  last kind included, the escape kind `31` and the payload-free kind `32`
-  planted at every field position, and the RESERVED kind `34` planted there
+  last kind included, the payload-free kind `32` planted at every field
+  position, and the HELD kind `31` and the RESERVED kind `34` planted there
   too, which no writer emits and which a reader of this major cannot skip, so
-  it must land as damage and never as an escape (§3);
+  they must land as damage and never as a skip (§3, R17);
 - **a WIDENING and its reverse at every integer and `f32` position — a FIELD,
   a union ARM, an array's ELEMENT KIND and a map's KEY KIND**, the payload
   rewritten at the other kind's width at each, because the rule is the kind
@@ -11073,7 +11083,8 @@ where the element kind is `13`, `15` or `30`. And **kind `16` at EVERY element
 kind**, because an enum-keyed array's body carries a KEY REFERENCE per slot
 whatever the elements are (§3.2), so its keys resolve even when the elements
 carry no reference of their own. Every other payload is copied verbatim, which
-is every scalar, every fixed-point and 128-bit kind, and kinds `12` and `31`.
+is every scalar, every fixed-point and 128-bit kind, and kind `12` (kind `31`
+is held by name and refused before the walk, R17).
 **Kind `17` is what the walk is LOOKING FOR as much as a reference is**: the
 outer-kind exclusion above catches a `17` field and an array of `17` before
 the walk begins, and the walk catches every other one, a `17` field or an
@@ -20865,8 +20876,8 @@ and the conformance corpus holds each row with a pinned wire (§22.7).
   other assert legs refuse in their debug builds, where a release build's
   bytes for a broken contract are outside it ("In low level languages like
   C/C++ our intent is to do this at debug time for speed", the project owner).
-- **KIND `31` IS NEVER WRITTEN** by a writer of this major, and kind `32` is
-  written only as a payload-free arm, `L = 0` (§3).
+- **KIND `31` IS NEVER WRITTEN** by a writer of this major and is refused by
+  every reader wherever it is met (R17), and kind `32` is written only as a payload-free arm, `L = 0` (§3).
 
 #### 22.2.1 Arrays, unions and maps
 
