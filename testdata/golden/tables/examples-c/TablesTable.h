@@ -15558,19 +15558,150 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_fill_t tabledemo_counted_min_fi
 };
 static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_cover_count = 1;
 
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
+static SCHEMA_UNUSED const uint8_t tabledemo_counted_min_fixed_known_0[] = {
+    0x03, 0x00, 0x00, 0x00, 0x37, 0x49, 0x12, 0x22, 0xf1, 0x68, 0x81, 0x2c, 0x0d, 0x10, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x19, 0x8c, 0xea, 0xfe, 0x18, 0x7d, 0xc6, 0xdc, 0x0e, 0x10, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 /* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT
    A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_known_layout_t tabledemo_counted_min_fixed_known[] = {
+    { 0xd885eebe6bcc2d20ull, tabledemo_counted_min_fixed_known_0, (int64_t) sizeof( tabledemo_counted_min_fixed_known_0 ), 24 },
     { 0xf3b4bc175c346f90ull, tabledemo_counted_min_fixed_layout, (int64_t) sizeof( tabledemo_counted_min_fixed_layout ), 32 },
 };
-static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_known_count = 1;
+static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_counted_min_fixed_floor = 0;
+
+/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
+   never from a file's (§5.9 #3). The storage is STATIC — this codec
+   allocates nothing — and the walk runs ONCE PER PROCESS, off the record
+   loop: a load selects a plan and never builds one, and a load can no
+   longer fail for want of one. C HAS NO PACKAGE INITIALIZER (§5.9 #7 of
+   this leg's PR), so "once" is this flag and not a language phase; what
+   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load
+   can miss — is gone either way: the bytes here are the lock's. */
+#define TABLEDEMO_COUNTED_MIN_FIXED_LINEAGE_STRIDE ( 4 + ( 8 + (int32_t) sizeof( tabledemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( tabledemo_table_fixed_entry_t ) )
+
+#ifndef SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE
+/* 0 = nobody has built, 1 = one thread is building, 2 = the plans are readable */
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT 0
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING 1
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY 2
+#if defined( __GNUC__ ) || defined( __clang__ )
+typedef int tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( __atomic_load_n( ( f ), __ATOMIC_ACQUIRE ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) __atomic_store_n( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY, __ATOMIC_RELEASE )
+static SCHEMA_UNUSED int tabledemo_table_fixed_once_claim( tabledemo_table_fixed_once_t * f )
+{
+    int want = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+}
+/* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
+   allocation, no lock of its own and no call out — so the thread that claimed it
+   always reaches the publish, and this spin always ends. It runs at most once
+   per process per table and never on the record loop. */
+static SCHEMA_UNUSED void tabledemo_table_fixed_once_wait( tabledemo_table_fixed_once_t * f )
+{
+    while ( __atomic_load_n( f, __ATOMIC_ACQUIRE ) != SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+    {
+        /* nothing: the load is the whole body, and it is an acquire */
+    }
+}
+#elif defined( _MSC_VER )
+typedef long tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY ) )
+#define tabledemo_table_fixed_once_claim( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT )
+#define tabledemo_table_fixed_once_wait( f ) do { while ( !tabledemo_table_fixed_once_ready( f ) ) { } } while ( 0 )
+#else
+/* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
+   store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
+   the plans only after its own build wrote them. What is left is that two
+   threads may build at once and write THE SAME BYTES twice — a race in the
+   abstract machine with one outcome in practice — and the fix is not a bigger
+   macro here, it is §5.9 #7's generator-side COMPILE, which lays these plans
+   down as static const data and removes the lazy build entirely. OWED. */
+typedef int tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( *( f ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) ( *( f ) = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_claim( f ) ( 1 )
+#define tabledemo_table_fixed_once_wait( f ) ( (void) ( f ) )
+#endif
+#endif
+static tabledemo_table_fixed_entry_t tabledemo_counted_min_fixed_lineage_storage[2][TABLEDEMO_COUNTED_MIN_FIXED_LINEAGE_STRIDE];
+static tabledemo_table_fixed_lineage_plan_t tabledemo_counted_min_fixed_lineage[2];
+static tabledemo_table_fixed_once_t tabledemo_counted_min_fixed_lineage_ready = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT;
+static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
+{
+    int32_t i;
+    /* THE FLAG IS PUBLISHED LAST, AFTER THE LOOP, and a racing load WAITS for
+       it: a second thread that sees the plans unpublished must never read
+       them, because an unbuilt TableFixedLineagePlan is all zeros — entries
+       NULL, count 0 — and zeros are a plan step 8 accepts, landing a
+       prefill-only record where the read owed a refusal. So: READY is an
+       acquire load, the build is CLAIMED by one thread, every other thread
+       waits on that acquire, and the publish is a release store of READY
+       after the last entry is written (§5.9 #7). */
+    if ( tabledemo_table_fixed_once_ready( &tabledemo_counted_min_fixed_lineage_ready ) ) { return; }
+    if ( !tabledemo_table_fixed_once_claim( &tabledemo_counted_min_fixed_lineage_ready ) )
+    {
+        tabledemo_table_fixed_once_wait( &tabledemo_counted_min_fixed_lineage_ready ); /* WAIT — never the zeroed plan */
+        return;
+    }
+    for ( i = 0; i < tabledemo_counted_min_fixed_known_count; ++i )
+    {
+        tabledemo_table_fixed_layout_view_t parsed;
+        tabledemo_table_report_t census;
+        tabledemo_table_fixed_entry_t * dest = tabledemo_counted_min_fixed_lineage_storage[i];
+        int32_t guarded = 0;
+        int32_t made;
+        int32_t fills = 0;
+        uint32_t fill_at = 0;
+        int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
+        memset( &tabledemo_counted_min_fixed_lineage[i], 0, sizeof( tabledemo_counted_min_fixed_lineage[i] ) );
+        if ( tabledemo_counted_min_fixed_known[i].hash == tabledemo_counted_min_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
+        memset( &census, 0, sizeof( census ) );
+        /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
+           (§5.9 #8). C cannot fail a build from a header, so the entry carries
+           the name and LOAD refuses by it if a file ever matches its hash. */
+        if ( !tabledemo_table_fixed_parse_layout( tabledemo_counted_min_fixed_known[i].layout, tabledemo_counted_min_fixed_known[i].layout_bytes, &parsed, &why ) )
+        { tabledemo_counted_min_fixed_lineage[i].reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; continue; }
+        made = tabledemo_table_fixed_compile( &parsed, tabledemo_counted_min_fixed_layout, (int32_t) sizeof( tabledemo_counted_min_fixed_layout ), tabledemo_counted_min_fixed_dst,
+                                    tabledemo_counted_min_fixed_cover, tabledemo_counted_min_fixed_cover_count,
+                                    dest, TABLEDEMO_COUNTED_MIN_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+        if ( made < 0 )
+        {
+            /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
+               and an entry whose plan exceeds it records plan_too_large ON THAT
+               ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
+               compiled walk refuses, or a depth past 64 — is named
+               layout_record_too_large, the reference's name (§5.8 row 6). */
+            tabledemo_counted_min_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            continue;
+        }
+        tabledemo_counted_min_fixed_lineage[i].entries = dest;
+        tabledemo_counted_min_fixed_lineage[i].count = made;
+        tabledemo_counted_min_fixed_lineage[i].guarded = guarded;
+        tabledemo_counted_min_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+        tabledemo_counted_min_fixed_lineage[i].fill_count = fills;
+        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
+        tabledemo_counted_min_fixed_lineage[i].unknown = census.unknown;
+        tabledemo_counted_min_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+    }
+    /* AND THE FLAG LAST: every entry above is written before this store, and
+       this store is what a waiting thread's acquire is waiting for. */
+    tabledemo_table_fixed_once_publish( &tabledemo_counted_min_fixed_lineage_ready );
+}
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -15697,6 +15828,26 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_fixed_load( tabledemo_counted
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_counted_min_fixed_known[pick].record_bytes;
+    if ( hash != tabledemo_counted_min_fixed_hash )
+    {
+        tabledemo_counted_min_fixed_lineage_build(); /* once per process, from THE LOCK'S bytes */
+        if ( tabledemo_counted_min_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = tabledemo_counted_min_fixed_lineage[pick].reason; return -1; }
+        if ( tabledemo_counted_min_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE; return -1; }
+        entries = tabledemo_counted_min_fixed_lineage[pick].entries;
+        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,
+           and a chain-carrying entry's guard_index is a BYTE OFFSET from
+           that base — the same arithmetic the identity plan's static pool
+           reads by (§5.8 row 6). */
+        entry_guards = (const tabledemo_table_fixed_guard_link_t *) (const void *) entries;
+        entry_count = tabledemo_counted_min_fixed_lineage[pick].count;
+        entry_guarded = tabledemo_counted_min_fixed_lineage[pick].guarded;
+        fill = tabledemo_counted_min_fixed_lineage[pick].fill;
+        fill_count = tabledemo_counted_min_fixed_lineage[pick].fill_count;
+        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
+           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
+        census_unknown = tabledemo_counted_min_fixed_lineage[pick].unknown;
+        census_kind = tabledemo_counted_min_fixed_lineage[pick].kind_changed;
+    }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
     at = layout + layout_bytes;
@@ -16277,19 +16428,153 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_fill_t tabledemo_moods_fixed_co
 };
 static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_cover_count = 1;
 
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
+static SCHEMA_UNUSED const uint8_t tabledemo_moods_fixed_known_0[] = {
+    0x06, 0x00, 0x00, 0x00, 0xb7, 0xe3, 0x08, 0xde, 0xf9, 0x96, 0x35, 0xad, 0x0d, 0x07, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x9b, 0xad, 0x11, 0x61, 0x19, 0xc1, 0x0b, 0x8a, 0x0e, 0x07, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01,
+    0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0xd6, 0x16, 0xac, 0xe9, 0x9c, 0x7a, 0xa4, 0xdf, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd6, 0x8c, 0x89, 0xbf, 0x19, 0xcd, 0x18, 0x30,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcb, 0x9a, 0xef, 0x49, 0x2b, 0x48, 0x9c,
+    0x19, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 /* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT
    A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const tabledemo_table_fixed_known_layout_t tabledemo_moods_fixed_known[] = {
+    { 0x6a6b8b350f439e64ull, tabledemo_moods_fixed_known_0, (int64_t) sizeof( tabledemo_moods_fixed_known_0 ), 15 },
     { 0xf8175270042a9a4aull, tabledemo_moods_fixed_layout, (int64_t) sizeof( tabledemo_moods_fixed_layout ), 16 },
 };
-static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_known_count = 1;
+static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_moods_fixed_floor = 0;
+
+/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
+   never from a file's (§5.9 #3). The storage is STATIC — this codec
+   allocates nothing — and the walk runs ONCE PER PROCESS, off the record
+   loop: a load selects a plan and never builds one, and a load can no
+   longer fail for want of one. C HAS NO PACKAGE INITIALIZER (§5.9 #7 of
+   this leg's PR), so "once" is this flag and not a language phase; what
+   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load
+   can miss — is gone either way: the bytes here are the lock's. */
+#define TABLEDEMO_MOODS_FIXED_LINEAGE_STRIDE ( 4 + ( 32 + (int32_t) sizeof( tabledemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( tabledemo_table_fixed_entry_t ) )
+
+#ifndef SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE
+/* 0 = nobody has built, 1 = one thread is building, 2 = the plans are readable */
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT 0
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING 1
+#define SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY 2
+#if defined( __GNUC__ ) || defined( __clang__ )
+typedef int tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( __atomic_load_n( ( f ), __ATOMIC_ACQUIRE ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) __atomic_store_n( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY, __ATOMIC_RELEASE )
+static SCHEMA_UNUSED int tabledemo_table_fixed_once_claim( tabledemo_table_fixed_once_t * f )
+{
+    int want = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+}
+/* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
+   allocation, no lock of its own and no call out — so the thread that claimed it
+   always reaches the publish, and this spin always ends. It runs at most once
+   per process per table and never on the record loop. */
+static SCHEMA_UNUSED void tabledemo_table_fixed_once_wait( tabledemo_table_fixed_once_t * f )
+{
+    while ( __atomic_load_n( f, __ATOMIC_ACQUIRE ) != SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+    {
+        /* nothing: the load is the whole body, and it is an acquire */
+    }
+}
+#elif defined( _MSC_VER )
+typedef long tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY ) )
+#define tabledemo_table_fixed_once_claim( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_BUILDING, SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT )
+#define tabledemo_table_fixed_once_wait( f ) do { while ( !tabledemo_table_fixed_once_ready( f ) ) { } } while ( 0 )
+#else
+/* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
+   store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
+   the plans only after its own build wrote them. What is left is that two
+   threads may build at once and write THE SAME BYTES twice — a race in the
+   abstract machine with one outcome in practice — and the fix is not a bigger
+   macro here, it is §5.9 #7's generator-side COMPILE, which lays these plans
+   down as static const data and removes the lazy build entirely. OWED. */
+typedef int tabledemo_table_fixed_once_t;
+#define tabledemo_table_fixed_once_ready( f ) ( *( f ) == SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_publish( f ) ( *( f ) = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_READY )
+#define tabledemo_table_fixed_once_claim( f ) ( 1 )
+#define tabledemo_table_fixed_once_wait( f ) ( (void) ( f ) )
+#endif
+#endif
+static tabledemo_table_fixed_entry_t tabledemo_moods_fixed_lineage_storage[2][TABLEDEMO_MOODS_FIXED_LINEAGE_STRIDE];
+static tabledemo_table_fixed_lineage_plan_t tabledemo_moods_fixed_lineage[2];
+static tabledemo_table_fixed_once_t tabledemo_moods_fixed_lineage_ready = SCHEMA_TABLEDEMO_TABLE_FIXED_ONCE_UNBUILT;
+static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
+{
+    int32_t i;
+    /* THE FLAG IS PUBLISHED LAST, AFTER THE LOOP, and a racing load WAITS for
+       it: a second thread that sees the plans unpublished must never read
+       them, because an unbuilt TableFixedLineagePlan is all zeros — entries
+       NULL, count 0 — and zeros are a plan step 8 accepts, landing a
+       prefill-only record where the read owed a refusal. So: READY is an
+       acquire load, the build is CLAIMED by one thread, every other thread
+       waits on that acquire, and the publish is a release store of READY
+       after the last entry is written (§5.9 #7). */
+    if ( tabledemo_table_fixed_once_ready( &tabledemo_moods_fixed_lineage_ready ) ) { return; }
+    if ( !tabledemo_table_fixed_once_claim( &tabledemo_moods_fixed_lineage_ready ) )
+    {
+        tabledemo_table_fixed_once_wait( &tabledemo_moods_fixed_lineage_ready ); /* WAIT — never the zeroed plan */
+        return;
+    }
+    for ( i = 0; i < tabledemo_moods_fixed_known_count; ++i )
+    {
+        tabledemo_table_fixed_layout_view_t parsed;
+        tabledemo_table_report_t census;
+        tabledemo_table_fixed_entry_t * dest = tabledemo_moods_fixed_lineage_storage[i];
+        int32_t guarded = 0;
+        int32_t made;
+        int32_t fills = 0;
+        uint32_t fill_at = 0;
+        int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
+        memset( &tabledemo_moods_fixed_lineage[i], 0, sizeof( tabledemo_moods_fixed_lineage[i] ) );
+        if ( tabledemo_moods_fixed_known[i].hash == tabledemo_moods_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
+        memset( &census, 0, sizeof( census ) );
+        /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
+           (§5.9 #8). C cannot fail a build from a header, so the entry carries
+           the name and LOAD refuses by it if a file ever matches its hash. */
+        if ( !tabledemo_table_fixed_parse_layout( tabledemo_moods_fixed_known[i].layout, tabledemo_moods_fixed_known[i].layout_bytes, &parsed, &why ) )
+        { tabledemo_moods_fixed_lineage[i].reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; continue; }
+        made = tabledemo_table_fixed_compile( &parsed, tabledemo_moods_fixed_layout, (int32_t) sizeof( tabledemo_moods_fixed_layout ), tabledemo_moods_fixed_dst,
+                                    tabledemo_moods_fixed_cover, tabledemo_moods_fixed_cover_count,
+                                    dest, TABLEDEMO_MOODS_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+        if ( made < 0 )
+        {
+            /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
+               and an entry whose plan exceeds it records plan_too_large ON THAT
+               ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
+               compiled walk refuses, or a depth past 64 — is named
+               layout_record_too_large, the reference's name (§5.8 row 6). */
+            tabledemo_moods_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            continue;
+        }
+        tabledemo_moods_fixed_lineage[i].entries = dest;
+        tabledemo_moods_fixed_lineage[i].count = made;
+        tabledemo_moods_fixed_lineage[i].guarded = guarded;
+        tabledemo_moods_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+        tabledemo_moods_fixed_lineage[i].fill_count = fills;
+        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
+        tabledemo_moods_fixed_lineage[i].unknown = census.unknown;
+        tabledemo_moods_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+    }
+    /* AND THE FLAG LAST: every entry above is written before this store, and
+       this store is what a waiting thread's acquire is waiting for. */
+    tabledemo_table_fixed_once_publish( &tabledemo_moods_fixed_lineage_ready );
+}
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -16420,6 +16705,26 @@ static SCHEMA_UNUSED int64_t tabledemo_moods_fixed_load( tabledemo_moods_t * val
     { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = tabledemo_moods_fixed_known[pick].record_bytes;
+    if ( hash != tabledemo_moods_fixed_hash )
+    {
+        tabledemo_moods_fixed_lineage_build(); /* once per process, from THE LOCK'S bytes */
+        if ( tabledemo_moods_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = tabledemo_moods_fixed_lineage[pick].reason; return -1; }
+        if ( tabledemo_moods_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE; return -1; }
+        entries = tabledemo_moods_fixed_lineage[pick].entries;
+        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,
+           and a chain-carrying entry's guard_index is a BYTE OFFSET from
+           that base — the same arithmetic the identity plan's static pool
+           reads by (§5.8 row 6). */
+        entry_guards = (const tabledemo_table_fixed_guard_link_t *) (const void *) entries;
+        entry_count = tabledemo_moods_fixed_lineage[pick].count;
+        entry_guarded = tabledemo_moods_fixed_lineage[pick].guarded;
+        fill = tabledemo_moods_fixed_lineage[pick].fill;
+        fill_count = tabledemo_moods_fixed_lineage[pick].fill_count;
+        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
+           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
+        census_unknown = tabledemo_moods_fixed_lineage[pick].unknown;
+        census_kind = tabledemo_moods_fixed_lineage[pick].kind_changed;
+    }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
     at = layout + layout_bytes;
