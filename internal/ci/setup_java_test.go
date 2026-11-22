@@ -16,8 +16,16 @@ const setupJavaPin = "77dd5b2ce225ea11469928ac317850245a74ae78" // v6.2.0
 // workflow files to name the current pin, so a bump is a red-then-green act
 // with a witness rather than a silent re-pointing of six steps.
 func TestSetupJavaIsPinnedToV620(t *testing.T) {
-	for name, data := range workflows(t, repoRoot(t)) {
-		for _, l := range lines(name, data) {
+	allWorkflows := workflows(t, repoRoot(t))
+	if len(allWorkflows) == 0 {
+		t.Fatal("workflows(t, repoRoot(t)) is empty: the loop below would check nothing")
+	}
+	for name, data := range allWorkflows {
+		allLines := lines(name, data)
+		if len(allLines) == 0 {
+			t.Fatal("lines(name, data) is empty: the loop below would check nothing")
+		}
+		for _, l := range allLines {
 			if !strings.HasPrefix(l.text, "uses:") {
 				continue
 			}

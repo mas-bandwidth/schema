@@ -240,6 +240,9 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	if !strings.Contains(msg, "not a Go pseudo-version or semver tag") {
 		t.Fatalf("bad-version refusal does not name the version: %q", msg)
 	}
+	if len(before) == 0 {
+		t.Fatal("before is empty: the loop below would check nothing")
+	}
 	for f, data := range before {
 		if got := mustRead(t, f); got != data {
 			t.Errorf("bad-version refusal changed %s", f)
@@ -254,6 +257,9 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	}
 	if !strings.Contains(msg, "nope") {
 		t.Fatalf("missing-dir refusal does not name the directory: %q", msg)
+	}
+	if len(before) == 0 {
+		t.Fatal("before is empty: the loop below would check nothing")
 	}
 	for f, data := range before {
 		if got := mustRead(t, f); got != data {
@@ -284,6 +290,9 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	if !strings.Contains(msg, "empty") || !strings.Contains(msg, "no go:generate pin") {
 		t.Fatalf("empty-dir refusal does not name the directory: %q", msg)
 	}
+	if len(before) == 0 {
+		t.Fatal("before is empty: the loop below would check nothing")
+	}
 	for f, data := range before {
 		if got := mustRead(t, f); got != data {
 			t.Errorf("no-pin refusal changed %s", f)
@@ -301,6 +310,9 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	if !strings.Contains(msg, "differ") && !strings.Contains(msg, "--mixed-ok") {
 		t.Fatalf("mixed-pins refusal does not name the remedy: %q", msg)
 	}
+	if len(before) == 0 {
+		t.Fatal("before is empty: the loop below would check nothing")
+	}
 	for f, data := range before {
 		if got := mustRead(t, f); got != data {
 			t.Errorf("mixed-pins refusal changed %s", f)
@@ -309,6 +321,9 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 
 	// --mixed-ok accepts the same tree and moves both pins
 	run(t, bin, "pin", "--mixed-ok", "v2.8.8", p1, p4)
+	if len(before) == 0 {
+		t.Fatal("before is empty: the loop below would check nothing")
+	}
 	for f, data := range before {
 		got := mustRead(t, f)
 		if strings.Contains(got, "v2.9.9") || strings.Contains(got, "v2.8.8") {

@@ -875,6 +875,9 @@ func TestPythonVtEvolution(t *testing.T) {
 		})
 	}
 	order, groups := vtWireGroups(vtWireCases)
+	if len(order) == 0 {
+		t.Fatal("order is empty: the loop below would check nothing")
+	}
 	for i, reader := range order {
 		cases := groups[reader]
 		t.Run(fmt.Sprintf("wire_%d_%s", i, cases[0].root), func(t *testing.T) {
@@ -895,6 +898,9 @@ func TestPythonVtEvolution(t *testing.T) {
 			writeSchemas = append(writeSchemas, c.schema)
 		}
 		writeGroups[c.schema] = append(writeGroups[c.schema], c)
+	}
+	if len(writeSchemas) == 0 {
+		t.Fatal("writeSchemas is empty: the loop below would check nothing")
 	}
 	for i, schema := range writeSchemas {
 		cases := writeGroups[schema]

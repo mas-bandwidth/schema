@@ -21,8 +21,14 @@ func getBit(b []byte, i int) uint8 { return (b[i/8] >> uint(i%8)) & 1 }
 // a second's, under one terminator) refuses the batch, as the engine does.
 func TestGeneratedMessageRefusesRepeatedFieldId(t *testing.T) {
 	c := compiler.New()
-	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
-	u, _ := c.Load(paths)
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := tabletext.NewModel(u)
 	root := m.Lookup("RangedSigned")
 	if !bytes.Equal(tablewire.Announce(u), func() []byte {
@@ -34,7 +40,9 @@ func TestGeneratedMessageRefusesRepeatedFieldId(t *testing.T) {
 	}
 	var voc tablewire.Vocabulary
 	var ann tabletext.Report
-	voc.AnnounceRead(tablewire.Announce(u), &ann)
+	if err := voc.AnnounceRead(tablewire.Announce(u), &ann); err != nil {
+		t.Fatalf("the engine refuses its own announcement: %v %+v", err, ann)
+	}
 	enc := func(text string) []byte {
 		inst := m.New(root)
 		var r tabletext.Report
@@ -97,7 +105,10 @@ func TestGeneratedMessageRefusesRepeatedFieldId(t *testing.T) {
 // refuses the batch, as the engine does.
 func TestGeneratedMessageRefusesRepeatedKeyedSlot(t *testing.T) {
 	c := compiler.New()
-	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	u, err := c.Load(paths)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +125,9 @@ func TestGeneratedMessageRefusesRepeatedKeyedSlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	var voc tablewire.Vocabulary
-	voc.AnnounceRead(tablewire.Announce(u), &tabletext.Report{})
+	if err := voc.AnnounceRead(tablewire.Announce(u), &tabletext.Report{}); err != nil {
+		t.Fatalf("the engine refuses its own announcement: %v", err)
+	}
 	gvoc := messagesVocabulary(t)
 	clean := make([]tabledemo.KeyedConfig, 1)
 	if n, ok := tabledemo.KeyedConfigLoadMessages(clean, gvoc, data, nil); !ok || n != 1 {

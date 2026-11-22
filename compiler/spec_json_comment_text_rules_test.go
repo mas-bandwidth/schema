@@ -41,16 +41,18 @@ func TestSpecJsonCommentTextRules(t *testing.T) {
 			comments, "the value under an unknown key included")
 	})
 
-	t.Run("W2's write cap and the read's cap are different units", func(t *testing.T) {
+	t.Run("W2's write cap and the read's cap are one unit", func(t *testing.T) {
 		t.Parallel()
 		page := readSpecTables(t)
 		w2 := specTablesSection(t, page,
 			"**W2. The document.**", "**W3. A table or type value**")
 
-		mustState(t, "W2 the write's cap counts table values",
-			w2, "THE DEPTH CAP IS 128, AND ON THE WRITE IT COUNTS TABLE VALUES")
-		mustState(t, "W2 the read's cap counts every object and array it walks",
-			w2, "THE READ'S CAP AT THE SAME NUMBER COUNTS EVERY OBJECT AND ARRAY IT WALKS")
+		mustState(t, "W2 read and write measure the cap in one unit",
+			w2, "THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT")
+		mustState(t, "W2 the write judges each table or type value",
+			w2, "judges it at each table or type value (W3)")
+		mustNotState(t, "W2 no longer says the caps are different units",
+			w2, "which is a different unit")
 		mustNotState(t, "W2 no longer says the read counts an object's table depth",
 			w2, "and so does the read of an object that deep")
 	})
@@ -146,6 +148,9 @@ func TestSpecJsonCommentTextRules(t *testing.T) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatalf("the vectors' directory: %v", err)
+		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
 		}
 		for _, e := range entries {
 			if e.IsDir() || e.Name() == "manifest.tsv" {

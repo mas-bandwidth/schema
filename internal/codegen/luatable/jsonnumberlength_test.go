@@ -88,6 +88,9 @@ func TestLuaJsonNumberAnyLength(t *testing.T) {
 	if st == nil {
 		t.Fatal("no table ProfileConfig")
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for i, row := range rows {
 		lua := got[fmt.Sprintf("row%d", i+1)]
 		inst := m.New(st)

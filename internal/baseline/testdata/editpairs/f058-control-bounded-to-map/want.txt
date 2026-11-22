@@ -1,0 +1,3 @@
+# The control for F-058: the same bounded array becoming a map is reported,
+# once, as a warning. One finding per line: verdict, where, what (a substring).
+warn	Fleet.ships	array shape bounded -> map

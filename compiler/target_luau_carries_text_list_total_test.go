@@ -30,7 +30,11 @@ func TestLuauCarriesTheTextListTotal(t *testing.T) {
 			if err != nil || len(files) == 0 {
 				t.Fatalf("luau must carry the text list total: files=%d err=%v", len(files), err)
 			}
-			for _, lang := range c.Targets() {
+			allTargets := c.Targets()
+			if len(allTargets) == 0 {
+				t.Fatal("c.Targets() is empty: the loop below would check nothing")
+			}
+			for _, lang := range allTargets {
 				if lang == "go" || lang == "luau" || carries(lang, carryTextListTotal) {
 					continue
 				}
