@@ -28,6 +28,8 @@ func messageModule(u *ir.Unit) string {
 	b.WriteString("\"\"\"The unit's message-form announcement and entry facts.\"\"\"\n\n")
 	fmt.Fprintf(&b, "ANNOUNCEMENT = bytes.fromhex(%q)\n", fmt.Sprintf("%x", tablewire.Announce(u)))
 	fmt.Fprintf(&b, "BUILD_VERSION = %d\n", ir.BuildVersion(u))
+	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
+	fmt.Fprintf(&b, "_ANNOUNCE_ENTRIES = %d\n_ANNOUNCE_TOO_LARGE = %t\n", len(ir.TableVocabulary(u)), len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	b.WriteString("ROOTS = frozenset((\n")
 	for _, name := range roots {
 		fmt.Fprintf(&b, "    %q,\n", name)
@@ -86,7 +88,7 @@ func messageModule(u *ir.Unit) string {
 	b.WriteString(`
 from typing import Any, Callable, TypeVar, cast
 from . import LoadReport
-from .message import BuildVersionMismatch as BuildVersionMismatch, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
+from .message import BuildVersionMismatch as BuildVersionMismatch, Refused as _Refused, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
 from .message import BitWriter, _write_value
 from .descriptor import by_name as _by_name
 from .integrity import open_crc as _open_crc, seal_crc as _seal_crc
@@ -99,12 +101,24 @@ class MessageVocabulary(_Vocabulary):
         super().__init__(BUILD_VERSION, strict)
 
 _local = MessageVocabulary()
-_announce(_local, ANNOUNCEMENT)
+_announce(_local, ANNOUNCEMENT, max_bytes=len(ANNOUNCEMENT), max_entries=_ANNOUNCE_ENTRIES)
 _records: dict[str, type[Any]] = {}
 for _name in _RECORD_NAMES:
     _record = _by_name(_name)
     if _record is not None:
         _records[_name] = _record
+
+def announce_measure() -> int:
+    """The announcement's size; a unit whose vocabulary is past the readers' default maximum is refused (R8)."""
+    if _ANNOUNCE_TOO_LARGE:
+        raise _Refused("vocabulary_too_large")
+    return len(ANNOUNCEMENT)
+
+def announce() -> bytes:
+    """The announcement's bytes; refused as announce_measure is."""
+    if _ANNOUNCE_TOO_LARGE:
+        raise _Refused("vocabulary_too_large")
+    return ANNOUNCEMENT
 
 def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
     _announce(vocab, data, max_bytes=max_bytes, max_entries=max_entries)
