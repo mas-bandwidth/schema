@@ -27,6 +27,7 @@ public final class TableCookWrite {
         final boolean text;
         final long id;
         long offset;
+        boolean open; // its descent is in progress: a reference to it is a cycle
         long extent; // a record's node extent: its lists' and maps' arrays (§7.6)
 
         Node(java.lang.Object value, TableCookInfo info) {
@@ -193,7 +194,16 @@ public final class TableCookWrite {
     // §7.6 numbering: first visit owns the node; a repeated edge reuses it.
     private static void add(Plan p, java.lang.Object value, TableCookInfo info)
             throws java.lang.ReflectiveOperationException {
-        if (value == null || p.index.containsKey(value)) {
+        if (value == null) {
+            return;
+        }
+        Node seen = p.index.get(value);
+        if (seen != null) {
+            // a reference to a node whose descent is still open closes a cycle (SPEC-TABLES.md
+            // §7.6)
+            if (seen.open) {
+                throw new DataCycle();
+            }
             return;
         }
         Node n;
@@ -214,7 +224,9 @@ public final class TableCookWrite {
         p.index.put(value, n);
         p.nodes.add(n);
         if (info != null) {
+            n.open = true;
             discover(p, value, info);
+            n.open = false;
         }
     }
 
@@ -557,6 +569,15 @@ public final class TableCookWrite {
      * (docs/SPEC-TABLES.md §3.3), which no cook carries.
      */
     public static Plan plan(java.lang.Object root, TableCookInfo info, boolean[] nonFinite) {
+        return plan(root, info, nonFinite, null);
+    }
+
+    /**
+     * plan, and cycle[0] turns true when the pointer graph is cyclic: data_cycle, refused in every
+     * build.
+     */
+    public static Plan plan(
+            java.lang.Object root, TableCookInfo info, boolean[] nonFinite, boolean[] cycle) {
         if (root == null || info == null) {
             return null;
         }
@@ -596,6 +617,11 @@ public final class TableCookWrite {
                 }
             }
             return p;
+        } catch (DataCycle ex) {
+            if (cycle != null) {
+                cycle[0] = true;
+            }
+            return null;
         } catch (NonFiniteFloat ex) {
             if (nonFinite != null) {
                 nonFinite[0] = true;
@@ -603,6 +629,15 @@ public final class TableCookWrite {
             return null;
         } catch (java.lang.ReflectiveOperationException | java.lang.RuntimeException ex) {
             return null;
+        }
+    }
+
+    /** a pointer graph that reaches a node still being walked: the plan's data_cycle refusal. */
+    static final class DataCycle extends java.lang.IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+
+        DataCycle() {
+            super("data_cycle", null);
         }
     }
 
