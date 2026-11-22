@@ -1571,7 +1571,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 			in.pos++
 			wasFirst := firstKey
 			firstKey = false
-			if amp && in.graph != nil {
+			if amp {
 				// THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): what the
 				// reader does not place is the value, never the label. A label
 				// alone must name a definition already closed, fields after one
@@ -1583,6 +1583,21 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				}
 				label, ok := tableJSONReadLabel(in)
 				if !ok {
+					return false
+				}
+				if in.graph == nil {
+					// a unit with no pointer has no label table: the prefix is still
+					// held to its grammar, and the value is skipped whole
+					c = in.peek()
+					if c == ',' {
+						in.pos++
+						continue
+					}
+					if c == '}' {
+						in.pos++
+						return true
+					}
+					in.bad = true
 					return false
 				}
 				entry, defined := in.graph.getLabel(label)

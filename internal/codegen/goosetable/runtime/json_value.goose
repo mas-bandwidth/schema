@@ -1410,7 +1410,7 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
                 c.jr.rep.repeated += 1;
                 return json_fail(c.jr);
             }
-            if n > 0 && key[0] == '&' && c.graph {
+            if n > 0 && key[0] == '&' {
                 // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label
                 // alone must name a definition already closed; fields after
                 // one must follow a label not yet defined, and the definition
@@ -1419,9 +1419,17 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
                 if !first || key[..n] != "&node" { return json_fail(c.jr); }
                 let label, lok = jr_scan_label(c);
                 if !lok { return false; }
-                let at = jr_label_at(c, label);
                 var next = json_peek(c.jr);
                 if next != ',' && next != '}' { return json_fail(c.jr); }
+                if !c.graph {
+                    // a unit with no pointer has no label table: the prefix is
+                    // still held to its grammar, and the value is skipped whole
+                    c.jr.pos += 1;
+                    if next == '}' { return true; }
+                    first = false;
+                    continue;
+                }
+                let at = jr_label_at(c, label);
                 if next == ',' {
                     c.jr.pos += 1;
                     next = json_peek(c.jr);

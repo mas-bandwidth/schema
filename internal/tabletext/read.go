@@ -706,7 +706,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return in.fail("malformed: a repeated key")
 			}
 			keys[string(key)] = struct{}{}
-			if len(key) > 0 && key[0] == '&' && in.graph != nil {
+			if len(key) > 0 && key[0] == '&' {
 				if !first || string(key) != "&node" {
 					in.bad = true
 					return false
@@ -719,6 +719,22 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				// OPEN until this object closes.
 				label, ok := in.scanLabel()
 				if !ok {
+					return false
+				}
+				if in.graph == nil {
+					// a unit with no pointer has no label table: the prefix is
+					// still held to its grammar (a well-formed &node, first), and
+					// the value is skipped whole
+					c = in.peek()
+					if c == ',' {
+						in.pos++
+						continue
+					}
+					if c == close {
+						in.pos++
+						return true
+					}
+					in.bad = true
 					return false
 				}
 				entry, defined := in.graph[label]

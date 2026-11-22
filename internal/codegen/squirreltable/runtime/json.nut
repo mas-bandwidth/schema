@@ -1697,7 +1697,7 @@ skipContainer = function(r, close, depth) {
       if (keys == null) keys = {};
       if (key in keys) { r.bad = true; return false; }
       keys[key] <- true;
-      if (key.len() > 0 && key[0] == '&' && r.graph != null) {
+      if (key.len() > 0 && key[0] == '&') {
         // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
         // must name a definition already closed; fields after one must follow
         // a label not yet defined, and the definition is open until this
@@ -1709,6 +1709,13 @@ skipContainer = function(r, close, depth) {
         if (label == null) return false;
         c = peek(r);
         if (c != close && c != ',') { r.bad = true; return false; }
+        if (r.graph == null) {
+          // a unit with no pointer has no label table: the prefix is still held
+          // to its grammar, and the value is skipped whole
+          r.p++;
+          if (c == close) return true;
+          continue;
+        }
         if (c == ',') { r.p++; c = peek(r); }
         local bare = c == close;
         local entry = (label in r.graph) ? r.graph[label] : null;

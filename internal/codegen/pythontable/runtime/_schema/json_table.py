@@ -514,9 +514,13 @@ def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None) -> None:
         for index, (key, item) in enumerate(value.items()):
             if "\x00" in key or len(key.encode("utf-8")) > 255:
                 raise Refused("malformed")
-            if graph is not None and key.startswith("&"):
+            if key.startswith("&"):
                 if index != 0 or key != "&node" or not isinstance(item, Number) or not item.isascii() or not item.isdigit() or item[0] == "0" or len(item) > 20 or int(item) > 18446744073709551615:
                     raise Refused("malformed")
+                # a unit with no pointer has no label table: the prefix is still
+                # held to its grammar, and the value is skipped whole
+                if graph is None:
+                    continue
                 # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
                 # must name a definition already closed; fields after one must
                 # follow a label not yet defined, and the definition is open

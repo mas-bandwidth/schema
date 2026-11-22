@@ -556,7 +556,7 @@ local function skip_container(inp, close, depth, graph)
         return false
       end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then
           inp.bad = true
           return false
@@ -572,6 +572,13 @@ local function skip_container(inp, close, depth, graph)
         if c ~= close and c ~= "," then
           inp.bad = true
           return false
+        end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
+          inp.p = inp.p + 1
+          if c == close then return true end
+          goto continue
         end
         if c == "," then
           inp.p = inp.p + 1

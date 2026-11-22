@@ -386,12 +386,16 @@ module SchemaRuntimeUnit
         val.each_with_index do |(key, item), idx|
           raise Refused, 'malformed' if key.include?("\x00") || key.bytesize > 255
 
-          if !graph.nil? && key.start_with?('&')
+          if key.start_with?('&')
             tok = u(item.is_a?(JsonNumber) ? item.token : nil)
             if idx != 0 || key != '&node' || tok.nil? || !/\A[1-9][0-9]*\z/.match?(tok) ||
                tok.length > 20 || tok.to_i > 0xFFFFFFFFFFFFFFFF
               raise Refused, 'malformed'
             end
+
+            # a unit with no pointer has no label table: the prefix is still held
+            # to its grammar, and the value is skipped whole
+            next if graph.nil?
 
             # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
             # must name a definition already closed; fields after one must follow

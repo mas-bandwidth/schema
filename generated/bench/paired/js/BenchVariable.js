@@ -3986,6 +3986,15 @@ class TableVariableTextIn {
           // a label not yet defined, and the definition is open until this
           // object closes. What the reader does not place is the value.
           first = false;
+          if (graph === null) {
+            // a unit with no pointer has no label table: the prefix is still
+            // held to its grammar, and the value is skipped whole
+            ch = this.peek();
+            if (ch === ",") { this.p++; continue; }
+            if (ch === close) { this.p++; return true; }
+            this.bad = true;
+            return false;
+          }
           const entry = graph.get(label);
           ch = this.peek();
           if (ch === ",") { this.p++; ch = this.peek(); }
@@ -4043,7 +4052,7 @@ function TableVariableFromJson(c, text, report) {
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
-  const ok = TableVariableReadTable(c, inp, v, 0, new globalThis.Map(), report);
+  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new globalThis.Map() : null, report);
   if (ok) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }

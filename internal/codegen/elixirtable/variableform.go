@@ -6031,7 +6031,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_object_val reads one member's value; in a variable-class document
   # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
-    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+    if String.starts_with?(key, "&") do
       if key != "&node" or acc != [] do
         :error
       else

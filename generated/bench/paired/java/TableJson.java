@@ -1121,13 +1121,29 @@ public final class TableJson {
                     // never the label.
                     boolean wasFirst = firstKey;
                     firstKey = false;
-                    if (graph && key.startsWith("&")) {
+                    if (key.startsWith("&")) {
                         if (!wasFirst || !"&node".equals(key)) {
                             bad = true;
                             return;
                         }
                         long labelId = scanLabel();
                         if (bad) {
+                            return;
+                        }
+                        if (!graph) {
+                            // a unit with no pointer has no label table: the prefix
+                            // is still held to its grammar, and the value is
+                            // skipped whole
+                            c = peek();
+                            if (c == ',') {
+                                p++;
+                                continue;
+                            }
+                            if (c == closing) {
+                                p++;
+                                return;
+                            }
+                            bad = true;
                             return;
                         }
                         LabelEntry entry = labels.get(labelId);

@@ -1919,7 +1919,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 			else
 				keys[key] = true
 			end
-			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
+			if #key > 0 and string.byte(key, 1) == 38 then
 				-- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
 				-- must name a definition already closed; fields after one must
 				-- follow a label not yet defined, and the definition is open until
@@ -1938,6 +1938,15 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 					r.bad = true
 					return false
 				end
+				if r.graph == nil then
+					-- a unit with no pointer has no label table: the prefix is
+					-- still held to its grammar, and the value is skipped whole
+					r.pos += 1
+					if c == close then
+						return true
+					end
+					resumed = true
+				else
 				if c == 44 then
 					r.pos += 1
 					c = peek(r)
@@ -1960,6 +1969,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				definition = { open = true, node = nil, t = nil }
 				graph[label] = definition
 				resumed = true
+				end
 			end
 		end
 		if not resumed then

@@ -362,7 +362,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       keys[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then inp.bad = true; return false end
         local label = scan_label(inp)
         if label == nil then return false end
@@ -374,17 +374,24 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
         labelled = true
         c = peek(inp)
         if c ~= close and c ~= ',' then inp.bad = true; return false end
-        if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
-        local entry = graph[label]
-        local bare = c == close
-        if bare ~= (entry ~= nil) then inp.bad = true; return false end
-        if bare then
-          if entry.open then inp.bad = true; return false end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
           inp.p = inp.p + 1
-          return true
+          if c == close then return true end
+        else
+          if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
+          local entry = graph[label]
+          local bare = c == close
+          if bare ~= (entry ~= nil) then inp.bad = true; return false end
+          if bare then
+            if entry.open then inp.bad = true; return false end
+            inp.p = inp.p + 1
+            return true
+          end
+          definition = { node = nil, st = nil, open = true }
+          graph[label] = definition
         end
-        definition = { node = nil, st = nil, open = true }
-        graph[label] = definition
       end
     end
     if not labelled then

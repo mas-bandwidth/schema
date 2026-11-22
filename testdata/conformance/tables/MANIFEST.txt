@@ -686,6 +686,9 @@ json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/confo
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
+# R7: in a unit with no pointer a skipped value still refuses a stray & key or an &node not first
+json-hostile skipped-ampersand-stray-key             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-stray-key refused
+json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-node-not-first refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused

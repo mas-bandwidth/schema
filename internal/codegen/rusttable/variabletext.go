@@ -365,13 +365,16 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
+    /// the root is a VARIABLE table, whose text carries the label construct
+    /// (§16.7); a pointer-free root holds the prefix to its grammar and skips whole
+    pub graph: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new(), graph: false }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1011,17 +1014,19 @@ impl<'a> Jr<'a> {
                         };
                         labelled = true;
                         self.space();
-                        let bare = self.p < self.b.len() && self.b[self.p] == b'}';
-                        let defined = self.labels.contains_key(&label);
-                        let closed = matches!(self.labels.get(&label), Some(JsonLabel::Dropped | JsonLabel::Node(_)));
-                        if bare != defined || (bare && !closed) {
-                            self.damaged = true;
-                            self.depth -= 1;
-                            return;
-                        }
-                        if !bare {
-                            self.labels.insert(label, JsonLabel::Open);
-                            defining = Some(label);
+                        if self.graph {
+                            let bare = self.p < self.b.len() && self.b[self.p] == b'}';
+                            let defined = self.labels.contains_key(&label);
+                            let closed = matches!(self.labels.get(&label), Some(JsonLabel::Dropped | JsonLabel::Node(_)));
+                            if bare != defined || (bare && !closed) {
+                                self.damaged = true;
+                                self.depth -= 1;
+                                return;
+                            }
+                            if !bare {
+                                self.labels.insert(label, JsonLabel::Open);
+                                defining = Some(label);
+                            }
                         }
                     }
                     if !labelled {
@@ -1956,6 +1961,9 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
 	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
+	if g.isVariableRoot(st) {
+		fmt.Fprintf(b, "    jr.graph = true;\n")
+	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
 	fmt.Fprintf(b, "    if jr.missing_required == 0 {\n")

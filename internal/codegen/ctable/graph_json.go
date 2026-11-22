@@ -188,8 +188,9 @@ static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const c
     int taken = 0, bare;
     int64_t mark;
     char c;
-    if ( graph == NULL || strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
+    if ( strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
     if ( !table_json_scan_label(in,&label) ) { return 0; }
+    if ( graph == NULL ) { return 1; } /* a fixed root in a pointered unit: no label table, the value skipped whole */
     entry = table_json_graph_reach(&graph->labels,label,&taken);
     if ( entry == NULL ) { in->bad = 1; return 0; }
     c = table_json_peek(in);
