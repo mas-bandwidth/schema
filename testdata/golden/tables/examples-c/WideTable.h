@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_TABLEDEMO_WIDETABLE_H
-#define SCHEMA_TABLEDEMO_WIDETABLE_H
+#ifndef SCHEMA_TABLEDEMO_Wide_table_h
+#define SCHEMA_TABLEDEMO_Wide_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -6889,4 +6889,4 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_to_json( const tabledemo_wide_b
 }
 #endif
 
-#endif /* SCHEMA_TABLEDEMO_WIDETABLE_H */
+#endif /* SCHEMA_TABLEDEMO_Wide_table_h */

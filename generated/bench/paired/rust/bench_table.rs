@@ -243,15 +243,15 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         out.push(22);
         out.extend_from_slice(&v.server_time.to_le_bytes());
     }
-    debug_assert!(!v.entities.is_empty() && v.entities.len() <= 8, "entities count outside [1, 8]");
-    if !v.entities.is_empty() {
-        let mark = ids.mark();
-        let mut birth = v.entities.len() == 1;
+    {
+        debug_assert!(!v.entities.is_empty() && v.entities.len() <= 8, "entities count outside 1..8");
+        let birth_mark = ids.mark();
         let r = ids.id_ref(0x935d0fb07bb3822a);
         let count = v.entities.len().min(8);
         let mut body = Vec::new();
         body.push(13); // the element kind
         leb_write(&mut body, count as u64);
+        let mut birth = count == 1;
         for (j, e) in v.entities.iter().take(count).enumerate() {
             let mut eb = Vec::new();
             let bp = path.step(9, j as u32);
@@ -260,17 +260,15 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
                 retain_emit_tail(&mut eb, ids, ret, KNOWN_IDS, bp, rep);
             }
             eb.push(0); // the body's zero reference
+            if eb.len() != 1 { birth = false; }
             leb_write(&mut body, eb.len() as u64);
             body.extend_from_slice(&eb);
-            birth = birth && eb.len() <= 1; // a body that is its terminator alone
         }
-        if birth {
-            ids.rollback(mark);
-        } else {
-            leb_write(out, r);
-            out.push(14);
-            leb_write(out, body.len() as u64);
-            out.extend_from_slice(&body);
+        if birth { ids.rollback(birth_mark); } else {
+        leb_write(out, r);
+        out.push(14);
+        leb_write(out, body.len() as u64);
+        out.extend_from_slice(&body);
         }
     }
     if !v.stats.is_empty() {
@@ -2010,7 +2008,23 @@ pub fn mixed_event_json_read(jr: &mut Jr, v: &mut MixedEvent) {
     let Some(key) = jr.read_name() else { jr.damaged = true; return; };
     if jr.peek() != b':' { jr.damaged = true; return; }
     jr.p += 1;
-    match key.as_str() {
+    jr.depth += 1;
+    mixed_event_json_read_arm(jr, v, &key);
+    jr.depth -= 1;
+    if jr.damaged || jr.missing_required != 0 { return; }
+    let c = jr.peek();
+    if c == b',' {
+        jr.p += 1;
+        if jr.peek() == b'}' { jr.p += 1; return; }
+        jr.damaged = true; *v = MixedEvent::None; return;
+    }
+    if c == b'}' { jr.p += 1; return; }
+    jr.damaged = true; *v = MixedEvent::None;
+}
+
+#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]
+fn mixed_event_json_read_arm(jr: &mut Jr, v: &mut MixedEvent, key: &str) {
+    match key {
         "hit" => {
             if jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }
             else {
@@ -2044,15 +2058,6 @@ pub fn mixed_event_json_read(jr: &mut Jr, v: &mut MixedEvent) {
             jr.skip_value();
         }
     }
-    if jr.damaged || jr.missing_required != 0 { return; }
-    let c = jr.peek();
-    if c == b',' {
-        jr.p += 1;
-        if jr.peek() == b'}' { jr.p += 1; return; }
-        jr.damaged = true; *v = MixedEvent::None; return;
-    }
-    if c == b'}' { jr.p += 1; return; }
-    jr.damaged = true; *v = MixedEvent::None;
 }
 
 #[allow(unused_variables, dead_code)]
@@ -2700,6 +2705,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                 seen[9] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
+                    jr.depth += 1;
                     v.entities.clear();
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
@@ -2717,6 +2723,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                         if c == b']' { jr.p += 1; break; }
                         jr.damaged = true; break;
                     }
+                    jr.depth -= 1;
                     if v.entities.is_empty() { jr.damaged = true; }
                 } else { jr.damaged = true; jr.skip_value(); }
             }
@@ -2725,6 +2732,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                 seen[10] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
+                    jr.depth += 1;
                     v.stats.clear();
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
@@ -2742,6 +2750,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                         if c == b']' { jr.p += 1; break; }
                         jr.damaged = true; break;
                     }
+                    jr.depth -= 1;
                 } else { jr.damaged = true; jr.skip_value(); }
             }
             "game_event" => {
@@ -2754,6 +2763,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                 seen[12] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
+                    jr.depth += 1;
                     v.loadout.clear();
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
@@ -2775,6 +2785,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                         if c == b']' { jr.p += 1; break; }
                         jr.damaged = true; break;
                     }
+                    jr.depth -= 1;
                     while v.loadout.len() < 4 { v.loadout.push(0u8); }
                 } else { jr.damaged = true; jr.skip_value(); }
             }
@@ -3240,6 +3251,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 seen[11] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
+                    jr.depth += 1;
                     let mut bits: u64 = 0;
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
@@ -3263,6 +3275,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                         if jr.peek() == b']' { jr.p += 1; break; }
                         jr.damaged = true; break;
                     }
+                    jr.depth -= 1;
                     v.damage = bits;
                 } else { jr.damaged = true; jr.skip_value(); }
             }
@@ -3782,9 +3795,9 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
     }
     w.put_text(at + 1248, v.player_name.as_bytes(), 15, at + 1264);
     w.put_text(at + 1268, &v.payload, 16, at + 1284);
-    w.put_f32(at + 1288, v.aim_x);
-    w.put_f32(at + 1292, v.aim_y);
-    w.put_f32(at + 1296, v.aim_z);
+    w.put_f32(at + 1288, if v.aim_x == 0.0 { 0.0 } else { v.aim_x });
+    w.put_f32(at + 1292, if v.aim_y == 0.0 { 0.0 } else { v.aim_y });
+    w.put_f32(at + 1296, if v.aim_z == 0.0 { 0.0 } else { v.aim_z });
     w.put_f32(at + 1300, v.recoil);
     w.put_f64(at + 1304, v.drift);
     w.put_wide(at + 1312, v.wide_key);

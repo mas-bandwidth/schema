@@ -385,10 +385,7 @@ pub fn fixed_table_load_retain(wire: &[u8], retain: &mut TableRetain, report: &m
 /// id-table reader bound and 8192-slot open-addressing distinctness probe with
 /// no heap allocation for the id table (docs/SPEC-TABLES.md §3).
 pub fn fixed_table_load_inner(wire: &[u8], retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<FixedTable> {
-    // this read's own non-finite float (docs/SPEC-TABLES.md §3.3)
-    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();
-    report.non_finite_float = "";
-    report.non_finite_float_id = None;
+    *report = TableReport::default();
     if wire.is_empty() { report.damaged = true; return None; }
     if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = if wire[0] == 2 { TableReason::MessageFormAsFile } else { TableReason::NewerForm }; return None; }
     if wire.len() < 9 { report.damaged = true; return None; }
@@ -783,9 +780,14 @@ fn fixed_table_to_json_both(v: &FixedTable) -> Jw {
 
 /// fixed_table_to_json — one FixedTable as one pretty-printed text (docs/SPEC-TABLES.md §16.1):
 /// TWO passes over one walk, so a node's first write knows whether it will
-/// be named again and takes its `&node` label there (§16.7).
+/// be named again and takes its `&node` label there (§16.7). A value the
+/// form cannot spell is the writer's refusal: a debug build asserts, and
+/// every build returns no text for it, as fixed_table_to_json_checked returns None.
 pub fn fixed_table_to_json(v: &FixedTable) -> String {
-    fixed_table_to_json_both(v).out
+    let w = fixed_table_to_json_both(v);
+    // Rust write checks are debug asserts only (docs/SPEC-TABLES.md §16.3)
+    debug_assert!(!w.refused, "fixed_table_to_json: the writer refused the value; use fixed_table_to_json_checked");
+    if w.refused { String::new() } else { w.out }
 }
 
 /// fixed_table_to_json_checked — the same text, or None for a value the form cannot spell:
@@ -805,7 +807,7 @@ pub fn fixed_table_from_json(text: &str, report: &mut TableReport) -> Option<Fix
 /// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read
 /// (string_not_utf8, docs/SPEC-TABLES.md §16.3) rather than reading as U+FFFD.
 pub fn fixed_table_from_json_bytes(text: &[u8], report: &mut TableReport) -> Option<FixedTable> {
-    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();
+    *report = TableReport::default();
     let mut jr = Jr::new(text);
     let mut v = FixedTable::default();
     fixed_table_json_read(&mut jr, &mut v);
