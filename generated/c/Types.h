@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_TYPES_H
-#define SCHEMA_EXAMPLE_TYPES_H
+#ifndef SCHEMA_EXAMPLE_Types_h
+#define SCHEMA_EXAMPLE_Types_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -246,4 +246,4 @@ static SCHEMA_UNUSED example_extreme_row_t example_new_extreme_row( void )
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_TYPES_H */
+#endif /* SCHEMA_EXAMPLE_Types_h */
