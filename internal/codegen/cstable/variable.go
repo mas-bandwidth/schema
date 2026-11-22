@@ -172,7 +172,7 @@ const tableVariableWireSource = `
     static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
     {
         if (f == null) { return; }
-        int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
+        int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13) { object child = f.GetChild(value, i); if (child != null) { CycleSlots(child, f.Table, index, targets); } }
