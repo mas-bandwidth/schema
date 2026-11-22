@@ -158,7 +158,7 @@ func TestRule1CountMismatch(t *testing.T) {
 // RULE 2: every kind is in the closed set 1..30, 32, 35. A fixed form's
 // kind set is CLOSED, so a kind outside it means a newer FORM BYTE — a
 // different form, not a newer layout of this one — and it is refused, never
-// stepped over. 0 is no kind at all and 31 is §3's framing escape: neither is a
+// stepped over. 0 is no kind at all and 31 is held by name and never written (R17): neither is a
 // kind a declaration spells, so neither is ever an entry's kind.
 func TestRule2KindUnknown(t *testing.T) {
 	for _, kind := range []byte{200, 0, 31, 34, 36, 255} {
