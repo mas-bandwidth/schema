@@ -7,11 +7,8 @@
 # address. In every other clone this hook does nothing, so maintainers and outside
 # contributors are unaffected; the CAA check on GitHub still covers them.
 #
-# Checked range, per pushed ref: the commits reachable from the local sha that no
-# remote-tracking ref of the pushed remote has (git rev-list <sha> --not
-# --remotes=<remote>). That covers a new branch, and a merge from main does not
-# drag main's own GitHub-committed commits into the check. A deleted ref is skipped.
-# Never push with --no-verify: if this hook refuses wrongly, fix the hook.
+# Checked range, per pushed ref: <remote sha>..<local sha>, or origin/main..<local
+# sha> for a new branch (the same commits as @{u}..HEAD / origin/main..HEAD).
 set -u
 login=rowan-claude
 email=305107455+rowan-claude@users.noreply.github.com
@@ -23,19 +20,29 @@ ok() { # name, email
 }
 
 zero=0000000000000000000000000000000000000000
-# Exclude what the pushed remote already has. Hook arg 1 is the remote's name (or
-# its URL when pushed by URL: then every remote's refs are excluded).
-remote=${1:-}
-if git remote | grep -qxF -- "$remote"; then notrefs=--remotes="$remote"; else notrefs=--remotes; fi
 bad=
 while read -r lref lsha rref rsha; do
   [ -z "${lsha:-}" ] && continue
   [ "$lsha" = "$zero" ] && continue
+  if [ "$rsha" = "$zero" ]; then
+    if git rev-parse -q --verify origin/main >/dev/null; then
+      range=(origin/main.."$lsha")
+    else
+      range=("$lsha" --not --remotes)
+    fi
+  else
+    range=("$rsha".."$lsha")
+    # Commits already on main (merged in to bring a branch current) are not this
+    # push's: main's merge commits carry GitHub as committer.
+    if git rev-parse -q --verify origin/main >/dev/null; then
+      range+=(^origin/main)
+    fi
+  fi
   while IFS=$'\t' read -r sha an ae cn ce; do
     if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then
       bad+="  ${sha:0:12}  author $an <$ae>  committer $cn <$ce>"$'\n'
     fi
-  done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "$lsha" --not "$notrefs")
+  done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "${range[@]}")
 done
 
 if [ -n "$bad" ]; then

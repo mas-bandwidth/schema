@@ -13,6 +13,7 @@ bin/schema check <dir>
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `.claude-plugin/` | plugin marketplace entry for skills/ | `none` | `none` |
+| `.githooks/` | git hooks for agent clones (pre-push identity guard) | `go test ./internal/ci -run PrePush` | `make setup` |
 | `.github/` | CI workflows | `go test ./internal/ci` | `make test` |
 | [bench/](bench/AGENTS.md) | cross-language serialize bench | `go test ./bench/corpus` | `bench/run.sh` |
 | `cmd/` | schema CLI | `go test ./cmd/schema` | `go test ./cmd/schema` |
