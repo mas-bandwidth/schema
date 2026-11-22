@@ -339,9 +339,11 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         out.extend_from_slice(&payload);
     }
     }
+    debug_assert!(v.loadout.len() == 4, "loadout length is not 4");
     if v.loadout.iter().take(4).any(|e| (*e) != 0u8) {
         let r = ids.id_ref(0x5759ce7586bbb5a3);
         let mut body = Vec::new();
+        debug_assert!(v.loadout.len() == 4, "loadout length is not 4");
         body.push(6);
         let count = 4;
         leb_write(&mut body, count as u64);

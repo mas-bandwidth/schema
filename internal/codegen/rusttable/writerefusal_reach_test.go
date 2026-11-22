@@ -82,6 +82,12 @@ func TestRustWriteRefusalReachesEveryCarrier(t *testing.T) {
 		{"SF-15", []string{
 			`debug_assert!((*e) >= 0 && (*e) <= 10, "scores out of range [0, 10]");`,
 		}},
+		{"SF-34", []string{
+			`debug_assert!(v.fixed_a.len() == 3, "fixed_a length is not 3");`,
+		}},
+		{"SF-35", []string{
+			`debug_assert!(v.scores.len() == 3, "scores length is not 3");`,
+		}},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			for _, want := range c.want {
@@ -101,7 +107,7 @@ func TestRustWriteRefusalReachesEveryCarrierNative(t *testing.T) {
 	dir := t.TempDir()
 	layoutRustUnit(t, dir, "probe", generate(t, writeRefusalReachSchema))
 	cases := []struct{ id, set, panic string }{
-		{"in-contract", "c.blob = vec![1; 4]; c.o_amount = Some(10); c.pick = Pick::Label(String::from(\"12345678\"));", ""},
+		{"in-contract", "c.blob = vec![1; 4]; c.o_amount = Some(10); c.pick = Pick::Label(String::from(\"12345678\")); c.fixed_a = vec![1, 2, 3]; c.scores = vec![1, 2, 3];", ""},
 		{"SF-09", "c.blob = vec![1; 5];", "blob length past 4"},
 		{"SF-10-range", "c.o_amount = Some(11);", "o_amount out of range [0, 10]"},
 		{"SF-10-bits", "c.o_chan = Some(64);", "o_chan exceeds bits(6) width"},
@@ -114,6 +120,10 @@ func TestRustWriteRefusalReachesEveryCarrierNative(t *testing.T) {
 		{"SF-14-length", "c.pick = Pick::Label(String::from(\"123456789\"));", "label length past 8"},
 		{"SF-14-zero", "c.pick = Pick::Label(String::from(\"a\\0b\"));", "label holds a zero byte"},
 		{"SF-15", "c.scores = vec![1, 11, 1];", "scores out of range [0, 10]"},
+		{"SF-34-long", "c.fixed_a = vec![1; 4];", "fixed_a length is not 3"},
+		{"SF-34-short", "c.fixed_a = vec![1; 2];", "fixed_a length is not 3"},
+		{"SF-35-long", "c.scores = vec![1; 4];", "scores length is not 3"},
+		{"SF-35-short", "c.scores = vec![1; 2];", "scores length is not 3"},
 	}
 	var main strings.Builder
 	main.WriteString("#![allow(dead_code, unused_imports)]\nmod probe;\nuse probe::*;\nfn main() {\n    let which = std::env::args().nth(1).expect(\"a case\");\n    let mut c = Config::default();\n    match which.as_str() {\n")

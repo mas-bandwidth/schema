@@ -1280,12 +1280,25 @@ Uint8List? _wireResaveOne<T, R>(
   Uint8List wire,
   R Function() newReport,
   (bool, String) Function(R) status,
-  T Function(Uint8List, R) load,
+  T Function(Uint8List, [R?]) load,
   Uint8List Function(T) save,
 ) {
   final r = newReport();
   final v = load(wire, r);
   final (refused, refusal) = status(r);
+  // A LOAD WITH NO REPORT SIGNALS A REFUSAL AS A THROW, never as the type
+  // defaults with no signal (docs/SPEC-TABLES.md section 4, 6.5; audit SF-16):
+  // every refused wire row must throw, and every accepted row (its lawful twin)
+  // must not.
+  var threw = false;
+  try {
+    load(wire);
+  } on FormatException {
+    threw = true;
+  }
+  if (threw != refused) {
+    throw StateError("a load with no report ${threw ? "threw" : "did not throw"} but the report says refused=$refused");
+  }
   if (refused) {
     if (refusal.startsWith('blob_shared')) {
       throw StateError(refusal);

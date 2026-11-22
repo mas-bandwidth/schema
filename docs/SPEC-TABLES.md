@@ -10326,6 +10326,17 @@ unknown key, keyed slot, union arm, enum variant or flags name, because that
 form is an authoring file and an unknown name in it is a typo, never a newer
 writer. Every other path accepts the same unknown as evolution.
 
+**A READ THAT IS HANDED NO REPORT SIGNALS ITS REFUSAL** (audit SF-16, SF-30). A
+port whose read takes an optional report answers a refusal with the verdict of
+the report when one was passed, and with the native failure of the language (a
+throw, an `error`, a `false` with a reason) when none was passed: no read of any
+form answers a refusal with the defaults of the type and no signal. Dart
+`<root>WireLoad(data)` throws a `FormatException` naming the reason, as
+`<root>FromJson(text)` does. A read that refuses before it parses (the Go
+builder `FromJSONWith` on a locked arena, §6.5) resets a supplied report first
+and then refuses into it, so a reused report never keeps the stale success of an
+earlier read.
+
 **THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (the maintainer, 2026-11-03: "I
 am actually OK if there is only a generic failure to read. I do not care about
 the specific reporting on a per-instance basis."). For one input every read in

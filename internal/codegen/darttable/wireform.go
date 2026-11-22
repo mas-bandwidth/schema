@@ -3845,11 +3845,19 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 func (g *wireGen) emitLoad(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireLoad"
+	// A CALLER WHO PASSES NO REPORT GETS THE REFUSAL AS A THROW, never the type's
+	// defaults with no signal, as <root>FromJson does (docs/SPEC-TABLES.md §4,
+	// §6.5; audit SF-16). A caller who passes a report reads the verdict from it.
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
+	g.pf("\tfinal read = report ?? TableWireReport();\n")
+	g.pf("\tfinal v = _%sRead(data, read);\n", fn)
+	g.pf("\tif (report == null && read.reason != 'ok') throw FormatException(read.reason);\n")
+	g.pf("\treturn v;\n}\n\n")
+	g.pf("%s _%sRead(Uint8List data, TableWireReport report) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
 	// EVERY COUNT IS ZERO AT THE START OF A READ, as Go's load zeroes its report: unknown,
 	// widened and the retain counters never add up across calls.
-	g.pf("\treport ??= TableWireReport();\n\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
+	g.pf("\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
