@@ -1850,7 +1850,10 @@ local function message_root(T, root)
 end
 
 -- loadMessages is the strict batch read (docs/SPEC-TABLES.md §6.5).
--- Damage discards every body (§4).
+-- Damage discards every body (§4). EVERY REFUSAL ANSWERS nil (ruling R4): a
+-- framing refusal and a body or trailer refusal hand back the same shape, so a
+-- caller tests `values == nil` and never `#values == 0`; a read that lands
+-- returns a fresh list and touches nothing the caller holds.
 function M.loadMessages(T, root, vocab, data, report)
   message_root(T, root)
   report = report or {}
@@ -1905,7 +1908,7 @@ function M.loadMessages(T, root, vocab, data, report)
       report.nonFiniteFloat = nonfinite
       report.refused = 1
       report.reason = "non_finite_float: " .. nonfinite
-      return {}
+      return nil
     end
     if reason ~= nil then
       if reason == "out_of_range" then
@@ -1915,16 +1918,16 @@ function M.loadMessages(T, root, vocab, data, report)
       end
       report.refused = 1
       report.reason = reason
-      return {}
+      return nil
     end
     if v == nil then
       report.damaged = true
-      return {}
+      return nil
     end
     values[i] = v
   end
   if not R:align() or R.off ~= R.nbits then report.damaged = true end
-  if report.damaged then return {} end
+  if report.damaged then return nil end
   return values
 end
 

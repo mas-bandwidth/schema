@@ -18,7 +18,8 @@ import (
 // the generated Squirrel load refuses the whole file when one is not. The
 // vectors are the shared corpus's, iterated in fixedvector.DeadBytes: each
 // control reads and saves back byte for byte; each changed file is refused and
-// leaves the caller's destination exactly as it was. The verdict is the
+// leaves the caller's marked destination at its declared defaults (ruling R4:
+// no partly read value survives a refusal). The verdict is the
 // contract, so no reason is compared.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
@@ -88,7 +89,10 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
   local before = ::fingerprint(v[0]);
   local n = T.DeadRootFixedLoad(inputs[files[k]], v, null);
   local untouched = ::fingerprint(v[0]) == before ? 1 : 0;
-  if (n < 0) { print("RESULT\t" + names[k] + "\t" + n + "\t" + untouched + "\t-1\t\n"); }
+  if (n < 0) {
+    untouched = ::fingerprint(v[0]) == ::fingerprint(T.DeadRoot()) ? 1 : 0;
+    print("RESULT\t" + names[k] + "\t" + n + "\t" + untouched + "\t-1\t\n");
+  }
   else {
     local out = blob(T.DeadRootFixedMeasure(n));
     local m = T.DeadRootFixedSave(out, v);
@@ -135,7 +139,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 				t.Errorf("%s: the load returned %d, want refused (-1)", v.Name, r.count)
 			}
 			if r.untouched != 1 {
-				t.Errorf("%s: a refused load changed the caller's destination", v.Name)
+				t.Errorf("%s: a refused load left the caller's destination off its declared defaults", v.Name)
 			}
 			continue
 		}

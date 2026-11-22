@@ -1783,13 +1783,15 @@ end
 
 -- loadMessagesWalk is the walk batch read (docs/SPEC-TABLES.md §6.5,
 -- §3.3): evolution may recover a value, but damage discards the whole batch.
+-- EVERY REFUSAL ANSWERS THE SAME SHAPE, 0 and an empty list (ruling R4): a
+-- framing refusal (newer_form, no_vocabulary) as much as a body refusal.
 function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
 	if len < 1 then report.malformed = true; return 0, {} end
-	if buffer.readu8(data, 0) ~= 2 then return 0, refuse(report, "newer_form") end
+	if buffer.readu8(data, 0) ~= 2 then refuse(report, "newer_form"); return 0, {} end
 	-- THE INTEGRITY TRAILER IS CHECKED BEFORE ANY BODY IS DECODED
 	-- (docs/SPEC-TABLES.md §2.14, §3.3): the form byte is read first, then a
 	-- declaring root's batch must end in the CRC-32C of the bytes before it,
@@ -1805,7 +1807,7 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 		data = body
 		len = buffer.len(data)
 	end
-	if not v.announced then return 0, refuse(report, "no_vocabulary") end
+	if not v.announced then refuse(report, "no_vocabulary"); return 0, {} end
 	if len < 2 then report.malformed = true; return 0, {} end
 	local count = buffer.readu8(data, 1) + 1
 	if count > capacity then

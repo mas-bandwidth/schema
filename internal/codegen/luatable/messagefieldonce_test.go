@@ -225,12 +225,12 @@ assert(not rKeyLawful.damaged and rKeyLawful.refused == 0, "the lawful keyed bat
 
 local rField = {}
 local field = T.LoadMessages("Msg", vocab, inputs.field, rField)
-assert(field ~= nil and #field == 0, "a body naming x twice was not refused")
+assert(field == nil, "a body naming x twice was not refused")
 assert(rField.damaged or rField.refused ~= 0, "a body naming x twice was not damage")
 
 local rKeyed = {}
 local keyed = T.LoadMessages("Msg", vocab, inputs.keyed, rKeyed)
-assert(keyed ~= nil and #keyed == 0, "a body naming a keyed slot twice was not refused")
+assert(keyed == nil, "a body naming a keyed slot twice was not refused")
 assert(rKeyed.damaged or rKeyed.refused ~= 0, "a body naming a keyed slot twice was not damage")
 
 print("field-once-ok")
