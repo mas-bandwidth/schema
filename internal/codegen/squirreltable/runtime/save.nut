@@ -1010,8 +1010,13 @@ fixedWriteElement = function(T, owner, fname, e, val, out, off) {
   }
   if (e.shape == "float") {
     if (!floatFinite(e, val)) return refuseNonFinite(e);
-    if (e.f32) putFixedU(out, off, 4, narrowF32(val.tofloat()));
-    else putFixedU(out, off, 8, castf2i(val.tofloat()));
+    local bits = e.f32 ? narrowF32(val.tofloat()) : castf2i(val.tofloat());
+    // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+    // ruling fixed-compressed-negzero), judged after the value is narrowed,
+    // so a tiny negative that rounds to -0 stores +0; a plain float's -0
+    // rides bit-exact
+    if (("fmin" in e) && e.fmin != null && (bits & (e.f32 ? 0x7fffffff : 0x7fffffffffffffff)) == 0) bits = 0;
+    putFixedU(out, off, e.f32 ? 4 : 8, bits);
     return true;
   }
   if (e.shape == "int" || e.shape == "flags") {
