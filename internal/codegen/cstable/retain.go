@@ -306,14 +306,14 @@ const tableRetainSource = `
         public ulong Reference(ulong id)
         {
             for (int i = 0; i < KnownCount; i++) { if (Values[i] == id) { return (ulong)Slots[i]; } }
-            if (KnownCount == Values.Length) { Overflow = true; return 0; }
+            if (KnownCount == Values.Length || Count >= 4096) { Overflow = true; return 0; }
             Values[KnownCount] = id; Slots[KnownCount++] = ++Count; return (ulong)Count;
         }
         public ulong Record(ulong id)
         {
             if (Array.BinarySearch(RetainKnown, id) >= 0) { return Reference(id); }
             for (int i = 0; i < Store->IdUsed; i++) { if (Store->Ids[i].Value == id) { return (ulong)Store->Ids[i].Slot; } }
-            if (Store->Ids == null || Store->IdUsed >= Store->IdCapacity) { Lost = true; return 0; }
+            if (Store->Ids == null || Store->IdUsed >= Store->IdCapacity || Count >= 4096) { Lost = true; return 0; }
             Store->Ids[Store->IdUsed++] = new TableRetain.Id { Value = id, Slot = ++Count }; return (ulong)Count;
         }
         public void Truncate(int mark)
