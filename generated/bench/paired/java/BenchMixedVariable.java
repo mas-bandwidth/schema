@@ -2413,7 +2413,7 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_x");
         b.append(": ");
-        TableJson.writeFloat(b, v.aimX, true);
+        TableJson.writeFloat(b, (v.aimX == 0.0f ? 0.0f : v.aimX), true);
         if (!first) {
             b.append(',');
         }
@@ -2421,7 +2421,7 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_y");
         b.append(": ");
-        TableJson.writeFloat(b, v.aimY, true);
+        TableJson.writeFloat(b, (v.aimY == 0.0f ? 0.0f : v.aimY), true);
         if (!first) {
             b.append(',');
         }
@@ -2429,7 +2429,7 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_z");
         b.append(": ");
-        TableJson.writeFloat(b, v.aimZ, true);
+        TableJson.writeFloat(b, (v.aimZ == 0.0f ? 0.0f : v.aimZ), true);
         if (!first) {
             b.append(',');
         }

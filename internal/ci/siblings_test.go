@@ -151,6 +151,9 @@ func TestSiblingsPresentMakeDepsFetchesNothing(t *testing.T) {
 		tmp := t.TempDir()
 		makeRoot := filepath.Join(tmp, "repo")
 		copyMakeWorkspace(t, root, makeRoot)
+		if len(lines) == 0 {
+			t.Fatal("lines is empty: the loop below would check nothing")
+		}
 		for _, l := range lines {
 			if l.path == missing {
 				continue

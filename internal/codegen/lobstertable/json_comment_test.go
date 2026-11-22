@@ -93,6 +93,9 @@ func TestLobsterJsonCommentIsWellFormedUTF8(t *testing.T) {
 		t.Fatalf("the Lobster table surface refuses tables/examples: %v", err)
 	}
 	rows := commentRows(t)
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, r := range rows {
 		if got := goJsonVerdict(t, g.u, rootName, r.text); got != r.verdict {
 			t.Fatalf("%s: the reference %s, the standard %s; the comparison is not grounded", r.name, got, r.verdict)
@@ -130,6 +133,9 @@ func TestLobsterJsonCommentIsWellFormedUTF8(t *testing.T) {
 			t.Fatalf("the program printed %q", line)
 		}
 		got[i] = v
+	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
 	}
 	for i, r := range rows {
 		if got[i] != r.verdict {

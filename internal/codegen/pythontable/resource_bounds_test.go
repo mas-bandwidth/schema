@@ -199,6 +199,7 @@ func pythonResourceBoundsRun(t *testing.T, dir string) map[string]pythonResource
 		inputs[name] = []byte(text)
 	}
 	got := map[string]pythonResourceBoundsResult{}
+	printed := map[string]int{}
 	for _, interpreter := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		stdout, stderr, err := pyrun.Try(t, interpreter, dir, "main.py", inputs)
 		if err != nil {
@@ -220,6 +221,7 @@ func pythonResourceBoundsRun(t *testing.T, dir string) map[string]pythonResource
 			if _, err := fmt.Sscanf(fields[5], "%d", &r.bytes); err != nil {
 				t.Fatalf("%s: bad bytes %q: %v", fields[0], fields[5], err)
 			}
+			printed[fields[0]]++
 			if previous, ok := got[fields[0]]; ok {
 				if previous.verdict != r.verdict || previous.reason != r.reason || previous.bytes != r.bytes {
 					t.Fatalf("%s: the two pinned interpreters disagree: %+v vs %+v", fields[0], previous, r)
@@ -230,6 +232,13 @@ func pythonResourceBoundsRun(t *testing.T, dir string) map[string]pythonResource
 				r.steps = max(r.steps, previous.steps)
 			}
 			got[fields[0]] = r
+		}
+	}
+	// the agreement check above runs only on a shape both interpreters
+	// printed: a shape one of them left out would go uncompared
+	for name, n := range printed {
+		if n != 2 {
+			t.Fatalf("%s: %d resource-bounds lines across the two pinned interpreters, want one from each", name, n)
 		}
 	}
 	return got
@@ -244,6 +253,9 @@ func TestPythonResourceBoundsHostileShapes(t *testing.T) {
 	dir := pythonResourceBoundsUnit(t, "", "")
 	got := pythonResourceBoundsRun(t, dir)
 	wants := pythonResourceBoundsWants()
+	if len(wants) == 0 {
+		t.Fatal("wants is empty: the loop below would check nothing")
+	}
 	for _, name := range slices.Sorted(maps.Keys(wants)) {
 		r, ok := got[name]
 		if !ok {

@@ -456,6 +456,9 @@ func copyTree(t *testing.T, from, to string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatalf("%s holds nothing to copy: the test would run on a fixture that is not there", from)
+	}
 	if err := os.MkdirAll(to, 0o755); err != nil {
 		t.Fatal(err)
 	}

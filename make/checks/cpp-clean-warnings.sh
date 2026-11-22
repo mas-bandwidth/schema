@@ -41,6 +41,12 @@ for t in "$@"; do
 	for d in $(find "$t" -type d | sort); do incs="$incs -I$d"; done
 done
 incs="$incs -Itest/tables"
+# A schema's cpp_include names a header the user supplies (examples/Types.schema
+# maps Vec3 to VecMath from vec_math.h, which the corpus keeps in test/). It is
+# the user's text, not generated code, so it is -isystem like the runtime: the
+# generated file that includes it still compiles, and its own warnings are not
+# this gate's. Without it Degenerate.h stops at a fatal error.
+incs="$incs -isystem test"
 export CLANGXX SERIALIZE_DIR OUT incs
 
 find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/files.txt"

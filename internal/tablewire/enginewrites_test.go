@@ -93,6 +93,9 @@ func TestEngineReadsEverythingItWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ids := trailerOf(t, wire)
+	if len(ids) == 0 {
+		t.Fatal("ids is empty: the loop below would check nothing")
+	}
 	for _, id := range ids {
 		if id == ir.TableWireId("a") {
 			t.Fatal("map_twin writer stored a field at its default zero")

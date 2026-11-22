@@ -497,9 +497,9 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
 		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
 		// plain float's -0 is carried bit-exact. ITS DECLARED RANGE IS THE
-		// WRITER'S CONTRACT, held on the way out like a ranged integer's: the
-		// reference refuses a value outside [min, max] (invalid_value), and this
-		// port's write-side checks refuse in every build, so cf32_bits raises.
+		// WRITER'S CONTRACT, held on the way out like a ranged integer's and
+		// HELD AT FLOAT32 (§3.3): cf32_bits narrows the value, tests it against
+		// the float32 ends the range attribute carries, and raises past them.
 		if f.HasFloatRange {
 			return fmt.Sprintf("R.cf32_bits(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
 		}
@@ -583,9 +583,10 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 		}
 		seen[name] = true
 		lo, hi := fixedRangeOf(f)
-		if f.HasFloatRange {
-			// A COMPRESSED FLOAT'S BOUNDS are the declared floats themselves.
-			lo, hi = fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax)
+		if flo, fhi, ok := fixedFloatRangeOf(f); ok {
+			// A COMPRESSED FLOAT'S BOUNDS are its float32 ends, the float32
+			// nearest each declared bound (§3.3, THE RANGE IS HELD AT FLOAT32).
+			lo, hi = flo, fhi
 		}
 		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
 		// the pair breaks where the formatter breaks it: the second bound

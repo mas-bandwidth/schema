@@ -169,6 +169,18 @@ func TestPlanOverlappingSplitsRunEachTestOnce(t *testing.T) {
 func TestPlanControlDroppedComplementLosesATest(t *testing.T) {
 	tb := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{"./s": {"^TestHeavy$"}}}
 	rows := plan(tb, []string{"./s"}, true, 60)
+	if len(rows) != 2 {
+		t.Fatalf("./s has %d rows, want its 1 pattern and the complement: %+v", len(rows), rows)
+	}
+	whole := 0
+	for _, r := range rows {
+		if selects(t, r, "TestNew") {
+			whole++
+		}
+	}
+	if whole != 1 {
+		t.Fatalf("with the complement TestNew is selected %d times, want 1: the control has nothing to lose", whole)
+	}
 	broken := rows[:len(rows)-1] // the complement is the last split row
 	n := 0
 	for _, r := range broken {
@@ -176,7 +188,7 @@ func TestPlanControlDroppedComplementLosesATest(t *testing.T) {
 			n++
 		}
 	}
-	if n != 0 {
+	if n > 0 {
 		t.Fatalf("without the complement TestNew is still selected %d times; the control proves nothing", n)
 	}
 }

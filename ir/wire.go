@@ -79,6 +79,18 @@ func CompressedFloatBits(fmin, fmax, res float64) int64 {
 	return wireBits
 }
 
+// CompressedFloatInRange is the range test every writer and every reader holds
+// a compressed float's finite value to (docs/SPEC-TABLES.md §3.3, A COMPRESSED
+// FLOAT'S RANGE IS HELD AT FLOAT32): a compressed float is a float32 (SPEC
+// §4.3), so the value is narrowed to float32 first and held to the float32
+// nearest each declared end. Under max = 0.1 the stored 0.1f (0.10000000149)
+// is in range, as is any double that narrows to it, and the next float32 up is
+// not; so a value a port has just read back always saves again.
+func CompressedFloatInRange(fmin, fmax, v float64) bool {
+	n := float32(v)
+	return n >= float32(fmin) && n <= float32(fmax)
+}
+
 // PointerWireBits is what a pointer field costs on the wire: a `u32` index
 // into the flat node table under kind 17 (docs/SPEC-TABLES.md §3.1). It is the
 // width of the REFERENCE; the referent is a node of its own, counted once

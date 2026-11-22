@@ -107,12 +107,17 @@ function makeBenchMixedPin() {
 const ex = { ...enums, ...types, ...wire };
 const exFlat = { ...typesFlat, ...wireFlat };
 
-let failed = false;
+// every check() call is counted: the last line this program prints is
+// "ran N, failed M", which tools/mustrun holds against the count the recipe
+// registers, so a check that stops running is red.
+let ran = 0;
+let failed = 0;
 
 function check(ok, what) {
+  ran++;
   if (!ok) {
     console.log(`FAILED: ${what}`);
-    failed = true;
+    failed++;
   }
 }
 
@@ -1598,7 +1603,7 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   pinArrangements("joins", joins, joinsFlat, joinShapes);
 }
 
-if (failed) {
+console.log(`ran ${ran}, failed ${failed}`);
+if (failed !== 0 || ran === 0) {
   process.exit(1);
 }
-console.log("OK");

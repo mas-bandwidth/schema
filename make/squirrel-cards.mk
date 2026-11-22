@@ -43,13 +43,9 @@ $(CARDS_SQUIRREL_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/c
 # sq EXITS 0 ON A RUNTIME ERROR (docs/PORT-SQUIRREL.md, THE HARNESS): a run
 # that writes anything to stderr is a failure whatever its exit status, and
 # the summary line must say none failed.
-cards-squirrel-test: cards-squirrel-generate tables/cards/squirrel/cards.nut tables/cards/squirrel/cards_test.nut
+cards-squirrel-test: cards-squirrel-generate tables/cards/squirrel/cards.nut tables/cards/squirrel/cards_test.nut build/mustrun
 	@test -x "$(SQ)" || $(MAKE) dist-squirrel
-	@mkdir -p build
-	@CARDS_SQUIRREL_GENERATED=$(CARDS_SQUIRREL_GENERATED) "$(SQ)" tables/cards/squirrel/cards_test.nut > build/cards-squirrel-test.log 2> build/cards-squirrel-test.err; \
-	status=$$?; cat build/cards-squirrel-test.log; cat build/cards-squirrel-test.err >&2; \
-	if [ $$status -ne 0 ] || [ -s build/cards-squirrel-test.err ]; then echo "cards-squirrel-test FAILED"; exit 1; fi; \
-	grep -qE '^cards \(squirrel\): [1-9][0-9]* passed, 0 failed$$' build/cards-squirrel-test.log || { echo "cards-squirrel-test FAILED: no clean summary line"; exit 1; }
+	CARDS_SQUIRREL_GENERATED=$(CARDS_SQUIRREL_GENERATED) $(MUSTRUN) -name cards-squirrel-test -count 9 -- "$(SQ)" tables/cards/squirrel/cards_test.nut
 
 cards-squirrel-conformance: build/conformance-harness cards-squirrel-generate
 	@test -x "$(SQ)" || $(MAKE) dist-squirrel

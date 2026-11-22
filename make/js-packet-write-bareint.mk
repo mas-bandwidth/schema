@@ -32,15 +32,15 @@ define packet_write_bareint_js_control
 		echo 'NEGATIVE CONTROL FAILED: $(1) passed in the $(3) tier'; exit 1; fi
 	@grep -Fq '$(4)' build/packet-write-bareint/js-negative-$(1)/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-write-bareint/js-negative-$(1)/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-bareint/js-negative-$(1)/log | grep -Fvq 'FAILED: bareint checked/$(3) '; then \
+	@if grep -F 'FAILED: ' build/packet-write-bareint/js-negative-$(1)/log | grep -Fv 'FAILED: bareint checked/$(3) ' >/dev/null; then \
 		cat build/packet-write-bareint/js-negative-$(1)/log; echo 'NEGATIVE CONTROL FAILED: a check outside the $(3) tier went red'; exit 1; fi
 	@echo 'packet write bare integer JavaScript negative control: $(5)'
 endef
 
 .PHONY: packet-write-bareint-js packet-write-bareint-js-negative-control
-packet-write-bareint-js: build/packet-write-bareint/js/.stamp
-	$(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
-	NODE_ENV=production $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
+packet-write-bareint-js: build/mustrun build/packet-write-bareint/js/.stamp
+	$(MUSTRUN) -name packet-write-bareint-js -count 86 -- $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
+	NODE_ENV=production $(MUSTRUN) -name packet-write-bareint-js-production -count 86 -- $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
 
 packet-write-bareint-js-negative-control: packet-write-bareint-js
 	$(call packet_write_bareint_js_control,packet-write-bareint-js-flat-width,flat,flat,FAILED: bareint checked/flat int8-above-max: wrote a value its width refuses,the flat width check removal reds int8-above-max)

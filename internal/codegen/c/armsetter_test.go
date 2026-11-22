@@ -86,6 +86,9 @@ func TestUnionArmSetterSetsTagAndArmC(t *testing.T) {
 
 	// The wire must not move: every example's write/read pair is the
 	// committed golden, byte for byte, and no selector rides in a wire header.
+	if len(qualified) == 0 {
+		t.Fatal("qualified is empty: the loop below would check nothing")
+	}
 	for name, data := range qualified {
 		if !isWireHeader(examples, name) {
 			continue

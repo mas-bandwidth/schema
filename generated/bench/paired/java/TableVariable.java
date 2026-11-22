@@ -718,7 +718,7 @@ public final class TableVariable {
             if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF64(v);
+            putF64(v == 0.0 ? 0.0 : v);
         }
 
         public void putLeb(long v) {
