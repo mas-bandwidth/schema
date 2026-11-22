@@ -1876,21 +1876,22 @@ end
 
 local skipValue: (Reader, number) -> boolean
 
-local function skippedAmpersand(r: Reader, key: string): boolean
+-- skippedAmpersand scans a skipped object's `&node` label, answering it, or
+-- nil when the key is not `&node` or the label is malformed
+local function skippedAmpersand(r: Reader, key: string): any
 	local graph = r.graph
 	if graph == nil or key ~= "&node" then
-		return false
+		return nil
 	end
-	local label = scanLabel(r)
-	if label == nil then
-		return false
-	end
-	if graph[label] == nil then
-		graph[label] = { open = false, node = nil, t = nil }
-	end
-	return true
+	return scanLabel(r)
 end
 
+-- a skipped OBJECT may still be a pointer's, and the label rules hold in it as
+-- they do for a placed pointer (§16.7): `{"&node": N}` alone REFERS, so N must
+-- be defined earlier in the text and closed; `&node` opening an object with
+-- fields DEFINES, so N must be new to the whole text, and it stays open until
+-- the skipped object closes. A defined label has no node, so a later reference
+-- reads null.
 local function skipContainer(r: Reader, close: number, depth: number): boolean
 	if depth > MAX_DEPTH then
 		r.bad = true
@@ -1898,6 +1899,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	end
 	r.pos += 1
 	local first = true
+	local defined: any = nil
 	-- a skipped object's keys are held to the layer's rule too: a repeated
 	-- key refuses in every object of the text (§16.2, §16.12)
 	local keys: { [string]: boolean }? = nil
@@ -1905,6 +1907,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 		local c = peek(r)
 		if c == close then
 			r.pos += 1
+			if defined ~= nil then
+				defined.open = false
+			end
 			return true
 		end
 		if c == 0 then
@@ -1931,21 +1936,39 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				keys[key] = true
 			end
 			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
-				if not first or not skippedAmpersand(r, key) then
+				if not first then
 					r.bad = true
 					return false
 				end
+				local label = skippedAmpersand(r, key)
+				if label == nil then
+					r.bad = true
+					return false
+				end
+				local graph = r.graph :: any
 				first = false
 				c = peek(r)
 				if c == 44 then
 					r.pos += 1
-					resumed = true
-				elseif c == close then
+					c = peek(r)
+					if c ~= close then
+						if graph[label] ~= nil then
+							r.bad = true -- a label defined twice
+							return false
+						end
+						defined = { open = true, node = nil, t = nil }
+						graph[label] = defined
+						resumed = true
+					end
+				end
+				if not resumed then
+					local entry = graph[label]
+					if c ~= close or entry == nil or entry.open then
+						r.bad = true -- a reference to a label not defined and closed
+						return false
+					end
 					r.pos += 1
 					return true
-				else
-					r.bad = true
-					return false
 				end
 			end
 		end
@@ -1959,6 +1982,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				r.pos += 1
 			elseif c == close then
 				r.pos += 1
+				if defined ~= nil then
+					defined.open = false
+				end
 				return true
 			else
 				r.bad = true
@@ -2255,9 +2281,14 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 	end
 	local entry = graph[label]
 	c = peek(r)
+	-- the label is a member like any other: a comma or the object's close
+	-- follows it, never the next key (§16.2)
 	if c == 44 then
 		r.pos += 1
 		c = peek(r)
+	elseif c ~= 125 then
+		r.bad = true
+		return false
 	end
 	local bare = c == 125
 	if bare ~= (entry ~= nil) then

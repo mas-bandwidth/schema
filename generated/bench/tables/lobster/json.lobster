@@ -2352,9 +2352,14 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
         return false
     let entry = j_find_label(r, label)
     c = j_peek(r)
+    // the label is a member like any other: a comma or the object's close
+    // follows it, never the next key (§16.2)
     if c == ',':
         r.pos++
         c = j_peek(r)
+    elif c != '}':
+        r.bad = true
+        return false
     let bare = c == '}'
     var defined = false
     if entry:
