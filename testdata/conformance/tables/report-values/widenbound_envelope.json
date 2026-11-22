@@ -1,0 +1,41 @@
+{
+  "sequence": 7,
+  "body": {
+    "transact": {
+      "reason": "grow",
+      "edits": [],
+      "pending": [
+        {
+          "tally": 5
+        },
+        {}
+      ],
+      "checkpoints": [
+        11,
+        0
+      ],
+      "snapshots": [
+        {
+          "start": {
+            "line": 1,
+            "column": 2
+          },
+          "stop": {
+            "line": 3,
+            "column": 4
+          }
+        },
+        {
+          "start": {
+            "line": 0,
+            "column": 0
+          },
+          "stop": {
+            "line": 0,
+            "column": 0
+          }
+        }
+      ]
+    }
+  }
+}
