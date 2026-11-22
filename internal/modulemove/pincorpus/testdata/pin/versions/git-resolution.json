@@ -1,0 +1,4 @@
+[
+  {"id":"F-183-exact-commit-time","finding":"F-183","note":"The test substitutes the revision of a local Git commit at git_time. Both pin and Go accept its exact timestamp.","version":"v2.5.1-0.20261121185943-abcdef012345","verdict":"accept","path":"/v2","git_time":"2026-11-21T18:59:43Z"},
+  {"id":"F-183-commit-time-plus-one-second","finding":"F-183","note":"The timestamp is a valid UTC date one second later than the commit. Pin accepts it offline; Go checks it when resolving.","version":"v2.5.1-0.20261121185944-abcdef012345","verdict":"accept","path":"/v2","git_time":"2026-11-21T18:59:43Z","resolve_error":"does not match version-control timestamp"}
+]

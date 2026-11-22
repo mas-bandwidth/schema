@@ -1,0 +1,8 @@
+# refused: the gate's verdict
+# difference: one line of the report's differences, whole; the set must match
+# uncompared: the start of a line the report must list as uncompared
+refused	true
+difference	table message form, unit same, instance s1: v3.0.2 encodes it and HEAD refuses it (schema: 1 error(s))
+difference	table variable form, unit same, instance s3: v3.0.2 encodes it and HEAD refuses it (schema: 1 error(s))
+uncompared	table message form, unit same, instance s2: v3.0.2 refuses it
+uncompared	table variable form, unit same, instance s5: v3.0.2 refuses it

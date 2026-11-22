@@ -8,7 +8,6 @@ import (
 	"go/token"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,6 +15,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // subsetCorpusUnits is the corpus whose generated Go packages must compile and
@@ -145,7 +146,7 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 						}
 					}
 					for _, verb := range []string{"build", "vet"} {
-						if out, err := subsetGo(modDir, verb, "./"+name); err != nil {
+						if out, err := subsetGo(t, modDir, verb, "./"+name); err != nil {
 							t.Fatalf("go %s with %s: %v\n%s", verb, name, err, out)
 						}
 					}
@@ -233,8 +234,8 @@ func subsetDeclaredNames(t *testing.T, name string, src []byte) []string {
 	return names
 }
 
-func subsetGo(dir, verb, pkg string) ([]byte, error) {
-	cmd := exec.Command("go", verb, pkg)
+func subsetGo(t testing.TB, dir, verb, pkg string) ([]byte, error) {
+	cmd := testproc.Command(t, "go", verb, pkg)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

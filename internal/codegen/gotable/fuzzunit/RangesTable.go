@@ -72,7 +72,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if ref := w.Ids.refAtHit(43, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.I8Span))
+			w.Put8(uint8(int64(value.I8Span) & 0xff))
 		}
 	}
 	{
@@ -83,7 +83,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I8Low > 126 {
 				return false
 			}
-			w.Put8(uint8(value.I8Low))
+			w.Put8(uint8(int64(value.I8Low) & 0xff))
 		}
 	}
 	{
@@ -94,7 +94,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I8High < -127 {
 				return false
 			}
-			w.Put8(uint8(value.I8High))
+			w.Put8(uint8(int64(value.I8High) & 0xff))
 		}
 	}
 	{
@@ -105,7 +105,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I8Inside < -127 || value.I8Inside > 126 {
 				return false
 			}
-			w.Put8(uint8(value.I8Inside))
+			w.Put8(uint8(int64(value.I8Inside) & 0xff))
 		}
 	}
 	{
@@ -113,7 +113,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if ref := w.Ids.refAtHit(100, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.I16Span))
+			w.Put16(uint16(int64(value.I16Span) & 0xffff))
 		}
 	}
 	{
@@ -124,7 +124,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I16Low > 32766 {
 				return false
 			}
-			w.Put16(uint16(value.I16Low))
+			w.Put16(uint16(int64(value.I16Low) & 0xffff))
 		}
 	}
 	{
@@ -135,7 +135,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I16High < -32767 {
 				return false
 			}
-			w.Put16(uint16(value.I16High))
+			w.Put16(uint16(int64(value.I16High) & 0xffff))
 		}
 	}
 	{
@@ -146,7 +146,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
 				return false
 			}
-			w.Put16(uint16(value.I16Inside))
+			w.Put16(uint16(int64(value.I16Inside) & 0xffff))
 		}
 	}
 	{
@@ -154,7 +154,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if ref := w.Ids.refAtHit(137, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
-			w.Put32(uint32(value.I32Span))
+			w.Put32(uint32(int64(value.I32Span) & 0xffffffff))
 		}
 	}
 	{
@@ -165,7 +165,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I32Low > 2147483646 {
 				return false
 			}
-			w.Put32(uint32(value.I32Low))
+			w.Put32(uint32(int64(value.I32Low) & 0xffffffff))
 		}
 	}
 	{
@@ -176,7 +176,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I32High < -2147483647 {
 				return false
 			}
-			w.Put32(uint32(value.I32High))
+			w.Put32(uint32(int64(value.I32High) & 0xffffffff))
 		}
 	}
 	{
@@ -187,7 +187,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
 				return false
 			}
-			w.Put32(uint32(value.I32Inside))
+			w.Put32(uint32(int64(value.I32Inside) & 0xffffffff))
 		}
 	}
 	{
@@ -195,7 +195,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if ref := w.Ids.refAtHit(63, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.I64Span))
+			w.putI64(value.I64Span)
 		}
 	}
 	{
@@ -206,7 +206,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I64Low > 9223372036854775806 {
 				return false
 			}
-			w.Put64(uint64(value.I64Low))
+			w.putI64(value.I64Low)
 		}
 	}
 	{
@@ -217,7 +217,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I64High < -9223372036854775807 {
 				return false
 			}
-			w.Put64(uint64(value.I64High))
+			w.putI64(value.I64High)
 		}
 	}
 	{
@@ -228,7 +228,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
 				return false
 			}
-			w.Put64(uint64(value.I64Inside))
+			w.putI64(value.I64Inside)
 		}
 	}
 	{
@@ -247,13 +247,13 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(value.EdgesCount) {
-					payload1.Put16(uint16(value.Edges[i]))
+					payload1.Put16(uint16(int64(value.Edges[i]) & 0xffff))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -266,7 +266,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 						w.putLebWide(pairs)
 					}
 					for i := range int(value.EdgesCount) {
-						w.Put16(uint16(value.Edges[i]))
+						w.Put16(uint16(int64(value.Edges[i]) & 0xffff))
 					}
 				}
 			}
@@ -336,7 +336,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -128 || v > 127 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -354,7 +354,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -128 || v > 126 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -372,7 +372,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -127 || v > 127 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -390,7 +390,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -127 || v > 126 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -412,7 +412,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Span = int16(v)
+						value.I16Span = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -425,7 +425,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32768 || v > 32767 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -447,7 +447,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Low = int16(v)
+						value.I16Low = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -460,7 +460,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32768 || v > 32766 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -482,7 +482,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16High = int16(v)
+						value.I16High = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -495,7 +495,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32767 || v > 32767 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -517,7 +517,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Inside = int16(v)
+						value.I16Inside = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -530,7 +530,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32767 || v > 32766 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -552,7 +552,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Span = int32(v)
+						value.I32Span = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -565,7 +565,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483648 || v > 2147483647 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -587,7 +587,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Low = int32(v)
+						value.I32Low = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -600,7 +600,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483648 || v > 2147483646 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -622,7 +622,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32High = int32(v)
+						value.I32High = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -635,7 +635,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483647 || v > 2147483647 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -657,7 +657,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Inside = int32(v)
+						value.I32Inside = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -670,7 +670,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483647 || v > 2147483646 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -705,7 +705,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < (-9223372036854775807-1) || v > 9223372036854775807 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -740,7 +740,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < (-9223372036854775807-1) || v > 9223372036854775806 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -775,7 +775,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < -9223372036854775807 || v > 9223372036854775807 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -810,7 +810,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < -9223372036854775807 || v > 9223372036854775806 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -863,7 +863,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Edges[i] = int16(v)
+						value.Edges[i] = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				value.EdgesCount = int32(count)
@@ -962,7 +962,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if ref := w.Ids.refAtHit(43, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.I8Span))
+			w.Put8(uint8(int64(value.I8Span) & 0xff))
 		}
 	}
 	{
@@ -973,7 +973,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I8Low > 126 {
 				return false
 			}
-			w.Put8(uint8(value.I8Low))
+			w.Put8(uint8(int64(value.I8Low) & 0xff))
 		}
 	}
 	{
@@ -984,7 +984,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I8High < -127 {
 				return false
 			}
-			w.Put8(uint8(value.I8High))
+			w.Put8(uint8(int64(value.I8High) & 0xff))
 		}
 	}
 	{
@@ -995,7 +995,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I8Inside < -127 || value.I8Inside > 126 {
 				return false
 			}
-			w.Put8(uint8(value.I8Inside))
+			w.Put8(uint8(int64(value.I8Inside) & 0xff))
 		}
 	}
 	{
@@ -1003,7 +1003,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if ref := w.Ids.refAtHit(100, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.I16Span))
+			w.Put16(uint16(int64(value.I16Span) & 0xffff))
 		}
 	}
 	{
@@ -1014,7 +1014,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I16Low > 32766 {
 				return false
 			}
-			w.Put16(uint16(value.I16Low))
+			w.Put16(uint16(int64(value.I16Low) & 0xffff))
 		}
 	}
 	{
@@ -1025,7 +1025,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I16High < -32767 {
 				return false
 			}
-			w.Put16(uint16(value.I16High))
+			w.Put16(uint16(int64(value.I16High) & 0xffff))
 		}
 	}
 	{
@@ -1036,7 +1036,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
 				return false
 			}
-			w.Put16(uint16(value.I16Inside))
+			w.Put16(uint16(int64(value.I16Inside) & 0xffff))
 		}
 	}
 	{
@@ -1044,7 +1044,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if ref := w.Ids.refAtHit(137, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
-			w.Put32(uint32(value.I32Span))
+			w.Put32(uint32(int64(value.I32Span) & 0xffffffff))
 		}
 	}
 	{
@@ -1055,7 +1055,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I32Low > 2147483646 {
 				return false
 			}
-			w.Put32(uint32(value.I32Low))
+			w.Put32(uint32(int64(value.I32Low) & 0xffffffff))
 		}
 	}
 	{
@@ -1066,7 +1066,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I32High < -2147483647 {
 				return false
 			}
-			w.Put32(uint32(value.I32High))
+			w.Put32(uint32(int64(value.I32High) & 0xffffffff))
 		}
 	}
 	{
@@ -1077,7 +1077,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
 				return false
 			}
-			w.Put32(uint32(value.I32Inside))
+			w.Put32(uint32(int64(value.I32Inside) & 0xffffffff))
 		}
 	}
 	{
@@ -1085,7 +1085,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if ref := w.Ids.refAtHit(63, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.I64Span))
+			w.putI64(value.I64Span)
 		}
 	}
 	{
@@ -1096,7 +1096,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I64Low > 9223372036854775806 {
 				return false
 			}
-			w.Put64(uint64(value.I64Low))
+			w.putI64(value.I64Low)
 		}
 	}
 	{
@@ -1107,7 +1107,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I64High < -9223372036854775807 {
 				return false
 			}
-			w.Put64(uint64(value.I64High))
+			w.putI64(value.I64High)
 		}
 	}
 	{
@@ -1118,7 +1118,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
 				return false
 			}
-			w.Put64(uint64(value.I64Inside))
+			w.putI64(value.I64Inside)
 		}
 	}
 	{
@@ -1137,13 +1137,13 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(value.EdgesCount) {
-					payload1.Put16(uint16(value.Edges[i]))
+					payload1.Put16(uint16(int64(value.Edges[i]) & 0xffff))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -1156,7 +1156,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 						w.putLebWide(pairs)
 					}
 					for i := range int(value.EdgesCount) {
-						w.Put16(uint16(value.Edges[i]))
+						w.Put16(uint16(int64(value.Edges[i]) & 0xffff))
 					}
 				}
 			}
@@ -1226,7 +1226,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -128 || v > 127 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1244,7 +1244,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -128 || v > 126 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1262,7 +1262,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -127 || v > 127 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1280,7 +1280,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				if v < -127 || v > 126 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1302,7 +1302,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Span = int16(v)
+						value.I16Span = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -1315,7 +1315,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32768 || v > 32767 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1337,7 +1337,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Low = int16(v)
+						value.I16Low = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -1350,7 +1350,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32768 || v > 32766 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1372,7 +1372,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16High = int16(v)
+						value.I16High = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -1385,7 +1385,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32767 || v > 32767 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1407,7 +1407,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Inside = int16(v)
+						value.I16Inside = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -1420,7 +1420,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				if v < -32767 || v > 32766 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1442,7 +1442,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Span = int32(v)
+						value.I32Span = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1455,7 +1455,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483648 || v > 2147483647 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1477,7 +1477,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Low = int32(v)
+						value.I32Low = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1490,7 +1490,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483648 || v > 2147483646 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1512,7 +1512,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32High = int32(v)
+						value.I32High = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1525,7 +1525,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483647 || v > 2147483647 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1547,7 +1547,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Inside = int32(v)
+						value.I32Inside = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1560,7 +1560,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2147483647 || v > 2147483646 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1595,7 +1595,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < (-9223372036854775807-1) || v > 9223372036854775807 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1630,7 +1630,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < (-9223372036854775807-1) || v > 9223372036854775806 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1665,7 +1665,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < -9223372036854775807 || v > 9223372036854775807 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1700,7 +1700,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < -9223372036854775807 || v > 9223372036854775806 {
 					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1754,7 +1754,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Edges[i] = int16(v)
+						value.Edges[i] = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				value.EdgesCount = int32(count)
@@ -2008,10 +2008,10 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 					payload21.Put64(uint64(value.Counts[i]))
 					pairs++
 				}
-				if payload21.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload21.Offset
+				if payload21.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload21.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2170,7 +2170,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Span = uint16(v)
+						value.U16Span = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -2205,7 +2205,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Low = uint16(v)
+						value.U16Low = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -2240,7 +2240,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16High = uint16(v)
+						value.U16High = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -2275,7 +2275,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Inside = uint16(v)
+						value.U16Inside = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -2310,7 +2310,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Span = uint32(v)
+						value.U32Span = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -2345,7 +2345,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Low = uint32(v)
+						value.U32Low = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -2380,7 +2380,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32High = uint32(v)
+						value.U32High = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -2415,7 +2415,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Inside = uint32(v)
+						value.U32Inside = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -2898,10 +2898,10 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 					payload1.Put64(uint64(value.Counts[i]))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -3060,7 +3060,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Span = uint16(v)
+						value.U16Span = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -3095,7 +3095,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Low = uint16(v)
+						value.U16Low = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -3130,7 +3130,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16High = uint16(v)
+						value.U16High = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -3165,7 +3165,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Inside = uint16(v)
+						value.U16Inside = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -3200,7 +3200,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Span = uint32(v)
+						value.U32Span = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3235,7 +3235,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Low = uint32(v)
+						value.U32Low = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3270,7 +3270,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32High = uint32(v)
+						value.U32High = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3305,7 +3305,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Inside = uint32(v)
+						value.U32Inside = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3747,7 +3747,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B16 = uint32(v)
+						value.B16 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3782,7 +3782,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B32 = uint32(v)
+						value.B32 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3842,7 +3842,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B12 = uint32(v)
+						value.B12 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4129,7 +4129,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B16 = uint32(v)
+						value.B16 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4164,7 +4164,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B32 = uint32(v)
+						value.B32 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4224,7 +4224,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B12 = uint32(v)
+						value.B12 = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -5004,7 +5004,7 @@ func RangedSignedFixedBoundsKnown0(value *RangedSigned) bool {
 var RangedSignedFixedResetImage = func() []byte {
 	var def RangedSigned
 	RangedSignedReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var RangedSignedFixedHoles = tableFixedHoles(RangedSignedFixedPlan.Entries, RangedSignedFixedPlan.Count, uint32(len(RangedSignedFixedResetImage)))
@@ -5183,7 +5183,7 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5386,7 +5386,7 @@ func RangedUnsignedFixedBoundsKnown0(value *RangedUnsigned) bool {
 var RangedUnsignedFixedResetImage = func() []byte {
 	var def RangedUnsigned
 	RangedUnsignedReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var RangedUnsignedFixedHoles = tableFixedHoles(RangedUnsignedFixedPlan.Entries, RangedUnsignedFixedPlan.Count, uint32(len(RangedUnsignedFixedResetImage)))
@@ -5565,7 +5565,7 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5702,7 +5702,7 @@ func RangedWidthsFixedBoundsKnown0(value *RangedWidths) bool {
 var RangedWidthsFixedResetImage = func() []byte {
 	var def RangedWidths
 	RangedWidthsReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var RangedWidthsFixedHoles = tableFixedHoles(RangedWidthsFixedPlan.Entries, RangedWidthsFixedPlan.Count, uint32(len(RangedWidthsFixedResetImage)))
@@ -5881,7 +5881,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])

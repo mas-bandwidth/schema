@@ -2,11 +2,12 @@ package gotable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsonIllFormedUTF8RefusedBothWays pins docs/SPEC-TABLES.md §16.3 and
@@ -30,7 +31,7 @@ func TestJsonIllFormedUTF8RefusedBothWays(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-v", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated runtime: %v\n%s", err, out)
