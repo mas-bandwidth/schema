@@ -16,9 +16,19 @@
 #          `refused` owes the writer's refusal; a stem owes <stem>.<form>.bin.
 #
 # ends.json holds both ends ("0.1", "-0.3"); past-max.json and past-min.json
-# spell the float32 one step past each ("0.10000001", "-0.30000004"). The
-# past-*.bin files are ends.<form>.bin with that one float's bits replaced, so
-# no writer is asked to make them. internal/tablewire's
+# spell the float32 one step past each ("0.10000001", "-0.30000004").
+# narrow.json spells decimals that are NOT float32 values but narrow onto the
+# ends ("0.100000004" -> 3dcccccd, above the double 0.1; "-0.30000002" ->
+# be99999a, below the double -0.3): a port that tests the double before it
+# narrows refuses them, and they owe the ends bytes. over-max.json and
+# over-min.json spell 3.5e38 and -3.5e38, past float32's own max: §16.2 refuses
+# a value the field's width cannot hold (kind_mismatch, before any range test),
+# so it never lands, clamped or not. nan-token.json and inf-token.json carry
+# tokens JSON has no spelling for (malformed). nan, pinf and ninf .bin are the
+# binary forms' non-finite values (refused non_finite_float, §3.3), and the
+# write rows with bits 7fc00000, 7f800000 and ff800000 owe the writer's
+# refusal. Every .bin other than ends is ends.<form>.bin with one float's bits
+# replaced, so no writer is asked to make them. internal/tablewire's
 # TestCompressedF32EndsCorpus pins every .bin to the reference and runs the
 # rows on the reference engine.
 #
@@ -41,3 +51,25 @@ write_fixed_at_max	write	fixed	F	ends	r	3dcccccd	ends
 write_fixed_at_min	write	fixed	F	ends	xs[0]	be99999a	ends
 write_fixed_past_max	write	fixed	F	ends	r	3dccccce	refused
 write_fixed_past_min	write	fixed	F	ends	xs[0]	be99999b	refused
+read_json_narrow_variable	read	json	V	narrow	-	-	ends
+read_json_narrow_fixed	read	json	F	narrow	-	-	ends
+read_json_past_max_fixed	read	json	F	past-max	-	-	refused
+read_json_past_min_fixed	read	json	F	past-min	-	-	refused
+read_json_over_max_variable	read	json	V	over-max	-	-	refused
+read_json_over_min_variable	read	json	V	over-min	-	-	refused
+read_json_over_max_fixed	read	json	F	over-max	-	-	refused
+read_json_over_min_fixed	read	json	F	over-min	-	-	refused
+read_json_nan_token	read	json	V	nan-token	-	-	refused
+read_json_inf_token	read	json	F	inf-token	-	-	refused
+read_variable_nan	read	variable	V	nan	-	-	refused
+read_variable_pinf	read	variable	V	pinf	-	-	refused
+read_variable_ninf	read	variable	V	ninf	-	-	refused
+read_fixed_nan	read	fixed	F	nan	-	-	refused
+read_fixed_pinf	read	fixed	F	pinf	-	-	refused
+read_fixed_ninf	read	fixed	F	ninf	-	-	refused
+write_variable_nan	write	variable	V	ends	r	7fc00000	refused
+write_variable_pinf	write	variable	V	ends	r	7f800000	refused
+write_variable_ninf	write	variable	V	ends	xs[0]	ff800000	refused
+write_fixed_nan	write	fixed	F	ends	r	7fc00000	refused
+write_fixed_pinf	write	fixed	F	ends	r	7f800000	refused
+write_fixed_ninf	write	fixed	F	ends	xs[0]	ff800000	refused

@@ -78,10 +78,21 @@ func TestCompressedF32EndsCorpus(t *testing.T) {
 		}
 		return tablewire.EncodeFixed(m, in)
 	}
+	var jsonReason string
 	readJSON := func(root string, src []byte) (*tabletext.Instance, bool) {
 		in := m.New(m.Lookup(root))
 		var r tabletext.Report
-		return in, m.Read(in, src, &r)
+		ok := m.Read(in, src, &r)
+		jsonReason = r.Reason
+		return in, ok
+	}
+	// The reason each refused input owes on the reference (the corpus owes
+	// only the verdict across ports, ruling refusal-verdict-only).
+	reasonOf := map[string]string{
+		"past-max": "out_of_range", "past-min": "out_of_range",
+		"over-max": "out_of_range", "over-min": "out_of_range",
+		"nan-token": "malformed", "inf-token": "malformed",
+		"nan": "non_finite_float", "pinf": "non_finite_float", "ninf": "non_finite_float",
 	}
 
 	// The pins: ends.<form>.bin is the reference's save of ends.json, and each
@@ -98,7 +109,7 @@ func TestCompressedF32EndsCorpus(t *testing.T) {
 		for _, p := range []struct {
 			stem     string
 			from, to uint32
-		}{{"past-max", 0x3dcccccd, 0x3dccccce}, {"past-min", 0xbe99999a, 0xbe99999b}} {
+		}{{"past-max", 0x3dcccccd, 0x3dccccce}, {"past-min", 0xbe99999a, 0xbe99999b}, {"nan", 0x3dcccccd, 0x7fc00000}, {"pinf", 0x3dcccccd, 0x7f800000}, {"ninf", 0xbe99999a, 0xff800000}} {
 			from, to := le32(p.from), le32(p.to)
 			at := bytes.Index(ends, from)
 			if at < 0 {
@@ -119,6 +130,9 @@ func TestCompressedF32EndsCorpus(t *testing.T) {
 			switch {
 			case row.op == "read" && row.form == "json":
 				in, accepted = readJSON(row.root, file(row.input+".json"))
+				if want := reasonOf[row.input]; !accepted && !strings.HasPrefix(jsonReason, want) {
+					t.Errorf("refused %q, want %s", jsonReason, want)
+				}
 			case row.op == "read":
 				if formOf[row.root] != row.form {
 					t.Fatalf("form %s under root %s", row.form, row.root)
@@ -127,8 +141,8 @@ func TestCompressedF32EndsCorpus(t *testing.T) {
 				var r tabletext.Report
 				ok, err := tablewire.Decode(m, in, file(row.input+"."+row.form+".bin"), &r)
 				accepted = ok && err == nil
-				if !accepted && !strings.Contains(r.Reason, "out_of_range") {
-					t.Errorf("refused, but not out_of_range: %v %+v", err, r)
+				if want := reasonOf[row.input]; !accepted && !strings.HasPrefix(r.Reason, want) {
+					t.Errorf("refused, but not %s: %v %+v", want, err, r)
 				}
 			case row.op == "write":
 				var ok bool
