@@ -14340,7 +14340,7 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  SaveInto  Reset  LoadMeasure  LoadMeasureParts  LoadMeasureReason  LoadMeasureWalk  LoadBuilder  TableType  Builder
   LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire

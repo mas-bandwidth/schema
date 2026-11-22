@@ -3698,8 +3698,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			plan := make([]TableFixedEntry, room)
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
-			if made <= -2 { // -2 layout_malformed, -3 layout_record_too_large, -4 kind_mismatch
-				out[i].Why = [...]error{2: TableRefuseLayoutMalformed, 3: TableRefuseLayoutRecordTooLarge, 4: TableRefuseKindMismatch}[-made].Error()
+			if made == -2 {
+				out[i].Why = TableRefuseLayoutMalformed.Error()
+				break
+			}
+			if made == -3 {
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
+				break
+			}
+			if made == -4 { // writer's ?T into reader's bare T (R2)
+				out[i].Why = TableRefuseKindMismatch.Error()
 				break
 			}
 			if made < 0 {
