@@ -370,8 +370,15 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 	t.Run("go", func(t *testing.T) {
 		t.Parallel()
 		m := tabletext.NewModel(unit)
+		if len(cases) == 0 {
+			t.Fatal("cases is empty: the loop below would check nothing")
+		}
+		// not every case has a Go leg (a Squirrel-only value has no Go
+		// spelling); the Go leg must still have judged refusals and twins
+		refusals, twins := 0, 0
 		for _, c := range cases {
 			if c.goBad != nil {
+				refusals++
 				inst := m.New(m.Lookup("Root"))
 				c.goBad(m, inst)
 				out, err := tablewire.Encode(m, inst)
@@ -382,12 +389,16 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 			if c.goGood == nil {
 				continue
 			}
+			twins++
 			inst := m.New(m.Lookup("Root"))
 			c.goGood(m, inst)
 			out, err := tablewire.Encode(m, inst)
 			if err != nil || len(out) == 0 {
 				t.Errorf("%s twin: the Go variable writer answered %x, %v, want bytes", c.name, out, err)
 			}
+		}
+		if refusals == 0 || twins == 0 {
+			t.Fatalf("the Go leg judged %d off-contract values and %d lawful twins: the table gives it nothing to refuse", refusals, twins)
 		}
 	})
 
@@ -410,6 +421,9 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 				t.Fatalf("probe line %q is not a case, a verdict, a length, a measure and the read-back", line)
 			}
 			got[f[0]] = f[1:]
+		}
+		if len(cases) == 0 {
+			t.Fatal("cases is empty: the loop below would check nothing")
 		}
 		for _, c := range cases {
 			row, ok := got[c.name]

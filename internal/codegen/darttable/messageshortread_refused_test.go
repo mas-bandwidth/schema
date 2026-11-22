@@ -73,7 +73,11 @@ func shortReadOracle(t *testing.T, u *ir.Unit, root string, announce, wire []byt
 	if def == nil {
 		t.Fatalf("no table %s", root)
 	}
-	bodies, _ := tablewire.MessageCount(wire, vocab)
+	// The count only sizes the storage; the decode below gives the verdict.
+	bodies, cerr := tablewire.MessageCount(wire, vocab)
+	if cerr != nil && bodies != 0 {
+		t.Fatalf("%s: the oracle's count refused (%v) yet answered %d bodies", root, cerr, bodies)
+	}
 	if bodies < 1 {
 		bodies = 1
 	}
@@ -83,7 +87,12 @@ func shortReadOracle(t *testing.T, u *ir.Unit, root string, announce, wire []byt
 		batch[i] = m.New(def)
 	}
 	report := tabletext.Report{}
-	_, _, _ = tablewire.DecodeMessages(m, batch, wire, vocab, &report)
+	// The report is the verdict the Dart load is compared against; the error
+	// and the report must tell the same story, or the oracle is not one.
+	_, ok, derr := tablewire.DecodeMessages(m, batch, wire, vocab, &report)
+	if ok != (derr == nil) || report.Refused != (derr != nil) {
+		t.Fatalf("%s: the Go reference disagrees with itself: ok=%v err=%v report=%+v", root, ok, derr, report)
+	}
 	saved, err := tablewire.EncodeMessage(m, batch[0])
 	if err != nil {
 		t.Fatalf("Go encode %s: %v", root, err)

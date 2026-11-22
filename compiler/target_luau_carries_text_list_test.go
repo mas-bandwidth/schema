@@ -20,7 +20,11 @@ func TestLuauCarriesTextList(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("luau generated no files")
 	}
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		if lang == "go" || lang == "luau" || carries(lang, carryTextList) {
 			continue
 		}

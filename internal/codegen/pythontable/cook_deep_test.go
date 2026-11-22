@@ -40,7 +40,11 @@ assert out.count("\nnode ") == 2047
 assert "node 2047 Node @" in out
 print("OK")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "image": image}))
@@ -98,7 +102,11 @@ raw = cook.cook(root)
 assert len(cook.check_cook(Node, raw).directory) == 2048
 print(hashlib.sha256(raw).hexdigest())
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
@@ -133,7 +141,11 @@ assert dump.count("node ") == 2049, dump.count("node ")
 assert "link.next = -> @" in dump
 print("ok")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if strings.TrimSpace(got) != "ok" {
 			t.Errorf("%s: %s", name, got)

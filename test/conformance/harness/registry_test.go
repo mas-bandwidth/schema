@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,7 +43,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	copyTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(string) bool { return true })
 	copyFile(t, filepath.Join(root, "Makefile"), filepath.Join(tree, "Makefile"))
 
-	before := discover(t, tree)
+	before := discover(t, tree, 1) // no leg named zz: "no legs ran"
 	for what, out := range before {
 		needle := "zz"
 		if what == "matrix" {
@@ -87,7 +88,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 		t.Fatalf("make registry names no test line before the plant:\n%s", before["make"])
 	}
 
-	after := discover(t, tree)
+	after := discover(t, tree, 0)
 	want := map[string]string{
 		"harness":     "zz",
 		"matrix":      `"lang":"zz"`,
@@ -119,7 +120,8 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 
 // discover reads every registry of one tree: the harness's driver list, the
 // CI matrix, the bench pass's rows, and what the Makefile registered.
-func discover(t *testing.T, tree string) map[string]string {
+// wantBenchExit is the bench pass's exit status for this tree.
+func discover(t *testing.T, tree string, wantBenchExit int) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 
@@ -143,7 +145,19 @@ func discover(t *testing.T, tree string) map[string]string {
 	bench.Dir = tree
 	var stdout, stderr bytes.Buffer
 	bench.Stdout, bench.Stderr = &stdout, &stderr
-	_ = bench.Run() // "no legs ran" exits 1 before the plant, which is the point
+	// "no legs ran" exits 1 before the plant, which is the point; after it the
+	// planted leg runs and the pass exits 0. Either way the script must run.
+	benchExit := 0
+	if err := bench.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Fatalf("bench/tables/run.sh did not run: %v", err)
+		}
+		benchExit = exit.ExitCode()
+	}
+	if benchExit != wantBenchExit {
+		t.Fatalf("bench/tables/run.sh --only zz exited %d, want %d\n%s", benchExit, wantBenchExit, stderr.String())
+	}
 	out["bench"] = stdout.String()
 
 	mk := exec.Command("make", "-s", "registry")

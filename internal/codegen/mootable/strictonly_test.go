@@ -62,7 +62,11 @@ func TestStrictOnlyMooNoTolerantEntry(t *testing.T) {
 			}
 		}
 	}
-	for name, data := range mootable.Runtime() {
+	allRuntime := mootable.Runtime()
+	if len(allRuntime) == 0 {
+		t.Fatal("mootable.Runtime() is empty: the loop below would check nothing")
+	}
+	for name, data := range allRuntime {
 		for _, bad := range retired {
 			if strings.Contains(string(data), bad) {
 				t.Errorf("runtime %s carries retired tolerant name %q", name, bad)

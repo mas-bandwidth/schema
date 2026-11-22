@@ -128,7 +128,11 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 		for i, relPath := range ps {
 			lockArgs[i] = filepath.Join(root, filepath.FromSlash(relPath))
 		}
-		if gathered, gerr := compiler.GatherPaths(lockArgs); gerr == nil {
+		gathered, gerr := compiler.GatherPaths(lockArgs)
+		if gerr != nil {
+			t.Fatalf("unit %s: its schema paths did not gather, so its lineage is unknown: %v", key, gerr)
+		}
+		{
 			if lock, lok, lerr := lockfile.Open(gathered); lerr != nil {
 				t.Fatal(lerr)
 			} else if lok && lock != nil {

@@ -92,6 +92,9 @@ func TestBlockLayoutMatchesTheWorkedTable(t *testing.T) {
 	}
 	starts, used := ir.BlockExtent(bl, aligns, counts)
 	wantStarts := []int64{192, 320, 26752, 84352, 92992, 95872, 495872, 559872, 572672}
+	if len(starts) == 0 {
+		t.Fatal("starts is empty: the loop below would check nothing")
+	}
 	for i := range starts {
 		if starts[i] != wantStarts[i] {
 			t.Errorf("%s starts at %d, want %d", bl.Arrays[i].Field.Name, starts[i], wantStarts[i])
@@ -169,11 +172,16 @@ func TestBuildVersionMovesOnAMeaningEdit(t *testing.T) {
 func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 	u := loadRender(t)
 	baseline := ir.BuildVersion(u)
+	renamed := 0
 	for _, f := range u.Tables["RenderShip"].Fields {
 		if f.Name == "thrust" {
 			f.WasName = "thrust"
 			f.Name = "throttle"
+			renamed++
 		}
+	}
+	if renamed != 1 {
+		t.Fatalf("RenderShip has %d fields named thrust, want 1: with no rename the unchanged build version proves nothing", renamed)
 	}
 	if got := ir.BuildVersion(u); got != baseline {
 		t.Errorf("a `was` rename moved the build version (0x%016x -> 0x%016x) — the projections key on the WIRE ID for exactly this reason",

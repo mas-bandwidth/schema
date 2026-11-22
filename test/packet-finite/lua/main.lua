@@ -264,8 +264,10 @@ for _, c in ipairs(finite64) do
   vectors = vectors + 1
 end
 
-if failures > 0 then
+-- The last stdout line is the count tools/mustrun reads: the vectors run and
+-- the failures among them. A run of no vectors is a failure.
+print(string.format("packet finite Lua: ran %d, failed %d", vectors, failures))
+if failures > 0 or vectors == 0 then
   io.stderr:write(string.format("packet finite Lua: %d of %d vectors FAILED\n", failures, vectors))
   os.exit(1)
 end
-print(string.format("OK: packet finite Lua, %d vectors", vectors))

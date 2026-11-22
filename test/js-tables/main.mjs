@@ -603,6 +603,14 @@ function fuzz(blockPath, cookPath, mutants) {
     bytes.set(copy.subarray(0, Math.min(claim, copy.length)));
     if (opensOrRefuses(subject.open, bytes)) { opened++; } else { refused++; }
   }
+  // a run that forged nothing (N of zero, or not a number), or in which no
+  // mutant ever opened, checked nothing of the read path: red, never "OK"
+  if (!(mutants >= 1) || opened === 0 || refused === 0) {
+    console.log("FAILED: tables JS fuzz ran " + mutants + " mutants, " + opened + " opened, " + refused +
+      " refused: the campaign needs at least one of each verdict to have tested anything");
+    failed = true;
+    return;
+  }
   console.log("tables JS fuzz: " + mutants + " forged blocks and cooks — " + refused +
     " refused, " + opened + " opened and read entirely inside the bytes they were given; " +
     "no exception escaped a reader");
@@ -853,6 +861,12 @@ function measureAllocation(iterations, budgetMs) {
     }
     const line = (child.stdout || "").trim().split("\n").pop();
     const [what, bytes, ceiling, why, every, instrument] = line.split("\t");
+    if (!Number.isFinite(Number(bytes))) {
+      // a child that printed no reading measured nothing: NaN is over no ceiling,
+      // so it would pass the gate below in silence
+      check(false, "the allocation child for path " + i + " printed no reading: " + JSON.stringify(line));
+      return measured;
+    }
     measured.set(what, {
       bytes: Number(bytes), ceiling: ceiling === "null" ? null : Number(ceiling),
       why, every: Number(every), instrument: Number(instrument),
@@ -996,6 +1010,12 @@ function spawnSoakWorker(only, passes, workerSamples) {
 }
 
 async function checkSoak(passes) {
+  if (!(passes >= SoakSamples)) {
+    // an empty or non-numeric pass count would hold samples of nothing
+    console.log("FAILED: the soak was asked for " + passes + " passes, fewer than its " + SoakSamples + " samples");
+    failed = true;
+    return;
+  }
   const major = process.versions.node.split(".")[0];
   if (major !== PinnedNodeMajor && process.env.SCHEMA_JS_ALLOC_ANY_NODE !== "1") {
     console.log("FAILED: the soak holds the allocation floor of node " + PinnedNodeMajor +
@@ -1203,6 +1223,12 @@ if (mode === "fuzz") {
 } else if (mode === "soak") {
   await checkSoak(Number(process.env.TABLES_JS_SOAK_ITERATIONS ?? process.argv[3] ?? 4000000));
 } else {
+  if (mode !== undefined) {
+    // a mistyped mode would otherwise run the default leg and pass as if the
+    // named one had
+    console.log("FAILED: unknown mode " + JSON.stringify(mode) + " (fuzz, alloc, alloc-one, soak, soak-one, or none)");
+    process.exit(1);
+  }
   checkForeignByteOrder();
   checkWholeSurface();
   checkOpenAnswers();

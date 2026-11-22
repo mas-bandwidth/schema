@@ -2812,11 +2812,17 @@ function optionalControls(check, o, dir) {
 // ---------------------------------------------------------------------------
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  let failed = false;
+  // every check is counted: the last line is "ran N, failed M", which
+  // tools/mustrun holds against the count the recipe registers — so a section
+  // that stops running is red, and so is this file doing nothing because the
+  // guard above did not fire
+  let ran = 0;
+  let failed = 0;
   const check = (ok, what) => {
+    ran++;
     if (!ok) {
       console.log("FAILED: " + what);
-      failed = true;
+      failed++;
     }
   };
   const generated = process.argv[2] ?? "build/js-fixed";
@@ -2829,8 +2835,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       "the COMPILED half only, now that referenceOracle, holePrefill and bytesArrayConvention " +
       "are split and their identity halves RUN above");
   }
-  if (failed) {
+  if (failed !== 0 || ran === 0) {
     console.log("FAILED");
+    console.log(`ran ${ran}, failed ${failed}`);
     process.exit(1);
   }
   console.log("tables JS fixed form: the vocabulary block and its hash are the C++ " +
@@ -2845,4 +2852,5 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     "CONSTRUCTED storage, and §5.3 step 8\'s empty identity hole list is still " +
     "asserted here and not only owed");
   console.log("OK");
+  console.log(`ran ${ran}, failed ${failed}`);
 }
