@@ -82,9 +82,10 @@ export class TableVariableReport {
   // A form byte the read does not carry is unknown_form whichever
   // form-specific name the reason holds; then integrity_mismatch, a
   // non-finite float, any damage as wire_damaged, a missing required field, a
-  // storage cap by its own name, a blob named from two slots, out_of_range, and
-  // kind_mismatch, in that order. unknown, widened, retained and repeated
-  // alone never refuse. No string is built: the answer is a frozen member.
+  // storage cap by its own name, a blob named from two slots, out_of_range,
+  // kind_mismatch, and a repeated JSON key (damage, as every other malformed
+  // text is: wire_damaged), in that order. unknown, widened and retained alone
+  // never refuse. No string is built: the answer is a frozen member.
   err() {
     const reason = this.reason;
     if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
@@ -98,6 +99,9 @@ export class TableVariableReport {
     if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
     if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
     if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    // A REPEATED KEY REFUSES (docs/SPEC-TABLES.md §16.2; docs/plans/strict-only.md
+    // decision 5): the read hands back null, and err() must say why.
+    if (this.repeated > 0) { return TableRefuseReason.WireDamaged; }
     return null;
   }
 }
@@ -4146,8 +4150,9 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 }
 
 // keys are field keys: an unknown one is skipped and counted, a repeated one is
-// last-wins and counted, null puts a pointer back at null, and a value of the
-// wrong JSON shape is skipped and counted, never coerced (§16.2)
+// counted and refuses the whole read (the strict mark), null puts a pointer back
+// at null, and a value of the wrong JSON shape is counted and refuses the read
+// too, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new Set();
   const seenKeys = new Set();
@@ -4738,7 +4743,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       report.mismatch++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      // KEYS NEVER CLAMP: the count refuses the whole read (§2.8, the strict mark)
       report.oor++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {

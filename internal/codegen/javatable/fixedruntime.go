@@ -71,8 +71,9 @@ public final class TableFixed {
     public static final byte opCopy = 0;
 
     /**
-     * a count: clamp it to the ENTRY's bound -- which the compiled plan sets to the WRITER's (5.3
-     * step 11) -- and refuse countOverBound if out of bound.
+     * a count: refuse countOverBound past the ENTRY's bound -- which the compiled plan sets to the
+     * WRITER's (5.3 step 11). The count is held at the bound only so the walk stays inside its
+     * storage; the refused load is discarded whole.
      */
     public static final byte opCount = 1;
 
@@ -927,7 +928,7 @@ public final class TableFixed {
                         // knows of and this reader does not lands None too — that
                         // one is a version difference and counts nothing. Slack
                         // of a counted array is not this op's: scatter walks the
-                        // LIVE count, so unused slots never reach a clamp.
+                        // LIVE count, so unused slots never reach this check.
                         if (Long.compareUnsigned(raw, n) > 0) {
                             report.refuse(Reason.outOfRange);
                         }
@@ -1011,13 +1012,15 @@ public final class TableFixed {
      * §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves, straight-line over
      * the record image after the plan run and before the scatter. spec is a flat array of {dst,
      * width, signed, lo, hi} rows, one per leaf the writer declared, or null when the entry bounds
-     * nothing — the reader's range is the wider one, so clamping to it would land a value the old
-     * writer could not have written (bill §12.5). Every clamp COUNTS, once per leaf per record,
-     * exactly as the scatter's own pass counts the reader's. The comparison is in the field's own
-     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is
-     * past the max and never below the min (an unsigned kind's bounds are never negative).
+     * nothing — the reader's range is the wider one, so checking only it would accept a value
+     * the old writer could not have written (bill §12.5). A leaf off the WRITER's range refuses
+     * the load as outOfRange, exactly as the scatter's own pass refuses the reader's; the value
+     * stored at the bound is never seen, because the refused load is discarded whole
+     * (strict-only-read). The comparison is in the field's own type: signed for a signed kind,
+     * UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the max and never below
+     * the min (an unsigned kind's bounds are never negative).
      */
-    public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
+    public static void checkWriterBounds(long[] spec, byte[] image, Report report) {
         if (spec == null || spec.length == 0 || image == null) {
             return;
         }
@@ -2030,9 +2033,9 @@ public final class TableFixed {
                     // -- landed no tag at all from the plan and was answered by the
                     // PREFILL over the hole. That answer was right and silent:
                     // dstsize carries THE WRITER'S ARM COUNT for this one entry, and
-                    // the read loop counts a clamp for a raw tag past that set, so
-                    // the compiled plan counts what the identity plan's decode bound
-                    // counts (schema#1254, 5.4, 5.8 row 12). Entries apply in push
+                    // the read loop refuses a raw tag past that set as outOfRange, so
+                    // the compiled plan refuses what the identity plan's decode bound
+                    // refuses (schema#1254, 5.4, 5.8 row 12). Entries apply in push
                     // order, so the arm that matches overwrites this one and it
                     // stands when none does -- at the same value the prefill wrote.
                     c.push(

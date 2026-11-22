@@ -80,7 +80,7 @@ public final class MixedStatFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(8) clamps to 2^N - 1
+        } // bits(8) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -512L) {

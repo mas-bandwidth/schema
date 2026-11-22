@@ -21,7 +21,9 @@ import (
 type tgEmit func(b *strings.Builder, w string, d int)
 
 // tgVal is one past-bound value: the payload its kind carries after the kind
-// byte, the JSON value the read must keep, and an upper bound on its bytes.
+// byte, the JSON of its control (the value AT the bound, which reads and
+// writes back; the past-bound wire itself is refused, §4), and an upper bound
+// on its bytes.
 type tgVal struct {
 	name    string // the suffix the probe's name takes: ":above", ".k:below", "[0]:above"
 	payload tgEmit
@@ -243,8 +245,9 @@ func (g *tgBounds) field(st *ir.Struct, f *ir.Field) ([]tgVal, error) {
 	elemKind := ir.TableWireElemKind(f)
 	var out []tgVal
 	fill, fillable := tgFiller(f)
-	// a fixed [N]T read with N + 1 elements keeps N and counts clamped, as a
-	// [..N]T does (§4), so both take the count probe (§16.11)
+	// a fixed [N]T read with N + 1 elements is refused whole, as a [..N]T
+	// past its bound is (§4: count_over_bound, never kept or clamped), so
+	// both take the count probe (§16.11)
 	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 		if !fillable {
 			g.notes = append(g.notes, where+" count (no filler for its element)")
@@ -641,7 +644,7 @@ func tgJSONList(j *tgJSON, v string, n int64) {
 }
 
 // tgJSONRepeat writes a JSON array of n copies of one value: a count probe's
-// expected text, N fillers (§16.11).
+// control text, N fillers at the bound (§16.11).
 func tgJSONRepeat(j *tgJSON, v string, n int64) {
 	j.raw("[")
 	if n > 0 {

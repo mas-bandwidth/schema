@@ -1713,11 +1713,9 @@ are a shared blob (`blob_shared`, answering `null` or `-1`), while equal bytes
 in distinct arrays are two records and save. On a `*string` field, each slot is
 numbered by value as its own blob record, so two slots set to the same
 `String` — including an interned literal (`v.note = "x"; v.head.caption = "x";`)
-— write two records. The tolerant `load` and `loadRetain` of a wire whose two
-slots name one `*bytes` or `*string` record keep the value in both slots and
-mark the second slot as shared (cleared by `Descriptor.reset()`), so a later
-save or `toJson` of that loaded value refuses as the oracle does
-(`TestJavaWritersRefuseASharedBlob`).
+— write two records. `load` and `loadRetain` refuse a wire whose two slots
+name one `*bytes` or `*string` record as `blob_shared` (§2.5; the one strict
+read), so no loaded value carries a shared blob (`TestJavaBlobSharedStrict`).
 
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet

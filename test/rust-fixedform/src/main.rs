@@ -1541,8 +1541,8 @@ fn the_ordinal_slide() {
 // ---------------------------------------------------------------------------
 
 fn the_union_controls(dir: &str) {
-    // A TAG PAST THE ARM COUNT LANDS AS NONE AND COUNTS ONE CLAMPED, which is
-    // the ruling this form takes on a forged ordinal: the identity plan copies
+    // A TAG PAST THE ARM COUNT REFUSES THE LOAD out_of_range, which is the
+    // ruling this form takes on a forged ordinal: the identity plan copies
     // the tag verbatim out of a stranger's record, so the scatter is where the
     // range is closed — the same place a count's bound is closed.
     let golden = slurp(dir, "bench_fixed.bin");
@@ -1811,8 +1811,8 @@ fn the_text_under_an_arm() {
 // AN ENUM ORDINAL PAST THE DECLARED EXTENT (docs/SPEC-TABLES.md §3.4, §4.2).
 //
 // The ruling is the union tag's, and for the same reason: an ordinal out of
-// range LANDS AS NONE AND COUNTS ONE CLAMPED rather than arriving as a number
-// this build has no variant for. Both reader paths answer it, by the two
+// range REFUSES THE LOAD out_of_range rather than arriving as a number this
+// build has no variant for. Both reader paths answer it, by the two
 // mechanisms this form has — the scatter closes the range on the identity path,
 // where the plan copies the ordinal verbatim out of a stranger's record, and the
 // `ordinal` op closes it on the compiled path, where the number is resolved

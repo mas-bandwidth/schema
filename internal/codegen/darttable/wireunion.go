@@ -1129,35 +1129,33 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 }
 
 // emitLoadMap reads one map field (§2.8, §4): kind 14 over element kind 13,
-// each entry a length-framed entry body read tolerantly, decided entry by
-// entry exactly as internal/tablewire (*wireReader).mapField decides it
-// (docs/SPEC-TABLES.md §2.8, §4; the counters of §6.6). Before an entry body
-// decodes, the KEY SCAN (TableWireReader.mapEntryScan, the twin of
-// internal/tablewire (*wireReader).mapKey) walks its field headers:
+// each entry a length-framed entry body, read under the one strict read
+// (docs/SPEC-TABLES.md §2.8, §4; docs/rulings.json strict-only-read): any
+// entry the read cannot take refuses the WHOLE load and nothing of the map
+// is kept. Before an entry body decodes, the KEY SCAN
+// (TableWireReader.mapEntryScan, the twin of internal/tablewire
+// (*wireReader).mapKey) walks its field headers:
 //
-//   - A body the scan cannot frame whole to its terminator makes the MAP
-//     malformed: that entry does not land, nothing inside it is counted, and
-//     the rest of the map skips by its L. No duplicate is judged on it.
-//   - A key whose LAST occurrence rides a kind the declaration neither is nor
-//     widens from is A MAP WITH HALF ITS KEYS: the map resets to empty, ONE
-//     kind_mismatch counts, and the rest skips.
+//   - A body the scan cannot frame whole to its terminator refuses
+//     wire_damaged.
+//   - A key that rides a kind the declaration neither is nor widens from
+//     refuses kind_mismatch.
 //   - A key that rides a kind the declaration WIDENS from counts ONE
 //     widened for the whole map, at the first such key, before the entry is
 //     judged: the entry body's own decode never counts it again.
-//   - Otherwise the body decodes and the entry lands. An entry whose key
-//     EQUALS the previous landed key is a DUPLICATE: the earlier slot is
-//     replaced whole (last wins), the map's count excludes it, and the
-//     report's duplicate counter rises. A key BELOW the previous landed key
-//     is malformed; the ascending prefix stands, nothing the descending
-//     body held is counted, and the rest skips by L.
+//   - A bounded string key past its bound refuses length_over_bound (KEYS
+//     NEVER CLAMP).
+//   - Otherwise the body decodes and the entry lands. A key that EQUALS the
+//     previous landed key (a repeated key) or is BELOW it (out of ascending
+//     order) refuses wire_damaged: no last-wins, no prefix kept.
 func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
 	// the key's declared wire kind and the kinds that widen into it, which
 	// the key scan reads (ir.TableKindWidens; internal/tablewire mapKey), and
 	// the key's declared string bound (ir.MapKeyField(f).Type.Size) for the
-	// fit rule: a `string(N)` key past N drops its entry whole (§2.8, KEYS
-	// NEVER CLAMP; internal/tabletext MapKeyFits). keySize is -1 for a key
+	// fit rule: a `string(N)` key past N refuses the load (§2.8, KEYS NEVER
+	// CLAMP; internal/tabletext MapKeyFits). keySize is -1 for a key
 	// that is not a bounded string, which can never fail to fit.
 	keyField := ir.MapKeyField(f)
 	keyKind := ir.TableWireScalarKind(keyField)
@@ -1213,11 +1211,9 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.refuse('kind_mismatch'); break; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
-	// KEYS NEVER CLAMP (§2.8): a key whose LAST occurrence rides a string the
-	// declaration bounds under its length drops the entry WHOLE, one `clamped`
-	// per entry, and nothing inside the body is decoded or counted, and the
-	// entry never becomes the last landed key (internal/tablewire mapField
-	// `if !tabletext.MapKeyFits(f, key) { r.report.Clamped++; continue }`).
+	// KEYS NEVER CLAMP (§2.8): a key longer than the bound its declaration
+	// gives refuses the whole load as length_over_bound; nothing of the map
+	// is kept (docs/rulings.json strict-only-read).
 	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.refuse('length_over_bound'); break; }\n", ind)
 	// Order admits an entry before its body can add events or refuse a
 	// nested allocation (§2.8). The final key may follow the value on wire.
@@ -1239,7 +1235,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tfinal retainedAt = r.retain?.records.length ?? 0;\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
 	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
-	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
+	g.pf("%s\t\t\t// EQUAL: a repeated key refuses the whole load (§2.8, §4)\n", ind)
 	g.pf("%s\t\t\tif (order == 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
