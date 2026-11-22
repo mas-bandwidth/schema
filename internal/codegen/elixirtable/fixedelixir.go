@@ -494,9 +494,17 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		return fmt.Sprintf("if(%s, do: 1, else: 0)::unsigned-8", name)
 	case ir.TFloat32:
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
-		// this form is not optimized for bandwidth (§3.4).
+		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
+		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
+		// plain float's -0 is carried bit-exact.
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.cf32_bits(%s)::little-unsigned-32", name)
+		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.cf64_bits(%s)::little-unsigned-64", name)
+		}
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
 	// AN INTEGER LEAF IS HELD TO ITS RANGE ON THE WAY OUT. The reference spends

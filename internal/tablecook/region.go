@@ -385,13 +385,13 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
 			return err
 		}
-		w.putU32(at, math.Float32bits(float32(cell.F)))
+		w.putU32(at, math.Float32bits(float32(tabletext.StoredFloat(f, cell.F))))
 		return nil
 	case ir.TFloat64:
 		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
 			return err
 		}
-		w.putU64(at, math.Float64bits(cell.F))
+		w.putU64(at, math.Float64bits(tabletext.StoredFloat(f, cell.F)))
 		return nil
 	case ir.TInt, ir.TFixed:
 		if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {

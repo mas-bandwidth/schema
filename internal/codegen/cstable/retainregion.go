@@ -66,6 +66,13 @@ func tableRetainRegionSource() string {
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the retention
 	// store keeps nothing a damaged load captured, nor anything an earlier load
 	// left in it.
+	// A file refused or damaged at its frame, before any body is walked (a form
+	// byte this reader does not take, a failed integrity check), is such a
+	// load too.
+	s = tableReplace(s, "if (reason == \"integrity_mismatch\") { IntegrityDamage(report); return IntPtr.Zero; }",
+		"if (reason == \"integrity_mismatch\") { IntegrityDamage(report); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
+	s = tableReplace(s, "Finish(report, Verdict.Refused); }\n            else { Damage(report);",
+		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            else { Damage(report);")
 	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return IntPtr.Zero;",
 		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return IntPtr.Zero;")
 	s = tableReplace(s, "Finish(report, Verdict.Refused); return IntPtr.Zero; }",

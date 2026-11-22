@@ -29,6 +29,7 @@ LOBSTER_HOSTILE_PACKET := internal_ci_hostilecorpus_corpus_packet_hostile_schema
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
 schema-lobster-runs-hostile-corpus: lobster-dist-present
+	go test -count=1 -run '^TestScorerOutcomes$$' ./test/conformance/lobster/hostile
 	go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)
 
 # the port's unit target runs the corpus (the prerequisite lands here, so

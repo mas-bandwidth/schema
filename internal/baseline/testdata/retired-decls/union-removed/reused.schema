@@ -1,0 +1,15 @@
+package decls
+
+type Other
+{
+    s string(8)
+}
+
+// a NEW union under the name the removal freed, no arm of the old one
+union Choice { other Other }
+
+table Holder
+{
+    c    int32
+    pick2 Choice
+}

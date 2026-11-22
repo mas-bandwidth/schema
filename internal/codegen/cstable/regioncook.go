@@ -109,7 +109,10 @@ const tableRegionCookSource = `
             w.Put(at, tag, f.Arms.NativeTagSize); TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || RegionPackField(ref w, at + f.Arms.NativeArmOffset, union.Arm(f), arm, extentAt, ref extent);
         }
-        w.Put(at, NativeWord(value.Slot(f, index), f.NativeElementSize), f.NativeElementSize); return true;
+        // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+        UInt128 word = NativeWord(value.Slot(f, index), f.NativeElementSize);
+        if (f.Kind == 10) { word = StoredRaw(unchecked((ulong)word), f); }
+        w.Put(at, word, f.NativeElementSize); return true;
     }
     static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment, bool finite = false)
     {

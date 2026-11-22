@@ -1583,10 +1583,10 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	for name, data := range generatedTree(u) {
 		// The driver receives the genuine writer announcement while its
 		// reader retains its own generated build and schema.
-		old := "export const TableMessageAnnouncement = new Uint8Array([" + jsByteLiterals(tablewire.Announce(u)) + "]);"
+		old := "export const TableMessageAnnouncement = new globalThis.Uint8Array([" + jsByteLiterals(tablewire.Announce(u)) + "]);"
 		if strings.Contains(string(data), old) {
 			annReplaced++
-			data = []byte(strings.Replace(string(data), old, "export const TableMessageAnnouncement = new Uint8Array(["+jsByteLiterals(tablewire.Announce(writer))+"]);", 1))
+			data = []byte(strings.Replace(string(data), old, "export const TableMessageAnnouncement = new globalThis.Uint8Array(["+jsByteLiterals(tablewire.Announce(writer))+"]);", 1))
 		}
 		if strings.Contains(name, "/") || !strings.HasSuffix(name, ".js") {
 			continue
