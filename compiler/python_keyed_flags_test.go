@@ -21,7 +21,7 @@ table Root { values [Slot]Caps }
 		t.Fatal("missing values descriptor")
 	}
 	row, _, _ := strings.Cut(src[start:], "\n        ),")
-	for _, want := range []string{`codec="keyed",`, `elem=FieldDesc(`, `kind=9,`, `codec="int",`, `hi=18446744073709551615,`} {
+	for _, want := range []string{`codec="keyed",`, `elem=FieldDesc(`, `kind=9,`, `codec="int",`, `hi=7,`} { // a flags mask is held to W = 3 bits (R17)
 		if !strings.Contains(row, want) {
 			t.Errorf("descriptor lacks %s:\n%s", want, row)
 		}
