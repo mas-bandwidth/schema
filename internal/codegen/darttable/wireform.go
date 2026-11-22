@@ -2467,12 +2467,6 @@ func dartFloatOwner(u *ir.Unit, f *ir.Field, cur *ir.Struct) string {
 	return f.Name
 }
 
-// floatRides is the condition under which a float rides past its default
-// elision: its BITS differ from the default's (docs/SPEC-TABLES.md §3.3, -0
-// is a value and it rides). For a finite value the bits differ exactly when
-// the values differ or both are zero with different signs, so a -0 under a +0
-// default rides and a +0 under a declared -0 default rides. A NaN or an
-// infinity rides too, and the writer refuses it there.
 // dartStoredFloat is the value every writer stores for a float: the value
 // itself, except that a COMPRESSED float's -0 is stored as +0, the bits +0
 // stores (docs/SPEC-TABLES.md §3.3; docs/rulings.json fixed-compressed-negzero).
@@ -2485,6 +2479,12 @@ func dartStoredFloat(f *ir.Field, expr string) string {
 	return expr
 }
 
+// floatRides is the condition under which a float rides past its default
+// elision: its BITS differ from the default's (docs/SPEC-TABLES.md §3.3, -0
+// is a value and it rides). For a finite value the bits differ exactly when
+// the values differ or both are zero with different signs, so a -0 under a +0
+// default rides and a +0 under a declared -0 default rides. A NaN or an
+// infinity rides too, and the writer refuses it there.
 func floatRides(f *ir.Field, expr, lit string) string {
 	def := 0.0
 	if f.HasDefault {
