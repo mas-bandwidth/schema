@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// shippedTargets are the eighteen languages a release ships (README.md,
+// shippedTargets are the 18 targets in 17 languages a release ships (README.md,
 // ROADMAP.md). Every one is a built-in target of the default build: a plain
 // `go build ./cmd/schema`, with no build tag, answers `--lang <name>` for each.
 var shippedTargets = []string{

@@ -24,7 +24,7 @@ import (
 	"testing"
 )
 
-// shippedLegNames are the eighteen languages a release ships, as their
+// shippedLegNames are the 18 targets in 17 languages a release ships, as their
 // compiler targets name them (compiler/target_moo_builtin_test.go,
 // shippedTargets, holds the compiler to the same list).
 var shippedLegNames = []string{

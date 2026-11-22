@@ -14,7 +14,7 @@ moo-toolchain-ready:
 
 # THE HARNESS FOR THE MOO LEG: `implementation --lang moo` reads
 # compiler.Carried("moo"), which every build registers now that moo is a
-# built-in target (test/conformance/harness/implementation_moo.go).
+# built-in target (builtinImplementationLanguages, test/conformance/harness/implementation_tagged.go).
 build/conformance-harness-moo: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -o $@ ./test/conformance/harness

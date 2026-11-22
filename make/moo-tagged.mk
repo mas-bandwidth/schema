@@ -7,7 +7,7 @@
 # defaults and was rows, the packet claims. The target keeps its name from
 # when the leg sat behind a build tag; it now runs, with no tag, both packages
 # whole under SCHEMA_SLOW=1 with the pinned interpreter, with the conformance
-# harness's moo admission (test/conformance/harness/implementation_moo.go),
+# harness's moo admission (builtinImplementationLanguages, test/conformance/harness/implementation_tagged.go),
 # in one `go test` that builds and runs the three in parallel. The
 # fixed-form tests read the reference's corpus, so it is built first and a
 # missing one is a failure.
