@@ -1860,3 +1860,98 @@ func jsFloatLit(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'g', -1, 64)
 }
+
+// ---------------------------------------------------------------------------
+// THE TEXT-PLACED VALUE: the variable class's storage into the fixed class's
+// ---------------------------------------------------------------------------
+
+// emitFromTextBody emits <T>FixedFromText( src, dst ): the variable class's
+// value of one fixed table, the one <T>FromJson answers (a counted array is a
+// live-length array with no <Name>Count, an enum is its NAME), read into the
+// fixed class's storage (a count beside the array, an ordinal). A value placed
+// by text is the value the text names (docs/SPEC-TABLES.md §3.3, §16), and the
+// writer owes the same bytes for it as for a value the fixed class built; so
+// the batch verbs take this conversion when the value is not already in the
+// fixed class's own form. A field the variable class does not spell
+// differently is copied as it stands, and a field the text left out keeps the
+// fresh storage's declared default.
+func (g *fixedGen) emitFromTextBody(st *ir.Struct) {
+	g.pf("// %sFixedFromText fills the fixed class's storage from the variable\n", st.Name)
+	g.pf("// class's value (a text read's): the live-length arrays gain their\n")
+	g.pf("// <Name>Count and the enum names become ordinals. Nothing is checked here:\n")
+	g.pf("// <T>FixedCheckBody holds the result to the declaration.\n")
+	g.pf("export function %sFixedFromText(src, dst) {\n", st.Name)
+	g.pf("  if (src === null || typeof src !== \"object\") { return dst; }\n")
+	for _, f := range st.Fields {
+		g.emitFromTextField(f)
+	}
+	g.pf("  return dst;\n}\n\n")
+}
+
+func (g *fixedGen) emitFromTextField(f *ir.Field) {
+	name := js.MemberName(f.Name)
+	s, d := "src."+name, "dst."+name
+	if f.Type.Optional {
+		g.pf("  if (%sPresent !== undefined) { dst.%sPresent = %sPresent; }\n", s, name, s)
+	}
+	switch {
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
+		bound := f.ArrayBound
+		if f.KeyEnum != "" {
+			bound = f.KeyEnumRef.Max
+		}
+		g.pf("  if (%s !== null && typeof %s === \"object\" && typeof %s.length === \"number\") {\n", s, s, s)
+		g.pf("    const n = globalThis.Math.min(%s.length, %d);\n", s, bound)
+		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
+			g.pf("    %sCount = typeof %sCount === \"number\" ? %sCount : %s.length;\n", d, s, s, s)
+		}
+		g.pf("    for (let i = 0; i < n; i++) {\n")
+		g.emitFromTextElement(f, s+"[i]", d+"[i]", "      ")
+		g.pf("    }\n  }\n")
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		g.pf("  if (%s !== undefined) { %s = %s; }\n", s, d, s)
+		g.pf("  if (%sLength !== undefined) { %sLength = %sLength; }\n", s, d, s)
+	default:
+		g.emitFromTextElement(f, s, d, "  ")
+	}
+}
+
+func (g *fixedGen) emitFromTextElement(f *ir.Field, s, d, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%s%sFixedFromText(%s, %s);\n", ind, r.Name, s, d)
+			return
+		case *ir.Enum:
+			g.pf("%sif (%s !== null && %s !== undefined) { %s = %sFixedFromName(%s); }\n", ind, s, s, d, r.Name, s)
+			return
+		}
+	}
+	g.pf("%sif (%s !== undefined) { %s = %s; }\n", ind, s, d, s)
+}
+
+// emitFromTextEnums emits, once per enum a fixed table of the closure names,
+// the name-to-ordinal lookup <Enum>FixedFromName: a string that names a
+// variant answers its ordinal and anything else stays as it is, so the
+// preflight refuses it rather than this lookup guessing.
+func (g *fixedGen) emitFromTextEnums(closure []*ir.Struct) {
+	seen := map[string]bool{}
+	for _, st := range closure {
+		for _, f := range st.Fields {
+			r, ok := f.Type.Ref.(*ir.Enum)
+			if f.Type.Kind != ir.TNamed || !ok || seen[r.Name] {
+				continue
+			}
+			seen[r.Name] = true
+			g.pf("const %sFixedByName = new globalThis.Map([[\"None\", 0]", r.Name)
+			for i, v := range r.Variants {
+				g.pf(", [%q, %d]", v, i+1)
+			}
+			g.pf("]);\n")
+			g.pf("function %sFixedFromName(name) {\n", r.Name)
+			g.pf("  if (typeof name !== \"string\") { return name; }\n")
+			g.pf("  const ordinal = %sFixedByName.get(name);\n", r.Name)
+			g.pf("  return ordinal === undefined ? name : ordinal;\n}\n\n")
+		}
+	}
+}
