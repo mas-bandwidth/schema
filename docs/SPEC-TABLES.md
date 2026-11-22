@@ -5202,9 +5202,13 @@ bound, so it is never more than half full — and the walk is allocation-free
 comparisons (a fixed `8,386,560` at the bound), and never falls back to a
 pairwise scan. Duplicate ids stay refused, and ids this reader cannot name stay
 legal: they are counted `unknown` exactly where a body names them, never at
-resolve time. Every table this schema's own writer emits is far under the
-bound, so the refusal is a reader's defense against a hostile file and no
-writer this schema can drive ever meets it.
+resolve time. **EVERY WRITER REFUSES WHAT THE READERS REFUSE.** A schema may
+declare more than 4096 ids (a table of 4200 fields, all set, needs 4200), so
+the bound is reachable from a lawful value: a writer that would need a 4097th
+entry REFUSES the save (the assert legs debug-assert; every other port refuses
+in every build), nothing grows past it (Java's save-side table included), and
+no writer produces a file its readers refuse. A retained id (§6.6) that would
+be the 4097th is lost and counted, never written.
 
 **THIS FORM IS THE VARIABLE WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
