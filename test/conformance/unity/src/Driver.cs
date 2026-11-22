@@ -80,6 +80,12 @@ namespace SchemaUnityConformance
         long MessageSave(object value, byte[] buffer);
 
         RetainOutcome RunRetain(byte[] wire, bool shortBytes, int idCapacity);
+
+        // Fresh is the root's declared-default value (a write-refusal wire of `-`).
+        object Fresh();
+        // ReadInto is a read-into row (Surfaces1122.cs): ONE report and one set
+        // of count values through a read of lawful, damaged and lawful again.
+        byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement);
     }
 
     internal static partial class Driver
@@ -566,7 +572,10 @@ namespace SchemaUnityConformance
             public long MessageMeasure(object value)
             {
                 if (measureMessages == null) { return -1; }
-                if (value is T[] batch) { return measureMessages(batch); }
+                // never name T[] on the one-value path: an array of a value type
+                // past .NET's element-size limit (tblsurf Big, 70012 bytes) cannot
+                // even be type-tested, and the runtime takes a span
+                if (value is Array) { return MeasureBatch(value); }
                 T v = (T)value;
                 return measureMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1));
             }
@@ -574,10 +583,16 @@ namespace SchemaUnityConformance
             public long MessageSave(object value, byte[] buffer)
             {
                 if (saveMessages == null) { return -1; }
-                if (value is T[] batch) { return saveMessages(batch, buffer); }
+                if (value is Array) { return SaveBatch(value, buffer); }
                 T v = (T)value;
                 return saveMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1), buffer);
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private long MeasureBatch(object batch) { return measureMessages((T[])batch); }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private long SaveBatch(object batch, byte[] buffer) { return saveMessages((T[])batch, buffer); }
 
             private byte[] scratchRetainBytes;
             private TRetId[] scratchRetainIds;
@@ -600,6 +615,65 @@ namespace SchemaUnityConformance
                 fRetIds.SetValue(store, new TRetId[Math.Max(1, idCap)]);
                 fRetIdCap.SetValue(store, idCap);
                 return store;
+            }
+
+            public object Fresh() { return MakeFresh(); }
+
+            public byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement)
+            {
+                switch (form)
+                {
+                    case "variable": if (varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); } break;
+                    case "json": if (fromJson == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no FromJson"); } break;
+                    case "fixed": if (fixedLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no FixedLoad"); } break;
+                    case "message": if (loadMessages == null || announceRead == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadMessages"); } break;
+                    default: throw new InvalidOperationException("read-into: unknown form " + form);
+                }
+                if (toJsonMeasure == null || toJson == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no ToJson"); }
+                TVocab vocab = null;
+                if (form == "message")
+                {
+                    vocab = new TVocab();
+                    TRep announced = default;
+                    if (!announceRead(vocab, announcement, ref announced)) { throw new InvalidOperationException("read-into: the connection's announcement does not read"); }
+                }
+                T[] values = new T[count];
+                for (int i = 0; i < count; i++) { values[i] = MakeFresh(); }
+                TRep report = default;
+                var answer = new MemoryStream();
+                void Line(string text) { byte[] b = Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
+                void Step(byte[] bytes)
+                {
+                    string line;
+                    try
+                    {
+                        bool ok;
+                        switch (form)
+                        {
+                            case "variable": ok = varLoad(ref values[0], bytes, ref report); break;
+                            case "json": ok = fromJson(ref values[0], bytes, ref report); break;
+                            case "fixed": ok = fixedLoad(values, bytes, ref report, FixedPlanCapacity) >= 0; break;
+                            default: ok = loadMessages(values, bytes, vocab, ref report, out _); break;
+                        }
+                        object boxed = report;
+                        bool refused = (bool)fRefused.GetValue(boxed) || (fDamaged != null && (bool)fDamaged.GetValue(boxed));
+                        line = ok && !refused ? "read" : "refused";
+                    }
+                    catch (Exception e) { line = "threw " + e.GetType().Name; }
+                    Line(line);
+                }
+                Step(lawful);
+                Step(damaged);
+                for (int i = 0; i < count; i++)
+                {
+                    long size = toJsonMeasure(ref values[i]);
+                    if (size < 0) { Line("tojson-refused"); continue; }
+                    byte[] text = new byte[checked((int)size)];
+                    if (toJson(ref values[i], text) != size) { Line("tojson-size"); continue; }
+                    answer.Write(text, 0, text.Length);
+                }
+                Step(lawful);
+                return answer.ToArray();
             }
 
             public RetainOutcome RunRetain(byte[] wire, bool shortBytes, int idCapacity)
@@ -1309,7 +1383,8 @@ namespace SchemaUnityConformance
             "cook\ncook-write\ncook-foreign\n" +
             "block\nblock-foreign\nblock-dump\n" +
             "forgery\ncook-forgery\n" +
-            "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n";
+            "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" +
+            "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n";
 
         private static int Main(string[] args)
         {
@@ -1360,8 +1435,13 @@ namespace SchemaUnityConformance
                 case "write-refusal":
                 case "write-refusal-fixed":
                 case "write-refusal-message":
+                case "write-refusal-cook":
+                case "write-refusal-block":
                 case "write-refusal-json":
                     return SurfaceWriteRefusal(outDir, surface);
+                case "announce": return SurfaceAnnounce(outDir);
+                case "read-into": return SurfaceReadInto(outDir);
+                case "json-write-into": return SurfaceJsonWriteInto(outDir);
                 default:
                     return 2;
             }
