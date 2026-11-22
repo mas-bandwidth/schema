@@ -238,7 +238,7 @@ is past 10^LIMIT either way (no exact arithmetic is spent on those)."
 (defvar *labels*)        ; label -> :open | :skipped | tval
 (defvar *json-unknown*)
 
-(defun key-string (k)
+(defun key-string (k)   ; SPEC-GAP 8: capped in skipped values too
   (when (> (length k) +schema-name-cap+) (malformed "schema name past 255 bytes"))
   (octets-to-string k))
 
@@ -446,7 +446,7 @@ requires; §16.7 says they apply everywhere."
                 (setf off (* (if (char= z #\+) 1 -1) (+ (* oh 3600) (* om 60)))))))
           (unless (= p n) (bad))
           (let ((ns (+ (* (- (+ (* (days-from-civil y mo d) 86400) (* h 3600) (* mi 60) se) off) 1000000000) nanos)))
-            (unless (<= (- (expt 2 63)) ns (1- (expt 2 63))) (bad))
+            (unless (<= (- (expt 2 63)) ns (1- (expt 2 63))) (bad))   ; SPEC-GAP 12: int64 ns
             ns))))))
 
 (defparameter +b64+ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
@@ -493,7 +493,7 @@ requires; §16.7 says they apply everywhere."
         0
         (let ((v (find s (edecl-variants e) :key #'variant-name :test #'string=)))
           (cond ((null v) (incf *json-unknown*) 0)
-                ((variant-deprecated v) dflt)      ; §2.15: reads as the declared default
+                ((variant-deprecated v) dflt)      ; §2.15; SPEC-GAP 11: no field, the type default
                 (t (variant-ordinal v)))))))
 
 (defun read-flags (fd jv where)
