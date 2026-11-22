@@ -2,12 +2,13 @@ package rusttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestRustJsonWriterRefusesZeroByte(t *testing.T) {
@@ -75,12 +76,12 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe-bin")
-	cmd := exec.Command("rustc", "--edition=2024", "--cfg", `feature="cook"`, "-A", "warnings", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition=2024", "--cfg", `feature="cook"`, "-A", "warnings", "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("debug Rust compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "JSON_ZERO_BYTE_OK") {
 		t.Fatalf("debug Rust probe: %v\n%s", err, out)
 	}

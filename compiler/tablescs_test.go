@@ -5,7 +5,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -13,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCsEmitsTableSources: the cs target adds <Base>Table.cs beside the packet
@@ -630,7 +631,7 @@ static class Program
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("dotnet run failed: %v\n%s", err, out)
@@ -820,7 +821,7 @@ static class Program
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("dotnet run failed: %v\n%s", err, out)

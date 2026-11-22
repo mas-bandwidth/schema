@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A map's absent optional value must remain in the map as null (§2.8/§16.2).
@@ -43,7 +45,7 @@ func TestCPPJSONOptionalMapValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, driver, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, driver, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	cases := []struct {
@@ -62,7 +64,7 @@ func TestCPPJSONOptionalMapValues(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := exec.Command(bin, tc.mode, tc.input).CombinedOutput()
+			out, err := testproc.Command(t, bin, tc.mode, tc.input).CombinedOutput()
 			if err != nil {
 				t.Fatalf("probe: %v\n%s", err, out)
 			}

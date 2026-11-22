@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // §5.8 count_clamp_ends, the roadmap's two array-bounds tasks cs/C1 "count
@@ -237,7 +238,7 @@ static class ProbeMain
 	if dotnet == "" {
 		dotnet = "dotnet"
 	}
-	cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+	cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 	out, runErr := cmd.CombinedOutput()

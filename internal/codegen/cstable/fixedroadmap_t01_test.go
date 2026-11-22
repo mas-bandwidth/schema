@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // docs/roadmap.sexp node `fixed-tables`, the cs leg's framing rows: file-envelope
@@ -438,7 +439,7 @@ static class ProbeMain
 		if dotnet == "" {
 			dotnet = "dotnet"
 		}
-		cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+		cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 		t01Out, t01Err = cmd.CombinedOutput()

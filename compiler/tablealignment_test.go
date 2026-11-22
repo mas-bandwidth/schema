@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A variable wide root used to fail C++'s Alloc<T> assertion (16 <= 8).
@@ -135,10 +137,10 @@ func referenceCompileRun(t *testing.T, files map[string][]byte, source string, f
 			if mode == "sanitize" {
 				args = append(args, "-fsanitize=address,undefined", "-fno-sanitize-recover=all")
 			}
-			if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, compiler, args...).CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
-			if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 				t.Fatalf("run: %v\n%s", err, out)
 			}
 		})

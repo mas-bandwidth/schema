@@ -7,9 +7,9 @@
 -- package benchtable — protocol id 0x4c9383ebe3cde248 — the Luau table surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
-local _BenchTable = require("./BenchTable")
-local _schema_fixed = require("./schema_fixed")
-local _schema_tables = require("./schema_tables")
+local _F_BenchTable = require("./BenchTable")
+local _F_schema__fixed = require("./schema_fixed")
+local _F_schema__tables = require("./schema_tables")
 
 local _T = {}
 
@@ -25,8 +25,8 @@ export type TableEntity = {
 	VelY: number,
 	VelZ: number,
 	Health: number,
-	Weapon: _BenchTable.TableWeapon,
-	Damage: _BenchTable.TableDamage,
+	Weapon: _F_BenchTable.TableWeapon,
+	Damage: _F_BenchTable.TableDamage,
 	Moving: boolean,
 	Firing: boolean,
 }
@@ -52,7 +52,7 @@ end
 
 -- TableEntityDescriptor — TableEntity as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TableEntityDescriptor = _schema_tables.table({
+_T.TableEntityDescriptor = _F_schema__tables.table({
 	name = "TableEntity",
 	id = 3558250755087846312i, -- FNV-1a 64 of "TableEntity" (§3.1)
 	table = true,
@@ -93,7 +93,7 @@ end
 
 -- TableStatDescriptor — TableStat as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TableStatDescriptor = _schema_tables.table({
+_T.TableStatDescriptor = _F_schema__tables.table({
 	name = "TableStat",
 	id = 2984383410656091285i, -- FNV-1a 64 of "TableStat" (§3.1)
 	table = true,
@@ -123,7 +123,7 @@ export type TableMixed = {
 	EntitiesCount: number,
 	Stats: {TableStat},
 	StatsCount: number,
-	GameEvent: _BenchTable.TableEvent,
+	GameEvent: _F_BenchTable.TableEvent,
 	Loadout: buffer,
 	PlayerName: buffer,
 	PlayerNameLength: number,
@@ -158,7 +158,7 @@ function _T.NewTableMixed(): TableMixed
 		EntitiesCount = 1,
 		Stats = _Rt.array(80, function() return _T.NewTableStat() end),
 		StatsCount = 0,
-		GameEvent = _BenchTable.NewTableEvent(),
+		GameEvent = _F_BenchTable.NewTableEvent(),
 		Loadout = buffer.create(4), -- [N]uint8: a buffer, 0-based
 		PlayerName = buffer.create(15), -- string(15): max length, used length beside it (SPEC §4.7)
 		PlayerNameLength = 0,
@@ -182,7 +182,7 @@ end
 
 -- TableMixedDescriptor — TableMixed as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TableMixedDescriptor = _schema_tables.table({
+_T.TableMixedDescriptor = _F_schema__tables.table({
 	name = "TableMixed",
 	id = 4871457021464447630i, -- FNV-1a 64 of "TableMixed" (§3.1)
 	table = true,
@@ -224,7 +224,7 @@ _T.TableMixedDescriptor = _schema_tables.table({
 
 -- TableHitEventDescriptor — TableHitEvent as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TableHitEventDescriptor = _schema_tables.table({
+_T.TableHitEventDescriptor = _F_schema__tables.table({
 	name = "TableHitEvent",
 	id = 8389190336562899880i, -- FNV-1a 64 of "TableHitEvent" (§3.1)
 	table = false,
@@ -237,12 +237,12 @@ _T.TableHitEventDescriptor = _schema_tables.table({
 		{ id = 142922654710085925i, name = "hit_kind", slot = "HitKind", json = "hit_kind", o = 2, k = 4, s = "int", kw = 4, signed = true, dom = "number", lo = 0, hi = 7, def = 0 },
 		{ id = 1324453635955533101i, name = "crit", slot = "Crit", json = "crit", o = 3, k = 1, s = "bool", def = false },
 	},
-	new = _BenchTable.NewTableHitEvent,
+	new = _F_BenchTable.NewTableHitEvent,
 })
 
 -- TableChatEventDescriptor — TableChatEvent as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TableChatEventDescriptor = _schema_tables.table({
+_T.TableChatEventDescriptor = _F_schema__tables.table({
 	name = "TableChatEvent",
 	id = 0x969901d577faad3bi, -- FNV-1a 64 of "TableChatEvent" (§3.1)
 	table = false,
@@ -253,12 +253,12 @@ _T.TableChatEventDescriptor = _schema_tables.table({
 		{ id = 0xa5013e9ad5caeda4i, name = "channel", slot = "Channel", json = "channel", o = 0, k = 4, s = "int", kw = 4, signed = true, dom = "number", lo = 0, hi = 3, def = 0 },
 		{ id = 0xfbf1ac4d96ebd022i, name = "speaker", slot = "Speaker", json = "speaker", o = 1, k = 7, s = "int", kw = 2, signed = false, dom = "number", bits = 12, def = 0 },
 	},
-	new = _BenchTable.NewTableChatEvent,
+	new = _F_BenchTable.NewTableChatEvent,
 })
 
 -- TablePickupEventDescriptor — TablePickupEvent as data: node type id, class, and one entry per field
 -- (docs/SPEC-TABLES.md §3, §8.1)
-_T.TablePickupEventDescriptor = _schema_tables.table({
+_T.TablePickupEventDescriptor = _F_schema__tables.table({
 	name = "TablePickupEvent",
 	id = 8694226076464086509i, -- FNV-1a 64 of "TablePickupEvent" (§3.1)
 	table = false,
@@ -269,24 +269,24 @@ _T.TablePickupEventDescriptor = _schema_tables.table({
 		{ id = 0x9e7fd06d864fbd56i, name = "item_id", slot = "ItemId", json = "item_id", o = 0, k = 7, s = "int", kw = 2, signed = false, dom = "number", bits = 10, def = 0 },
 		{ id = 0x8113fe7ea2b16969i, name = "amount", slot = "Amount", json = "amount", o = 1, k = 4, s = "int", kw = 4, signed = true, dom = "number", lo = 0, hi = 255, def = 0 },
 	},
-	new = _BenchTable.NewTablePickupEvent,
+	new = _F_BenchTable.NewTablePickupEvent,
 })
 
 -- TableEventDescriptor — union TableEvent as data: one entry per arm, tag order (§2.6)
-_T.TableEventDescriptor = _schema_tables.union({
+_T.TableEventDescriptor = _F_schema__tables.union({
 	name = "TableEvent",
 	arms = {
 		{ id = 3707351006901076138i, name = "hit", slot = "Hit", json = "hit", o = 0, k = 13, s = "tab", t = "TableHitEvent", tag = 1 }, 
 		{ id = 0xf2a38d910b5b348bi, name = "chat", slot = "Chat", json = "chat", o = 1, k = 13, s = "tab", t = "TableChatEvent", tag = 2 }, 
 		{ id = 0x9fa3a41c86ecb765i, name = "pickup", slot = "Pickup", json = "pickup", o = 2, k = 13, s = "tab", t = "TablePickupEvent", tag = 3 }, 
 	},
-	new = _BenchTable.NewTableEvent,
+	new = _F_BenchTable.NewTableEvent,
 })
 
 -- TableEntity: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
 _T.TableEntityFixedHash = 6821906941564587437i
 _T.TableEntityFixedRecordBytes = 51
-_T.TableEntityFixedLayout = _schema_fixed.fixed_layout({
+_T.TableEntityFixedLayout = _F_schema__fixed.fixed_layout({
 	{ id = 3558250755087846312i, kind = 13, size = 51, children = 14 }, -- TableEntity
 	{ id = 2593226102015223570i, kind = 7, size = 4, children = 0 }, -- entity_id
 	{ id = 0xcb4b37357667310ei, kind = 4, size = 4, children = 0 }, -- pos_x
@@ -329,7 +329,7 @@ _T.TableEntityFixedFloor = 0
 -- TableStat: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
 _T.TableStatFixedHash = 602130354338787353i
 _T.TableStatFixedRecordBytes = 8
-_T.TableStatFixedLayout = _schema_fixed.fixed_layout({
+_T.TableStatFixedLayout = _F_schema__fixed.fixed_layout({
 	{ id = 2984383410656091285i, kind = 13, size = 8, children = 2 }, -- TableStat
 	{ id = 0x80ab75f0866dbf65i, kind = 6, size = 4, children = 0 }, -- stat_id
 	{ id = 5910805692604981441i, kind = 4, size = 4, children = 0 }, -- delta
@@ -345,7 +345,7 @@ _T.TableStatFixedFloor = 0
 -- TableMixed: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
 _T.TableMixedFixedHash = 0xd9aba5d49eb0840ci
 _T.TableMixedFixedRecordBytes = 1224
-_T.TableMixedFixedLayout = _schema_fixed.fixed_layout({
+_T.TableMixedFixedLayout = _F_schema__fixed.fixed_layout({
 	{ id = 4871457021464447630i, kind = 13, size = 1224, children = 28 }, -- TableMixed
 	{ id = 7663561793681298941i, kind = 7, size = 2, children = 0 }, -- protocol_magic
 	{ id = 0xaa38aca481f528a8i, kind = 7, size = 4, children = 0 }, -- sequence
@@ -481,12 +481,12 @@ _T.TableMessageRefBits = 7
 _T.TableMessageEntriesHere = 70
 _T.TableMessageBuildVersion = 4484788518692264406i
 
-_schema_tables.messageAnnouncement(_T.TableMessageBuildVersion, _T.TableMessageAnnouncement)
-_schema_tables.messageSlots(_T.TableMessageBuildVersion, { ["TableChatEvent"] = { 1, 2 }, ["TableEntity"] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, ["TableHitEvent"] = { 17, 18, 19, 20 }, ["TableMixed"] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48 }, ["TablePickupEvent"] = { 49, 50 }, ["TableStat"] = { 51, 52 }, ["TableEvent"] = { 68, 69, 70 }, })
-_schema_tables.buildVersion(_T.TableMessageBuildVersion, { "TableChatEvent", "TableEntity", "TableHitEvent", "TableMixed", "TablePickupEvent", "TableStat" })
+_F_schema__tables.messageAnnouncement(_T.TableMessageBuildVersion, _T.TableMessageAnnouncement)
+_F_schema__tables.messageSlots(_T.TableMessageBuildVersion, { ["TableChatEvent"] = { 1, 2 }, ["TableEntity"] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, ["TableHitEvent"] = { 17, 18, 19, 20 }, ["TableMixed"] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48 }, ["TablePickupEvent"] = { 49, 50 }, ["TableStat"] = { 51, 52 }, ["TableEvent"] = { 68, 69, 70 }, })
+_F_schema__tables.buildVersion(_T.TableMessageBuildVersion, { "TableChatEvent", "TableEntity", "TableHitEvent", "TableMixed", "TablePickupEvent", "TableStat" })
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)
-_schema_tables.wireIds({
+_F_schema__tables.wireIds({
 	80074449652715421i, 142922654710085925i, 350179810443481718i, 912176952613754358i,
 	990229364654832702i, 1271228688681418151i, 1324453635955533101i, 1415871171432867950i,
 	1768712988339112597i, 2358437193313989428i, 2494154474894420565i, 2593226102015223570i,
@@ -510,7 +510,7 @@ _schema_tables.wireIds({
 })
 
 -- the table type ids this reader declares, whatever a root places (§3.1)
-_schema_tables.tableIds({
+_F_schema__tables.tableIds({
 	2984383410656091285i, 3558250755087846312i, 4871457021464447630i,
 })
 
