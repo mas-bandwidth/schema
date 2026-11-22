@@ -94,8 +94,11 @@ func instanceRows(t *testing.T) map[string][]reportRow {
 // conformance gate (docs/SPEC-TABLES.md §3, §3.1): for every instance row of
 // the tables manifest (wires the C++ reference and the Go engine wrote), load
 // the wire, save the value through the emitted save.moo, and compare byte for
-// byte with the same file; measure equals the saved length. A blob_shared
-// instance is refused by every writer (§2.5), and is held to that refusal.
+// byte with the same file; measure equals the saved length. A wire-refused
+// instance (testdata/conformance/tables/FORMAT.md: a blob_shared row, §2.5, or
+// a shapes row past its bounds) is held to a refusal; the verdict is the
+// contract and no reason is compared (docs/rulings.json
+// refusal-verdict-only).
 func TestMooTableSaveRoundTripsEveryInstance(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted save.moo)")
 	t.Parallel()
@@ -117,8 +120,8 @@ func TestMooTableSaveRoundTripsEveryInstance(t *testing.T) {
 			wire := rowWire(t, row)
 			saved, measure, err := saveRoot(t, g, wire, row.root)
 			if row.blobShared {
-				if err == nil || !strings.Contains(err.Error(), "blob_shared") {
-					t.Errorf("instance %s (%s/%s): a shared blob must be refused as blob_shared, got %v", row.caseName, key, row.root, err)
+				if err == nil {
+					t.Errorf("instance %s (%s/%s): a wire-refused instance must be refused, got a save of %d bytes", row.caseName, key, row.root, len(saved))
 				}
 				blobShared++
 				continue
