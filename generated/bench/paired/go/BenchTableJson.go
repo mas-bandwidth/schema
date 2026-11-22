@@ -1475,9 +1475,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 	var keyLen [64]int
 	keyCount := 0
 	var overflow map[string]struct{}
-	firstKey := true // no key of this object met yet: the label key may only open it
-	amp, isNode := false, false
-	definition := uint64(0) // the label this object defines, open until it closes
+	firstKey, amp, isNode, definition := true, false, false, uint64(0) // isNode: the first key is &node; definition: the label this object opens (§16.7)
 	for {
 		c := in.peek()
 		if c == closing {
@@ -1512,7 +1510,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := keyArena[arenaLen : arenaLen+int(n)]
-				amp, isNode = len(key) > 0 && key[0] == '&', string(key) == "&node"
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && string(key) == "&node"
 				dup := false
 				for i := 0; i < keyCount; i++ {
 					if keyLen[i] != len(key) {
@@ -1554,7 +1552,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := string(buf[:n])
-				amp, isNode = len(key) > 0 && key[0] == '&', key == "&node"
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && key == "&node"
 				if _, dup := overflow[key]; dup {
 					if in.report != nil {
 						in.report.Refuse(TableRefuseMalformed, "")
@@ -1569,56 +1567,27 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				return false
 			}
 			in.pos++
-			wasFirst := firstKey
 			firstKey = false
 			if amp {
-				// THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): what the
-				// reader does not place is the value, never the label. A label
-				// alone must name a definition already closed, fields after one
-				// must follow a label not yet defined, and the definition stays
-				// OPEN until this object closes.
-				if !wasFirst || !isNode {
-					in.bad = true
-					return false
+				// §16.7 in a skipped value: a bare label names a closed definition, fields after one open it until this object closes
+				label, ok := uint64(0), isNode
+				if ok {
+					label, ok = tableJSONReadLabel(in) // it leaves ',' or '}' next
 				}
-				label, ok := tableJSONReadLabel(in)
+				if ok && in.peek() == ',' {
+					in.pos++
+				}
+				if bare := in.peek() == '}'; ok && in.graph != nil {
+					entry, defined := in.graph.getLabel(label)
+					ok = bare == defined && !(bare && entry.open) && (bare || in.graph.setLabel(label, tableJSONLabel{open: true}))
+					if !bare {
+						definition = label
+					}
+				}
 				if !ok {
-					return false
-				}
-				if in.graph == nil {
-					// a unit with no pointer has no label table: the prefix is still
-					// held to its grammar, and the value is skipped whole
-					c = in.peek()
-					if c == ',' {
-						in.pos++
-						continue
-					}
-					if c == '}' {
-						in.pos++
-						return true
-					}
 					in.bad = true
 					return false
 				}
-				entry, defined := in.graph.getLabel(label)
-				c = in.peek()
-				if c == ',' {
-					in.pos++
-					c = in.peek()
-				}
-				if bare := c == '}'; bare != defined || (bare && entry.open) {
-					in.bad = true
-					return false
-				}
-				if c == '}' {
-					in.pos++
-					return true
-				}
-				if !in.graph.setLabel(label, tableJSONLabel{open: true}) {
-					in.bad = true
-					return false
-				}
-				definition = label
 				continue
 			}
 		}
@@ -1639,17 +1608,11 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 	}
 }
 
-// closeSkippedLabel closes the definition a skipped object opened, if it
-// opened one: the label stays, with no node, so a reference to it reads null.
+// closeSkippedLabel closes the definition a skipped object opened, if any: the label stays, with no node, so a reference to it reads null.
 func (in *tableJSONIn) closeSkippedLabel(label uint64) bool {
-	if label == 0 {
-		return true
-	}
-	if !in.graph.setLabel(label, tableJSONLabel{}) {
-		in.bad = true
-		return false
-	}
-	return true
+	ok := label == 0 || in.graph.setLabel(label, tableJSONLabel{})
+	in.bad = in.bad || !ok
+	return ok
 }
 
 func (in *tableJSONIn) skipValue(depth int32) bool {

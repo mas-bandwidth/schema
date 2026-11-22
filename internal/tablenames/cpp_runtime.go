@@ -161,7 +161,7 @@ func cppRuntimeNames() []Name {
 		{what: "the text form's JSON lexer: scanning, skipping and UTF-8 (§16.1)", names: []string{
 			"TableJsonEncodeUtf8", "TableJsonHex4", "TableJsonLiteral", "TableJsonPeek",
 			"TableJsonScanLabel", "TableJsonScanNumber", "TableJsonScanString", "TableJsonScanUnit",
-			"TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand",
+			"TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand", "TableJsonSkippedClose",
 			"TableJsonSpace", "TableJsonTokenDouble", "TableJsonUtf8", "TableJsonWalkNumber",
 		}},
 		{what: "the text form's JSON reader and writer walk (§16)", names: []string{
