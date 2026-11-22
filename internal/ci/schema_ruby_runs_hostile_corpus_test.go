@@ -348,7 +348,7 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 						t.Fatalf("read Ruby answer for %s: %v", fields[1], err)
 					}
 				}
-				if prev, ok := answers[fields[1]]; ok && (prev.verdict != answer.verdict || prev.reason != answer.reason) {
+				if prev, ok := answers[fields[1]]; ok && prev.verdict != answer.verdict { // the verdict only: refusal-verdict-only
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %s/%s vs %s/%s",
 						fields[1], prev.verdict, prev.reason, answer.verdict, answer.reason)
 				}
@@ -370,7 +370,9 @@ func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileA
 		if a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
 			continue
 		}
-		verdictOK := a.verdict == c.Verdict && a.reason == c.Reason
+		// the verdict only; the reason is the leg's own diagnostic and is
+		// printed, never compared (docs/rulings.json refusal-verdict-only)
+		verdictOK := a.verdict == c.Verdict
 		digestOK := true
 		gotDigest := ""
 		if c.Verdict == rubyHostileAccept && a.verdict == rubyHostileAccept {
@@ -579,7 +581,7 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 				t.Fatalf("%s: bad bytes %q: %v", fields[0], fields[5], err)
 			}
 			if prev, ok := got[fields[0]]; ok {
-				if prev.verdict != r.verdict || prev.reason != r.reason || prev.bytes != r.bytes {
+				if prev.verdict != r.verdict || prev.bytes != r.bytes { // the verdict only: refusal-verdict-only
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %+v vs %+v", fields[0], prev, r)
 				}
 				r.allocated = max(r.allocated, prev.allocated)
@@ -603,7 +605,7 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 			t.Fatalf("shape %s: the probe wrote no line", name)
 		}
 		want := wants[name]
-		if r.verdict != want.verdict || r.reason != want.reason {
+		if r.verdict != want.verdict { // the verdict only: refusal-verdict-only
 			t.Fatalf("shape %s: %s %s, want %s %s", name, r.verdict, r.reason, want.verdict, want.reason)
 		}
 		budget := int(rubyAllocationFactorF*float64(r.bytes)) + int(rubyAllocationSlackKB*1024)
@@ -621,14 +623,14 @@ func TestSchemaRubyResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters")
 	guarded, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "", ""))["deep-nesting"]
-	if !ok || guarded.verdict != "REFUSED" || guarded.reason != "malformed" {
-		t.Fatalf("with the depth guard in place deep-nesting must refuse malformed, got %+v", guarded)
+	if !ok || guarded.verdict != "REFUSED" {
+		t.Fatalf("with the depth guard in place deep-nesting must refuse, got %+v", guarded)
 	}
 	planted, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "fail_scan if depth > MAX_DEPTH", "fail_scan if depth > 100_000"))["deep-nesting"]
 	if !ok {
 		t.Fatal("the planted run wrote no deep-nesting line")
 	}
-	if planted.verdict == "REFUSED" && planted.reason == "malformed" {
+	if planted.verdict == "REFUSED" {
 		t.Fatalf("the planted pattern (depth cap raised) did not change deep-nesting verdict: %+v", planted)
 	}
 }
