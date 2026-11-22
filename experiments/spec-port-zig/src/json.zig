@@ -1360,7 +1360,7 @@ test "formatG pins" {
     const aa = arena.allocator();
     try std.testing.expectEqualStrings("4.94065645841247e-324", try formatF64(aa, 4.9406564584124654e-324));
     try std.testing.expectEqualStrings("1.4013e-45", try formatF32(aa, 1.401298464324817e-45));
-    try std.testing.expectEqualStrings("0.30000000000000004", try formatF64(aa, 0.1 + 0.2));
+    try std.testing.expectEqualStrings("0.30000000000000004", try formatF64(aa, @as(f64, 0.30000000000000004)));
     try std.testing.expectEqualStrings("-0", try formatF64(aa, -0.0));
     try std.testing.expectEqualStrings("1e+21", try formatF64(aa, 1e21));
     try std.testing.expectEqualStrings("2.5e-05", try formatF64(aa, 2.5e-05));

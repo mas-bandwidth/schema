@@ -9,6 +9,14 @@ language's runtime, generator or driver, nothing under `internal/`, and no
 to ask a person. Code that follows a vector against the text says
 `SPEC-GAP n` at the place.
 
+Build and judge (on a Linux bench, Zig 0.17.1):
+
+```
+zig build-exe experiments/spec-port-zig/src/main.zig -O ReleaseSafe -femit-bin=<driver>
+zig test experiments/spec-port-zig/src/main.zig
+make conformance-port DRIVER=<driver> NAME=zig     # from a separate full clone
+```
+
 Kinds: AMBIGUOUS (two readings fit the text), SILENT (the text says
 nothing), CONTRADICTION (two normative places disagree), DEFERS-TO-CODE (the
 text names code as the authority), VECTOR-DISAGREES (a corpus row answers
@@ -164,4 +172,37 @@ against the text).
   what an unsigned `bits(64)` read of a kind-9 payload does with the top bit.
 - **Chosen:** checked arithmetic everywhere, a refusal on overflow;
   two's-complement truncation only where bytes are packed little-endian.
+- **Kind:** SILENT.
+
+## 15. The digest's path kind for an enum: 7 or 30?
+- **Where:** SPEC-TABLES.md 8235-8238 (step 1: "`7` enum") against
+  FIXED-FORM-ALGORITHM.md 796 ("the field's fixed scalar kind"), while the
+  layout names an enum kind `30` (SPEC-TABLES.md 8150).
+- **Question:** which kind does an enum field's path segment carry in the
+  definitions digest?
+- **Chosen:** `7`, from SPEC-TABLES.md (`src/fixed.zig`, SPEC-GAP 15). The
+  hashes of every form-3 instance in the corpus then match, so the text in
+  SPEC-TABLES.md is the right one; the algorithm page is the vaguer one.
+- **Kind:** AMBIGUOUS.
+
+## 16. Reading an older fixed layout needs the lock, which the text does not hand a port
+- **Where:** FIXED-FORM-ALGORITHM.md §5.2-§5.3 (COMPILE(lock, T), LOAD by
+  hash), SPEC-TABLES.md §21.
+- **Question:** the `report` rows `fixedevo_v1_as_v3` and `fixedevo_v2_as_v3`
+  read files written under an older layout. The plan for an old hash comes
+  from the lock's lineage, and the corpus unit (`test/tables/fixedevo`) holds
+  the schema only. Where does a port get the lineage: a lock file next to the
+  schema, the compiler's output, or a reconstruction from older schemas?
+- **Chosen:** this port reads its own identity hash only and refuses any other
+  (`layout_unknown`). Those two rows fail.
+- **Kind:** SILENT.
+
+## 17. Paths into maps and keyed arrays in write-refusal rows
+- **Where:** FORMAT.md 94-96.
+- **Question:** rows write `map_f64[0].key`, `map_f64[0].value` and
+  `chan_f32[1]` (a keyed array). The grammar names field names and `[i]`
+  only.
+- **Chosen:** `[i]` on a map is the i-th entry in key order, followed by
+  `.key` or `.value`; `[i]` on a keyed array is the slot of the (i+1)-th
+  variant (`src/main.zig`, SPEC-GAP 12).
 - **Kind:** SILENT.
