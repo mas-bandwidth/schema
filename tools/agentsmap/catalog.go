@@ -259,6 +259,7 @@ var catalog = []Entry{
 	e("test/elixir-warning-control", "Elixir warning-control tests", "make test-elixir", "make test-elixir"),
 	e("test/fixed-empty-batch", "fixed-form empty-batch and record-size fixtures", "go test -run TestSpecFixedFormEdges ./compiler/", "go test -run TestSpecFixedFormEdges ./compiler/"),
 	e("test/generated-tree", "committed generated/ verify", "test/generated-tree/verify", "make generated-current"),
+	e("test/goldens", "all-or-nothing wrapper for make update-goldens", "make update-goldens", "make update-goldens"),
 	e("test/go", "Go packet tests", "make test-go", "make test-go"),
 	e("test/go-ludicrous", "Go int128 tests", "make test-go", "make test-go"),
 	e("test/goose", "Goose packet tests", "make test-goose", "make test-goose"),

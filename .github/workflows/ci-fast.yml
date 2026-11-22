@@ -220,6 +220,7 @@ jobs:
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
+      pins: ${{ steps.pick.outputs.pins }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
       newleg: ${{ steps.pick.outputs.newleg }}
@@ -573,6 +574,15 @@ jobs:
             codegen_touched=yes
           fi
 
+          # THE PINS GATE (pins, below). Runs when the diff touches a committed
+          # pin, a writer of one, or anything the broad rule names: a pin is
+          # rewritten from its generator and diffed, so a hand-written golden
+          # and a stale one both go red on the push that adds them.
+          pins=no
+          if [ "$broad" = yes ] || grep -qE '^(testdata/|bench/corpus/variants/|internal/goldens/|test/tables/|test/conformance/|test/packet-defaults/|test/goldens/|make/checks/packet-defaults\.mk$)' <<<"$files"; then
+            pins=yes
+          fi
+
           # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
           #   c      — tables-c-zero-cost + tables-c-clean
           #   elixir — tables-elixir-offsets (row elixir-offsets) and the agreement gate
@@ -608,6 +618,7 @@ jobs:
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
+          echo "pins=$pins"                 >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
 
           # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541). `schema new-leg`
@@ -2135,6 +2146,88 @@ jobs:
             *) echo "::error::leg-gate-cpp has no part '$PART'"; exit 1 ;;
           esac
 
+  # THE PINS GATE (the `pins` job of ci-full.yml, on the pull request). Every
+  # committed pin is REWRITTEN from its generator and `testdata/` is diffed
+  # against HEAD, so a hand-written golden (a .bits or .bin typed or edited by
+  # a person or a child) fails on the push that adds it instead of at the
+  # nightly. Five rows, each one family's writers, each inside the two-minute
+  # cap on its own (measured on amd-3, warm: source+framing 45 s, wire-packet
+  # 9 s, wire-tables 38 s, wire-tables-forms 20 s, conformance 70 s):
+  #   source              testdata/golden/ (Go goldens, C++/C/C# table copies)
+  #                       and testdata/wire/tables/framing (FRAMING_WRITE=1)
+  #   wire-packet         testdata/wire/*.bin, *.bits, packet-defaults/,
+  #                       bench_*.bin: EMPTIED FIRST (pins-fresh-wire-packet), so
+  #                       a file no generator writes shows as a deletion
+  #   wire-tables         testdata/wire/tables/ from test/tables/main.cpp
+  #   wire-tables-forms   block/maps/lists/arms/retain wire pins and the
+  #                       harness `generate` half of testdata/conformance/tables
+  #   conformance         the cook node dumps and the block forgeries
+  # THE GENERATED TREE (generated/) is generated-current above; a wire or cook
+  # pin the rewrite does not own is a conformance matrix input, named in
+  # test/conformance/README.md. Selected by `pins` in the plan.
+  pins:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.pins == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: pins (${{ matrix.row }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: source
+            target: pins-source pins-framing
+          - row: wire-packet
+            target: pins-fresh-wire-packet
+          - row: wire-tables
+            target: pins-wire-tables
+          - row: wire-tables-forms
+            target: pins-wire-tables-forms
+          - row: conformance
+            target: pins-conformance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C++ serialize runtime (pinned release)
+        if: ${{ matrix.row != 'source' }}
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: rewrite pin family (${{ matrix.row }}) from its generator
+        env:
+          TARGETS: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          # the source row's two targets share testdata/golden: serial, as in
+          # the Makefile's own aggregate
+          for t in $TARGETS; do make -j"$(nproc)" "$t"; done
+
+      - name: the pins are current
+        run: |
+          git diff --exit-code -- testdata/ bench/corpus/variants/ || {
+            echo "::error::a pin under testdata/ is not what its generator writes (row ${{ matrix.row }}): it is stale, or it was written by hand. Run 'make update-goldens' and commit what changes; never edit a golden."
+            exit 1
+          }
+          untracked=$(git status --porcelain testdata/ bench/corpus/variants/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the rewrite wrote files that are not committed under testdata/. Add them."
+            exit 1
+          fi
+
   # THE VERDICT: ONE CHECK THAT IS RED WHEN ANY GATE OF THIS RUN DID NOT PASS.
   # main requires no status check (no branch protection; the only ruleset
   # carrying one, `block-gate`, is disabled and targets fixed-table-form), so a
@@ -2147,7 +2240,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2178,6 +2271,7 @@ jobs:
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
               newleg-scaffold) [ "$(out newleg)" = no ] ;;
+              pins) [ "$(out pins)" != yes ] ;;
               leg-gate) [ "$EVENT" != workflow_dispatch ] || [ "$(out legs)" = '[]' ] ;;
               leg-gate-lobster|leg-gate-rust|leg-gate-squirrel|leg-gate-cpp)
                 [ "$EVENT" != workflow_dispatch ] || ! grep -qF "\"${1#leg-gate-}\"" <<<"$(out legs)" ;;

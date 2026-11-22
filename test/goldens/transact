@@ -1,0 +1,47 @@
+#!/bin/sh
+# test/goldens/transact CMD [ARG...]
+#
+# ALL OR NOTHING for the pin writers. `make update-goldens` rewrites testdata/
+# in place through a dozen writers (Go tests, the C++ reference binaries, file
+# copies, the conformance harness). Run bare, a failure in the Nth leaves the
+# first N-1 families re-pinned and the rest stale, a tree that looks half
+# re-pinned and passes nothing. This wrapper snapshots testdata/ before the
+# command runs and, on ANY failure, an interrupt or a kill signal, puts the
+# snapshot back, so testdata/ is either wholly the new pins or exactly what it
+# was. Files the run newly created are removed with the rest.
+#
+# A snapshot left by a run that was killed outright (SIGKILL, power) is put
+# back first, before the new run starts: it is the last known whole tree.
+set -u
+# the copy sits at <snap>/testdata, never at <snap> itself: go ignores any
+# directory named testdata, so the snapshot's generated .go files are not
+# packages of `go test ./...`, which the steps end with
+snap=build/update-goldens-before
+
+restore() {
+	rm -rf testdata
+	mv "$snap/testdata" testdata
+	rm -rf "$snap"
+}
+
+if [ -d "$snap" ]; then
+	echo "update-goldens: an earlier run died mid-write; restoring testdata/ from $snap first" >&2
+	restore || exit 1
+fi
+mkdir -p "$snap"
+if ! cp -Rp testdata "$snap/testdata"; then
+	rm -rf "$snap"
+	echo "update-goldens: could not snapshot testdata/" >&2
+	exit 1
+fi
+
+trap 'restore; echo "update-goldens: interrupted; testdata/ restored, nothing was re-pinned" >&2; exit 130' INT TERM HUP
+
+"$@"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	restore
+	echo "update-goldens: FAILED (exit $rc); testdata/ restored to what it was, nothing was re-pinned. Fix the failing step above and run it again." >&2
+	exit "$rc"
+fi
+rm -rf "$snap"

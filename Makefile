@@ -4951,10 +4951,28 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
+#
+# ALL OR NOTHING (test/goldens/transact): the writers below rewrite testdata/ in
+# place, so a step that failed (a debug assert in a C++ reference binary, a
+# failing go test) used to leave the families before it re-pinned and the ones
+# after it stale. The recipe now runs every step inside a snapshot of
+# testdata/ and puts the snapshot back on ANY failure or interrupt, so the tree
+# is wholly re-pinned or exactly as it was. It also writes the packet-defaults
+# and conformance pins, which the `pins` jobs of ci-full.yml and ci-fast.yml
+# rewrite and diff, so one command re-pins everything those two check and
+# `git status` afterwards is the whole change.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
+	@test/goldens/transact $(MAKE) --no-print-directory update-goldens-steps
+
+# the steps update-goldens runs inside its snapshot; not a target to run alone
+# (a failure here leaves testdata/ half re-pinned, which is what the snapshot
+# is for)
+.PHONY: update-goldens-steps
+update-goldens-steps: packet-defaults-goldens conformance-pin
 	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
+	FRAMING_WRITE=1 go test -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -8049,6 +8067,31 @@ pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_lu
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	./build/schema_test_bench_table pin
+
+# THE WIRE PINS FROM NOTHING. A hand-written .bits or .bin sitting beside the
+# generated ones is the mistake `git diff` after a rewrite cannot see: the
+# writer never touches a file it does not own, so the stray one diffs clean.
+# This row empties the family first (every top-level testdata/wire pin and
+# packet-defaults/ is written by pins-wire-packet's writers and nothing else),
+# so a file no generator writes shows as a deletion in the row's `git diff`.
+# It deletes tracked files: run it on a tree you can `git checkout testdata`.
+.PHONY: pins-fresh-wire-packet
+pins-fresh-wire-packet:
+	rm -f testdata/wire/*.bin testdata/wire/*.bits
+	rm -rf testdata/wire/packet-defaults
+	$(MAKE) --no-print-directory pins-wire-packet
+
+# THE FRAMING VECTORS: testdata/wire/tables/framing/ and the shared wire
+# vectors under testdata/wire/tables/ are written from the byte scripts in
+# test/conformance/harness (FRAMING_WRITE=1), never by hand. PINS_FRAMING_RUN
+# selects every test that carries a FRAMING_WRITE writer; a test that writes and
+# is not selected here is a Go test (TestFramingWritersAreAllSelected) that
+# fails, so a new writer cannot sit outside the rewrite-and-diff.
+PINS_FRAMING_RUN := Pin|FramingRows|HeldDepth|NoWriter|FramingVector
+
+.PHONY: pins-framing
+pins-framing:
+	FRAMING_WRITE=1 go test -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 

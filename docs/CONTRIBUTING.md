@@ -456,6 +456,20 @@ expected — but **moving a golden is a claim that the new output is correct**,
 not a step to get CI green. Say in the pull request why the wire changed and
 whether it is a breaking change for anyone who has already shipped data.
 
+**A golden is written by its generator and never by hand.** Every pin under
+`testdata/` that a generator owns (the `.bin` and `.bits` wire pins, the
+packet-defaults pins, the table and source goldens, the framing vectors, the
+cook dumps) is rewritten from that generator on every pull request that touches
+`testdata/` or a writer, and the tree is diffed against your commit: a file that
+is not exactly what its generator writes goes red (the `pins` job of
+`ci-fast.yml`; the wire-packet row empties its family first, so a stray
+hand-written file shows as a deletion). To re-pin, run `make update-goldens` and
+commit what changes. It is all or nothing: the writers run inside a snapshot of
+`testdata/` (`test/goldens/transact`) and a failing step, an interrupt or a kill
+puts the snapshot back, so a failure never leaves half the families re-pinned.
+A new `FRAMING_WRITE` test must be named so `PINS_FRAMING_RUN` (Makefile)
+selects it; `TestFramingWritersAreAllSelected` fails if it is not.
+
 If a change alters the wire, it changes the protocol id, which means every
 deployment built on the old one has to redeploy both sides. That is a real cost
 to somebody, so it needs to be worth it.
