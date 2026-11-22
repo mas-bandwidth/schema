@@ -1198,6 +1198,10 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// [A..B] holds A wherever the field sits (ruling R10)
+			g.pf("\t\t\t\tif (v.%s.length < %d) { r.refuse('count_over_bound'); }\n", name, f.ArrayMin)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)

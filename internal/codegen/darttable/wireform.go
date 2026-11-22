@@ -3082,7 +3082,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		et := g.listElemType(f)
-		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// an inert payload holds no elements, which is below A (ruling R10)
+			g.pf("%s\t\tif (end - r.pos < 2) { r.report.refuse('count_over_bound'); return; }\n", ind)
+		} else {
+			g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
+		}
 		// THE ARRAY'S HEADER IS READ AGAINST THE PARENT BUFFER, not against the
 		// body's own L: a count LEB128 spelled wide enough leaves the cursor past
 		// the end it was framed by, and that is a count the body cannot hold, not
@@ -3117,6 +3122,11 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
 			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				// [A..B] holds A wherever the field sits (ruling R10,
+				// docs/SPEC-TABLES.md §3.4), as internal/tablewire arrayBody
+				g.pf("%s\t\tif (keep < %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayMin)
+			}
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
