@@ -2637,7 +2637,7 @@ final class TableMixed {
   int worldTime = 0;
   int frameTick = 0;
   double serverTime = 0.0;
-  List<TableEntity> entities = <TableEntity>[];
+  List<TableEntity> entities = List<TableEntity>.generate(1, (_) => TableEntity());
   List<TableStat> stats = <TableStat>[];
   TableEvent gameEvent = TableEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3063,7 +3063,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putU32(_f32Write((v.serverTime == 0 ? 0.0 : v.serverTime), 'TableMixed.server_time'));
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
-  if (v.entities.isNotEmpty) {
+  if (v.entities.length != 1 || v.entities.asMap().entries.any((x) { final mk = w.state.mark(); final b = w.sub(); b.path = [...w.path, 10, x.key]; tableEntityWireSaveBody(b, x.value); w.state.rollback(mk); return b.buf.length > 1; })) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
