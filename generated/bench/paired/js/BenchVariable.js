@@ -286,7 +286,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {
@@ -524,8 +524,8 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 31: case 32: {
-      // a string and a wide string (§6.6, internal/tablewire retain.go): the
+    case 12: case 32: {
+      // a string and the payload-free kind (§6.6, internal/tablewire retain.go): the
       // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       out.leb(L); out.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
@@ -669,7 +669,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 31: case 32: {
+    case 12: case 32: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -1873,7 +1873,7 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     if (depth + levels > 128) { return false; }
     return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, depth + levels);
   }
-  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32) {
+  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 32) {
     const L = sub.leb();
     if (sub.bad || sub.at + L > sub.end) { return false; }
     const from = sub.at;
@@ -1908,7 +1908,6 @@ function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
     return inner.at === inner.end;
   }
   if (kind === 12) { return TableVariableUtf8Decode(b.subarray(from, to)).ok; }
-  if (kind === 31) { return true; }
   if (kind === 32) { return from === to; }
   const w = tableRetainWidth(kind);
   if (w <= 0 || to - from !== w) { return false; }
@@ -2097,7 +2096,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
         if (!(c.entry && fd.n === "key")) { report.widened++; }
         continue;
       }
-      // the escape kind 31 and the payload-free kind 32 at a named position take
+      // the payload-free kind 32 at a named position takes
       // this same rule and no other (§3)
       report.mismatch++;
       const mismatchFrom = r.at;
