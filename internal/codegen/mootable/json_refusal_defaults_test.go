@@ -16,17 +16,18 @@ table Root
 {
     a int32 = 4
     opt ?int32
+    p *string
     b int8 | min = 0, max = 10
 }
 `
 
 // TestMooJsonRefusalLeavesExactDefaults holds ruling R4 on <Root>FromJson: a
 // refused text leaves the caller's value holding EXACTLY its declared
-// defaults. Each text sets the optional field (nil in a fresh value) before
-// the read refuses: once for data after the root object, once for a value
-// past its declared range. The probe prints every key of the value that a
+// defaults. Each text sets the optional field and the string pointer (nil in a
+// fresh value: absent) before the read refuses: once for data after the root
+// object, once for a value past its declared range. The probe prints every key of the value that a
 // fresh M.NewRoot() does not hold, or holds differently; the reset that only
-// copied the fresh value's keys over left the optional field behind.
+// copied the fresh value's keys over left the pointer's string behind.
 func TestMooJsonRefusalLeavesExactDefaults(t *testing.T) {
 	t.Parallel()
 	u := mooBase64UnitFromSource(t, jsonRefusalDefaultsSchema)
@@ -60,8 +61,8 @@ probe("range")
 		t.Fatal(err)
 	}
 	inputs := map[string][]byte{
-		"trailing": []byte(`{"a":9,"opt":5} 1`),
-		"range":    []byte(`{"a":9,"opt":5,"b":11}`),
+		"trailing": []byte(`{"a":9,"opt":5,"p":"hi"} 1`),
+		"range":    []byte(`{"a":9,"opt":5,"p":"hi","b":11}`),
 	}
 	got := strings.Join(decodeHexLines(t, moorun.Run(t, dir, "main.moo", inputs)), "\n")
 	if want := "trailing refused []\nrange refused []"; got != want {
