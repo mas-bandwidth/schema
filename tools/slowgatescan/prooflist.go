@@ -24,6 +24,7 @@ import (
 	"bufio"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -47,10 +48,16 @@ type proofRef struct {
 // proofListFindings reports every required name with no matching top-level
 // declaration as `<file>:<line> <label>: <name> names no test in <package>`.
 func proofListFindings(root string, recipes []recipe) ([]string, error) {
-	refs := proofRefsFromRecipes(recipes)
+	refs, findings := proofRefsFromRecipes(recipes)
 	own, err := proofRefsFromOwnership(filepath.Join(root, "test", "conformance", "go", "ownership-negative-control"))
 	if err != nil {
 		return nil, err
+	}
+	// The control's names are read by a pattern (`test=<Name>`). Where the Go
+	// conformance leg exists, a pattern that finds none is the control having
+	// moved or been respelled, and its names would be checked against nothing.
+	if _, statErr := os.Stat(filepath.Join(root, "test", "conformance", "go")); statErr == nil && len(own) == 0 {
+		findings = append(findings, "test/conformance/go/ownership-negative-control: no `test=<Name>` was read from it, so the names it requires are checked against nothing — the control moved, or this audit's pattern no longer fits it")
 	}
 	refs = append(refs, own...)
 	sort.SliceStable(refs, func(i, j int) bool {
@@ -63,7 +70,6 @@ func proofListFindings(root string, recipes []recipe) ([]string, error) {
 		return refs[i].name < refs[j].name
 	})
 	decls := map[string]map[string]bool{}
-	var findings []string
 	for _, r := range refs {
 		set, ok := decls[r.pkg]
 		if !ok {
@@ -87,18 +93,30 @@ func proofListFindings(root string, recipes []recipe) ([]string, error) {
 
 // proofRefsFromRecipes reads the `sh test/slowgate/proof <label> '<names>'
 // <package> ...` shape out of the recipe lines scanMakefiles collected.
-func proofRefsFromRecipes(recipes []recipe) []proofRef {
-	var out []proofRef
+//
+// Every recipe line that runs the script is placed: its names are returned, or
+// the line is returned in unread with the reason. A line this could not read
+// used to be skipped, and its list was then checked against nothing — three
+// conformance-go-rows lines, which call the script as
+// `sh $(CURDIR)/test/slowgate/proof` from `cd test/conformance/go`, were.
+func proofRefsFromRecipes(recipes []recipe) (refs []proofRef, unread []string) {
 	for _, r := range recipes {
-		words := shellWords(r.cmd)
+		if !strings.Contains(r.cmd, "test/slowgate/proof") {
+			continue
+		}
+		// the words of the simple command that runs the script, so a quote
+		// elsewhere on a long line cannot swallow it
+		words := shellWords(r.cmd[commandStart(r.cmd, strings.Index(r.cmd, "test/slowgate/proof")):])
 		at := -1
 		for i, w := range words {
-			if w == "test/slowgate/proof" {
+			if w == "test/slowgate/proof" || strings.HasSuffix(w, "/test/slowgate/proof") {
 				at = i
 				break
 			}
 		}
+		where := fmt.Sprintf("%s:%d %s", r.file, r.line, r.target)
 		if at < 0 || at+3 > len(words) {
+			unread = append(unread, where+": runs test/slowgate/proof in a shape this audit cannot read (want `proof <label> '<names>' <package> ...`), so its required names are checked against nothing")
 			continue
 		}
 		label := words[at+1]
@@ -106,18 +124,32 @@ func proofRefsFromRecipes(recipes []recipe) []proofRef {
 		pkg := ""
 		for i := at + 3; i < len(words); i++ {
 			if words[i] == "." || strings.HasPrefix(words[i], "./") {
-				pkg = words[i]
+				if named := namedPackages("cd " + cdBaseOr(r.cmd) + " && go test " + words[i]); len(named) == 1 {
+					pkg = named[0]
+				}
 				break
 			}
 		}
-		if pkg == "" {
+		if pkg == "" && len(r.packages) == 1 {
+			pkg = r.packages[0]
+		}
+		if pkg == "" || strings.HasSuffix(pkg, "/...") || len(names) == 0 {
+			unread = append(unread, where+": "+label+" names no single package, or no test, that its required names can be checked against")
 			continue
 		}
 		for _, n := range names {
-			out = append(out, proofRef{file: r.file, line: r.line, label: label, pkg: pkg, name: n})
+			refs = append(refs, proofRef{file: r.file, line: r.line, label: label, pkg: pkg, name: n})
 		}
 	}
-	return out
+	return refs, unread
+}
+
+// cdBaseOr is the recipe's `cd <dir>`, or the repository root.
+func cdBaseOr(cmd string) string {
+	if base := cdBase(cmd); base != "" && !strings.Contains(base, "$") {
+		return base
+	}
+	return "."
 }
 
 var (
@@ -158,8 +190,16 @@ func proofRefsFromOwnership(path string) ([]proofRef, error) {
 }
 
 // declaredTests collects the top-level Test declarations of a package's
-// *_test.go files.
+// *_test.go files, under every build context.
 func declaredTests(dir string) (map[string]bool, error) {
+	return declaredTestsIn(dir, nil)
+}
+
+// declaredTestsIn collects the top-level Test declarations of the *_test.go
+// files ctx builds: a file its name (_windows_test.go) or its //go:build line
+// leaves out of that context declares no test a `go test` there can run. A nil
+// ctx reads every file.
+func declaredTestsIn(dir string, ctx *build.Context) (map[string]bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -169,6 +209,15 @@ func declaredTests(dir string) (map[string]bool, error) {
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
 			continue
+		}
+		if ctx != nil {
+			built, err := ctx.MatchFile(dir, e.Name())
+			if err != nil {
+				return nil, err
+			}
+			if !built {
+				continue
+			}
 		}
 		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
 		if err != nil {
@@ -223,7 +272,12 @@ func shellWords(s string) []string {
 			b.Reset()
 		}
 	}
+	// depth counts the parentheses and braces of an expansion being read:
+	// `$(abspath $(DIR))` and `$$(cat list.txt)` are each one word, spaces and
+	// all, as make and the shell read them.
 	single, double, esc := false, false, false
+	depth := 0
+	var prev rune
 	for _, r := range s {
 		switch {
 		case esc:
@@ -231,15 +285,22 @@ func shellWords(s string) []string {
 			esc = false
 		case r == '\\' && !single:
 			esc = true
-		case r == '\'' && !double:
+		case r == '\'' && !double && depth == 0:
 			single = !single
-		case r == '"' && !single:
+		case r == '"' && !single && depth == 0:
 			double = !double
-		case (r == ' ' || r == '\t') && !single && !double:
+		case (r == '(' || r == '{') && !single && (prev == '$' || depth > 0):
+			depth++
+			b.WriteRune(r)
+		case (r == ')' || r == '}') && !single && depth > 0:
+			depth--
+			b.WriteRune(r)
+		case (r == ' ' || r == '\t') && !single && !double && depth == 0:
 			flush()
 		default:
 			b.WriteRune(r)
 		}
+		prev = r
 	}
 	flush()
 	return out
