@@ -118,10 +118,10 @@ const Lay = struct {
 
     fn field(l: *Lay, id: u64, ty: *const Type, optional: bool) Error!void {
         if (optional) try l.entry(id, 35, 1 + size(ty), 1);
-        try l.ty(id, ty);
+        try l.typ(id, ty);
     }
 
-    fn ty(l: *Lay, id: u64, t: *const Type) Error!void {
+    fn typ(l: *Lay, id: u64, t: *const Type) Error!void {
         switch (t.*) {
             .enum_ => |ed| {
                 try l.entry(id, 30, ordinalWidth(ed.variants.len), ed.variants.len);
@@ -138,18 +138,18 @@ const Lay = struct {
             .union_ => |ud| {
                 try l.entry(id, 15, size(t), ud.arms.len);
                 for (ud.arms) |arm| {
-                    if (arm.ty) |at| try l.ty(arm.id, at) else try l.entry(arm.id, 32, 0, 0);
+                    if (arm.ty) |at| try l.typ(arm.id, at) else try l.entry(arm.id, 32, 0, 0);
                 }
             },
             .array => |at| {
                 try l.entry(id, 14, size(t), 1);
-                try l.ty(0, at.elem);
+                try l.typ(0, at.elem);
             },
             .keyed => |kt| {
                 try l.entry(id, 16, size(t), 2);
                 try l.entry(schema.fnv1a64(kt.key.name), 30, ordinalWidth(kt.key.variants.len), kt.key.variants.len);
                 for (kt.key.variants) |v| try l.entry(v.id, 32, 0, 0);
-                try l.ty(0, kt.elem);
+                try l.typ(0, kt.elem);
             },
             else => try l.entry(id, leafKind(t), size(t), 0),
         }
