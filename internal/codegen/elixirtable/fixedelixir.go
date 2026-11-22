@@ -855,6 +855,11 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
+		if f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MINIMUM REFUSES count_over_bound
+			// wherever the array stands, a union arm included (R10, SPEC-TABLES §3.3).
+			out.stmt("c", rawf("R.held_min(c, n_%s, %d)", v, f.ArrayMin))
+		}
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
 		g.readText(out, f, v, present)
