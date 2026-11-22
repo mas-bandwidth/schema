@@ -144,12 +144,12 @@ public final class MixedEntityFixed {
     static void scatter(
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.entityId = TableFixed.get32(b, at + 0);
-        if (Integer.compareUnsigned(v.entityId, 4095) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.entityId, 4095) > 0) {
             v.entityId = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(12) clamps to 2^N - 1
+        } // bits(12) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -16383L) {
@@ -196,19 +196,19 @@ public final class MixedEntityFixed {
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
-        if (Integer.compareUnsigned(v.yaw, 511) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.yaw, 511) > 0) {
             v.yaw = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(9) clamps to 2^N - 1
+        } // bits(9) past 2^N - 1 refuses
         v.pitch = TableFixed.get32(b, at + 20);
-        if (Integer.compareUnsigned(v.pitch, 511) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.pitch, 511) > 0) {
             v.pitch = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(9) clamps to 2^N - 1
+        } // bits(9) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 24);
             if (q < -2048L) {

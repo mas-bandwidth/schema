@@ -1,0 +1,12 @@
+package claims
+
+enum ShipType { Fighter, Interceptor, Corvette }
+
+table Ship
+{
+    name   string(32)
+    health float32 = 100.0
+    speed  float32 = 500.0
+    armor  float32 = 1.0
+    kind   ShipType
+}

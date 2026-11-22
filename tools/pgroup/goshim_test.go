@@ -182,3 +182,26 @@ func TestRenderEventsKeepsAPartialLastLine(t *testing.T) {
 		t.Errorf("the record lost the cut line: %q", record.String())
 	}
 }
+
+// A fast lane keeps its own go test timeout and still records what ran: the
+// record alone (PGROUP_GO_TEST_JSON with no PGROUP_GO_TEST_TIMEOUT) puts the
+// shim on the PATH, or the lane's skip ledger would read a record nobody
+// wrote.
+func TestTheShimIsWantedForARecordAlone(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		timeout, jsonDir, summaryDir string
+		want                         bool
+	}{
+		{"", "", "", false},
+		{"0", "", "", true},
+		{"25m", "", "", true},
+		{"", "/tmp/go-test-json", "", true},
+		{"", "", "/tmp/go-test-summary", true},
+		{"0", "/tmp/go-test-json", "", true},
+	} {
+		if got := shimWanted(c.timeout, c.jsonDir, c.summaryDir); got != c.want {
+			t.Errorf("shimWanted(%q, %q, %q) = %v, want %v", c.timeout, c.jsonDir, c.summaryDir, got, c.want)
+		}
+	}
+}

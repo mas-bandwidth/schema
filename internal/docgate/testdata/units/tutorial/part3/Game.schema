@@ -1,0 +1,24 @@
+package starlight
+
+const MaxPlayers   = 64
+const MaxHealth    = 1000
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359
+
+enum ShipType { Fighter, Freighter, Corvette }
+
+enum Pending { }
+
+enum Weapon
+{ Laser, Missile }
+
+flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }
+
+type ShipState
+{
+    ship_type ShipType
+    health    int32       | min = 0, max = MaxHealth
+    systems   SystemFlags
+    docked    bool
+}

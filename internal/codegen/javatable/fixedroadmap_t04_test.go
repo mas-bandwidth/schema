@@ -285,7 +285,7 @@ fixed table T
 		}
 	}
 	for _, want := range []string{
-		"final int n = Math.min(theirN, myN);",
+		"final int n = java.lang.Math.min(theirN, myN);",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
 		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")
@@ -310,8 +310,8 @@ fixed table T
 
 // ---- java/R18 --------------------------------------------------------------
 
-// t04R18 holds java/R18: a clamp that cannot fire is not emitted and nothing
-// moves. A bits(N) whose width FILLS its storage width has no read-side clamp
+// t04R18 holds java/R18: a width check that cannot fire is not emitted and nothing
+// moves. A bits(N) whose width FILLS its storage width has no read-side check
 // (the comparison would be `> 2^N - 1` against a value of that very width); a
 // bits(N) under it does.
 func t04R18(t *testing.T) {
@@ -325,7 +325,7 @@ fixed table T
 	if err != nil {
 		t.Fatalf("R18: Generate: %v", err)
 	}
-	t04No(t, t04Surface(t, full), "clamps to 2^N - 1", "R18 a bits(32) clamp that cannot fire is not emitted")
+	t04No(t, t04Surface(t, full), "past 2^N - 1 refuses", "R18 a bits(32) check that cannot fire is not emitted")
 	partial, err := Generate(unitFrom(t, `package probe
 
 fixed table T
@@ -336,7 +336,7 @@ fixed table T
 	if err != nil {
 		t.Fatalf("R18: Generate: %v", err)
 	}
-	t04Has(t, t04Surface(t, partial), "clamps to 2^N - 1", "R18 a bits(12) clamp that can fire is emitted")
+	t04Has(t, t04Surface(t, partial), "past 2^N - 1 refuses", "R18 a bits(12) check that can fire is emitted")
 }
 
 // ---- java/C3 ---------------------------------------------------------------

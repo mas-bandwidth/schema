@@ -40,7 +40,7 @@ of, it runs the other — and schema answers that case on its **other wire**:
 declare a `table`, and `schema cook` produces a build-locked region whose
 `Open` is a header match and a pointer, with no per-node validation and no
 fix-up at load, so you mmap the file and read the three fields at their
-offsets (SPEC-TABLES.md §7). The tolerant table wire stays the format of
+offsets (SPEC-TABLES.md §7). The evolving table wire stays the format of
 record beneath it, and the type wire above serves the realtime packet;
 generated storage on both is relocatable and memcpy-able
 (see [USAGE.md](USAGE.md#the-wire)).
@@ -77,15 +77,15 @@ was always true.
 
 That narrowness is one of TWO wires, and the other one is the evolution
 answer: declare a `table` and its fields are identified by the hash of their
-NAMES, so a reader takes any data a writer ever wrote — unknown fields skipped
-and counted, absent fields defaulted, changed kinds skipped rather than
-misdecoded, a kind that merely grew decoded exactly and counted `widened`,
-out-of-range values clamped, and every event in a read report. **Damage is
-the one thing that stops a read, and it stops all of it**: a read that meets
-framing damage anywhere refuses the whole load as `malformed` and hands back
-nothing to use, rather than a value that is partly the file and partly
-guesswork. A form byte the reader does not know is a refusal by name and moves
-no counter at all (SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
+NAMES, so a reader takes data across every lawful edit a writer made: unknown
+fields skipped and counted `unknown`, absent fields defaulted, a kind that
+merely grew decoded exactly and counted `widened`. **Every read is one read**:
+it returns the whole value or refuses the whole load by name, never a value
+that is partly the file and partly guesswork. A changed kind refuses
+(`kind_mismatch`), a value past its declared bound refuses (`out_of_range`),
+framing damage anywhere refuses (`wire_damaged`), and a form byte the reader
+does not know refuses by name; nothing is clamped and nothing is half-read
+(SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
 belong there; packets belong on the type wire. What schema does not offer is
 Protobuf's model of ONE wire that does both.
 

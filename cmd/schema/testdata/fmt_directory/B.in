@@ -1,0 +1,2 @@
+package demo
+fixed table B {   y   uint32   }

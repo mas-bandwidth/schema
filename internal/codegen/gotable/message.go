@@ -243,9 +243,9 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  };if r.Offset!=int64(len(r.Buffer))||!tableFirstUseWhole(&fuRep,uint64(len(r.Ids))/8)||versionCount!=1||wordsCount!=1{report.Refuse(TableRefuseWireDamaged,"");return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
- twice:=func()bool{s:=v.Entries[:count];slices.SortFunc(s,func(a,b TableMessageEntry)int{return slices.Compare(words[a.Shape.Min:a.Shape.Max],words[b.Shape.Min:b.Shape.Max])});for i:=1;i<len(s);i++ {if slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max],words[s[i].Shape.Min:s[i].Shape.Max]){return true}};return false}
- for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){if twice(){report.Refuse(TableRefuseWireDamaged,"");return false};return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
- if twice(){report.Refuse(TableRefuseWireDamaged,"");return false}
+ twice:=func(s []TableMessageEntry)bool{slices.SortFunc(s,func(a,b TableMessageEntry)int{return slices.Compare(words[a.Shape.Min:a.Shape.Max],words[b.Shape.Min:b.Shape.Max])});for i:=1;i<len(s);i++ {if slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max],words[s[i].Shape.Min:s[i].Shape.Max]){return true}};return false}
+ for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){if twice(v.Entries[:count]){report.Refuse(TableRefuseWireDamaged,"");return false};return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
+ if twice(v.Entries[:count]){report.Refuse(TableRefuseWireDamaged,"");return false}
  src.Offset=0;for i := range count {began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};e.OwnSlot=tableMessageOwnSlot(words[began:src.Offset]);v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};tableMessageSeenFirst(v);v.Announced=true;return true
 }
@@ -299,6 +299,10 @@ func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) 
 }
 func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==14||elem==16{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false}};return e,true}
 func tableMessageCount(r *TableBitReader,s TableMessageShape)(uint64,bool){raw,ok:=r.Get(tableMessageBits(uint64(s.Max-s.Min)));return raw+uint64(s.Min),ok}
+// tableMessageOverMax is a count past the ANNOUNCED max, which its bits can
+// spell and no conforming writer emits (docs/SPEC-TABLES.md §3.3); a read
+// shape's max is never negative, and the guard says so.
+func tableMessageOverMax(n uint64,s TableMessageShape)bool{return s.Max<0||n>uint64(s.Max)}
 // field is set where the payload is a FIELD's own, an unknown field of a body:
 // a conforming writer elides a None union field, so an explicit arm reference
 // 0 there is refused (docs/SPEC-TABLES.md §3.3), while an array element's and a

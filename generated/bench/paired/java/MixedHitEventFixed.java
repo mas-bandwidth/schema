@@ -86,12 +86,12 @@ public final class MixedHitEventFixed {
     static void scatter(
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.targetId = TableFixed.get32(b, at + 0);
-        if (Integer.compareUnsigned(v.targetId, 4095) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.targetId, 4095) > 0) {
             v.targetId = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(12) clamps to 2^N - 1
+        } // bits(12) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {

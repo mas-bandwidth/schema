@@ -18,7 +18,8 @@
 # The program writes one line per case on stdout — the case name, a space, the
 # answer's bytes as lowercase hex, or `absent` and an optional reason — which
 # this script writes as one file per case into <outdir> (`<case>.absent`
-# holding the reason). A case of a unit the target refused (a `.refused` file
+# holding the reason; `refused` and a reason, a read the program ran and
+# refused on the message-prior surface, as `<case>.refused`). A case of a unit the target refused (a `.refused` file
 # beside the units) is an absence. The program's exit status is the
 # compiler's: 2 on a surface is ABSENT, and this script passes it through. The
 # compiler's own progress lines go to stderr, kept under
@@ -147,6 +148,53 @@ sub snake {
 	return lc($s);
 }
 print <<'GOOSE_WREF_HELPERS';
+// THE ONE CHECKED CONVERSION the setters below go through. wref_parse_i64
+// keeps an i64 and wraps past it, and `as!` keeps the low bits, so a token
+// past the declared kind (18446744073709551616 into a one-byte ordinal, a
+// count of 4294967297 into an int32) landed as a lawful value and the row
+// answered `wrote` for a value it never wrote. A setter asks wref_fits_i64
+// (or wref_fits_u64 for a uint64 field) before it parses, holds the parsed
+// value to the field's declared range, and answers 2, `unrepresentable`,
+// when the kind cannot hold it.
+fn wref_digits(s: const u8[:]) -> const u8[:] {
+    var i: i64 = 0;
+    if s.len > 0 && (s[0] == '-' || s[0] == '+') { i = 1; }
+    if i >= s.len { return ""; }
+    var k: i64 = i;
+    while k < s.len {
+        if s[k] < '0' || s[k] > '9' { return ""; }
+        k += 1;
+    }
+    while i < s.len - 1 && s[i] == '0' { i += 1; }
+    return s[i..s.len];
+}
+fn wref_at_most(a: const u8[:], b: const u8[:]) -> bool {
+    if a.len != b.len { return a.len < b.len; }
+    var i: i64 = 0;
+    while i < a.len {
+        if a[i] != b[i] { return a[i] < b[i]; }
+        i += 1;
+    }
+    return true;
+}
+fn wref_fits_i64(s: const u8[:]) -> bool {
+    let m = wref_digits(s);
+    if m.len == 0 { return false; }
+    if s[0] == '-' { return wref_at_most(m, "9223372036854775808"); }
+    return wref_at_most(m, "9223372036854775807");
+}
+fn wref_fits_u64(s: const u8[:]) -> bool {
+    let m = wref_digits(s);
+    if m.len == 0 { return false; }
+    if s[0] == '-' { return m == "0"; }
+    return wref_at_most(m, "18446744073709551615");
+}
+// a token wref_fits_u64 admitted: no prefix of its digits overflows a u64
+fn wref_parse_u64(s: const u8[:]) -> u64 {
+    var acc: u64 = 0;
+    for c in wref_digits(s) { acc = acc * 10 + ((c - '0') as u64); }
+    return acc;
+}
 fn wref_parse_i64(s: const u8[:]) -> i64 {
     if s.len == 0 { return 0; }
     var neg = false;
@@ -256,7 +304,9 @@ for my $st (sort keys %structs) {
 			if ($et eq "u8" && exists $structs{$st}{"${f}Length"}) {
 				print "        if rest.len == 0 && idx < 0 {\n";
 				print "            if kind == \"length\" {\n";
+				print "                if !wref_fits_i64(text) { return 2; }\n";
 				print "                let n = wref_parse_i64(text);\n";
+				print "                if n < -2147483648 || n > 2147483647 { return 2; }\n";
 				print "                var k: i64 = 0; while k < n && k < $cap { v.$f\[k] = 'a'; k += 1; }\n";
 				print "                v.${f}Length = n as! i32; return 1;\n";
 				print "            }\n";
@@ -269,7 +319,9 @@ for my $st (sort keys %structs) {
 			} else {
 				if (exists $structs{$st}{"${f}Count"}) {
 					print "        if rest.len == 0 && idx < 0 && kind == \"count\" {\n";
+					print "            if !wref_fits_i64(text) { return 2; }\n";
 					print "            let n = wref_parse_i64(text);\n";
+					print "            if n < -2147483648 || n > 2147483647 { return 2; }\n";
 					print "            var k: i64 = v.${f}Count as i64;\n";
 					print "            while k >= 0 && k < n && k < $cap { if v.${f}Count > 0 { v.$f\[k] = v.$f\[0]; } k += 1; }\n";
 					print "            v.${f}Count = n as! i32; return 1;\n";
@@ -290,6 +342,7 @@ for my $st (sort keys %structs) {
 		} elsif ($unions{$ft}) {
 			print "        if rest.len > 0 && idx < 0 { return wref_set_$ft(v.$f, rest, kind, text); }\n";
 			print "        if rest.len == 0 && idx < 0 && kind == \"tag\" {\n";
+			print "            if !wref_fits_i64(text) { return 2; }\n";
 			print "            let n = wref_parse_i64(text);\n";
 			print "            if n < 0 || n > 255 { return 2; }\n";
 			print "            v.$f = ${ns}::New$ft();\n";
@@ -305,13 +358,17 @@ for my $st (sort keys %structs) {
 			my $cast_t = exists($enums{$ft}) ? "${ns}::$ft" : $ft;
 			if ($raw_t =~ /^(u8|u16|u32|u64|i8|i16|i32|i64)$/) {
 				print "        if rest.len == 0 && idx < 0 && (kind == \"int\" || kind == \"ordinal\") {\n";
-				print "            let n = wref_parse_i64(text);\n";
-				if (my $b = $int_bounds{$raw_t}) {
-					print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
-				} elsif ($raw_t eq "u64") {
-					print "            if n < 0 { return 2; }\n";
+				if ($raw_t eq "u64") {
+					print "            if !wref_fits_u64(text) { return 2; }\n";
+					print "            v.$f = wref_parse_u64(text) as! $cast_t; return 1;\n";
+				} else {
+					print "            if !wref_fits_i64(text) { return 2; }\n";
+					print "            let n = wref_parse_i64(text);\n";
+					if (my $b = $int_bounds{$raw_t}) {
+						print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
+					}
+					print "            v.$f = n as! $cast_t; return 1;\n";
 				}
-				print "            v.$f = n as! $cast_t; return 1;\n";
 				print "        }\n";
 			}
 		}
@@ -917,6 +974,7 @@ main_units() {
 	wire | json-read) awk '$1 == "instance" { print $3 }' "$1" ;;
 	json-write) awk '$1 == "instance" || $1 == "json-write-refusal" { print $3 }' "$1" ;;
 	message) awk '$1 == "connection" { u[$2] = $3 } $1 == "message" && ($3 in u) { print u[$3] }' "$1" ;;
+	message-prior) awk '$1 == "prior-connection" { u[$2] = $3 } $1 == "prior-message" && ($3 in u) { print u[$3] }' "$1" ;;
 	report) awk '$1 == "report" { print $3 }' "$1" ;;
 	framing) awk '$1 == "framing" { print $3 }' "$1" ;;
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
@@ -1011,14 +1069,16 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		if [ ! -d "$u" ]; then
 			awk -v k="$key" -v s="$2" '
 				$1 == "connection" { unit_of[$2] = $3 }
-				s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"; next }
+				$1 == "prior-connection" { prior_of[$2] = $3 }
+				s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent"; next }
 				(s == "json-read" || s == "json-write") && $1 == "instance" && $3 == k {
 					no_text = 0; for (i = 6; i <= NF; i++) if ($i == "no-text") no_text = 1;
-					if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent target-refuses-schema";
+					if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent";
 					next
 				}
-				s == "json-write" && $1 == "json-write-refusal" && $3 == k { print $2 ".json absent target-refuses-schema"; next }
+				s == "json-write" && $1 == "json-write-refusal" && $3 == k { print $2 ".json absent"; next }
 				(s == "message" && $1 == "message" && unit_of[$3] == k) ||
+				(s == "message-prior" && $1 == "prior-message" && prior_of[$3] == k) ||
 				(s == "wire" && $1 == "instance" && $3 == k) ||
 				(s == "report" && $1 == "report" && $3 == k) ||
 				(s == "framing" && $1 == "framing" && $3 == k) ||
@@ -1050,4 +1110,4 @@ for key in $keys; do
 	fi
 	cat "$dir/$2.$key.out" >>"$out"
 done
-GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h =~ /^absent(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; print $f (defined $1 ? $1 : ""); close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$out"
+GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h =~ /^refused(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.refused") or die; print $f (defined $1 ? $1 : ""); close $f; next } if (defined $h && $h =~ /^absent(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; print $f (defined $1 ? $1 : ""); close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$out"

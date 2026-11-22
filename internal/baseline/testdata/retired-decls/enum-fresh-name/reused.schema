@@ -1,0 +1,10 @@
+package decls
+
+// CONTROL: a new enum under a name no update ever retired
+enum Tint { Red, Blue }
+
+table Holder
+{
+    c    int32
+    tint Tint
+}

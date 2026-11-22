@@ -16,7 +16,8 @@
 # stdout, one or more lines per case — the case name, a space, the answer's
 # bytes as lowercase hex (continued on further lines under the same name), or
 # the word `absent` — which this script writes as one file per case into
-# <outdir> (`absent` as <case>.absent). Any other line on stdout is refused.
+# <outdir> (`absent` as <case>.absent; `refused`, a read the program ran and
+# refused, as <case>.refused). Any other line on stdout is refused.
 #
 # `list` is the program's own surface list; a surface not on it exits 2 and
 # the matrix prints ABSENT.
@@ -93,6 +94,7 @@ pairs() {
 	awk -v s="$1" '
 	NR == FNR {
 		if ($1 == "connection") conn[$2] = $3
+		if ($1 == "prior-connection") prior[$2] = $3
 		if ($1 == "instance") inst[$2] = $3
 		if ($1 == "block") blk[$2] = $3
 		if ($1 == "cook") ck[$4] = $3
@@ -108,6 +110,7 @@ pairs() {
 	(s == "block" || s == "block-foreign" || s == "block-dump") && $1 == "block" { print $3, $2 }
 	(s == "cook" || s == "cook-foreign") && $1 == "cook" { print $3, $2 }
 	s == "message" && $1 == "message" { print conn[$3], $2 }
+	s == "message-prior" && $1 == "prior-message" { print prior[$3], $2 }
 	(s == "retain" || s == "retain-save") && $1 == "retain" { print $3, $2 }
 	s == "cook-write" && $1 == "cook-write" { print inst[$2], $2; print inst[$2], $2 "-be" }
 	s == "forgery" && $1 == "forgery" && $3 == "block" { print subj("block", $4), $2 }
@@ -144,6 +147,14 @@ cat "$dir/$2".*.out 2>/dev/null | LOBSTER_OUTDIR=$3 perl -ne '
 	if (/^(\S+) absent(?: (.+))?$/) {
 		# an absence, with its reason when the program names one
 		open(my $f, ">", "$ENV{LOBSTER_OUTDIR}/$1.absent") or die "$1: $!";
+		print $f $2 if defined $2;
+		close $f;
+		next;
+	}
+	if (/^(\S+) refused(?: (.*))?$/) {
+		# a read the program ran and refused (message-prior): its own
+		# diagnostic, never compared (docs/rulings.json refusal-verdict-only)
+		open(my $f, ">", "$ENV{LOBSTER_OUTDIR}/$1.refused") or die "$1: $!";
 		print $f $2 if defined $2;
 		close $f;
 		next;

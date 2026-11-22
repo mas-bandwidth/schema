@@ -1,5 +1,6 @@
 """Shared helpers for the Python conformance surfaces."""
 
+import contextlib
 import importlib
 import os
 import sys
@@ -31,7 +32,39 @@ def write_bytes(outdir, name, data):
 
 
 def absent(outdir, name, reason):
-    write_bytes(outdir, name + ".absent", str(reason).encode("utf-8"))
+    """A `.absent` naming a reason is the leg's REFUSAL as its answer; on a row
+    that owes a refusal the harness scores it as the refusal. A refusal is
+    never spelled empty: that is the no-codec absence below."""
+    text = str(reason).strip() or "refused"
+    write_bytes(outdir, name + ".absent", text.encode("utf-8"))
+
+
+def no_codec(outdir, name):
+    """A case this leg has NO CODEC for (its unit or root is not generated, or
+    the form is not emitted) is an EMPTY `.absent`: the per-case absence of
+    test/conformance/README.md, which counts absent and never as a refusal, so
+    a missing codec cannot pass a must-refuse row."""
+    write_bytes(outdir, name + ".absent", b"")
+
+
+# The cases that hit a driver error in this surface (see answering below), and
+# the surface main.py is running, for the driver-error line.
+DRIVER_ERRORS = []
+SURFACE = ""
+
+
+@contextlib.contextmanager
+def answering(name):
+    """Answer ONE case. A case has three outcomes and the driver tells them
+    apart by mechanism, never by name: no codec for it (no_codec), the present
+    codec's answer (bytes, or its refusal), or a DRIVER ERROR. A driver error
+    names its case on stderr and the cases behind it still run; the surface
+    then exits non-zero, so the harness reds it (README.md: exit codes)."""
+    try:
+        yield
+    except Exception as err:  # every driver error, whatever its class
+        DRIVER_ERRORS.append(name)
+        sys.stderr.write(f"{SURFACE} {name}: driver error: {type(err).__name__}: {err}\n")
 
 
 def unit_package(key, tree=None):

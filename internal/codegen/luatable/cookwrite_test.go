@@ -66,8 +66,10 @@ func TestLuaCookWrite(t *testing.T) {
 			} else {
 				little, err = tablecook.Cook(m, inst, tablecook.Options{})
 				if err != nil {
-					// A value the tool refuses has no oracle.
-					t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
+					// The engine accepted this instance, so it has a cook
+					// oracle: an error here is the tool failing on an
+					// eligible case, never a row to skip.
+					t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", r.caseName, err)
 				}
 				big, err = tablecook.Cook(m, inst, tablecook.Options{Big: true})
 				if err != nil {

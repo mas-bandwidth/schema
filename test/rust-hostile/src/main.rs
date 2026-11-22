@@ -10,6 +10,14 @@
 //
 // usage: rust-hostile <corpus-dir> <known-findings.tsv> <profile>
 //        rust-hostile --case <carrier> <schema> <table> <input-file>
+//        rust-hostile --scorer <scorer-outcomes.tsv>
+//
+// A refusal conforms on its verdict alone (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the port gives
+// it is printed on a FAIL line as its diagnostic and never compared. --scorer
+// grades the shared scorer outcome cases
+// (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+// expected and agrees the corpus run uses.
 //
 // ISOLATION. Every case runs in a child process of this binary (`--case`), on
 // a thread with a fixed 512 KiB stack, under catch_unwind. A panic is caught
@@ -98,6 +106,77 @@ fn refuse(reason: &str) -> String {
         _ => "damaged",
     };
     format!("refuse {reason}")
+}
+
+fn refused(answer: &str) -> bool {
+    answer == "refuse" || answer.starts_with("refuse ")
+}
+
+// The manifest's answer for a case. Ports differ in naming a packet refusal,
+// so the runner names them all packet_refused.
+fn expected(verdict: &str, carrier: &str, reason: &str, digest: &str) -> String {
+    if verdict == "accept" {
+        accept(digest)
+    } else if carrier == "packet" {
+        refuse("packet_refused")
+    } else {
+        refuse(reason)
+    }
+}
+
+// Whether a port's answer conforms to the manifest's: a refusal on its verdict
+// alone (refusal-verdict-only), an accept on its digest. A panic, a crash or a
+// timeout is never a refusal.
+fn agrees(got: &str, want: &str) -> bool {
+    if refused(got) && refused(want) {
+        return true;
+    }
+    got == want
+}
+
+// Each row of the shared scorer fixture: the expected verdict, reference
+// diagnostic and accepted SHA-256 make the manifest's answer; the worker reply
+// makes the port's (a refusal with the name it gives or none, an accept of the
+// text body's digest, or a worker that exits). agrees must pass exactly the
+// rows whose scorer exit is 0.
+fn scorer(path: &Path) -> i32 {
+    let rows = match rows(path, 7) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let mut wrong = 0;
+    for f in &rows {
+        let reply = f[4].as_str();
+        let got = if refused(reply) {
+            reply.to_string()
+        } else if reply == "accept text" {
+            accept(&sha256::hex(if f[5] == "-" { "" } else { f[5].as_str() }.as_bytes()))
+        } else if reply == "exit" {
+            "crashed: exit status: 3: ".to_string()
+        } else {
+            eprintln!("{}: {}: unknown worker reply {reply}", path.display(), f[0]);
+            return 2;
+        };
+        let pass = agrees(&got, &expected(&f[1], "text", &f[2], &f[3]));
+        if pass != (f[6] == "0") {
+            println!(
+                "SCORER {}: graded {}, the fixture says scorer exit {}",
+                f[0],
+                if pass { "pass" } else { "fail" },
+                f[6]
+            );
+            wrong += 1;
+        }
+    }
+    println!(
+        "rust scorer outcomes: {} cases, {} graded as the fixture says, {wrong} wrong",
+        rows.len(),
+        rows.len() - wrong
+    );
+    if wrong == 0 && !rows.is_empty() { 0 } else { 1 }
 }
 
 // The digest of the port's text, its trailing newlines dropped.
@@ -484,6 +563,9 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--case") {
         child(&args[2..]);
     }
+    if args.len() == 3 && args[1] == "--scorer" {
+        std::process::exit(scorer(Path::new(&args[2])));
+    }
     if args.len() != 4 {
         eprintln!("usage: rust-hostile <corpus-dir> <known-findings.tsv> <profile>");
         std::process::exit(2);
@@ -563,21 +645,14 @@ fn main() {
     for (f, got) in manifest.iter().zip(results.iter()) {
         let got = got.clone().unwrap_or_else(|| "runner error: no result".to_string());
         let (name, carrier) = (&f[0], &f[1]);
-        let expected = if f[6] == "accept" {
-            accept(&f[8])
-        } else if carrier == "packet" {
-            // ports differ in naming a packet refusal; only the verdict compares
-            refuse("packet_refused")
-        } else {
-            refuse(&f[7])
-        };
+        let expected = expected(&f[6], carrier, &f[7], &f[8]);
         let finding = findings.get(name);
         if let Some(why) = got.strip_prefix("SKIP ") {
             println!("SKIP {name} carrier={carrier}: {why}");
             skipped += 1;
             continue;
         }
-        if got == expected {
+        if agrees(&got, &expected) {
             if let Some(fc) = finding {
                 println!("STALE {name}: FIX-CARD {} no longer reproduces ({profile})", fc[1]);
                 stale.push(name.clone());

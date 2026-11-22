@@ -75,7 +75,7 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
 end
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'write-refusal-fixed').each do |row|
+  RubyConformance.cases(manifest, 'write-refusal-fixed') do |row|
     case_name, unit, root, wire, path, rule, token = row[1, 7]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
@@ -83,12 +83,9 @@ def self.run(manifest, outdir)
       RubyConformance.no_codec(outdir, case_name)
       next
     end
-    begin
-      value = cls.load(RubyConformance.read_bytes(wire))
-    rescue pkg::Refused => e
-      RubyConformance.absent(outdir, case_name, e.message)
-      next
-    end
+    # the base wire is the driver's own input: a refusal there is a driver
+    # error (RubyConformance.cases), never this row's answer
+    value = cls.load(RubyConformance.read_bytes(wire))
     begin
       assign_fixed(pkg, value, pkg._s_fixed_roots[root]['spec'], path, rule, token)
       cls.fixed_save([value])

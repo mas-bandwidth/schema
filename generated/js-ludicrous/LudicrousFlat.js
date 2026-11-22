@@ -29,7 +29,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -41,7 +41,7 @@ export const FlatReadSlack = 8;
 // must hold FixedProbeMaxBytes.
 export function WriteFixedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return -1;
   }
   if (typeof value.position !== "bigint" || value.position < -1966080000n || value.position > 1966080000n) {
@@ -61,7 +61,7 @@ export function WriteFixedProbeFlat(view, value) {
   lo = v >>> 7;
   v = SC.getUint32(4, true) & 0x1f;
   lo = (lo | (v << 25)) >>> 0;
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return -1;
   }
   v = (((value.ticks) & 0xfffff)) >>> 0;
@@ -70,7 +70,7 @@ export function WriteFixedProbeFlat(view, value) {
   wi = 12;
   sb = 18;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.samples[i0]) || value.samples[i0] < -524288 || value.samples[i0] > 524288) {
+    if (!globalThis.Number.isInteger(value.samples[i0]) || value.samples[i0] < -524288 || value.samples[i0] > 524288) {
       return -1;
     }
     v = (((((value.samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
@@ -105,7 +105,7 @@ export function ReadFixedProbeFlat(view, numBits, value) {
   value.angle = -11796480 + v;
   out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
   v = out >>> 0;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
@@ -168,7 +168,7 @@ export function ReadFixedProbeFlatBits(view, numBits, value) {
   value.angle = -11796480 + v;
   out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
   v = out >>> 0;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
@@ -213,7 +213,7 @@ export function ReadFixedProbeFlatBits(view, numBits, value) {
 // must hold UnsignedProbeMaxBytes.
 export function WriteUnsignedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
+  if (!globalThis.Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return -1;
   }
   if (typeof value.span !== "bigint" || value.span < 0n || value.span > 18446744073709486080n) {
@@ -236,7 +236,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   lo = v >>> 7;
   v = SC.getUint32(4, true) & 0x1f;
   lo = (lo | (v << 25)) >>> 0;
-  if (!Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return -1;
   }
   v = (((value.ticks) & 0xfffff)) >>> 0;
@@ -245,7 +245,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   wi = 16;
   sb = 18;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.samples[i0]) || value.samples[i0] < 0 || value.samples[i0] > 1048576) {
+    if (!globalThis.Number.isInteger(value.samples[i0]) || value.samples[i0] < 0 || value.samples[i0] > 1048576) {
       return -1;
     }
     v = (((value.samples[i0]) & 0x1fffff)) >>> 0;
@@ -261,7 +261,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   if (value.locked !== 196608) {
     return -1;
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.tail) & 0xff)) >>> 0;
@@ -553,7 +553,7 @@ export function ReadWideProbeFlat(view, numBits, value) {
   SC.setInt32(4, (nw - nl) / 4294967296, true);
   value.flux = (SC.getBigInt64(0, true) << 64n) + bg;
   v = (out >>> 6) & 0x7ff;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
@@ -640,7 +640,7 @@ export function ReadWideProbeFlatBits(view, numBits, value) {
   SC.setInt32(4, (nw - nl) / 4294967296, true);
   value.flux = (SC.getBigInt64(0, true) << 64n) + bg;
   v = (out >>> 6) & 0x7ff;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
@@ -671,10 +671,10 @@ export function ReadWideProbeFlatBits(view, numBits, value) {
 export function WriteLudicrousStateFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  if (!Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
     return -1;
   }
-  if (!Number.isInteger(value.probe.angle) || value.probe.angle < -11796480 || value.probe.angle > 11796480) {
+  if (!globalThis.Number.isInteger(value.probe.angle) || value.probe.angle < -11796480 || value.probe.angle > 11796480) {
     return -1;
   }
   if (typeof value.probe.position !== "bigint" || value.probe.position < -1966080000n || value.probe.position > 1966080000n) {
@@ -695,14 +695,14 @@ export function WriteLudicrousStateFlat(view, value) {
   v = SC.getUint32(4, true) & 0x1f;
   view.setUint32(8, (lo | (v << 27)) >>> 0, true);
   lo = 0;
-  if (!Number.isInteger(value.probe.ticks) || value.probe.ticks < 0 || value.probe.ticks > 1000000) {
+  if (!globalThis.Number.isInteger(value.probe.ticks) || value.probe.ticks < 0 || value.probe.ticks > 1000000) {
     return -1;
   }
   lo = (((value.probe.ticks) & 0xfffff));
   wi = 12;
   sb = 20;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isInteger(value.probe.samples[i0]) || value.probe.samples[i0] < -524288 || value.probe.samples[i0] > 524288) {
+    if (!globalThis.Number.isInteger(value.probe.samples[i0]) || value.probe.samples[i0] < -524288 || value.probe.samples[i0] > 524288) {
       return -1;
     }
     v = (((((value.probe.samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
@@ -876,7 +876,7 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   v = (((value.keysCount) & 0x7)) >>> 0;
@@ -1009,7 +1009,7 @@ export function ReadLudicrousStateFlat(view, numBits, value) {
   value.probe.angle = -11796480 + v;
   out = (view.getUint32(3, true) >>> 3) | (view.getUint32(7, true) << 29);
   v = out >>> 0;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
@@ -1141,7 +1141,7 @@ export function ReadLudicrousStateFlat(view, numBits, value) {
   SC.setInt32(4, (nw - nl) / 4294967296, true);
   value.wide.flux = (SC.getBigInt64(0, true) << 64n) + bg;
   v = (out >>> 6) & 0x7ff;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
@@ -1319,7 +1319,7 @@ export function ReadLudicrousStateFlatBits(view, numBits, value) {
   value.probe.angle = -11796480 + v;
   out = (view.getUint32(3, true) >>> 3) | (view.getUint32(7, true) << 29);
   v = out >>> 0;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 3932160000n) { // a smuggled raw offset is refused
     return false;
   }
@@ -1451,7 +1451,7 @@ export function ReadLudicrousStateFlatBits(view, numBits, value) {
   SC.setInt32(4, (nw - nl) / 4294967296, true);
   value.wide.flux = (SC.getBigInt64(0, true) << 64n) + bg;
   v = (out >>> 6) & 0x7ff;
-  bg = BigInt(v);
+  bg = globalThis.BigInt(v);
   if (bg > 2000n) { // a smuggled offset is refused
     return false;
   }
@@ -1618,7 +1618,7 @@ export function WriteDegenerateProbeFlat(view, value) {
   if (value.lockedWide !== -12345678901234n) {
     return -1;
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.tail) & 0xff));
@@ -1802,18 +1802,18 @@ export function ReadFixedVecFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold FixedQuatMaxBytes.
 export function WriteFixedQuatFlat(view, value) {
-  if (!Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return -1;
   }
-  if (!Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -1073741824 || value.y > 1073741824) {
     return -1;
   }
   view.setUint32(0, (((((value.x >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  if (!Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -1073741824 || value.z > 1073741824) {
     return -1;
   }
   view.setUint32(4, (((((value.y >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  if (!Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
+  if (!globalThis.Number.isInteger(value.w) || value.w < -1073741824 || value.w > 1073741824) {
     return -1;
   }
   view.setUint32(8, (((((value.z >>> 0) - 3221225472) >>> 0) >>> 0)), true);

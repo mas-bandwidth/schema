@@ -128,7 +128,11 @@ var versionRows = []versionRow{
   for i <- 4..7 do
     e = Enum.at(v.vals, i)
     check(e.x == 7 and e.y == 9, "slot #{i} past the old bound is not the ELEMENT default: #{inspect(e)}")
-  end`},
+  end
+  # F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  check(v.ints == [-800, -801, -802, -803, 0, 0, 0, 0], "the scalar ints did not land or grow: #{inspect(v.ints)}")
+  check(Enum.to_list(v.octet) == [200, 201, 202, 203, 0, 0, 0, 0] or v.octet == <<200, 201, 202, 203, 0, 0, 0, 0>>,
+    "the scalar octets did not land or grow: #{inspect(v.octet)}")`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},

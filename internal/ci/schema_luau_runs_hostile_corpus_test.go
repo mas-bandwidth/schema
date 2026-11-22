@@ -2,8 +2,12 @@
 // INPUT CORPUS (docs/HOSTILE-CORPUS.md; schema-shared-hostile-corpus). It reads
 // the committed manifest and its raw inputs, generates the Luau reader for each
 // schema the manifest names, runs every carrier through that reader, and holds
-// the port to the manifest: the same verdict, the same named reason, and for an
-// accept the same SHA-256 of the engine's canonical text form.
+// the port to the manifest: the same verdict, and for an accept the same
+// SHA-256 of the engine's canonical text form. A refusal conforms on its
+// verdict alone (docs/rulings.json refusal-verdict-only, SPEC-TABLES §6.5 and
+// §13.10): the reason the port names is printed as its diagnostic and never
+// compared. TestLuauHostileScorerOutcomes grades the shared scorer outcome
+// cases through the same luauHostileGrade.
 //
 // The runner reads files only: no network, no real time, no sockets. A
 // mismatch is a finding, reported as FIX-CARD with the input's name.
@@ -24,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
@@ -585,39 +590,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 				findings = append(findings, fmt.Sprintf("FIX-CARD: luau-hostile-corpus: %s the runner printed no verdict", c.name))
 				continue
 			}
-			digest := "-"
-			// Every accept is held to the manifest's decoded-value digest,
-			// message carriers included: a message body the probe cannot
-			// decode prints "message-body-undecoded", which is not hex and so
-			// fails here by name.
-			if c.verdict == "accept" {
-				// The probe writes the canonical text form (§16.1) with the Luau
-				// writer and reports it as hex; the manifest digest is SHA-256 of
-				// the engine canonical text, so hash the probe's text and compare
-				// to the manifest digest.
-				canonical, err := hex.DecodeString(g[3])
-				if err != nil {
-					digest = "not-hex:" + g[3]
-				} else {
-					// The Luau text writer ends an object root's text with a
-					// newline (schema_json.luau core_to); the engine canonical text does
-					// not, so drop that one line ending before hashing.
-					// A packet's digest is of the written bytes, whole.
-					if c.carrier != "packet" {
-						canonical = bytes.TrimSuffix(canonical, []byte("\n"))
-					}
-					sum := sha256.Sum256(canonical)
-					digest = hex.EncodeToString(sum[:])
-				}
-			}
-			if g[1] != c.verdict || g[2] != c.reason || (c.verdict == "accept" && digest != c.digest) {
-				// label the mismatched component so the triage table can tell a
-				// verdict/reason divergence (a reader bug) from a digest-only
-				// divergence (a canonical-writer gap) at a glance
-				kind := "digest"
-				if g[1] != c.verdict || g[2] != c.reason {
-					kind = "verdict"
-				}
+			if kind, digest := luauHostileGrade(c, g); kind != "" {
 				findings = append(findings, fmt.Sprintf(
 					"FIX-CARD: luau-hostile-corpus: %s [%s] got %s/%s/%s want %s/%s/%s",
 					c.name, kind, g[1], g[2], digest, c.verdict, c.reason, c.digest))
@@ -625,6 +598,71 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 		}
 	}
 	return findings
+}
+
+// luauHostileGrade grades one probe line (name, verdict, reason, hex text)
+// against its case: kind is "" when it conforms, else the mismatched
+// component, so the triage table can tell a verdict divergence (a reader bug)
+// from a digest-only divergence (a canonical-writer gap) at a glance. A
+// refusal conforms on its verdict alone, whatever reason either side names
+// (refusal-verdict-only); an error is never a refusal.
+func luauHostileGrade(c hostileCase, g [4]string) (kind, digest string) {
+	digest = "-"
+	// Every accept is held to the manifest's decoded-value digest,
+	// message carriers included: a message body the probe cannot
+	// decode prints "message-body-undecoded", which is not hex and so
+	// fails here by name.
+	if c.verdict == "accept" {
+		// The probe writes the canonical text form (§16.1) with the Luau
+		// writer and reports it as hex; the manifest digest is SHA-256 of
+		// the engine canonical text, so hash the probe's text and compare
+		// to the manifest digest.
+		canonical, err := hex.DecodeString(g[3])
+		if err != nil {
+			digest = "not-hex:" + g[3]
+		} else {
+			// The Luau text writer ends an object root's text with a
+			// newline (schema_json.luau core_to); the engine canonical text does
+			// not, so drop that one line ending before hashing.
+			// A packet's digest is of the written bytes, whole.
+			if c.carrier != "packet" {
+				canonical = bytes.TrimSuffix(canonical, []byte("\n"))
+			}
+			sum := sha256.Sum256(canonical)
+			digest = hex.EncodeToString(sum[:])
+		}
+	}
+	if g[1] != c.verdict || (c.verdict != "refuse" && g[2] != c.reason) {
+		return "verdict", digest
+	}
+	if c.verdict == "accept" && digest != c.digest {
+		return "digest", digest
+	}
+	return "", digest
+}
+
+// TestLuauHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through luauHostileGrade: a refusal with
+// another reason or none passes; a changed verdict either way, a different
+// accepted value or a probe error fails. It runs no Luau.
+func TestLuauHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := hostileCase{name: o.Name, carrier: "text", verdict: o.Verdict, reason: o.Reason, digest: o.Digest}
+		g := [4]string{o.Name, "error", "the worker exited with status 3", "-"}
+		if name, refused := o.Refused(); refused {
+			g = [4]string{o.Name, "refuse", name, "-"}
+		} else if text, accepted := o.Accepted(); accepted {
+			g = [4]string{o.Name, "accept", "-", hex.EncodeToString(text)}
+		}
+		if kind, _ := luauHostileGrade(c, g); (kind == "") != o.Pass {
+			t.Errorf("%s: probe line %q graded %q, the fixture says pass=%t", o.Name, g, kind, o.Pass)
+		}
+	}
 }
 
 // luauHostileCarried is the exact list of carried findings: each row is a
@@ -689,7 +727,7 @@ func TestLuauRunsHostileCorpus(t *testing.T) {
 // with a reader bug planted in the generated scratch units only (the strict
 // text reader refuses every input, damaged), must go red on EXACTLY the rows
 // the plant moves: every text-carrier case whose manifest answer is not
-// already refuse/damaged, and no other.
+// already a refusal (a refusal conforms on its verdict alone), and no other.
 func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "luau (the pinned release)")
@@ -700,7 +738,7 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	want := map[string]bool{}
 	for _, c := range loadHostileManifest(t, corpusDir) {
-		if c.carrier == "text" && (c.verdict != "refuse" || c.reason != "damaged") {
+		if c.carrier == "text" && c.verdict != "refuse" {
 			want[c.name] = true
 		}
 	}
@@ -824,8 +862,11 @@ end
 		name, rest, _ := strings.Cut(line, "\t")
 		got[name] = rest
 	}
+	// the verdict only: the reason after it is the reader's own diagnostic
+	// (docs/rulings.json refusal-verdict-only)
+	verdict := func(answer string) string { v, _, _ := strings.Cut(answer, "\t"); return v }
 	for name, w := range want {
-		if got[name] != w {
+		if verdict(got[name]) != verdict(w) {
 			t.Errorf("FIX-CARD: luau-hostile-corpus: %s got %q want %q (the engine's verdict)", name, got[name], w)
 		}
 	}

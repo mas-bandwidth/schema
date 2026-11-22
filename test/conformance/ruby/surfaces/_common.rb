@@ -16,6 +16,30 @@ module RubyConformance
     out
   end
 
+  # The cases a surface answers, ONE AT A TIME. A case has three outcomes and
+  # the driver tells them apart by mechanism, never by name: no codec for it
+  # (an EMPTY `.absent`, below), the present codec's answer (bytes, or its
+  # refusal), or a DRIVER ERROR. A driver error names its case on stderr and
+  # the cases behind it still run; the surface then exits non-zero, so the
+  # harness reds it (test/conformance/README.md: exit codes).
+  def self.cases(manifest, kind)
+    entries(manifest, kind).each do |row|
+      yield row
+    rescue StandardError => e
+      @driver_errors = (@driver_errors || 0) + 1
+      $stderr.write("#{@surface} #{row[1]}: driver error: #{e.class}: #{e.message}\n")
+    end
+  end
+
+  # the surface main.rb is running, for the driver-error line
+  def self.surface=(name)
+    @surface = name
+  end
+
+  def self.driver_errors
+    @driver_errors || 0
+  end
+
   def self.read_bytes(path)
     File.binread(path)
   end
@@ -30,9 +54,11 @@ module RubyConformance
   end
 
   # A `.absent` that names a reason carries that reason as the leg's answer,
-  # and on a row that owes a refusal the harness scores it as the refusal.
+  # and on a row that owes a refusal the harness scores it as the refusal. A
+  # refusal is never spelled empty: that is the no-codec absence below.
   def self.absent(outdir, name, reason)
-    write_bytes(outdir, "#{name}.absent", reason.to_s.b)
+    text = reason.to_s.strip
+    write_bytes(outdir, "#{name}.absent", (text.empty? ? 'refused' : text).b)
   end
 
   # A case this leg has NO CODEC for (its unit or root is not generated, or the
@@ -171,15 +197,46 @@ module RubyConformance
     %w[bytes bytes_blob].include?(inner.codec)
   end
 
+  # The default value of one element of the list field `name` on owner, by the
+  # field's declared element kind (its descriptor), for a count mutation that
+  # grows an empty list.
+  def self.element_default(owner, name)
+    desc = owner.class.respond_to?(:descriptor) ? owner.class.descriptor : nil
+    fd = desc&.fields&.find { |f| f.name == name }
+    raise ArgumentError, "count mutation: #{name} has no field descriptor" if fd.nil?
+
+    elem = fd.respond_to?(:elem) ? fd.elem : nil
+    unless elem.nil?
+      value = elem.default_value
+      return value unless value.nil?
+    end
+    target = fd.target.to_s
+    unless target.empty?
+      pkg = Object.const_get(owner.class.name.split('::').first)
+      return pkg.const_get(target, false).new if pkg.const_defined?(target, false)
+    end
+    case fd.elem_codec
+    when 'bool' then false
+    when 'float32', 'float64' then 0.0
+    when 'string' then +''
+    when 'bytes' then ''.b
+    when 'int', 'enum' then 0
+    else raise ArgumentError, "count mutation: no element default for #{name} (#{fd.elem_codec})"
+    end
+  end
+
   def self.convert_leaf(owner, name, current, rule, token)
     case rule
     when 'count'
       count = Integer(token, 10)
-      if count.negative? || !current.is_a?(::Array) || (count.positive? && current.empty?)
-        raise ArgumentError, 'count mutation needs a nonnegative count and a populated list'
+      if count.negative? || !current.is_a?(::Array)
+        raise ArgumentError, 'count mutation needs a nonnegative count and a list'
       end
       resized = current[0, count] || []
-      resized << deep_copy(current[0]) while resized.length < count
+      # an empty list grows by its DECLARED element kind's default, never by
+      # copying an element it does not have
+      grown = current.empty? && count.positive? ? element_default(owner, name) : nil
+      resized << deep_copy(current.empty? ? grown : current[0]) while resized.length < count
       resized
     when 'length'
       length = Integer(token, 10)

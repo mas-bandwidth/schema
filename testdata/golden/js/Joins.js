@@ -526,7 +526,7 @@ export class ArmAlign {
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.s = new globalThis.Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
     this.sLength = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -575,7 +575,7 @@ export function WriteArmAlign(stream, value) {
     return false;
   }
   if (value.flag) {
-    if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
       return false;
     }
     NUMBER_SCRATCH.value = value.sLength;
@@ -651,7 +651,7 @@ export class ArmArray {
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(3).fill(0); // wire [0, 8191]
     this.itemsCount = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -700,7 +700,7 @@ export function WriteArmArray(stream, value) {
     return false;
   }
   if (value.flag) {
-    if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+    if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
       return false;
     }
     NUMBER_SCRATCH.value = value.itemsCount;
@@ -708,7 +708,7 @@ export function WriteArmArray(stream, value) {
       return false;
     }
     for (let i = 0; i < value.itemsCount; i++) {
-      if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+      if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
         return false;
       }
       NUMBER_SCRATCH.value = value.items[i];
@@ -854,7 +854,7 @@ export function ReadWide(stream, value, nested) {
 }
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const UnevenType = Object.freeze({
+export const UnevenType = globalThis.Object.freeze({
   None: 0,
   Narrow: 1,
   Wide: 2,
@@ -901,7 +901,7 @@ export function ZeroUneven(value) {
 }
 
 export function WriteUneven(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -1007,7 +1007,7 @@ export function ReadHoldsUneven(stream, value, nested) {
 export class ArrUneven {
   constructor() {
     this.lead = 0;
-    this.items = Array.from({ length: 3 }, () => new Uneven());
+    this.items = globalThis.Array.from({ length: 3 }, () => new Uneven());
     this.itemsCount = 0;
     this.tail = 0;
   }
@@ -1047,7 +1047,7 @@ export function WriteArrUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -1094,9 +1094,9 @@ export function ReadArrUneven(stream, value, nested) {
 export class RegainAfterAlign {
   constructor() {
     this.lead = 0;
-    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(3).fill(0); // wire [0, 8191]
     this.itemsCount = 0;
-    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.s = new globalThis.Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
     this.sLength = 0;
     this.p = 0;
     this.q = 0;
@@ -1144,7 +1144,7 @@ export function WriteRegainAfterAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -1152,7 +1152,7 @@ export function WriteRegainAfterAlign(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -1160,7 +1160,7 @@ export function WriteRegainAfterAlign(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.sLength;

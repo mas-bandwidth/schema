@@ -38,14 +38,14 @@ export function ZeroVec2(value) {
 }
 
 export function WriteVec2(stream, value) {
-  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+  if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+  if (typeof value.y !== "number" || !globalThis.Number.isFinite(value.y)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
@@ -70,7 +70,7 @@ export function ReadVec2(stream, value, nested) {
 // type SpanF64
 export class SpanF64 {
   constructor() {
-    this.values = new Array(2).fill(0);
+    this.values = new globalThis.Array(2).fill(0);
   }
 }
 
@@ -91,7 +91,7 @@ export function ZeroSpanF64(value) {
 
 export function WriteSpanF64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (typeof value.values[i] !== "number" || !Number.isFinite(value.values[i])) {
+    if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
     }
     NUMBER_SCRATCH.value = value.values[i];
@@ -115,7 +115,7 @@ export function ReadSpanF64(stream, value, nested) {
 // type SpanU64
 export class SpanU64 {
   constructor() {
-    this.values = new Array(2).fill(0n);
+    this.values = new globalThis.Array(2).fill(0n);
   }
 }
 
@@ -160,7 +160,7 @@ export function ReadSpanU64(stream, value, nested) {
 // type SpanI64
 export class SpanI64 {
   constructor() {
-    this.values = new Array(2).fill(0n);
+    this.values = new globalThis.Array(2).fill(0n);
   }
 }
 
@@ -184,7 +184,7 @@ export function WriteSpanI64(stream, value) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
       return false;
     }
-    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.values[i]);
+    BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.values[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
@@ -197,7 +197,7 @@ export function ReadSpanI64(stream, value, nested) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    value.values[i] = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+    value.values[i] = globalThis.BigInt.asIntN(64, BIGINT_SCRATCH.value);
   }
   return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
@@ -205,7 +205,7 @@ export function ReadSpanI64(stream, value, nested) {
 // type SpanOne
 export class SpanOne {
   constructor() {
-    this.values = new Array(1).fill(0n);
+    this.values = new globalThis.Array(1).fill(0n);
   }
 }
 
@@ -250,7 +250,7 @@ export function ReadSpanOne(stream, value, nested) {
 // type SpanChunk
 export class SpanChunk {
   constructor() {
-    this.values = new Array(4).fill(0);
+    this.values = new globalThis.Array(4).fill(0);
   }
 }
 
@@ -271,7 +271,7 @@ export function ZeroSpanChunk(value) {
 
 export function WriteSpanChunk(stream, value) {
   for (let i = 0; i < 4; i++) {
-    if (!Number.isInteger(value.values[i]) || value.values[i] < 0 || value.values[i] > 65535) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.values[i]) || value.values[i] < 0 || value.values[i] > 65535) { // a bare integer must fit its width
       return false;
     }
     NUMBER_SCRATCH.value = value.values[i];
@@ -295,7 +295,7 @@ export function ReadSpanChunk(stream, value, nested) {
 // type SpanTail
 export class SpanTail {
   constructor() {
-    this.values = new Array(2).fill(0);
+    this.values = new globalThis.Array(2).fill(0);
     this.tail = 0;
   }
 }
@@ -319,7 +319,7 @@ export function ZeroSpanTail(value) {
 
 export function WriteSpanTail(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (typeof value.values[i] !== "number" || !Number.isFinite(value.values[i])) {
+    if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
     }
     NUMBER_SCRATCH.value = value.values[i];
@@ -327,7 +327,7 @@ export function WriteSpanTail(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -354,8 +354,8 @@ export function ReadSpanTail(stream, value, nested) {
 // type SpanTwice
 export class SpanTwice {
   constructor() {
-    this.a = new Array(2).fill(0);
-    this.b = new Array(2).fill(0);
+    this.a = new globalThis.Array(2).fill(0);
+    this.b = new globalThis.Array(2).fill(0);
   }
 }
 
@@ -378,7 +378,7 @@ export function ZeroSpanTwice(value) {
 
 export function WriteSpanTwice(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (typeof value.a[i] !== "number" || !Number.isFinite(value.a[i])) {
+    if (typeof value.a[i] !== "number" || !globalThis.Number.isFinite(value.a[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
     }
     NUMBER_SCRATCH.value = value.a[i];
@@ -387,7 +387,7 @@ export function WriteSpanTwice(stream, value) {
     }
   }
   for (let i = 0; i < 2; i++) {
-    if (typeof value.b[i] !== "number" || !Number.isFinite(value.b[i])) {
+    if (typeof value.b[i] !== "number" || !globalThis.Number.isFinite(value.b[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
     }
     NUMBER_SCRATCH.value = value.b[i];
@@ -443,21 +443,21 @@ export function ZeroTrio(value) {
 }
 
 export function WriteTrio(stream, value) {
-  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
     return false;
   }
   NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
     return false;
   }
   NUMBER_SCRATCH.value = value.c;
@@ -584,7 +584,7 @@ export function WriteTrioFirst(stream, value) {
   if (!WriteTrio(stream, value.inner)) {
     return false;
   }
-  if (!Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
+  if (!globalThis.Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.trailer;
@@ -681,7 +681,7 @@ export function WriteTrioStraddle(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+  if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
     return false;
   }
   NUMBER_SCRATCH.value = value.pad5;

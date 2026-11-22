@@ -999,6 +999,46 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			if n == 0 and not required and (fd.array ~= "counted" or fd.min == nil or fd.min == 0) then
 				return true
 			end
+			-- A COUNTED ARRAY AT ITS BIRTH ELIDES (F-115, §22.2, tablewire
+			-- encodeArray): a [Min..Max]T is born holding Min default
+			-- elements, and exactly that value is not written: a table
+			-- element by its body being the terminator alone (the probe's
+			-- ids undone either way), any other by its default. Count Min
+			-- with one live element rides, and so does Min+1 defaults.
+			local born = fd.min or 0
+			if fd.array == "counted" and not required and born > 0 and n == born then
+				local all = true
+				if fd.e.s == "tab" then
+					local m = mark(c.ids)
+					for i = 1, n do
+						local b = body_of(c, St.lookup(fd.e.t), elem_at(val, i))
+						if b == nil then
+							rollback(c.ids, m)
+							return false
+						end
+						if b.n > 1 then
+							all = false
+							break
+						end
+					end
+					rollback(c.ids, m)
+				else
+					local lens = v[fd.slot .. "Length"]
+					for i = 1, n do
+						local len: number? = nil
+						if type(lens) == "table" then
+							len = lens[i]
+						end
+						if not elem_is_default(fd.e, elem_at(val, i), len) then
+							all = false
+							break
+						end
+					end
+				end
+				if all then
+					return true
+				end
+			end
 			return write_array(c, fd, w, v, val, n)
 		end
 		if fd.e.s == "tab" then

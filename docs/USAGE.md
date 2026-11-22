@@ -79,6 +79,7 @@ in canonical form.
 
 You get a struct and a pair of wire functions:
 
+<!-- example: fragment -->
 ```cpp
 struct ShipCreate {
     ShipType ship_type = ShipType::None;
@@ -136,7 +137,10 @@ A default `generate --lang go` (no `--surface`) also removes stale surface
 files: any `.go` file in the output directory whose first line is the compiler's
 own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
 and that this run did not write. With `--surface` nothing is removed; only
-`.go` files the compiler itself generated are ever touched.
+`.go` files the compiler itself generated are ever touched. A file this run
+wrote is never removed, and every output lands under this run's spelling, on a
+case-insensitive volume too: renaming `Player.schema` to `player.schema` and
+regenerating leaves `player.go` and no `Player.go`, for every target's files.
 
 ---
 
@@ -182,6 +186,7 @@ enum ShipType { Fighter, Corvette, Bomber }
 zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
+<!-- example: fragment -->
 ```cpp
 enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
 ```
@@ -274,6 +279,7 @@ One bit per variant, consumed as a mask. Storage is `uint64` in every
 language (more than 64 variants is a compile error); the wire is exactly as
 many bits as there are variants:
 
+<!-- example: fragment -->
 ```cpp
 using Capabilities = uint64_t;
 inline constexpr Capabilities Capabilities_Cloak  = 1ull << 0;
@@ -338,6 +344,7 @@ compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
 declared order, then `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
 
+<!-- example: fragment -->
 ```cpp
 enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
 
@@ -378,6 +385,7 @@ sets the tag, constructs the arm in place with its declared defaults, and
 returns a reference to the fresh arm; for a payload-free arm it returns `void`
 and sets the tag alone:
 
+<!-- example: fragment -->
 ```cpp
 Collider collider;
 SphereCollider & sphere = collider.shape.SelectSphere(); // tag and arm together
@@ -406,6 +414,7 @@ returns the fresh arm to populate. A payload-free arm's selector sets the tag
 alone. Assigning `type` and the arm separately still works, but a forgotten
 tag leaves `None`, and the payload is then absent from the wire with no assert:
 
+<!-- example: fragment -->
 ```c
 SphereCollider * sphere = collider_shape_select_sphere( &collider.shape );
 /* populate *sphere; collider.shape.type is already COLLIDER_SHAPE_TYPE_SPHERE */
@@ -584,6 +593,7 @@ The range is **part of the type**, and the wire cost follows from it. This
 is the single most useful feature in the language: 1001 values need 10 bits,
 so that is what it writes.
 
+<!-- example: fragment -->
 ```cpp
 serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
@@ -617,7 +627,7 @@ One bit.
 `float32` and `float64`, written whole (32 and 64 bits).
 
 A float is finite, on the packet wire and the table wire alike: a write of a
-NaN or an infinity is refused, and every read, tolerant or strict, refuses
+NaN or an infinity is refused, and every read refuses
 one as `non_finite_float` (SPEC.md §4.3; docs/SPEC-TABLES.md §3.3, a plain
 float's special values). `-0` and the subnormals ride as their exact bits:
 `-0` is kept apart from `+0` (the default elision compares bits, so `-0`
@@ -685,6 +695,7 @@ blob bytes(1024)
 Both are length-prefixed with a maximum. Storage carries the buffer and the
 used length beside it:
 
+<!-- example: fragment -->
 ```cpp
 char name[MaxName + 1] = {};
 int32_t name_length = 0;
@@ -764,6 +775,7 @@ record is refused, never clamped.
 Types nest freely. A composed field writes its parts inline — no pointers,
 no offsets, no indirection:
 
+<!-- example: fragment -->
 ```cpp
 schema_write_object( stream, WriteVector3, value.position );
 ```
@@ -787,6 +799,7 @@ The condition must be a `bool` field **already written** — the reader has to
 know it before it can decide what comes next. Storage holds both sides; the
 wire carries only the taken one:
 
+<!-- example: fragment -->
 ```cpp
 write_bool( stream, value.at_rest );
 if ( !value.at_rest )
@@ -855,9 +868,10 @@ versioning is by [protocol id](#the-protocol-id): one id, same-or-refuse,
 with no evolution machinery anywhere. That is a deliberate choice for data
 whose writer and reader ship together, and it is one of TWO wires this
 language has. Data that has to survive schema drift is the other one's job:
-declare a `table` and it rides the tolerant wire, where a field is identified
-by the hash of its name, any reader reads any data, and every difference is
-counted in a read report rather than being fatal (docs/SPEC-TABLES.md, and
+declare a `table` and it rides the variable table wire, where a field is
+identified by the hash of its name, a reader reads another build's data across
+lawful edits, evolution is counted in a read report, and anything else refuses
+the load by name (docs/SPEC-TABLES.md, and
 [Tables](#tables-data-that-outlives-builds) below). Save games, config and
 asset archives belong there; packets belong here.
 
@@ -875,6 +889,7 @@ Generated readers are written on the assumption that the bytes are hostile.
 A value outside its declared range is **refused, not clamped** — the read
 returns failure and you drop the packet:
 
+<!-- example: fragment -->
 ```cpp
 // NOTE the buffer contract: in C++ and C the ALLOCATION must extend at least
 // 8 bytes past the packet data. The reader pulls a 64-bit word at a time, so a
@@ -954,7 +969,7 @@ default-JVM build, and returns failure in the others.
 **Go tables are held to the stricter rule, in every build** (2026-10-15: "Go
 table writers, variable and fixed, refuse out-of-contract values by name").
 A Go table has no debug build to compile a check out of, and a record its own
-reader would clamp or refuse is a record the writer should never have made. So
+reader would refuse is a record the writer should never have made. So
 a Go table save — `<T>Save` for a variable or a fixed-size table and
 `<T>FixedSave` for the fixed form — **refuses** a value off its declared
 `min`/`max`, a count past its array's `Max`, a length past its text or bytes
@@ -976,8 +991,8 @@ the fixed form), under a speed gate: a save may not get slower than the
 before-run's spread. The packet writers and the other
 languages' table writers are unchanged by this paragraph.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
-that meets any other byte on the variable wire keeps the value (`true`), counts
-the field `malformed` by name, and the strict read (§6.5) refuses it (§3).
+that meets any other byte on the variable wire refuses the whole load
+(`wire_damaged`, §3, §6.5).
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only
@@ -1027,7 +1042,7 @@ table ShipConfig
 
 **What it costs.** Tables are less performant than types, and that is the
 trade: a type is a raw struct with a bit-packed same-build wire, a FIXED-size
-table is a raw struct with a tolerant byte codec around it and runs as close
+table is a raw struct with a versioned byte codec around it and runs as close
 to its equivalent type as that wire allows, and the variable-length class
 (pointers, an arena, a region) pays for what it buys. Allocation follows the
 same ladder: types never allocate, a fixed table with no union never
@@ -1054,16 +1069,17 @@ previous form, and each is a named follow-on
 ([#511](https://github.com/mas-bandwidth/schema/issues/511) to
 [#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING.md M20).*
 Field identity is a hash of the
-field NAME, so any reader takes any data, both directions: unknown fields are
-skipped by their kind, absent fields take their declared defaults, a field
-whose kind changed is skipped rather than misdecoded, a field whose kind
-merely GREW — an integer to a wider integer of the same signedness, or
-`float32` to `float64` — decodes exactly and counts `widened`, and a value
-past the reader's own range or bound refuses the load by name
-(`out_of_range`, `count_over_bound`, `length_over_bound`), never clamped.
+field NAME, so a reader takes another build's data across lawful edits, both
+directions: unknown fields are skipped by their kind and counted, absent fields
+take their declared defaults, a field whose kind merely GREW — an integer to a
+wider integer of the same signedness, or `float32` to `float64` — decodes
+exactly and counts `widened`, a field whose kind changed otherwise refuses the
+load (`kind_mismatch`) rather than being misdecoded, and a value past the
+reader's own range or bound refuses the load by name (`out_of_range`,
+`count_over_bound`, `length_over_bound`), never clamped.
 Every evolution event is counted in a report.
 Framing damage is not an evolution event: a read that meets it refuses the
-whole load as `malformed` and hands back nothing to use (SPEC-TABLES.md §4). Tables never touch the protocol id —
+whole load (`wire_damaged`) and hands back nothing to use (SPEC-TABLES.md §4). Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
@@ -1071,7 +1087,7 @@ array — a literal, a constant, or an `E.Max` expression that moved when
 the enum grew — and files written under the old bound still load when they
 fit: a count past your bound refuses the load `count_over_bound`, never cut
 to a prefix, and a count short of it leaves your tail at its declared
-defaults. (`malformed` means something
+defaults. (`wire_damaged` means something
 else: a count the body cannot cover.) The storage struct's size and extent
 change with the constant; the table on the wire does not, because identity is
 the field name hash and the kind.
@@ -1120,6 +1136,7 @@ code with **no serialize dependency**, includable from any translation unit
 The encode surface is a measure/save split, and the caller owns every buffer
 (generated code allocates nothing):
 
+<!-- example: fragment -->
 ```cpp
 #include "ConfigTable.h"
 
@@ -1138,13 +1155,13 @@ TableReport report;
 ShipConfig loaded;
 if ( !ShipConfigLoad( loaded, buffer.data(), size, &report ) )
 {
-    // framing damage: report.malformed is set and loaded holds its defaults —
-    // nothing of a damaged file is used
+    // refused: report.refuse_reason names why (wire_damaged, out_of_range,
+    // kind_mismatch, ...) and nothing of the file is used
 }
-if ( report.unknown || report.kind_mismatch || report.clamped )
+if ( report.unknown || report.widened )
 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+    // the data came from a different schema generation — loaded is whole;
+    // log the counts so drift is visible
 }
 ```
 
@@ -1160,6 +1177,7 @@ class, over spans the caller owns. Storage is a sealed class with public
 fields — every buffer allocated at construction, so `Load` allocates nothing
 and overlays in place after restoring the declared defaults:
 
+<!-- example: fragment -->
 ```csharp
 using Example;
 
@@ -1175,20 +1193,22 @@ TableReport report = new TableReport();
 ShipConfig loaded = new ShipConfig();
 if (!Schema.ShipConfigLoad(loaded, buffer, report))
 {
-    // report.Refused names an unsupported form; report.Malformed marks damage,
-    // and a damaged load is discarded whole: nothing of it is used.
+    // refused: report.Reason names why, and a refused load is discarded
+    // whole: nothing of it is used.
 }
-if (report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0)
+if (report.Unknown != 0 || report.Widened != 0)
 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+    // the data came from a different schema generation — loaded is whole;
+    // log the counts so drift is visible
 }
 ```
 
 The C# fixed-class file reader uses form 1. `ShipConfigLoadVerdict` returns
 `Schema.TableWire.Verdict.Ok`, `Refused`, `Damaged` or `BodyStopped`; the bool
-wrapper returns true only for `Ok`. Check `report.Malformed` as well: a damaged
-bounded nested value can leave the enclosing root readable. `report.Reason`
+wrapper returns true only for `Ok`. `BodyStopped` is a damaged bounded nested
+value the C# reader does not yet discard whole, as SPEC-TABLES.md §4 requires
+(roadmap `security/cs-damaged-load-returns-root`): treat every verdict but `Ok`
+as a refusal and use nothing of the load. `report.Reason`
 distinguishes `message_form_as_file` from `newer_form` on form refusal. Construct
 the storage and report once, and reuse them with the caller-owned spans.
 
@@ -1199,6 +1219,7 @@ exception. Storage is a class with public fields, every buffer allocated at
 construction, so `Load` allocates nothing and overlays in place after restoring
 the declared defaults. Buffers are caller-owned `Uint8Array`s:
 
+<!-- example: compile -->
 ```js
 import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigSaveInto, ShipConfigLoad, TableReport }
   from "./ConfigTable.js";
@@ -1217,13 +1238,14 @@ ShipConfigSaveInto(ship, buffer);      // returns size; a buffer too small, a
 const report = new TableReport();
 const loaded = ShipConfigLoad(bytes, report);        // the value, fresh
 ShipConfigLoad(bytes, report, loaded);               // or your own, overlaid in place
-if (report.Malformed) {
-  // framing damage: the load is discarded whole and nothing of it is used —
-  // what the DATA did is always the report, never an exception
+if (report.err() !== null) {
+  // refused: err() is the TableRefuseReason, the load is discarded whole and
+  // nothing of it is used — what the DATA did is always the report, never an
+  // exception
 }
-if (report.Unknown || report.KindMismatch || report.Clamped) {
-  // the data came from a different schema generation — loaded is still
-  // fully usable; log the counts so drift is visible
+if (report.unknown || report.widened) {
+  // the data came from a different schema generation — loaded is whole;
+  // log the counts so drift is visible
 }
 report.reset();                        // a report accumulates across loads, as C++'s does
 ```
@@ -1244,6 +1266,7 @@ floor. On a per-frame path, hoist the pair
 out of the loop and call the `Body` half directly — the same code, with the two
 objects reused:
 
+<!-- example: compile -->
 ```js
 const reader = new TableReader(buffer, report);
 const writer = new TableWriter(out);
@@ -1262,6 +1285,7 @@ into those very classes, and one unit is one spelling. The codec never builds a
 JavaScript string, so a read allocates nothing for one. Decode at the boundary,
 where the allocation is your own choice:
 
+<!-- example: compile -->
 ```js
 const name = new TextDecoder().decode(loaded.name.subarray(0, loaded.nameLength));
 loaded.nameLength = new TextEncoder().encodeInto("Rowan", loaded.name).written;
@@ -1290,6 +1314,7 @@ element — the same currency the indexer takes, so a site that wants the key
 as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
 the walk allocates nothing:
 
+<!-- example: fragment -->
 ```csharp
 foreach (var (ship_type, ship) in fleet.Ships)
 {
@@ -1316,6 +1341,7 @@ the KEY — `KeyId(0)` is `0`, the id that says `None` names no slot.
 caller owns** — the same spelling as C++ with a pointer where C++ takes a
 reference:
 
+<!-- example: fragment -->
 ```c
 #include "ConfigTable.h"
 
@@ -1333,12 +1359,12 @@ ShipConfig loaded;
 memset( &report, 0, sizeof( report ) );
 if ( !ship_config_load( &loaded, buffer, size, &report ) )
 {
-    /* framing damage: report.malformed is set and nothing of the load is used */
+    /* refused: report.refuse_reason names why, and nothing of the load is used */
 }
-if ( report.unknown || report.kind_mismatch || report.clamped )
+if ( report.unknown || report.widened )
 {
-    /* the data came from a different schema generation — loaded is still
-       fully usable; log the counts so drift is visible */
+    /* the data came from a different schema generation — loaded is whole;
+       log the counts so drift is visible */
 }
 ```
 
@@ -1441,6 +1467,7 @@ emitter's own spelling, because a table's closure decodes into the structs that
 emitter already wrote — so a value costs one declaration and `Load` overlays it
 in place after restoring the declared defaults:
 
+<!-- example: fragment -->
 ```go
 import "example"
 
@@ -1456,11 +1483,11 @@ example.ShipConfigSave(&ship, buffer)      // returns size, or -1
 var report example.TableReport
 var loaded example.ShipConfig
 if !example.ShipConfigLoad(&loaded, buffer, &report) {
-    // framing damage: report.Malformed is set and nothing of the load is used
+    // refused: report.Err() is the typed reason, and nothing of the load is used
 }
-if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+if report.Unknown != 0 || report.Widened != 0 {
+    // the data came from a different schema generation — loaded is whole;
+    // log the counts so drift is visible
 }
 ```
 
@@ -1473,7 +1500,7 @@ An integer field's declared range is carried EXACTLY on the descriptor:
 The report is a PARAMETER rather than a member of the reader, which is the one
 place the Rust codecs read differently from the C++ ones: a reader holding
 `&mut TableReport` could not hand a sub-reader out of its own buffer while that
-borrow stood. One report, one caller, the same six counters.
+borrow stood. One report, one caller, the same counters.
 
 **Every refusal of the fixed form's load is a member of the one refusal enum**
 (docs/SPEC-TABLES.md §6.5, §21.3): `TableRefusePreviousForm`,
@@ -1488,8 +1515,8 @@ name, and `report.Err()` is the member that name answers, so
 `errors.Is(err, example.TableRefuseLayoutUnknown)` holds for a fixed load that
 refused; a form-byte refusal keeps answering `TableRefuseUnknownForm`, as
 §6.5's strict error identity requires. A short
-input, a sub-twenty-byte header or a ragged tail set `report.Malformed` beside
-`TableRefuseTruncated`; a nonzero reserved byte sets it beside
+input, a sub-twenty-byte header or a ragged tail refuses
+`TableRefuseTruncated`; a nonzero reserved byte refuses
 `TableRefuseReservedNotZero`.
 
 `string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
@@ -1503,6 +1530,7 @@ slots — one per named variant, nothing for `None`, the key `k` at index
 enum's own `Max`, so there is no constant a consumer could put out of step with
 it. **Rust indexes it by the KEY**, as every port does:
 
+<!-- example: fragment -->
 ```rust
 fleet.ships[ShipType::BOMBER.0 as u64].health *= 2.0;
 
@@ -1558,20 +1586,19 @@ method uses the shared diagnostic spelling. The package functions `RootOpen`
 and `RootBlockOpen` remain boolean conveniences over that same check. Both
 forms clear the handle on failure and allocate nothing on success.
 
-**A Go read by the plain name is strict** (docs/SPEC-TABLES.md §6.5).
+**A Go read by the plain name is the one read** (docs/SPEC-TABLES.md §6.5).
 `RootLoad`, `RootLoadBuilder`, `RootFromJson`, `RootFixedLoad` and
-`RootLoadMessages` refuse a clamped, kind-mismatched, malformed, truncated or
-`missing_required` read with the refusal value they always had (`false`, a nil
-root, `-1`), and the report you pass holds that read's counters with
- `report.Err()` as the typed reason (`errors.Is(report.Err(), TableRefuseClamped)`). A clamped refusal is `TableClampedField` and names the clamped field (`clamped: <Table>.<field>`, docs/SPEC-TABLES.md §6.5). To keep a recovered value and its report, ask for it by
-name: `RootLoadTolerant`, `RootLoadBuilderTolerant`, `RootFromJsonTolerant`,
-`RootFixedLoadTolerant` and `RootLoadMessagesTolerant` take the same arguments
-and return what the plain names returned before. `RootFromJsonWith` (the JSON
-options, below) is strict too; its tolerant twin is `RootFromJsonTolerantWith`.
+`RootLoadMessages` refuse an out-of-range, kind-mismatched, damaged, truncated
+or `missing_required` read with the refusal value they always had (`false`, a
+nil root, `-1`), and the report you pass holds `report.Err()` as the typed
+reason (`errors.Is(report.Err(), example.TableRefuseOutOfRange)`). An
+out-of-range refusal names the field (`out_of_range: <Table>.<field>`). There
+is no tolerant twin: nothing of a refused read is kept, and `RootLoadMessages`
+answers a refused batch with a count of 0 and every value it had written reset.
+`RootFromJsonWith` (the JSON options, below) is the same read.
 
-Two exceptions hold. `RootLoadMessages` keeps the records it decoded ahead of
-a tolerant stop rather than discarding them with the refusal. And a locked
-builder's `FromJson` answers `false` with an empty report.
+One exception holds: a locked builder's `FromJson` answers `false` with an
+empty report.
 
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
@@ -1583,6 +1610,7 @@ type and the extent is the generated `E.Max` constant and no other number. The
 shift and BOTH refusals live in one helper, so no call site spells any of them
 — `None` keys no slot, and neither does a value past `E.Max`:
 
+<!-- example: fragment -->
 ```go
 *example.TableKeyed(fleet.Ships[:], int(example.ShipTypeBomber)) = ship
 ```
@@ -1657,6 +1685,7 @@ arithmetic, so the same refusals.
 loop allocates nothing; `<field>()` carries the three numbers together in a
 `TableBlockRows` record and costs one per call, which is the convenience:
 
+<!-- example: fragment -->
 ```java
 for (int i = 0, n = frame.shipsCount(); i < n; i++) {
     int row = frame.shipsAt(i);                    // the pitch is inside, not here
@@ -1687,11 +1716,9 @@ are a shared blob (`blob_shared`, answering `null` or `-1`), while equal bytes
 in distinct arrays are two records and save. On a `*string` field, each slot is
 numbered by value as its own blob record, so two slots set to the same
 `String` — including an interned literal (`v.note = "x"; v.head.caption = "x";`)
-— write two records. The tolerant `load` and `loadRetain` of a wire whose two
-slots name one `*bytes` or `*string` record keep the value in both slots and
-mark the second slot as shared (cleared by `Descriptor.reset()`), so a later
-save or `toJson` of that loaded value refuses as the oracle does
-(`TestJavaWritersRefuseASharedBlob`).
+— write two records. `load` and `loadRetain` refuse a wire whose two slots
+name one `*bytes` or `*string` record as `blob_shared` (§2.5; the one strict
+read), so no loaded value carries a shared blob (`TestJavaBlobSharedStrict`).
 
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
@@ -1750,6 +1777,7 @@ width and a reader steps over what it cannot name exactly.
 batch of one.** There is no singular verb, because the bandwidth is in the
 batch.
 
+<!-- example: fragment -->
 ```cpp
 #include "BackendTable.h"
 
@@ -1775,6 +1803,7 @@ backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &report )
 send( buffer );
 ```
 
+<!-- example: fragment -->
 ```cpp
 // the RECEIVER holds ONE vocabulary a direction for the life of the connection.
 // The vocabulary BORROWS the announcement's bytes rather than copying them, so
@@ -1794,14 +1823,14 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
 {
     // report.refused with reason no_vocabulary is a batch that arrived
     // before the announcement. Nothing was decoded, no counter moved, and
-    // report.malformed did NOT fire: it is a refusal, not damage.
+    // report.damaged did NOT fire: it is a refusal, not damage.
     //
     // report.refused with reason batch_too_large is a batch of more bodies
     // than you had room for, refused before a body was touched, and
     // received_count now holds the wire's count. Call again with a capacity
     // at or above it. You never parse the bytes yourself.
     //
-    // report.malformed is DAMAGE, and it discards the whole batch:
+    // report.damaged is DAMAGE, and it discards the whole batch:
     // received_count is 0 and no body, before the damage or after it, is
     // a value to use.
 }
@@ -1822,8 +1851,8 @@ limit is 65,536; `max_bytes` and the entry capacity are independent caller limit
 
 The message form is fixed tables only (docs/SPEC-TABLES.md §3.3): a fixed root
 takes an array of values, and a variable table has no message functions at all.
-Message reads allocate nothing. A damaged body can return a partially decoded root, but
-the output count includes only complete bodies.
+Message reads allocate nothing. A damaged batch is refused whole: the output
+count is 0 and every value it had written is reset.
 
 In Elixir the operations live on `<Package>.TableMessage`: `announce/0`,
 `announce_measure/0` and `announce_read/1,2`, then `for_root/2` binds the
@@ -1874,7 +1903,7 @@ call it again with the rest.
 
 **Damage discards the batch.** A reference past the vocabulary, a length past
 the buffer or exhaustion is damage, and damage discards the whole load
-(SPEC-TABLES.md §4): `malformed` counts, the count is 0, and no body of the
+(SPEC-TABLES.md §4): the batch refuses `wire_damaged`, the count is 0, and no body of the
 batch is delivered. An UNKNOWN field does not stop anything, because the announcement
 gave the reader its width.
 
@@ -1901,6 +1930,14 @@ $ schema pack   --root LoginRequest --message --announce backend_conn.bin \
 $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
 ```
+
+The message and its announcement are one artifact in two files, so `pack`
+publishes both or neither: a run that fails leaves the earlier pair as it was.
+That holds when one run writes to an output at a time. One publisher per
+destination is the contract, as with any compiler: `schema` takes no lock, and
+two runs writing the same `--out` and `--announce` at once can leave one run's
+message beside the other's announcement. Give concurrent runs their own
+outputs, or run them one after the other.
 
 **And `schema unpack` handed the announcement ITSELF prints the vocabulary
 decoded**, one line an entry with its slot, its id, the name your closure gives
@@ -1966,6 +2003,7 @@ table ShipConfig
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 ShipConfig ship;
 ship.settings_present = true;          // absent until you say so
@@ -1977,19 +2015,23 @@ written; a present one always is, even at its defaults — so "absent" and
 "present with nothing to say" stay two different values, and a reader that
 sees the field sets `_present` whatever it contains.
 
-The framing is the ordinary field's, which makes `?T`, `*T` and a plain `T`
-nesting **three spellings of one field**: for any value that is not entirely
-default, move a field among the three and no byte changes, in either
+The framing is the ordinary field's, which makes `?T` and a plain `T`
+nesting **two spellings of one field**: for any value that is not entirely
+default, move a field between the two and no byte changes, in either
 direction. The one difference is at the empty end — a plain `T` holding
-nothing but defaults writes nothing, while a present `?T` and a non-null `*T`
-write a body — and no direction misdecodes: an absent field reads as the
-declared default, as null, or as absent, each of which is right.
+nothing but defaults writes nothing, while a present `?T` writes a body —
+and no direction misdecodes: an absent field reads as the declared default
+or as absent, and a present body at its defaults reads into a plain `T` as
+those defaults. A `*T` is not a third spelling: a pointer rides as a node
+index under its own kind, so moving a field between `*T` and either of the
+other two refuses the load (`kind_mismatch`, SPEC-TABLES.md §2.3).
 
 `?` goes on nested tables and types, enums, flags, scalars, and bounded
 arrays of those — `?[..N]T` and `?[N]T`. An optional array rides whole when
 present, its live count included even at zero, so "present and empty" and
 "absent" stay two values — the thing a bare count cannot spell:
 
+<!-- example: fragment -->
 ```cpp
 ShipConfig ship;
 ship.loadouts_present = true;   // present, and empty: rides as count 0
@@ -2013,6 +2055,7 @@ cook, the JSON writer and reader — follows `T`'s pointers only while the
 field is present, so an absent value, or one made absent after it was set,
 writes no node for whatever its pointers still hold:
 
+<!-- example: fragment -->
 ```go
 outer.InnerPresent = true
 TableStringEmplace(&b.Main, &outer.Inner.Text, []byte("hi")) // rides, one node
@@ -2033,6 +2076,7 @@ table Fleet
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 Fleet fleet;
 
@@ -2229,18 +2273,22 @@ table Scene
 }
 ```
 
-No pointer, no allocation, and the table stays fixed-size. Use `*` when the
+No pointer, no allocation, and a `fixed table` may hold it. Use `*` when the
 structure needs it: recursion (a chain, a tree), one large subtree you would
-rather not carry by value, or a node several parents name. One pointer
-anywhere in a table's by-value closure turns it variable-length, and that
-changes the whole build-and-load lifecycle below.
+rather not carry by value, or a node several parents name. A table with a
+pointer anywhere in its by-value closure must be a plain `table`, and that
+class has the whole build-and-load lifecycle below.
 
-**The compiler derives the mode; you never declare it.** A table with no
-pointer anywhere in its by-value closure is FIXED-SIZE — a plain struct with
-the three functions above, and it pays nothing at all for what follows. A
-table with a pointer in that closure is VARIABLE-LENGTH, and it is never held
-by value: you build it, lock it, and read it through a root pointer.
+**You declare the class; the compiler never derives it** (SPEC-TABLES.md §2.2).
+A `fixed table` is FIXED-SIZE — a plain struct with the three functions above,
+and it pays nothing at all for what follows; the compiler refuses one whose
+by-value closure holds a pointer, a map, an unbounded array, a used-size byte
+buffer, a guarded field or a nested variable table, naming the field. A plain
+`table` is VARIABLE-LENGTH whatever its fields are, and it is never held by
+value: you build it, lock it, and read it through a root pointer. A body that
+could be fixed today does not quietly become fixed.
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;                       // MUTABLE
 Scene * root = builder.GetRoot();
@@ -2261,6 +2309,7 @@ There is no unlock: to edit again, load the const form into a fresh builder.
 Building goes wide with no lock and no per-node atomic — one worker per
 thread, each allocating on its own front:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 std::thread workers[4];
@@ -2285,6 +2334,7 @@ an array of thousands.
 
 Reading from the wire, the caller owns the allocation as always:
 
+<!-- example: fragment -->
 ```cpp
 int64_t attribution = 0;
 int64_t need = SceneLoadMeasure( wire, wire_size, &attribution ); // exact, reads no values
@@ -2318,6 +2368,7 @@ free functions under the root's name, and the two things C++ distinguishes by
 TYPE — which sink a node comes from, which encoding a walk is reading — are
 distinguished by a nullable member:
 
+<!-- example: fragment -->
 ```c
 SceneBuilder builder;
 TableSink sink;
@@ -2351,6 +2402,7 @@ scene_builder_shutdown( &builder );
 
 Reading from the wire is the same three steps, and the caller owns the region:
 
+<!-- example: fragment -->
 ```c
 region_bytes = scene_load_measure( wire, wire_size );   /* exact, reads no values */
 uint8_t * region = your_allocator( region_bytes );
@@ -2391,6 +2443,7 @@ and 110 KB once you define the hooks; a packet header is 36 headers. Define
 them once, before the first generated header, and every unit in the program
 picks them up:
 
+<!-- example: fragment -->
 ```cpp
 #define schema_assert( condition ) my_assert( condition )
 #define schema_fatal() my_fatal()                      // must not return
@@ -2424,6 +2477,7 @@ return value or a `TableReport` field.
 `TableBlockAllocator` already has — an alloc/free pair and a context — plus
 the zeroed-bytes contract on `alloc`:
 
+<!-- example: fragment -->
 ```cpp
 static void * heap_alloc( void * context, int64_t bytes ) { return ((Heap *) context)->Calloc( bytes ); }
 static void heap_free( void * context, void * pointer ) { ((Heap *) context)->Free( pointer ); }
@@ -2509,6 +2563,7 @@ empty map. `?map` is refused in a `fixed table`, a `type`, and beside
 
 The surface is a builder and a reader:
 
+<!-- example: fragment -->
 ```cpp
 FleetBuilder builder;
 Fleet * fleet = builder.GetRoot();
@@ -2550,17 +2605,17 @@ is refused naming the map. **Go carries the same eight names** over its
 `*TableMap[T]` handle: `Each` visits a builder's entries in INSERTION order,
 and a locked, loaded or opened holder's in ascending key order.
 
-**Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
-DESCENDING key is not something a conforming writer produces, so it is damage:
-the whole load is refused as `malformed` (SPEC-TABLES.md §4). A key that
-does not fit the reader's bound drops its entry and counts `clamped`, one per
-entry, so keys never clamp into each other. A key kind that disagrees resets
-the map to empty and counts one `kind_mismatch`, and a key kind the reader's
-own WIDENS decodes exactly and counts one `widened`, once for the map however
-many of its keys widened. And a map is
-byte-identical with `[..N]Pair` over a user's own
+**Evolution.** A map's keys ascend strictly on the wire, so a repeated key and
+a descending key are both input no conforming writer produces: the read refuses
+the whole load (`wire_damaged`, SPEC-TABLES.md §4). A key past the reader's
+bound refuses the whole load (`length_over_bound`); nothing is dropped and
+nothing is clamped. A key kind that disagrees refuses it too
+(`kind_mismatch`), and a key kind the reader's own WIDENS decodes exactly and
+counts one `widened`, once for the map however many of its keys widened. And a
+map is byte-identical with `[..N]Pair` over a user's own
 `table Pair { key ...; value ... }`, in both directions, which is the
-migration path from the table-of-pairs idiom.
+migration path from the table-of-pairs idiom: the map direction holds the
+entries to the map's order, so pairs that do not ascend strictly refuse there.
 
 In JSON a map is a plain object keyed by the key, an integer key written as
 its quoted decimal spelling, entries in ascending key order.
@@ -2617,6 +2672,7 @@ in a region and in a cook, so position is identity the way it is in a fixed
 array, and there is no sort for a writer to hold and no order check for a
 reader to run.
 
+<!-- example: fragment -->
 ```cpp
 SaveBuilder builder;
 Save * save = builder.GetRoot();
@@ -2659,8 +2715,8 @@ extent is a number that came out of a file, so an index past it is not a
 mistake a release build gets to make cheaply.
 
 **Two answers cannot come from here, and their absence is the design.**
-`duplicate` cannot, because there is no key equality, so two equal elements
-are two elements. And **`count_over_bound` cannot fire on the COUNT**, because
+A repeated-key refusal cannot, because there is no key equality, so two equal
+elements are two elements. And **`count_over_bound` cannot fire on the COUNT**, because
 there is no reader bound to hold it to: a count is read, refused by
 `LoadMeasure` before any decode, or damaged. A reader that declares `[..N]T`
 where the writer declared `[]T` refuses a file holding more than N
@@ -2689,6 +2745,7 @@ table Asset
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 AssetBuilder builder;
 TableBytesSlot data = builder.AllocBytes( size );   // the node, and the bytes to write through
@@ -2700,6 +2757,7 @@ TableStringEmplace( builder.main, builder.GetRoot()->caption, text, length );
 Reading is a VIEW — one add from the slot, no copy, off a loaded region, a
 locked builder or an opened cook alike:
 
+<!-- example: fragment -->
 ```cpp
 TableBytesView data = TableBytesAt( asset->data );       // NULL/0 for a null reference
 TableStringView caption = TableStringAt( asset->caption ); // .data is zero-terminated
@@ -2742,6 +2800,7 @@ fixed table Session
 In Go the field holds the count, and the `time.Time` is a pair of methods
 generated beside it, UTC on read:
 
+<!-- example: fragment -->
 ```go
 var s Session
 err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
@@ -2754,8 +2813,8 @@ stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
 string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
 
 A timestamp is its own kind on the variable wire, not an `int64`: a field
-respelled between the two there is a kind mismatch, skipped and counted, and
-neither spelling widens into the other. In a `fixed table` the slot is an
+respelled between the two refuses the load as a kind mismatch
+(`kind_mismatch`), and neither spelling widens into the other. In a `fixed table` the slot is an
 `int64`'s and the layout names it as one, so the fixed form does not tell the
 two apart. It is a bare TABLE field only in this major — a `timestamp` in a
 packet `type`, in an array, optional, map value or union arm is refused by
@@ -2780,7 +2839,7 @@ table RenderFrame
 
 **Nothing there is new.** Those are ordinary bounded arrays of ordinary fixed
 tables, and `RenderFrame` is an ordinary table — it still has `Measure`,
-`Save` and `Load` over the tolerant wire. **Every fixed table
+`Save` and `Load` over the variable wire. **Every fixed table
 also gets a third *form* of the same declaration**: one in which the table's
 own bounded arrays sit out of line at a fixed pitch, and the instance at the
 front of the block carries, per array, where its rows start, how many there
@@ -2794,6 +2853,7 @@ in `<base>_block.rs` beside `block_runtime.rs` for Rust, and in
 `<Base>Block.go` for Go — so a project that never blocks a table compiles none
 of it, and the table sources are the same bytes either way:
 
+<!-- example: fragment -->
 ```cpp
 #include "RenderTable.h"                      // the ordinary table surface
 #include "RenderBlock.h"                      // the block form, only if you use it
@@ -2812,6 +2872,7 @@ table has no block form at all: a pointer means no fixed pitch.
 **Building it goes wide, and that is required, not merely allowed.** Declare
 the counts, lay the block out once, then let N workers fill disjoint ranges:
 
+<!-- example: fragment -->
 ```cpp
 // the storage: one extent, sized from the declared maxima, allocated ONCE
 // through YOUR allocator — an alloc/free pair and a context, malloc semantics.
@@ -2845,6 +2906,7 @@ yours to own.
 
 **Reading it is one check and then pointers:**
 
+<!-- example: fragment -->
 ```csharp
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;
@@ -2862,6 +2924,7 @@ ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
 Rust reads it the same way, and its rows come back as a plain slice, because
 the pitch IS the element's size and a slice is the honest view:
 
+<!-- example: fragment -->
 ```rust
 let Some(block) = (unsafe { RenderFrameBlock::open(pointer, bytes) }) else {
     return;
@@ -2947,8 +3010,8 @@ did not come from your own pipeline is `schema cook-check`'s problem, run by a
 person, once. If you want integrity, sign the file and verify the signature
 before you open it; do not ask the loader to walk anything.
 
-The tolerant wire is generic — it allocates, walks and parses, and any build
-reads any data. When you want a big file to start instantly, cook it: the
+The variable wire is generic — it allocates, walks and parses, and a build
+reads another build's data across lawful edits. When you want a big file to start instantly, cook it: the
 locked region written verbatim behind a small header, laid out exactly as the
 runtime reads it.
 
@@ -2958,6 +3021,7 @@ schema cook --root Scene --in config/ --out Scene.cook .
 ```
 
 <!-- cpp-cook-usage-read -->
+<!-- example: fragment -->
 ```cpp
 #include "GraphTable.h"
 
@@ -3043,6 +3107,7 @@ where the layout is checked: Rust asserts it AT COMPILE TIME, with a const
 assert per size and per offset, so a runtime that disagreed with the model
 would not build rather than throw at start-up:
 
+<!-- example: fragment -->
 ```rust
 use graphdemo::*;
 
@@ -3071,7 +3136,7 @@ A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
 build version that covers the schema's layout and its meaning facts, and
 target-locked by the byte order its header carries, so it refuses the moment
 any of it moves and you
-regenerate it. The tolerant wire stays the format of record.
+regenerate it. The variable wire stays the format of record.
 
 `Open` checks the header and points — the magic, the byte order it
 establishes, the build version, every reserved word zero, the region alignment
@@ -3099,6 +3164,7 @@ bound its string lengths and array counts, which are as forgeable in one
 struct as in a graph. **A root is any table**, so a fixed table has an `Open`
 like every other, and it is the same call:
 
+<!-- example: fragment -->
 ```cpp
 const Settings * settings = graphdemo::SettingsOpen( bytes, length );
 ```
@@ -3113,6 +3179,7 @@ instance it carries — so a cook your editor wrote and a cook your build farm
 ran the tool for are the same artifact.
 
 <!-- cpp-cook-usage-write -->
+<!-- example: fragment -->
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
 const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
@@ -3132,6 +3199,7 @@ the numbering: a node named from three places is written once, and a data cycle
 is refused as it is everywhere else.
 
 <!-- cpp-cook-usage-write-pointered -->
+<!-- example: fragment -->
 ```cpp
 // a pointered root is a region and a root pointer, so its Cook takes the
 // builder — locked or not — or a region root, and never a value. What it
@@ -3182,7 +3250,11 @@ version, the byte order, the root, the node count and the two part sizes. And
 because the attribution is SEPARABLE, `--attribution <file>` writes the
 directory beside the cook instead of inside it: the cook then carries data
 alone for a build that ships no tooling, and `cook-check --attribution <file>`
-puts the two back together when you want to check one.
+puts the two back together when you want to check one. The cook and its
+attribution file publish together or not at all, under the same contract as
+`pack --announce`: it holds when one run writes to an output at a time, and
+two runs cooking to the same `--out` and `--attribution` at once can leave a
+mismatched pair.
 
 ### The build version: what a cooked asset is stored under
 
@@ -3215,6 +3287,7 @@ $ schema build-version tables/block/
 0xbf7128181c3025bc
 ```
 
+<!-- example: fragment -->
 ```cpp
 // generated into <Base>Block.h, and stamped into every block's prologue
 printf( "%016llx\n", (unsigned long long) blockdemo::BuildVersion );
@@ -3248,7 +3321,7 @@ Two things it does not do:
 
 - **It never gates a connection.** Peers connect on the protocol id, and two
   peers at the same protocol id may run different build versions all day —
-  their tables ride the tolerant wire between them, and each side loads its
+  their tables ride the variable wire between them, and each side loads its
   own cooked assets out of its own store.
 - **It never moves your protocol id.** Edit a table and only the build version
   moves; edit a `type` and both move. That is the same independence the tables
@@ -3378,7 +3451,7 @@ check`, and so `schema generate`, diffs against it:
 ```
 $ schema check configs/
 configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this
-edit changes what data already written MEANS, and no reader can report it; if you
+edit changes what data already written MEANS, or stops it reading; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
 schema <version>
@@ -3429,11 +3502,14 @@ ADDED, to a shipped field or on a new field, because every record written
 before it lacks the field and a newer reader refuses it as `missing_required`
 (removing the marker passes: the writer just starts eliding again;
 SPEC-TABLES.md §2.3).
-Warned, because the read report already counts what is lost: a bound or a
-string capacity shrunk, a declared range tightened from either end (or
-declared where the field had none — every stored value outside it clamps on
-load, and the next save writes the clamped value), an enum variant or a union
-arm removed, a declaration renamed or otherwise no longer covered. Warned
+Warned, because the reader already says what a stored file holds that it can
+no longer take: a bound or a string capacity shrunk (a stored count or string
+past the new bound refuses the whole load, `count_over_bound` or
+`length_over_bound`), a declared range tightened from either end, or declared
+where the field had none (a stored value outside it refuses the whole load,
+`out_of_range`; the reader never clamps), an enum variant or a union arm
+removed (a stored use reads as `None` or empty and counts `unknown`), a
+declaration renamed or otherwise no longer covered. Warned
 too, because it is the shape a bare rename leaves: a field removed AND a
 field added in one table in one edit, naming both and suggesting the `was`
 and `json =` that declare it — a warning and not a refusal, because two
@@ -3468,6 +3544,7 @@ Every nested table on the wire is length-prefixed, so building a large file
 parallelizes: measure the subtables on N workers, prefix-sum the offsets,
 and scatter-write disjoint ranges — no worker touches another's bytes.
 
+<!-- example: fragment -->
 ```cpp
 // one worker per profile; shown serially
 int64_t sizes[kProfiles], total = 0;
@@ -3500,6 +3577,7 @@ enum-keyed array carries `key_type_name`, `key_name` and `key_id`, so it can
 print `ships[Bomber]` instead of `ships[2]`. Enough to write a generic
 editor, printer or differ with no RTTI and no schema files at runtime:
 
+<!-- example: fragment -->
 ```cpp
 const TableTypeInfo * type = ShipConfigTableType();
 for ( int32_t i = 0; i < type->num_fields; i++ )
@@ -3526,7 +3604,8 @@ the other six the fixed class, and a pointered unit's WIRE surface is refused by
 name in those six while their two accelerators read one in full.
 Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
 as their raw scaled integer under a fixed kind of their storage width, with
-the whole-unit bounds clamping on the raw scale and the text in whole units
+the whole-unit bounds held on the raw scale (a value past them refuses
+`out_of_range`) and the text in whole units
 (`1.5`), `int128`/`uint128` under kinds of their own, sixteen bytes low
 half first (SPEC-TABLES.md §3, §16.2). What stays off the
 table wire: `const`/`reserved`/`align` (bit-position constructs — the table
@@ -3556,6 +3635,7 @@ the source; a game does neither and carries none of it. There is no flag and
 no marker on a declaration — a tool that inspects a build wants everything
 in it, and the one declaration it needs is the one nobody would have marked.
 
+<!-- example: fragment -->
 ```cpp
 #include "TabledemoView.h"
 
@@ -3620,6 +3700,7 @@ the text form read and write it without a double on the path (SPEC-TABLES.md
 The same descriptors drive a JSON text form, so every table reads from and
 writes to text with no per-table codec:
 
+<!-- example: fragment -->
 ```cpp
 #include "ShipTable.h"
 
@@ -3645,6 +3726,7 @@ never reads or writes a text does not compile that file, and including
 The same three in C#, where they are members of the unit's `Schema` class and
 the buffers are spans you own:
 
+<!-- example: fragment -->
 ```csharp
 TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
@@ -3663,6 +3745,7 @@ tokens are handled in stack buffers.
 
 The same three in Rust, as free functions over slices you own:
 
+<!-- example: fragment -->
 ```rust
 let mut report = TableReport::default();
 let mut ship = ShipConfig::default();
@@ -3684,6 +3767,7 @@ path of every instance in the corpus.
 
 And the same three in Go, package-level over a `*T` and a `[]byte`:
 
+<!-- example: fragment -->
 ```go
 var report example.TableReport
 var ship example.ShipConfig
@@ -3703,6 +3787,7 @@ Go read and write paths allocate NOTHING at all, measured rather than asserted.
 Go also takes a text `encoding/json` wrote, and writes one back in its
 habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
 
+<!-- example: fragment -->
 ```go
 legacy := example.TableJSONOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
 example.ShipConfigFromJSONWith(&ship, text, &report, legacy) // "tags": null reads as []
@@ -3725,6 +3810,7 @@ takes it (or the `Uint8Array` of one read straight off a file) and hands the
 value back, and anything that is not text is a `TypeError`, not a malformed
 report:
 
+<!-- example: compile -->
 ```js
 import { ShipConfigFromJson, ShipConfigToJson, TableReport } from "./ConfigTable.js";
 
@@ -3740,6 +3826,7 @@ option, which writes none — and every reader accepts a text with or without on
 **A pointered table has the same text**, read into its builder and written
 from a region's const root, in C++:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 TableReport report;
@@ -3781,12 +3868,11 @@ the reader's depth cap bounds it. `schema pack` and `schema unpack` take a
 pointered root as one `<Root>.json`.
 
 `FromJson` places what the text mentions and leaves the rest at its declared
-defaults, exactly as an absent field on the wire does; unknown keys, wrong
-JSON types and out-of-range numbers land in the same report the wire uses,
-plus one counter the wire never raises — `duplicate`, for a key the text gave
-twice. In Go, `FromJson` is the strict read: it refuses whenever `report.Err()`
-is set, even when the tolerant walk recovered a value, and `FromJsonTolerant`
-is the twin that keeps that value (§6.5). `ToJson` writes every field, defaults
+defaults, exactly as an absent field on the wire does. It is the same one read
+the wire is (§6.5): a wrong JSON type refuses (`kind_mismatch`), an
+out-of-range number refuses (`out_of_range`), and a key the text gives twice
+refuses the whole read too — never last-wins. There is no tolerant twin.
+`ToJson` writes every field, defaults
 included — a text is for people —
 and it is pretty-printed: one entry per line, two-space indent.
 
@@ -3806,7 +3892,7 @@ float. The text it does emit is always valid JSON and valid UTF-8.
 
 **A zero in text is refused on read, as the wire refuses it**: a `\u0000` in
 a JSON string bound for any text field, list element or map key makes
-`FromJson` return false with the report `Malformed` and `Reason`
+`FromJson` return false with the report's `Reason`
 `text_holds_zero: <Table>.<field>`, because no wire carries a zero in text and
 an instance a read produced must be one `Save` can write (SPEC-TABLES.md §16.3).
 
@@ -3829,13 +3915,12 @@ refusal: `base64_damaged` when the body does not decode, `base64_not_canonical`
 when dropping its CR/LF bytes it decodes but is not canonical, `unknown_form`
 when the decoded wire's
 form byte is one this build does not carry, and `wire_damaged` for framing
-damage. `LoadText` is the strict read: it refuses
-whenever the read's report holds an error (`TableReport.Err()` — `malformed`,
-`clamped`, `kind_mismatch`, ...), even when the tolerant load recovered a
-value, so a damaged-but-recovered wire never comes back as a value with a nil
-error. `unknown`, `widened` and `retained` alone do not refuse. A supplied
-`report` receives that one read's report. A JSON document that is damaged
-leaves `report` set `malformed`.
+damage. `LoadText` is the one read every entry point is: it returns the whole
+value or a refusal whenever the read's report holds an error
+(`TableReport.Err()` — `wire_damaged`, `out_of_range`, `kind_mismatch`, ...),
+so a damaged wire never comes back as a value. `unknown`, `widened` and
+`retained` alone do not refuse. A supplied `report` receives that one read's
+report. A JSON document that is damaged leaves `report.Err()` set.
 
 For a plain (variable) table the pair has that class's shape:
 `<Name>SaveText(value, context...)` takes `Save`'s write context, and
@@ -3844,13 +3929,14 @@ the locked root, as `<Name>ReadStrict` does. Either carrier is byte for byte:
 what it reads back saves to the same wire bytes the original saved to
 (docs/SPEC-TABLES.md §16.8).
 
+<!-- example: fragment -->
 ```go
 // Machines: base64 of the wire — lossless, opaque, keeps the form byte and
 // every versioning guarantee; pick it when the wire itself would be ideal.
 text, err := example.ShipConfigSaveText(&ship)
 if err != nil { /* refuse */ }
 loaded, err := example.ShipConfigLoadText(text, &report)
-if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
+if err != nil { /* base64_damaged | unknown_form | wire_damaged | out_of_range | kind_mismatch | ... */ }
 
 // A person: the JSON form, for reading, diffing or editing.
 buf := make([]byte, example.ShipConfigToJSONMeasure(&ship))
@@ -3859,7 +3945,7 @@ var edited example.ShipConfigBuilder // ShipConfig is a variable table: a builde
 if !edited.Init() { /* allocation_failed */ }
 defer edited.Shutdown()
 if !example.ShipConfigFromJSON(&edited, buf[:n], &report) {
-	// report.Malformed: the JSON document is damaged.
+	// refused: report.Err() names why, and nothing of the text was placed.
 }
 ```
 
@@ -3988,6 +4074,7 @@ table Config
 }
 ```
 
+<!-- example: compile -->
 ```go
 package demo
 
@@ -4025,7 +4112,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	if loaded.AsConst().Volume != 9 {
 		t.Fatal("round trip changed the value")
 	}
-	// The report is the permissive contract's ledger: silence — all zero —
+	// The report is the evolution ledger: silence — all zero —
 	// means the data matched this reader's schema exactly.
 	if report != (TableReport{}) {
 		t.Fatalf("a same-build read must be silent: %+v", report)
@@ -4033,21 +4120,18 @@ func TestConfigRoundTrip(t *testing.T) {
 }
 ```
 
-Every tolerance event lands in that report — `Unknown` for a field this
-build does not name, `Widened` for a compatible wider kind, `KindMismatch`
-for a known id whose kind changed, `Clamped` for an out-of-range value — and
-`Malformed` for framing damage, which the TOLERANT reads keep and read on
-past. The plain `ConfigLoadBuilder` and `ConfigFromJson` are the strict reads:
-they refuse whenever `report.Err()` is set (§6.5), even when the tolerant walk
-recovered a value, and `ConfigLoadBuilderTolerant` and `ConfigFromJsonTolerant`
-are the twins that keep it. Nothing on this path allocates, and `Shutdown` is
+A read that returns reports its evolution there — `Unknown` for a field this
+build does not name, `Widened` for a compatible wider kind. A known id whose
+kind changed, an out-of-range value and framing damage each refuse the whole
+load instead, and `report.Err()` names why (§6.5): `ConfigLoadBuilder` and
+`ConfigFromJson` are the one read, with no tolerant twin. Nothing on this path allocates, and `Shutdown` is
 yours to call: stop readers and workers first. A read that wants no builder
 hands `ConfigLoad` a region — sized by `ConfigLoadMeasure(wire)` — and gets
 the value back as a pointer into it.
 
 The fixed class, its own unit. The same declaration also carries the
 variable wire's entry points — `MarkerMeasure`, `MarkerSave`, `MarkerLoad`,
-the tolerant form-1 codec with the same report — but the fixed form is the
+the form-1 codec with the same report — but the fixed form is the
 positional one, and each entry point refuses the other's byte by name:
 
 ```
@@ -4061,6 +4145,7 @@ fixed table Marker
 }
 ```
 
+<!-- example: compile -->
 ```go
 package demo
 
@@ -4121,8 +4206,8 @@ payload, count or length past its plan's bound; the framing-damage names
 `layout_count_mismatch`, `layout_kind_unknown`, `layout_kind_invalid`,
 `layout_size_mismatch`, `layout_tree_unclosed` and `layout_too_deep`, kept
 because the lock-init parse of the build's own lineage still reaches them.
-`invalid_value` is the fixed writer's save reason. Framing damage sets
-`Malformed` rather than a name.
+`invalid_value` is the fixed writer's save reason. Framing damage refuses by
+name too: `truncated` or `reserved_not_zero`.
 
 **Lock the unit before the first edit.** A fixed table's layout is a promise
 to every record already written: the generated `MarkerFixedKnown` holds
@@ -4183,9 +4268,9 @@ table Handover
 ```
 
 `Save` and `Measure` return -1 for a value past the total, `HandoverRulesAppend`
-returns false for the element that would cross it, and a read keeps the
-elements that fit (in order), drops the rest and counts `clamped`, naming the
-field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
+returns false for the element that would cross it, and every read of a stored
+list past the total refuses the whole load (`length_over_bound`, naming the
+field); no element is kept and none is dropped (docs/SPEC-TABLES.md §2.13).
 
 ### Unbounded text in lists and map keys
 
@@ -4222,11 +4307,10 @@ table Ledger | integrity = "crc32c"
 
 `LedgerSave` appends four bytes, the little-endian CRC-32C of everything
 before them, and `LedgerMeasure` counts them. Every read checks them after the
-form byte and before any field: `LedgerReadStrict` and `LedgerLoadText` refuse a
-mismatch with `TableRefuseIntegrityMismatch` (`errors.Is`); `LedgerLoadTolerant`
-checks the trailer first and sets `malformed` with the reason
-`integrity_mismatch`, and the plain `LedgerLoad` refuses it (§6.5). Both decode
-nothing on a mismatch. Every single-bit flip and every damaged byte is caught;
+form byte and before any field: `LedgerLoad`, `LedgerReadStrict` and
+`LedgerLoadText` refuse a mismatch with `TableRefuseIntegrityMismatch`
+(`errors.Is`), the one read every entry point is (§6.5), and decode nothing.
+Every single-bit flip and every damaged byte is caught;
 it guards against accident, not against someone rewriting the file, which is still a
 signature's job. Adding or removing the key changes the file's framing, so
 rewrite stored files across the change. A `fixed table` may declare it too:
@@ -4258,9 +4342,9 @@ absent) and checks that each reads back equal through the binary wire, base64
 text and JSON text; then it damages the wire and the texts and checks that each
 damage is refused by its named reason. It also probes every declared bound: a
 generated `<Name>GenPastBound` helper writes a wire one past each range,
-`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the
-tolerant read clamps it to the bound and counts `clamped`, and that
-`ReadStrict` refuses it `clamped`. Regenerate it whenever you regenerate
+`bits(N)`, `string(N)` and `[..N]` count, and each probe checks that the load
+and `ReadStrict` both refuse it, and that the value AT the bound, its control,
+reads back equal. Regenerate it whenever you regenerate
 the code. Only `--lang go` is carried today; every other target refuses by
 name.
 
@@ -4280,6 +4364,7 @@ go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
 
 names one commit either way; never pin a bare branch.
 
+<!-- example: fragment -->
 ```go
 import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -4308,6 +4393,7 @@ none (SPEC-TABLES.md §8.4, §8.8).
 A unit that does not compile comes back as `compiler.Diagnostics`, the whole
 error list rather than the first one:
 
+<!-- example: fragment -->
 ```go
 unit, err := c.Load(paths)
 if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
@@ -4321,6 +4407,7 @@ if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 command that writes a schema file. A tool that wants the canonical form on disk
 as a side effect of loading opts into it, and it is two fields:
 
+<!-- example: fragment -->
 ```go
 c.FormatInPlace = true
 c.OnFormat = func(path string) { fmt.Printf("formatted %s\n", path) }
@@ -4336,6 +4423,7 @@ drift check that must not repair what it is measuring.
 A generator is an interface, and the built-in backends have no private path in:
 they are registered exactly the way yours is.
 
+<!-- example: fragment -->
 ```go
 // Markdown docs for every type in the unit.
 type docs struct{}
@@ -4378,6 +4466,7 @@ size, and default keeps its source expression on the IR (`Const.Expr`,
 output can say `MaxObjects - 1` where the resolved field alone could only
 say `9999`:
 
+<!-- example: fragment -->
 ```go
 // object_id int32 | min = 0, max = MaxObjects - 1
 f := handle.Fields[0]
@@ -4393,6 +4482,27 @@ backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
 `E.Max` reference, which has no twin in any generated target — fold those to
 the resolved value and keep the schema form in a comment, as the built-in
 backends do.
+
+Some constructs are gated centrally: `Generate` refuses a unit that uses
+`timestamp`, `| required`, `forms` or another key `compiler.CarryConstructs()`
+lists, before your generator runs, unless the target carries it. A generator
+that does (or only reads the construct's metadata) says so by implementing
+`compiler.ConstructCarrier`; `compiler.UnitConstructs(unit)` names what a unit
+uses:
+
+<!-- example: fragment -->
+```go
+func (docs) Carries() []string { return []string{"timestamp"} } // read once, at Register
+```
+
+The declaration is the generator's whole answer: a construct it does not name
+is still refused, and a key that is not one of `CarryConstructs()` fails
+`Register`.
+
+`Register` calls `Names()` and `Carries()` once each and keeps its own copy of
+what they returned. Editing those slices afterwards, or answering differently
+on a later call, changes neither the names that select your generator nor the
+constructs it is handed: to change either, register on a new `Compiler`.
 
 `compiler.UserAgent()` reports which build of the compiler is running, for a
 tool that stamps its own output.
@@ -4475,6 +4585,7 @@ through 64 ride bit-transparently in `int`; the 128-bit widths ride an
 emitted `Int128`/`UInt128` pair (`Int128.dart`, generated beside a unit that
 needs it):
 
+<!-- example: fragment -->
 ```dart
 import 'Wire.dart';
 
@@ -4495,10 +4606,10 @@ A unit that declares tables grows `<Package>Wire.dart`, the table wire
 `<Package>Fixed.dart` (the fixed form, §3.4) and the two **table accelerators**
 (§19 and §7): `<Base>Block.dart` and `<Base>Cook.dart`, plus one runtime home
 per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A
-wire load never throws on hostile bytes: it answers what it could read and
-says why in a `TableWireReport` (`malformed`, `refused`, and `reason`, the
-refusal by name). A text read is tolerant in the same way, counting what it set
-aside in a `TableTextReport`, and refuses text that is not JSON, or a text
+wire load never throws on hostile bytes: it returns the whole value or refuses,
+and says why in a `TableWireReport` (`refused`, and `refusal`, the refusal by
+name). A text read answers the same way in a `TableTextReport`, counting the
+unknown keys it skipped, and refuses text that is not JSON, or a text
 string that holds U+0000 (§16.3), by throwing a `FormatException`. A block is
 pointed at and a cook is opened; neither parses a wire, both are read-only, and
 both refuse a forged image rather than throwing on it (`make tables-dart-fuzz`
@@ -4546,13 +4657,13 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, builder
 `(int64, error)`. A blob is owned by one slot (docs/SPEC-TABLES.md §2.5): a
 value whose two slots name one blob is refused by every writer with
 `TableRefuseBlobShared` (`blob_shared`) — `MeasureReason`, `Save`, `SaveText`,
-`ToJsonMeasureReason` (and `ToJsonMeasure`/`ToJson` answer `-1`) — while a
-tolerant `Load` or `LoadBuilder` keeps the one node, counts
-`TableReport.BlobShared`, and `ReadStrict`/`LoadText` refuse `blob_shared`. Success returns a literal
+`ToJsonMeasureReason` (and `ToJsonMeasure`/`ToJson` answer `-1`) — and every
+read of a wire that does it (`Load`, `LoadBuilder`, `ReadStrict`, `LoadText`)
+refuses it `blob_shared`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
 Cook and block handles also provide `Open(base, bytes) error`. `LoadMeasureReason`
-refuses exactly the wires the tolerant load reports malformed: a root or node
+refuses exactly the wires `Load` refuses as damage: a root or node
 body that runs past its end or lacks its terminating zero reference, a node
 scan that is not whole, a damaged file trailer, and every damage the load
 meets inside a body (a count, reference or length that is not a minimal
@@ -4562,12 +4673,13 @@ ill-formed UTF-8 in a text field, element or string node, a bool byte above 1, m
 order or not whole, a union arm whose payload is not its kind's width) all
 return `TableRefuseWireDamaged` (`wire_damaged`) from `LoadMeasureReason`;
 this is distinct from a format refusal and from the accelerator-only
-`truncated` reason. Value-level events the load counts without calling the
-wire malformed (clamped, `kind_mismatch`, widened, duplicate keys, unknown ids)
-do not fail the measure, and `LoadMeasure` (the tolerant sizing) is unchanged. `<Name>ReadStrict(wire)` is the one-call
+`truncated` reason. Conditions the load can judge only by decoding a value
+against this reader's declaration (`out_of_range`, `kind_mismatch`) refuse at
+the load, and evolution (`widened`, unknown ids) refuses nothing; neither fails
+the measure, and `LoadMeasure` sizes from the framing alone. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
-`(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `non_finite_float`, `unknown_form`, `wire_damaged`), a
+`(*<Name>, error)`. The error is a `TableRefuseReason` (`out_of_range`,
+`kind_mismatch`, `non_finite_float`, `unknown_form`, `wire_damaged`, ...), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same
@@ -4670,6 +4782,7 @@ exact. Validation is always on: there is no compile-out
 assert on the BEAM, so writer contracts raise `ArgumentError` in every
 build (the O(1) checks only) and readers validate everything:
 
+<!-- example: fragment -->
 ```elixir
 wire = Example.Types.write_ship_create(ship)
 
@@ -4688,7 +4801,7 @@ against the `tables/pointers` unit by `make tables-elixir-usage`:
 <!-- elixir-table-usage -->
 ```elixir
 # open the cook another build wrote; :error is a foreign build, a corrupt
-# file or the other byte order — fall back to the tolerant wire
+# file or the other byte order — fall back to the variable wire
 case Graphdemo.GraphCook.cook_open_scene(bytes) do
   {:ok, cook} ->
     walk = fn walk, at ->
@@ -4703,7 +4816,7 @@ case Graphdemo.GraphCook.cook_open_scene(bytes) do
 
     walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
   :error ->
-    raise "the Scene cook did not open — fall back to the tolerant wire"
+    raise "the Scene cook did not open — fall back to the variable wire"
 end
 ```
 <!-- /elixir-table-usage -->
@@ -4731,6 +4844,7 @@ walked is a data cycle, `{:error, :data_cycle}`; a number that names no table
 node (`1`, the root, included), or one node named by pointers of two table types, is
 `{:error, :invalid_value}`:
 
+<!-- example: fragment -->
 ```elixir
 # head and alias name one node: node 2 is the list's first node, node 3 its
 # second, and both fields hold 2
@@ -4763,6 +4877,7 @@ bit-transparent (the protobuf convention); the 128-bit widths ride an
 emitted immutable `Int128`/`UInt128` pair, generated beside a unit that
 needs it:
 
+<!-- example: fragment -->
 ```java
 import example.Types;
 
@@ -4782,7 +4897,7 @@ against the `tables/pointers` unit by `make tables-java-usage`:
 <!-- java-table-usage -->
 ```java
 // open the cook another build wrote; a null is a foreign build, a corrupt
-// file or the other byte order — fall back to the tolerant wire
+// file or the other byte order — fall back to the variable wire
 SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
 if (cook != null) {
     int root = cook.root();
@@ -4833,6 +4948,7 @@ we use. The serialize.js bitpacker is inlined at every field with constant
 widths and masks, zero function calls; it imports nothing, runs on caller-owned
 buffers, and measures 8–10x the runtime tier (within a few x of native C):
 
+<!-- example: compile -->
 ```js
 import { ShipCreate } from "./Wire.js";
 import { WriteShipCreateFlat, ReadShipCreateFlat, FlatReadSlack } from "./WireFlat.js";
@@ -4859,7 +4975,7 @@ one import away: re-read a failing buffer through the runtime tier and read
 `stream.error`. The flat modules are pure spec'd ECMAScript with no node
 APIs.
 
-A unit that declares TABLES also gets `<Base>Table.js` — the tolerant wire's
+A unit that declares TABLES also gets `<Base>Table.js` — the variable wire's
 codecs, the reflection descriptors and the text form — plus `<Base>Block.js` and
 `<Base>Cook.js`, the READ side of the two accelerators. JavaScript controls no
 struct layout, so it reads a block and a cook rather than producing one: every
@@ -4874,6 +4990,7 @@ JavaScript consumer can state, and a `Buffer` under 4 KiB — which is what
 `readFileSync` hands back for a small file — is carved out of a shared pool at
 an arbitrary offset. Copy it into a fresh `Uint8Array` first:
 
+<!-- example: compile -->
 ```js
 import { readFileSync } from "node:fs";
 import { RenderFrameBlock, RenderShipRow, RenderVector3Row } from "./RenderBlock.js";
@@ -4951,7 +5068,7 @@ local cook = require("cook")
 local uncook = require("uncook")
 
 -- open the cook another build wrote; nil and a reason is a foreign build, a
--- corrupt file or the other byte order: fall back to the tolerant wire
+-- corrupt file or the other byte order: fall back to the variable wire
 local handle, why = cook.Open(T, "Scene", bytes)
 if handle == nil then error("the Scene cook did not open: " .. why) end
 local scene, refused = uncook.Read(T, handle)   -- nil and a reason for a forged cook
@@ -4981,7 +5098,7 @@ below zero for null. This fragment is compiled and run against the
 <!-- goose-table-usage -->
 ```goose
 // open the cook another build wrote; a refusal is a foreign build, a corrupt
-// file or the other byte order: fall back to the tolerant wire
+// file or the other byte order: fall back to the variable wire
 let why = graphdemo::SceneCookOpenReason(bytes, 0);
 if why != schema_rt::TableRefuseOk {
     write_stderr(str("the Scene cook did not open: ", schema_rt::table_refuse_name(why), "\n"));
@@ -5138,7 +5255,7 @@ is compiled and run against the `tables/pointers` unit by
 import .GraphTable
 
 // open the cook another build wrote; a refusal names a foreign build, a
-// corrupt file or the other byte order: fall back to the tolerant wire
+// corrupt file or the other byte order: fall back to the variable wire
 let why = graphdemo.SceneOpenReason(bytes, 0, false)
 assert why == "ok"
 let scene = graphdemo.SceneReadCook(bytes)      // nil for a forged cook
@@ -5359,6 +5476,7 @@ explicitly (it is not in the default set): `schema generate --lang go --surface 
 the JSON form carries, fixed and plain alike, then gets three functions in
 `<Base>TableTextForm.go`, which imports the standard library only:
 
+<!-- example: fragment -->
 ```go
 doc, ship, err := example.ShipConfigLoadTextForm(text, example.TableTextFormDefaultLimits())
 if err != nil {

@@ -23,7 +23,7 @@ import (
 // emitRetainRuntime emits the shared retain runtime and the known-id set the
 // save-side interner uses to tell a nameable id from a retained one.
 func (g *variableGen) emitRetainRuntime() {
-	g.pf("export const TableRetainKnown = Object.freeze([")
+	g.pf("export const TableRetainKnown = globalThis.Object.freeze([")
 	for _, id := range ir.TableWireIds(g.unit) {
 		g.pf("%s,", jsId(id))
 	}
@@ -95,7 +95,7 @@ export class TableVariableRetain {
 }
 
 function tableRetainU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0; }
-function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= BigInt(b[at + i]) << BigInt(8 * i); } return v; }
+function tableRetainU64(b, at) { let v = 0n; for (let i = 0; i < 8; i++) { v |= globalThis.BigInt(b[at + i]) << globalThis.BigInt(8 * i); } return v; }
 function tableRetainWidth(kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;

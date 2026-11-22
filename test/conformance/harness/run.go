@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
 
@@ -261,12 +261,20 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", g.Name, g.Name, msg.Root, msg.FileWire, msg.MessageWire)
 	}
 	for _, md := range m.MessageDrifts {
-		pc, err := m.LookupConnection(md.PeerConn)
+		peerWire, peerBuild, err := m.DriftPeer(md)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, pc.BuildVersion, pc.Wire)
-		fmt.Fprintf(&b, "message %s %s %s %s %s\n", md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
+		// A PRIOR-WRITER ROW RIDES ITS OWN SURFACE AND ITS OWN KEYWORDS, so the
+		// `message` surface of a leg that has not bound the row's unit never
+		// meets it. The answer is withheld: a row every reader refuses is
+		// handed the same two lines as one it reads.
+		connection, message := "connection", "message"
+		if md.Prior() {
+			connection, message = "prior-connection", "prior-message"
+		}
+		fmt.Fprintf(&b, "%s %s %s 0x%016x %s\n", connection, md.Name, md.Unit, peerBuild, peerWire)
+		fmt.Fprintf(&b, "%s %s %s %s %s %s\n", message, md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
 	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
@@ -461,6 +469,27 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			out = append(out, expectation{name: g.Name, want: want})
 		}
 		for _, md := range m.MessageDrifts {
+			if md.Prior() {
+				continue // the message-prior surface's
+			}
+			want, err := os.ReadFile(md.SaveWire)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{name: md.Name, want: want})
+		}
+	case "message-prior":
+		// A PRIOR WRITER'S LAWFUL BATCH AT TODAY'S READER (FORMAT.md,
+		// `message-prior`): the row owes the batch re-saved, or a refusal,
+		// which carries no bytes.
+		for _, md := range m.MessageDrifts {
+			if !md.Prior() {
+				continue
+			}
+			if md.Refused() {
+				out = append(out, expectation{name: md.Name})
+				continue
+			}
 			want, err := os.ReadFile(md.SaveWire)
 			if err != nil {
 				return nil, err
@@ -881,6 +910,54 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	return report(w, langs, results), nil
 }
 
+// scorePrior scores one prior-writer row (FORMAT.md, `message-prior`). A leg
+// answers a row in one of three ways, each its own file, so that a read the
+// leg RAN AND REFUSED can never be mistaken for a codec it does not have:
+// `<case>`, the re-saved batch of a read; `<case>.refused`, a refusal, whose
+// contents are the leg's own diagnostic and are not compared
+// (docs/rulings.json `refusal-verdict-only`); `<case>.absent`, no codec for
+// the row's root, which is a missing feature and counted as one. A read
+// answered refused, and a refusal answered with bytes, are failures.
+func scorePrior(answer string, e expectation, r *result) {
+	got, readErr := os.ReadFile(answer)
+	_, refusedErr := os.Stat(answer + ".refused")
+	_, absentErr := os.Stat(answer + ".absent")
+	read, refused, absent := readErr == nil, refusedErr == nil, absentErr == nil
+	fail := func(format string, args ...any) {
+		r.failures = append(r.failures, e.name+": "+fmt.Sprintf(format, args...))
+		r.mark(e.name, outcomeFail)
+	}
+	switch {
+	case read && refused:
+		fail("the leg answered both bytes and a refusal")
+	case !read && !refused && absent:
+		r.missing++
+		r.mark(e.name, outcomeAbsent)
+	case !read && !refused:
+		fail("the driver wrote nothing")
+	case e.want == nil && read:
+		fail("every reader refuses this batch, and the leg delivered it (%d bytes re-saved)", len(got))
+	case e.want != nil && refused:
+		fail("the leg refused a batch every reader reads")
+	case e.want != nil && !bytes.Equal(got, e.want):
+		fail("the re-saved batch differs: %d bytes, want %d", len(got), len(e.want))
+	default:
+		r.pass++
+		r.mark(e.name, outcomePass)
+	}
+}
+
+// wasNotAsked answers whether the expectation name on surface belongs to a row
+// the leg was not handed (an opt-in unit it does not name, optin.go). The
+// json-write surface names its expectations `<case>.json` after the instance
+// row they come from, so the row is found under the case name.
+func wasNotAsked(notAsked map[string]bool, surface, name string) bool {
+	if notAsked[name] {
+		return true
+	}
+	return surface == "json-write" && notAsked[strings.TrimSuffix(name, ".json")]
+}
+
 // scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
 // expected answer is a refusal (message wire `-`, `wire-refused`), and says
 // whether it scored it. A file naming a reason is the historical spelling of
@@ -904,6 +981,10 @@ func scoreRefusalAbsent(name string, reason []byte, r *result) bool {
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
+	if surface == "message-prior" {
+		scorePrior(answer, e, r)
+		return
+	}
 	if surface == "message" && e.want == nil {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
@@ -957,10 +1038,20 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, absent := os.Stat(answer + ".absent"); absent == nil {
-			// An ordinary per-case absence is a missing feature for this leg.
-			r.missing++
-			r.mark(e.name, outcomeAbsent)
+		if reason, rerr := os.ReadFile(answer + ".absent"); rerr == nil {
+			if len(bytes.TrimSpace(reason)) == 0 {
+				// An ordinary per-case absence (an EMPTY `.absent`) is a
+				// missing feature for this leg.
+				r.missing++
+				r.mark(e.name, outcomeAbsent)
+				return
+			}
+			// A `.absent` NAMING A REASON is the historical spelling of a
+			// REFUSAL (README.md), never of a missing codec: on a row that
+			// owes an answer it is the wrong verdict, and it may not hide in
+			// the absence count.
+			r.failures = append(r.failures, fmt.Sprintf("%s: the leg refused (%s) where the row owes an answer; a missing codec writes an EMPTY .absent", e.name, firstLine(reason)))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))

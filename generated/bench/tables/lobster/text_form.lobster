@@ -531,7 +531,7 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
         if f.array == "fixed" and length(sl.elems) != f.bound:
             t_set_fail(p, "text_bound")
             return false
-        if f.array == "counted" and length(sl.elems) > f.bound:
+        if f.array == "counted" and (length(sl.elems) > f.bound or length(sl.elems) < f.min):
             t_set_fail(p, "text_bound")
             return false
         sl.count = if f.array == "fixed": 0 else: length(sl.elems)

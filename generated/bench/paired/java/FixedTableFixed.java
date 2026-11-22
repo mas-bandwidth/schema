@@ -235,7 +235,8 @@ public final class FixedTableFixed {
         buffer[0] = TableFixed.form;
         TableFixed.put64(buffer, TableFixed.hashAt, hash);
         TableFixed.put32(buffer, TableFixed.fileHeaderBytes, layout.length);
-        System.arraycopy(layout, 0, buffer, TableFixed.fileHeaderBytes + 4, layout.length);
+        java.lang.System.arraycopy(
+                layout, 0, buffer, TableFixed.fileHeaderBytes + 4, layout.length);
         return headerBytes;
     }
 
@@ -300,7 +301,8 @@ public final class FixedTableFixed {
      * THE LOAD PATH'S SCRATCH VALUE, reused per thread: pass 0 lands each record here so a refusal
      * never touches the caller's values, and a read allocates nothing on its success path (§4.2).
      */
-    private static final ThreadLocal<Value> loadScratch = ThreadLocal.withInitial(Value::new);
+    private static final java.lang.ThreadLocal<Value> loadScratch =
+            java.lang.ThreadLocal.withInitial(Value::new);
 
     /** the plan a record under THIS build's own hash is read through. */
     public static TableFixed.Entry[] identityPlan() {
@@ -449,7 +451,7 @@ public final class FixedTableFixed {
                 for (int h = 0; h < holeN; h++) {
                     final int off = pre.holes[h * 2];
                     final int hn = pre.holes[h * 2 + 1];
-                    System.arraycopy(defaults, off, image, off, hn);
+                    java.lang.System.arraycopy(defaults, off, image, off, hn);
                 }
                 TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
                 scatter(image, 0, pass == 0 ? scratch : values[k], report, true, fileHash == hash);

@@ -3,7 +3,7 @@
 require_relative '_blocks'
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'block').each do |row|
+  RubyConformance.cases(manifest, 'block') do |row|
     name, unit, path = row[1], row[2], row[3]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?

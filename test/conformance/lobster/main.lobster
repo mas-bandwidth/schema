@@ -37,7 +37,7 @@ import .json
 // its forgery battery (§19.2), each refusal with its reason, the JSON
 // text form (§16), the framing vectors (docs/LAYERS/1-framing.md), and the
 // write contract through each table writer (SPEC §5.1)
-let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]
@@ -116,14 +116,17 @@ def surface_wire(text:string):
 // read_answer is an accepted read's whole answer (test/conformance/README.md):
 // `read`, the §16 text of the value, and beside it, as <case>.wire, the
 // canonical write-back wire, so a leg that decodes the right value but saves
-// other bytes has not returned it
+// other bytes has not returned it. THE READ ACCEPTED: that is the verdict,
+// whatever the writers make of the value afterwards. A writer that refuses it
+// (a tree past the depth cap the reader let through) leaves its half out, and
+// the harness fails the case by name, by verdict or by the missing value or
+// wire; the surface goes on to the next case rather than dying here.
 def read_answer(name:string, rec:schema_rt.Record):
     let js, why = schema_rt.json_write(rec)
-    assert why == ""
-    say(name, "read\n" + js)
+    say(name, "read\n" + (if why == "": js else: ""))
     let out, swhy = schema_rt.save_reasoned(rec)
-    assert swhy == ""
-    say(name + ".wire", out)
+    if swhy == "":
+        say(name + ".wire", out)
 
 // REPORT and FRAMING return one verdict and the complete canonical value
 // after acceptance. A refusal has no value payload; diagnostics stay local.
@@ -224,6 +227,39 @@ def surface_message(text:string):
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
                     assert n == length(out)
                     say(f[1], out)
+
+// the MESSAGE-PRIOR surface (testdata/conformance/tables/FORMAT.md,
+// `message-prior`): the same read of a PRIOR WRITER's batch, handed on its own
+// keywords, `prior-connection` and `prior-message`. A row may owe a refusal,
+// so the answer is what the public read returned: the batch re-saved, or the
+// line `<case> refused <reason>`, which the driver writes as <case>.refused and
+// the harness never compares (docs/rulings.json `refusal-verdict-only`).
+def surface_message_prior(text:string):
+    let lines = tokenize(text, "\n", " \t\r")
+    for(lines) line:
+        let f = words(line)
+        if length(f) >= 6 and f[0] == "prior-message":
+            var announcement = ""
+            var unit = ""
+            for(lines) other:
+                let c = words(other)
+                if length(c) >= 5 and c[0] == "prior-connection" and c[1] == f[2]:
+                    unit = c[2]
+                    announcement = c[4]
+            if unit == unit_key:
+                if not schema_rt.is_message_root(f[3]):
+                    print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+                else:
+                    let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
+                    let rep = schema_rt.LoadReport {}
+                    assert schema_rt.announce_read(v, fixture(announcement), rep)
+                    let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
+                    if not ok or count != length(recs) or count < 1:
+                        print(f[1] + " refused " + rep.reason)
+                    else:
+                        let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
+                        assert n == length(out)
+                        say(f[1], out)
 
 // lines are the manifest's lines of one kind, whatever unit they name
 def lines(text:string, kind:string) -> [[string]]:
@@ -476,6 +512,34 @@ def wr_int(text:string) -> int:
     assert ok
     return v
 
+// THE ONE CHECKED CONVERSION for every integer a row stores (int, ordinal,
+// tag, count, length): the value, and false when this leg's storage cannot
+// hold the token distinctly. Lobster holds an integer as 64 bits, and an
+// unsigned 64-bit field as that integer's two's-complement wrap, so a token
+// past int64 (or, for an unsigned 64-bit field, below 0 or past 2^64 - 1) is
+// UNREPRESENTABLE: the row answers that and nothing is set.
+def wr_int_checked(text:string, u64:bool) -> int, bool:
+    let v, ok = string_to_int(text, 10)
+    if ok:
+        if u64 and v < 0:
+            return 0, false
+        return v, true
+    if not u64 or length(text) < 2:
+        return 0, false
+    let head, hok = string_to_int(substring(text, 0, length(text) - 1), 10)
+    let last, lok = string_to_int(substring(text, length(text) - 1, 1), 10)
+    if not hok or not lok or head < 0 or last < 0:
+        return 0, false
+    // 2^64 - 1 is 1844674407370955161 * 10 + 5
+    if head > 1844674407370955161 or (head == 1844674407370955161 and last > 5):
+        return 0, false
+    return head * 10 + last, true
+
+// wr_u64 says whether a field (or an array's element) is an unsigned 64-bit
+// integer, held as its two's-complement wrap
+def wr_u64(fd:schema_rt.FieldDescriptor) -> bool:
+    return fd.s == "int" and fd.kw == 8 and not fd.signed
+
 // wr_segment splits one path segment, `name` or `name[i]`, into the name and
 // the index, -1 for none
 def wr_segment(segment:string) -> string, int:
@@ -486,33 +550,49 @@ def wr_segment(segment:string) -> string, int:
     return substring(segment, 0, open), wr_int(substring(segment, open + 1, length(segment) - open - 2))
 
 // wr_set sets the one field a row names: Path is dotted field names with
-// `[i]` element indexes from the root, and Kind says what the value sets
-def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
+// `[i]` element indexes from the root, and Kind says what the value sets.
+// Answers false, having set nothing, when the value is one this leg's
+// storage cannot hold (wr_int_checked): the row is then `unrepresentable`.
+def wr_set(root:schema_rt.Record, path:string, kind:string, text:string) -> bool:
     let segments = tokenize(path, ".", "")
     var rec = root
     for(segments) segment, i:
         let name, index = wr_segment(segment)
         let sl = schema_rt.slot_named(rec, name)
         if i < length(segments) - 1:
-            if sl.fd.s == "union" and index < 0 and i == length(segments) - 2 and sl.cell.tab == nil:
-                let arm_sl = sl.cell.arm
+            // a union's arm, held by the field itself or by one element of an
+            // array of unions (bounded_steps[3].label): the element IS the
+            // union value, never a record to step into
+            var elem_union = false
+            if sl.fd.s == "arr" and index >= 0:
+                let e = sl.fd.e
+                if e:
+                    elem_union = e.s == "union"
+            let uv = if elem_union: sl.elems[index] else: sl.cell
+            if ((sl.fd.s == "union" and index < 0) or elem_union) and i == length(segments) - 2 and uv.tab == nil:
+                let arm_sl = uv.arm
                 assert arm_sl
                 let av = arm_sl.cell
-                if kind == "float":
+                if kind == "float" or kind == "real":
                     av.f = wr_float(text)
                 elif kind == "bytes":
                     av.s = wr_hex(text)
                 elif kind == "length":
+                    let n, ok = wr_int_checked(text, false)
+                    if not ok:
+                        return false
                     var s = ""
-                    for(wr_int(text)): s += "a"
+                    for(n): s += "a"
                     av.s = s
                 elif kind == "int":
-                    let n = wr_int(text)
+                    let n, ok = wr_int_checked(text, false)
+                    if not ok:
+                        return false
                     av.i = n
                     av.w = schema_rt.Int128 { n, if n < 0: -1 else: 0 }
                 else:
                     assert false
-                return
+                return true
             let v = if sl.fd.s == "map": sl.entries[index] elif index >= 0: sl.elems[index] else: sl.cell
             let t = v.tab
             assert t
@@ -525,28 +605,47 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
             let tr = v.tab
             assert tr
             v = tr.fields[0].cell
+        var d = sl.fd
+        if index >= 0 and sl.fd.s == "arr":
+            let e = sl.fd.e
+            if e:
+                d = e
+        let u64 = wr_u64(d)
         if kind == "count":
             // new elements are copies of element 0's value
-            let n = wr_int(text)
+            let n, ok = wr_int_checked(text, false)
+            if not ok:
+                return false
             sl.count = n
             while length(sl.elems) < n:
                 push(sl.elems, if length(sl.elems) > 0: copy(sl.elems[0]) else: schema_rt.element_zero(sl.fd))
         elif kind == "length":
+            let n, ok = wr_int_checked(text, false)
+            if not ok:
+                return false
             var s = ""
-            for(wr_int(text)): s += "a"
+            for(n): s += "a"
             v.s = s
         elif kind == "bytes":
             v.s = wr_hex(text)
         elif kind == "int":
-            let n = wr_int(text)
+            let n, ok = wr_int_checked(text, u64)
+            if not ok:
+                return false
             v.i = n
-            v.w = schema_rt.Int128 { n, if n < 0: -1 else: 0 }
+            // an unsigned 64-bit value's high word is zero, whatever its wrap
+            v.w = schema_rt.Int128 { n, if n < 0 and not u64: -1 else: 0 }
         elif kind == "ordinal":
-            v.i = wr_int(text)
+            let n, ok = wr_int_checked(text, false)
+            if not ok:
+                return false
+            v.i = n
         elif kind == "tag":
             // the tag, and the arm it names at its zero; a tag past the arm
             // set holds no payload
-            let tag = wr_int(text)
+            let tag, ok = wr_int_checked(text, false)
+            if not ok:
+                return false
             v.i = tag
             v.tab = nil
             v.arm = nil
@@ -564,8 +663,11 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
                 elif arm.s != "void":
                     v.arm = schema_rt.new_slot(arm)
         else:
-            assert kind == "float"
+            // a `real` is a finite decimal set on a float (the harness's write-refusal
+            // kinds), held as the float the decimal names
+            assert kind == "float" or kind == "real"
             v.f = wr_float(text)
+    return true
 
 // wr_rows are the rows of one write-refusal surface that this unit answers:
 // a message row through its connection's unit
@@ -589,7 +691,9 @@ def surface_write_refusal(text:string, kind:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         assert rec
-        wr_set(rec, f[5], f[6], f[7])
+        if not wr_set(rec, f[5], f[6], f[7]):
+            say(f[1], "unrepresentable\n")
+            continue
         var answer = "refused\n"
         if kind == "write-refusal-message":
             let out, n = schema_rt.save_messages([rec], schema_rt.LoadReport {})
@@ -617,6 +721,9 @@ def surface_write_refusal(text:string, kind:string):
 if surface == "list":
     for(surfaces) s:
         print(s)
+    // the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+    // key is generated into build/conformance-lobster by make/lobster.mk
+    print("unit shapes")
 else:
     let text = read_file(manifest_path)
     assert text
@@ -630,6 +737,8 @@ else:
         surface_block(text, false)
     elif surface == "message":
         surface_message(text)
+    elif surface == "message-prior":
+        surface_message_prior(text)
     elif surface == "retain":
         surface_retain(text, false)
     elif surface == "retain-save":

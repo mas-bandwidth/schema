@@ -181,3 +181,50 @@ func TestDeletedEmbeddedFileSelectsItsOwner(t *testing.T) {
 		t.Errorf("deleting a file no pattern covers selected %v", got)
 	}
 }
+
+// TestRunSelectsTheOwnerOfATestdataOnlyDiff: a diff that changes only files
+// under a package's testdata/ (a new fixture or corpus case) selects that
+// package, through the command's one entry point as ci-fast's rows step calls
+// it. Before, such a diff named no package and matched no embed, so
+// go-test-touched skipped and the tests that read the changed files did not
+// run on the pull request that changed them. The diff, the go list and the
+// want are a committed corpus case (testdata/testdata-only-diff): its control
+// lines, a docs file and a root testdata/ file whose directory is no package,
+// select nothing.
+func TestRunSelectsTheOwnerOfATestdataOnlyDiff(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join("testdata", "testdata-only-diff")
+	list, err := os.ReadFile(filepath.Join(dir, "list.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantB, err := os.ReadFile(filepath.Join(dir, "want.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Fields(string(wantB))
+	if len(want) == 0 {
+		t.Fatal("the corpus case wants nothing: it would check nothing")
+	}
+	selected := filepath.Join(t.TempDir(), "selected.txt")
+	var out bytes.Buffer
+	golist := func() (string, error) { return string(list), nil }
+	if err := run([]string{"-table", filepath.Join("..", "..", tablePath), "-changed-files", filepath.Join(dir, "diff-files.txt"), "-packages-out", selected}, golist, allExist, &out); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Fields(string(b))
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("a testdata-only diff selected %q, want %q", got, want)
+	}
+	// negative control: without the testdata owners the same diff selects
+	// nothing, which is the defect this case reproduces
+	src, test := embedOwners(string(list), []string{"tools/releasetargets/testdata/f066/split-assignment.mk"}, allExist)
+	if len(src)+len(test) != 0 {
+		t.Errorf("the embed rule alone selected %v %v for a testdata file: the case no longer isolates the testdata rule", src, test)
+	}
+}

@@ -257,6 +257,11 @@ if surface == "list" then
 			end
 		end
 	end
+	-- the opt-in units this leg answers (MANIFEST.txt `opt-in`), named when
+	-- the unit generated, by the same rule as a surface
+	if unit("shapes") ~= nil then
+		print("unit shapes")
+	end
 	return
 end
 

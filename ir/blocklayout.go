@@ -174,9 +174,12 @@ func (b *BlockUnit) SkippedReason(name string) string {
 //     holder's map slot, and an entry of a fixed key and a fixed value is
 //     still one of those. The rule is categorical rather than derived,
 //     because the entry can look perfectly fixed.
-//   - a VARIABLE-LENGTH table has none: a pointer or a map anywhere in its
-//     by-value closure means no fixed pitch anywhere in it (§19), and the
-//     reason NAMES the edge it found rather than assuming which one it was.
+//   - a VARIABLE table has none, and the reason is its DECLARATION: a plain
+//     `table` is the variable class whatever its fields are, and only a
+//     `fixed table` has a block form (§2.2). Where its by-value closure also
+//     holds a pointer, a map or an unbounded array, the reason names that
+//     edge too, since it is what `fixed` would be refused for; it never
+//     names an edge that is not there.
 //   - a table whose closure carries a UNION has none: §19.3 pins the C# side
 //     to Sequential with generated padding, and Sequential cannot overlay
 //     arms. Emitting the form on one side only would break the two-language
@@ -188,7 +191,11 @@ func blockFormable(u *Unit, st *Struct, variable map[string]bool) (bool, string)
 			", and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own"
 	}
 	if variable[st.Name] {
-		return false, "it is VARIABLE-LENGTH: " + variableEdge(u, st)
+		why := "it is declared a plain `table`, which is the VARIABLE class whatever its fields are, and only a `fixed table` has a block form"
+		if edge := variableEdge(u, st); edge != "" {
+			why += "; nor could it be declared `fixed`: " + edge
+		}
+		return false, why
 	}
 	seen := map[string]bool{}
 	var walk func(name string) string
@@ -222,12 +229,11 @@ func blockFormable(u *Unit, st *Struct, variable map[string]bool) (bool, string)
 	return true, ""
 }
 
-// variableEdge names the edge that makes one member variable-length: the
-// first pointer or map a depth-first walk of its BY-VALUE closure reaches, in
-// declaration order — the same walk [VariableTables] takes to answer the same
-// question, so the reason a table has no block form always names something a
-// reader can find in a source file. A member the caller has already found
-// variable always has such an edge.
+// variableEdge names the first pointer, map or unbounded array a depth-first
+// walk of one member's BY-VALUE closure reaches, in declaration order, so the
+// reason a table has no block form names something a reader can find in a
+// source file. It returns "" when the closure holds none: the class is
+// declared, and a plain `table` of plain fields is variable with no such edge.
 func variableEdge(u *Unit, st *Struct) string {
 	seen := map[string]bool{}
 	var walk func(cur *Struct) string
@@ -264,10 +270,7 @@ func variableEdge(u *Unit, st *Struct) string {
 		}
 		return ""
 	}
-	if why := walk(st); why != "" {
-		return why
-	}
-	return "a pointer or a map in its by-value closure means no fixed pitch anywhere in it"
+	return walk(st)
 }
 
 // Blocks computes the whole block surface of a unit, or nil when the unit

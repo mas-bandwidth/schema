@@ -171,11 +171,21 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view
+# The timed quick run and the paired gate are prerequisites of their own, as
+# Go's are (_verify-go-bench-quick above): under the umbrella's -j they run
+# beside the view and cards gates instead of after them, and the quick run
+# takes one warmup and one measured run (--round 0). They write apart
+# (build/bench, build/paired), so nothing they share is raced.
+.PHONY: _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench-quick: generated/bench/rust/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
-	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
-	@test -s build/verify/bench-rust.csv
+	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --round 0 --bare --only rust --out build/verify/bench-rust.csv
+
+_verify-rust-bench-paired: bin/schema generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
+
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+	@test -s build/verify/bench-rust.csv
 
 # ---- java ----
 
@@ -187,11 +197,20 @@ _verify-java-conformance: toolchain-java build/conformance-harness build-conform
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
-_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java
+# As Rust's: the quick run (--round 0) and the paired gate run beside the view
+# and cards gates. On a vision slot the whole leg was cancelled at the cap in
+# the paired gate (run 45028849060); on space tables-java-view alone is 45 s,
+# the quick run 23 s and the paired gate 12 s, which ran one after another.
+.PHONY: _verify-java-bench-quick _verify-java-bench-paired
+_verify-java-bench-quick: toolchain-java generated/bench/java/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-java.csv
-	JAVA="$(JAVA)" JAVAC="$(JAVAC)" bench/run.sh --quick --bare --only java --out build/verify/bench-java.csv
-	@test -s build/verify/bench-java.csv
+	JAVA="$(JAVA)" JAVAC="$(JAVAC)" bench/run.sh --quick --round 0 --bare --only java --out build/verify/bench-java.csv
+
+_verify-java-bench-paired: toolchain-java bin/schema
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" go run ./bench/paired -mode gate -langs java
+
+_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java _verify-java-bench-quick _verify-java-bench-paired
+	@test -s build/verify/bench-java.csv
 
 # ---- dart ----
 

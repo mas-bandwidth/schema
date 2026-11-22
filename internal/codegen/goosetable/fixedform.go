@@ -457,7 +457,14 @@ func (e *fixedEmit) writeElem(ind int, f *ir.Field, pl place) {
 		e.p(ind, "schema_rt::fixed_put(out, %s.lo, 8);", pl.val)
 		e.p(ind, "schema_rt::fixed_put(out, %s.hi, 8);", pl.val)
 	case kF32:
-		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(%s), 4);", pl.val)
+		// A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero); a plain float's rides
+		// bit-exact.
+		if f.HasFloatRange {
+			e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_cf32_bits(%s), 4);", pl.val)
+		} else {
+			e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(%s), 4);", pl.val)
+		}
 	case kF64:
 		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f64_bits(%s), 8);", pl.val)
 	case kStr, kBytes:

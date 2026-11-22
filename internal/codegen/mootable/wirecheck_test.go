@@ -84,13 +84,16 @@ func TestMooReadStrictAnswersEveryFramingRow(t *testing.T) {
 // An id-table entry no reference names is the walk's alone to refuse (§3); an
 // explicit null pointer reads and rewrites (docs/rulings.json
 // reads-refuse-non-canonical), so node_index_null is no row the walk owns.
+// A union nested in unknown union arms past the framed depth bound is the
+// walk's too: the walk bounds framed depth (internal/tablewire/wirecheck.go,
+// ir.TableBinaryMaxDepth), and without it moo reads those rows.
 func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)
 	})
-	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader", "varevo_cycle_unknown_self", "varevo_cycle_two_unknowns", "varevo_cycle_root_via_unknown", "varevo_cycle_known_via_unknown"}
+	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader", "varevo_cycle_unknown_self", "varevo_cycle_two_unknowns", "varevo_cycle_root_via_unknown", "varevo_cycle_known_via_unknown", "union_chain_unknown_past_bound", "union_chain_unknown_deep"}
 	for _, name := range walkOnly {
 		if want[name] != "refused" || got[name] != "read" {
 			t.Errorf("%s: without the walk moo answers %q (the row pins %q); the control wants it read", name, got[name], want[name])

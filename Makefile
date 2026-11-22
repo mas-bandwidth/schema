@@ -360,6 +360,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/varevo1 test/tables/varevo/VarEvo1.schema
 	$(1) generate --lang cpp --out $(2)/varevo2 test/tables/varevo/VarEvo2.schema
 	$(1) generate --lang cpp --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
+	$(1) generate --lang cpp --out $(2)/prior test/tables/prior/PriorNarrow.schema
 	$(1) generate --lang cpp --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(1) generate --lang cpp --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	$(1) generate --lang cpp --out $(2)/shapes test/tables/shapes/Shapes.schema
@@ -380,9 +381,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/shapes -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/prior -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/shapes -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/shapes/Shapes.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/prior/PriorNarrow.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/shapes/Shapes.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -3895,15 +3896,15 @@ tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stam
 tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,ascending,'s@if ( order > 0 )@if ( order > 0 \&\& false )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
 
-# THE DUPLICATE RULE IS DROPPED. A repeated key REFUSES the whole load under
+# THE REPEATED-KEY REFUSAL IS DROPPED. A repeated key REFUSES the whole load under
 # the strict read (docs/SPEC-TABLES.md §6.5), whichever slot the repeat
 # decoded into, so the sabotage drops the refusal itself: the row whose
 # DUPLICATE entry ELIDES a field the first occurrence set is then accepted,
 # and its refusal check goes red. (Swapping the slot alone, the control's
 # tolerant-era form, no longer moves the verdict.)
-.PHONY: tables-maps-duplicate-negative-control
-tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@%\[1\]s        if ( order == 0 )\\n%\[1\]s        {\\n%\[1\]s            r.report->refused = true;@%[1]s        if ( false ) // SABOTAGED\\n%[1]s        {\\n%[1]s            r.report->refused = true;@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
+.PHONY: tables-maps-repeated-key-negative-control
+tables-maps-repeated-key-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,repeatedkey,'s@%\[1\]s        if ( order == 0 )\\n%\[1\]s        {\\n%\[1\]s            r.report->refused = true;@%[1]s        if ( false ) // SABOTAGED\\n%[1]s        {\\n%[1]s            r.report->refused = true;@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it: the strict read refuses it as kind_mismatch, and the sabotaged
@@ -3921,30 +3922,30 @@ tables-maps-key-kind-negative-control: bin/schema build/tables-generated/.stamp
 # accepted under a key the wire never spelled. Two emitter files, so the
 # recipe is spelled out rather than taken from map_negative_control; the
 # rest of it is that define.
-.PHONY: tables-maps-clamp-negative-control
-tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
+.PHONY: tables-maps-key-over-bound-negative-control
+tables-maps-key-over-bound-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
 	@sed -e 's@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false; // SABOTAGED@' \
-		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
-	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
+		internal/codegen/cpptable/maps.go > build/map-key-over-bound.gotext
+	@test "$$(grep -c SABOTAGED build/map-key-over-bound.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
 	@sed -e 's@len, %\[3\]d );\\n%\[1\]s    r.report->refused = true;\\n%\[1\]s    r.report->refuse_reason = out_of_range;\\n%\[1\]s} // at a code point boundary@len, %[3]d );\\n%[1]s} // SABOTAGED: cut down, not refused@' \
-		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
-	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
+		internal/codegen/cpptable/codecs.go > build/map-key-over-bound-codecs.gotext
+	@test "$$(grep -c SABOTAGED build/map-key-over-bound-codecs.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-clamp.gotext","%s/internal/codegen/cpptable/codecs.go":"%s/build/map-clamp-codecs.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-clamp-overlay.json
-	@go build -overlay=build/map-clamp-overlay.json -o build/schema-map-clamp ./cmd/schema
-	@rm -rf build/tables-map-clamp && mkdir -p build/tables-map-clamp
-	@./build/schema-map-clamp generate --lang cpp --out build/tables-map-clamp/maps tables/maps
-	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-clamp/maps -Itest/tables test/tables/maps_main.cpp \
-		build/tables-map-clamp/maps/*Table.cpp -o build/schema_test_maps_clamp
-	@if ./build/schema_test_maps_clamp > build/map-clamp.log 2>&1; then \
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-key-over-bound.gotext","%s/internal/codegen/cpptable/codecs.go":"%s/build/map-key-over-bound-codecs.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-key-over-bound-overlay.json
+	@go build -overlay=build/map-key-over-bound-overlay.json -o build/schema-map-key-over-bound ./cmd/schema
+	@rm -rf build/tables-map-key-over-bound && mkdir -p build/tables-map-key-over-bound
+	@./build/schema-map-key-over-bound generate --lang cpp --out build/tables-map-key-over-bound/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-key-over-bound/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-key-over-bound/maps/*Table.cpp -o build/schema_test_maps_key_over_bound
+	@if ./build/schema_test_maps_key_over_bound > build/map-key-over-bound.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: clamping an over-long key left the map gate GREEN"; exit 1; \
 	fi
-	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-clamp.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-clamp.log; exit 1; }
-	@echo "negative control: clamp turns the MAP GATE red on $$(grep -c '^FAIL' build/map-clamp.log) failures"
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-key-over-bound.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-key-over-bound.log; exit 1; }
+	@echo "negative control: a planted key clamp turns the MAP GATE red on $$(grep -c '^FAIL' build/map-key-over-bound.log) failures"
 
 # N = 100000 UNDER A SHORT L. The measure-refusals row meets it: a Fleet of a
 # few dozen bytes whose map count the body cannot carry answers -1 with the
@@ -4112,9 +4113,9 @@ tables-maps-place-failure-negative-control: bin/schema build/tables-generated/.s
 tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-dead-entry-negative-control \
 	tables-maps-ascending-negative-control \
-	tables-maps-duplicate-negative-control \
+	tables-maps-repeated-key-negative-control \
 	tables-maps-key-kind-negative-control \
-	tables-maps-clamp-negative-control \
+	tables-maps-key-over-bound-negative-control \
 	tables-maps-fit-negative-control \
 	tables-maps-cap-negative-control \
 	tables-maps-depth-negative-control \
@@ -4265,6 +4266,10 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
 	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
+	# and the Go test that holds the same map-holding cook
+	# (internal/tablecook/list_test.go) reads it here, the one place it is
+	# written: under SCHEMA_REQUIRE_CORPUS an absent cook fails, never skips.
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
@@ -4883,8 +4888,9 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
-	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
+	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -5118,7 +5124,7 @@ generated-current: bin/schema build/treelock
 # `go test ./...` runs it too.
 .PHONY: docs-check
 docs-check:
-	go test ./internal/docgate -run TestPagesResolve -count=1
+	sh test/slowgate/proof docs-check 'TestPagesResolve' ./internal/docgate -run TestPagesResolve -count=1
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -5221,11 +5227,11 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/shapes -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/prior -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/shapes -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -I$(SERIALIZE)
 CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
-	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp build/tables-generated/fixedevo/FixedEvoTable.cpp build/tables-generated/varevo1/VarEvo1Table.cpp build/tables-generated/varevo2/VarEvo2Table.cpp build/tables-generated/varevo3/VarEvo3Table.cpp build/tables-generated/cooktorture/CookTortureTable.cpp build/tables-generated/cooktorture/CookTortureBlock.cpp build/tables-generated/cooktorturewide/CookTortureWideTable.cpp build/tables-generated/shapes/ShapesTable.cpp \
+	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp build/tables-generated/fixedevo/FixedEvoTable.cpp build/tables-generated/varevo1/VarEvo1Table.cpp build/tables-generated/varevo2/VarEvo2Table.cpp build/tables-generated/varevo3/VarEvo3Table.cpp build/tables-generated/prior/PriorNarrowTable.cpp build/tables-generated/cooktorture/CookTortureTable.cpp build/tables-generated/cooktorture/CookTortureBlock.cpp build/tables-generated/cooktorturewide/CookTortureWideTable.cpp build/tables-generated/shapes/ShapesTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
@@ -6535,7 +6541,7 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
@@ -6549,6 +6555,7 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
@@ -6998,7 +7005,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 
 # The corpus is written beside the live one and swapped in whole, so a reader
 # never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf build/fixedform-corpus.next
 	@mkdir -p build/fixedform-corpus.next
 	./build/schema_test_fixedform_dump build/fixedform-corpus.next
@@ -7029,7 +7036,7 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 # (or in the environment) that is absent still refuses by name, and so does a
 # fetch that fails or produces no header: a gate with no blade is the exact
 # silence this refusal exists to forbid.
-SERIALIZE_PIN     ?= v2.1.3
+SERIALIZE_PIN     ?= v2.1.6
 SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
 SERIALIZE_FETCHED := build/serialize
 SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
@@ -7051,7 +7058,7 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
 SERIALIZE_C_PIN      ?= v2.1.1
-SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.2.1
 SERIALIZE_RS_PIN     ?= v5.0.0
 SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
@@ -7476,8 +7483,12 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
+# The version is past every tag but keeps the current major: releasetag refuses
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
+# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
@@ -7491,7 +7502,7 @@ release-refuses-on-differential:
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+	@grep -q '^release: would tag $(RELEASE_GATE_VERSION) ' $(RELEASE_GATE_TEST)/guard.out || \
 		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
 	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
 		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
@@ -7940,6 +7951,7 @@ pins-source-cs: bin/schema
 pins-source-goldens: bin/schema
 	@mkdir -p testdata/golden
 	go test ./internal/goldens -update -run '^TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run '^TestGolden'
 	go test ./internal/goldens -count=1 -run '^TestGolden'
 
 .PHONY: pins-source

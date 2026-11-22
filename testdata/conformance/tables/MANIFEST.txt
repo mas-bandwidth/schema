@@ -1250,6 +1250,8 @@ framing node_field_wrong_kind                   graphdemo ListNode testdata/wire
 framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
 framing node_index_above_count                  graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin           refused -
 framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  read    testdata/conformance/tables/framing/listnode_1.json
+framing node_type_undeclared                    graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin             read    testdata/conformance/tables/framing/listnode_1.json
+framing node_type_declared_wrong                graphdemo ListNode testdata/wire/tables/framing/node_type_declared_wrong.bin         refused -
 framing node_reserved_id_in_record              graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin       refused -
 framing node_unknown_to_fixed_reader            tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin     refused -
 framing node_table_L_past_body                  graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin           refused -
@@ -1438,6 +1440,7 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
+rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
 
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
@@ -1481,6 +1484,24 @@ write-refusal wref_enum            tabledemo LoadoutConfig testdata/conformance/
 write-refusal wref_enum_ok         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade                  ordinal 3   wrote
 write-refusal wref_union_tag       tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     3   refused
 write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     2   wrote
+# AN ORDINAL OR A TAG PAST ITS STORAGE (F-100, F-101): 256 and 4294967296 are
+# no member of the enum and no arm of the union, and a driver that narrows the
+# row's token into a one-byte ordinal or tag lands them as 0, a lawful member, and
+# answers wrote for a value it never wrote. The driver stores through its one
+# checked conversion, keyed on the field's declared kind: a leg whose storage
+# cannot hold the value answers unrepresentable, which scores as the refusal
+# (the type system refused it first); a wider leg's writer refuses. Ordinal 1 and
+# tags 0 and 1 are written, and 9, which the byte holds and the declaration does
+# not admit, is refused, beside the twins at 3 and 2 above.
+write-refusal wref_enum_1_ok              tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 1          wrote
+write-refusal wref_enum_9                 tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 9          refused
+write-refusal wref_enum_256               tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 256        refused
+write-refusal wref_enum_4294967296        tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 4294967296 refused
+write-refusal wref_union_tag_0_ok         tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     0          wrote
+write-refusal wref_union_tag_1_ok         tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     1          wrote
+write-refusal wref_union_tag_9            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     9          refused
+write-refusal wref_union_tag_256          tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     256        refused
+write-refusal wref_union_tag_4294967296   tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     4294967296 refused
 write-refusal wref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan refused
 write-refusal wref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf refused
 
@@ -1610,6 +1631,69 @@ message varevo3_msg varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3
 message varevo3_msg_notice varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin testdata/wire/tables/varevo3_msg_notice_message.bin
 message-drift varevo_msg_v1_to_v3       tblvarevo3 varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo_msg_batch_v1.bin            testdata/wire/tables/varevo_msg_batch_v1_as_v3.bin
 message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin testdata/wire/tables/varevo_msg_batch_v3_as_v1.bin
+
+# A PRIOR WRITER'S LAWFUL MESSAGE AT A TIGHTENED RANGE (docs/SPEC-TABLES.md §3.3,
+# §4; FORMAT.md `message-prior`). test/tables/prior/PriorWide.schema is an
+# earlier release of tblprior: every ranged value of Prior is declared 0..100
+# there (and `mask` bits(7)), and today's reader, PriorNarrow, declares 0..50
+# (bits(5)). One pair of rows per SHAPE a ranged value takes in a message: the
+# writer's batch of one body whose value lies inside the reader's range, which
+# every reader reads, and one whose value lies past it, which every reader
+# REFUSES. No reader clamps the value, and none delivers the
+# message with a counter moved. A leg owes the verdict alone, read or refused
+# (docs/rulings.json `refusal-verdict-only`).
+unit tblprior test/tables/prior/PriorNarrow.schema
+# a ranged int32
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":75} refused
+# a ranged uint8
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":75} refused
+# a ranged int64
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"75"} refused
+# bits(7) read as bits(5)
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":75} refused
+# a fixed array element
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[75,10]} refused
+# a counted array element
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[10,75]} refused
+# an enum-keyed array element
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":10,"Y":75}} refused
+# a union arm scalar payload
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":75}} refused
+# a union arm record payload
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":75}}} refused
+# a nested record field
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":75}} refused
+# a field of a nested table in an array
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":10},{"depth":75}]} refused
+# a quantized float
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":75.5} refused
+# a ranged fixed-point value
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":75.5} refused
+# a batch of two bodies (the writer value is a JSON array of them): when the
+# second carries a value past the reader's range the WHOLE batch refuses, the
+# lawful first body included, and no body is delivered
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":75}] refused
+# A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
+# string(16), which the announcement shows and every reader refuses, never
+# defaulting the field and counting it; and the reader's
+# int64, the lawful widening, which every reader reads.
+message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"narrowed":40} refused
+message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"retyped":40} refused
+message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"widened":40} read
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
@@ -2019,3 +2103,31 @@ json-hostile shapes-fixed-tenth-past-max    shapes FixedBounds testdata/conforma
 json-hostile shapes-fixed-octets-at-min     shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-octets-at-min     read
 json-hostile shapes-fixed-octets-below-min  shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-octets-below-min  refused
 json-hostile shapes-fixed-negzero           shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-negzero           read
+
+# A FIXED BOUND GROWN SINCE THE WRITER (docs/SPEC-TABLES.md §21.1, "a grown
+# bound"): `[N]T` written by a build whose bound was smaller reads as the
+# writer's elements followed by ONE DEFAULT ELEMENT PER NEW SLOT — an empty
+# union, a record at its declared defaults, a null pointer, a zero scalar —
+# never the field's own default in a slot and never nothing. Each wire is the
+# engine's bytes for a corpus unit whose named bounds are narrowed to 1
+# (test/conformance/harness/widenbound_vectors_test.go builds and holds them),
+# and the corpus unit, unchanged, is the reader: an array of unions, an
+# optional array of scalars and one of records inside a union arm; an array of
+# scalars that is itself an arm; an array of pointers; and arrays of scalars
+# and of records whose declared defaults are not zero.
+report  widenbound_envelope       messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope.bin
+report  widenbound_envelope_spans messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope_spans.bin
+report  widenbound_feed           streamdemo  Feed         testdata/conformance/tables/wire/widenbound_feed.bin
+report  widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/tables/wire/widenbound_evodoc.bin
+rewrite widenbound_envelope       messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope.bin
+rewrite widenbound_envelope_spans messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope_spans.bin
+rewrite widenbound_feed           streamdemo  Feed         testdata/conformance/tables/wire/widenbound_feed.bin
+rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/tables/wire/widenbound_evodoc.bin
+# The same grown bounds in the MESSAGE FORM at a fixed root (§3.3), and an
+# optional array of enums beside them: the peer is the narrower build, a unit
+# of its own (test/tables/widenbound/WidenBoundPeer.schema, messagedemo with
+# those bounds narrowed and nothing else), its announcement is the connection,
+# and the reader's own file of the value the batch lands is the pair.
+unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
+connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
+message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
