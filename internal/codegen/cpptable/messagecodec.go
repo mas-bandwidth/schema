@@ -246,7 +246,7 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.pf("    }\n")
 	case f.CountedOnWire():
 		g.storageAssertMin("    ", "value."+name+"_count", f.ArrayMin, f.ArrayBound)
-		g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+name, "    "))
+		g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+name, "    ", true))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
 		g.pf("    }\n")

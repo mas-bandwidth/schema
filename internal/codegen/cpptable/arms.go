@@ -459,4 +459,9 @@ func (g *tableGen) establishArm(v ir.UnionVariant, base, ind string) {
 	// a companion, the member itself where it does not
 	storage := base + "." + v.Name
 	g.pf("%smemset( (void *) &%s, 0, sizeof( %s ) ); // selection establishes the arm (§2.6)\n", ind, storage, storage)
+	if n := v.F.BornCount(); n > 0 {
+		// a counted [A..B] arm is established at its birth, count A (SPEC
+		// §4.6), exactly as the Go oracle's arm reset establishes it
+		g.pf("%s%s = %d; // selection establishes the arm at its declared minimum (§4.6)\n", ind, armCount(base, v), n)
+	}
 }

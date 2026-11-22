@@ -187,27 +187,52 @@ func (g *tableGen) emitCountMinRefusal(f *ir.Field, count, ind string) {
 // [A..B] array is born at A (SPEC §4.6) and elides at its BIRTH — count A with
 // every one of those A slots at the element's default — exactly as the Go
 // oracle elides it (internal/codegen/gotable/write.go, emitCountedBirthRides),
-// so a fresh value writes nothing and reads back as itself. An element whose
-// default this compare cannot spell (a table, a union, a text element) rides
-// at any count above zero.
-func (g *tableGen) countedRides(f *ir.Field, expr, ind string) string {
+// so a fresh value writes nothing and reads back as itself. A TABLE element is
+// at its default when its body writes nothing: on the table wire its measured
+// body is the terminator alone, judged with the id table rolled back; in the
+// message form its measured body is the zero reference alone. A union element
+// is at its default when it is None. A text list takes no minimum (the checker
+// refuses [A..N]string(M), SPEC §2.13), so no text element is judged here.
+// message says which form is writing.
+func (g *tableGen) countedRides(f *ir.Field, expr, ind string, message bool) string {
 	if f.BornCount() <= 0 {
 		return expr + "_count > 0"
 	}
 	kind := tableScalarKind(f)
 	born := "born_" + strings.NewReplacer(".", "_", "[", "_", "]", "_", " ", "").Replace(expr)
-	var differs string
 	slot := "slot_" + born
+	elem := expr + "[" + slot + "]"
+	var differs string
+	pre := ""
 	switch {
 	case f.Type.Pointer:
-		differs = expr + "[" + slot + "].value != 0"
-	case kind == tkTable || kind == tkUnion || f.IsTextList() || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		differs = elem + ".value != 0"
+	case kind == tkUnion:
+		differs = elem + ".type != " + f.Type.Name + "Type::None"
+	case kind == tkTable && message:
+		if g.isVar(f.Type.Name) {
+			return expr + "_count > 0"
+		}
+		// the zero reference alone; a refusal (-1) rides, and the write
+		// refuses it, as the Go oracle's probe returns false
+		bits := "bits_" + born
+		pre = fmt.Sprintf("const int64_t %s = %sMeasureMessageBody( 0, %s ); ", bits, f.Type.Name, elem)
+		differs = bits + " != kTableMessageRefBitsHere"
+	case kind == tkTable:
+		was := g.elemIndex
+		g.elemIndex = slot
+		measure := g.measureCall(f, f.Type.Name, elem)
+		g.elemIndex = was
+		mark, bytes := "mark_"+born, "bytes_"+born
+		pre = fmt.Sprintf("const int32_t %s = ids.count; const int64_t %s = %s; ids.truncate( %s ); ", mark, bytes, measure, mark)
+		differs = bytes + " != 1" // the terminator alone; a refusal (-1) rides, and the write refuses it
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return expr + "_count > 0"
 	default:
-		differs = g.fieldDiffers(f, expr+"["+slot+"]")
+		differs = g.fieldDiffers(f, elem)
 	}
 	g.pf("%sbool %s = %s_count == %d; // the array at its birth elides (SPEC §4.6)\n", ind, born, expr, f.BornCount())
-	g.pf("%sfor ( int32_t %s = 0; %s && %s < %d; %s++ ) { if ( %s ) { %s = false; } }\n", ind, slot, born, slot, f.BornCount(), slot, differs, born)
+	g.pf("%sfor ( int32_t %s = 0; %s && %s < %d; %s++ ) { %sif ( %s ) { %s = false; } }\n", ind, slot, born, slot, f.BornCount(), slot, pre, differs, born)
 	return "!" + born
 }
 
@@ -615,8 +640,20 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		// Prefill of a field appended UNDER AN ARM reads the arm's fresh image
 		// (bill §12.6). The union constructor only sets the tag to None, so
 		// each arm is Reset to its declared defaults, then the tag is None.
-		for _, v := range un.Variants {
+		last := -1
+		for i, v := range un.Variants {
 			g.emitTableResetArm(expr, v)
+			if v.F != nil {
+				last = i
+			}
+		}
+		// A counted [A..B] arm is born at count A (SPEC §4.6), and the arms
+		// share their storage: an arm reset after it may have zeroed the
+		// count, so each such arm's birth count is stated again last.
+		for i, v := range un.Variants {
+			if i != last && v.F != nil && v.F.Array == ir.ArrayCounted && armCompanioned(v) && v.F.BornCount() > 0 {
+				g.pf("    %s = %d; // the arm's birth count, after the overlapping arms' resets (§4.6)\n", armCount(expr, v), v.F.BornCount())
+			}
 		}
 		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
 		return
@@ -647,7 +684,7 @@ func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
 			} else {
 				g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 			}
-			g.pf("    %s = 0;\n", armCount(base, v))
+			g.pf("    %s = %d;\n", armCount(base, v), f.BornCount()) // born at the declared minimum (SPEC §4.6)
 			return
 		}
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
@@ -1265,7 +1302,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    ", false))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1357,7 +1394,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    ", false))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1859,7 +1896,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			if f.Required {
 				g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 			} else {
-				g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
+				g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    ", false))
 			}
 		} else {
 			g.pf("    {\n")
@@ -1945,7 +1982,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    ", false))
 		}
 		g.emitArrayField(f, id, elemKind, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ")
 		g.pf("    }\n")

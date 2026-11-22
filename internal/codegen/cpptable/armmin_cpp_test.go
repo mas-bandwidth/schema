@@ -18,6 +18,9 @@ package cpptable
 // expression and exits 3, so each write mode is run in its own process and
 // must exit 3 on the declared minimum.
 //
+// Selecting the arm establishes it at count A, as the Go oracle's arm default
+// does, even where a later arm shares the storage the count sits in.
+//
 // The negative controls plant the old behaviour in the real artifact: the
 // read check removed must let a count-1 arm read, and the arm asserts relaxed
 // back to `>= 0` must let every write mode complete.
@@ -40,6 +43,7 @@ union MinPick
 {
     few   [2..4]uint32
     other int32
+    wide  [8]uint32
 }
 
 fixed table MinArmFix
@@ -121,6 +125,24 @@ int main( int argc, char ** argv )
         if ( !armmin_read( 2 ) ) { std::printf( "read: the count-2 arm did not read\n" ); return 1; }
         if ( armmin_read( 1 ) ) { std::printf( "read: a count-1 arm under [2..4] read\n" ); return 1; }
         if ( armmin_read( 0 ) ) { std::printf( "read: a count-0 arm under [2..4] read\n" ); return 1; }
+        return 0;
+    }
+    if ( mode == "arm-select" )
+    {
+        // SELECTION ESTABLISHES A COUNTED ARM AT A (SPEC §4.6), as the Go
+        // oracle's arm default does: a reset value whose tag is then set to
+        // the arm holds count 2, though a later arm (wide) shares the storage
+        // the count sits in, and it round-trips as itself
+        MinArmFix v;
+        MinArmFixReset( v );
+        v.pick.type = MinPickType::Few;
+        if ( v.pick.few.value_count != 2 ) { std::printf( "arm-select: the selected arm's count is %d, want 2\n", (int) v.pick.few.value_count ); return 1; }
+        static uint8_t wire[256];
+        const int64_t n = MinArmFixSave( v, wire, (int64_t) sizeof( wire ) );
+        MinArmFix back;
+        MinArmFixReset( back );
+        TableReport r;
+        if ( n <= 0 || !MinArmFixLoad( back, wire, n, &r ) || back.pick.type != MinPickType::Few || back.pick.few.value_count != 2 ) { std::printf( "arm-select: the selected arm did not round-trip (n=%lld)\n", (long long) n ); return 1; }
         return 0;
     }
     if ( mode == "plain-read" )
@@ -208,13 +230,21 @@ int main( int argc, char ** argv )
 var cppArmMinWriteModes = []string{"wire", "message", "fixed", "cook", "json", "plain-wire", "plain-message", "plain-fixed", "plain-cook"}
 
 // the modes that must pass (exit 0) on the fixed code and go red when planted
-var cppArmMinGreenModes = []string{"read", "plain-read", "plain-born", "plain-message-guard"}
+var cppArmMinGreenModes = []string{"read", "arm-select", "plain-read", "plain-born", "plain-message-guard"}
 
 // cppArmMinBuild generates the unit, lets undermine plant a fault in the real
 // artifact, and builds the probe; it returns the probe's path.
 func cppArmMinBuild(t *testing.T, undermine func(map[string][]byte)) string {
 	t.Helper()
-	u := cppUnitFrom(t, cppArmMinSchema)
+	return cppProbeBuild(t, cppArmMinSchema, "armmin", cppArmMinMain, undermine)
+}
+
+// cppProbeBuild generates schema's unit, lets undermine plant a fault in the
+// real artifact, and builds main (in namespace ns) against it with the
+// schema_assert hook; it returns the probe's path.
+func cppProbeBuild(t *testing.T, schema, ns, main string, undermine func(map[string][]byte)) string {
+	t.Helper()
+	u := cppUnitFrom(t, schema)
 	files, err := cpp.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -262,8 +292,8 @@ extern bool armmin_asserts_on;
 #include <cstdint>
 #include <string>
 #include "` + header + `"
-using namespace armmin;
-` + cppArmMinMain
+using namespace ` + ns + `;
+` + main
 	if err := os.WriteFile(filepath.Join(dir, "probe.cpp"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -328,6 +358,8 @@ func TestCppArmMinHoldsNegativeControl(t *testing.T) {
 			text = strings.ReplaceAll(text, "_count >= 2 &&", "_count >= 0 &&")
 			// the birth: back to count zero, and the zero-count elision
 			text = strings.ReplaceAll(text, "few_count = 2;", "few_count = 0;")
+			// the arm's selection: back to count zero
+			text = strings.ReplaceAll(text, "few.value_count = 2;", "few.value_count = 0;")
 			// the message guard: the old unguarded subtraction
 			text = strings.ReplaceAll(text, ") < 2 ) { return -1; }", ") < 0 ) { return -1; }")
 			text = strings.ReplaceAll(text, ") < 2 ) { return false; }", ") < 0 ) { return false; }")

@@ -10376,7 +10376,9 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int32_t mark_born_value_entities = ids.count; const int64_t bytes_born_value_entities = TableEntityMeasureBody( ids, value.entities[slot_born_value_entities] ); ids.truncate( mark_born_value_entities ); if ( bytes_born_value_entities != 1 ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -10559,7 +10561,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         w.put32( TableStoredFloatBits( value.server_time ) );
     }
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int32_t mark_born_value_entities = ids.count; const int64_t bytes_born_value_entities = TableEntityMeasureBody( ids, value.entities[slot_born_value_entities] ); ids.truncate( mark_born_value_entities ); if ( bytes_born_value_entities != 1 ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -12552,7 +12556,9 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         bits += 23;
     }
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int64_t bits_born_value_entities = TableEntityMeasureMessageBody( 0, value.entities[slot_born_value_entities] ); if ( bits_born_value_entities != kTableMessageRefBitsHere ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         bits += kTableMessageRefBitsHere;
         if ( ( value.entities_count ) < 1 ) { return -1; } // below the declared [1..8] (R10)
@@ -12768,7 +12774,9 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         w.put( (uint64_t) TableMessageQuantize( float( value.server_time ), 0.0f, 65535.0f, 6553500u ), 23 );
     }
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int64_t bits_born_value_entities = TableEntityMeasureMessageBody( 0, value.entities[slot_born_value_entities] ); if ( bits_born_value_entities != kTableMessageRefBitsHere ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         w.put( 31, kTableMessageRefBitsHere );
         if ( ( value.entities_count ) < 1 ) { return false; } // below the declared [1..8] (R10)

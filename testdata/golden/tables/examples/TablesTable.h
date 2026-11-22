@@ -11232,8 +11232,9 @@ inline void RootConfigReset( RootConfig & value )
 inline void MinArmFixReset( MinArmFix & value )
 {
     memset( value.pick.few.value, 0, sizeof( value.pick.few.value ) );
-    value.pick.few.value_count = 0;
+    value.pick.few.value_count = 2;
     value.pick.other = 0;
+    value.pick.few.value_count = 2; // the arm's birth count, after the overlapping arms' resets (§4.6)
     value.pick.type = MinPickType::None;
 }
 
@@ -17451,6 +17452,7 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBody( TableReader & r, MinArmFix & valu
                             }
                             value.pick.type = MinPickType::Few;
                             memset( (void *) &value.pick.few, 0, sizeof( value.pick.few ) ); // selection establishes the arm (§2.6)
+                            value.pick.few.value_count = 2; // selection establishes the arm at its declared minimum (§4.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -28192,6 +28194,7 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
                             }
                             value.pick.type = MinPickType::Few;
                             memset( (void *) &value.pick.few, 0, sizeof( value.pick.few ) ); // selection establishes the arm (§2.6)
+                            value.pick.few.value_count = 2; // selection establishes the arm at its declared minimum (§4.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
