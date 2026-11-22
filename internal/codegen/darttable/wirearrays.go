@@ -87,9 +87,9 @@ func wireBornCount(f *ir.Field) int64 {
 }
 
 // wireBornElides answers whether f's birth value elides on the variable form:
-// a counted array with a positive minimum, neither optional nor required.
+// ir.Field.ElidesAtBirth, the one statement of the rule, on a non-keyed array.
 func wireBornElides(f *ir.Field) bool {
-	return wireBornCount(f) > 0 && !f.Required && !f.Type.Optional
+	return f.KeyEnum == "" && f.ElidesAtBirth()
 }
 
 // countedRides is the condition under which a counted or unbounded array of
