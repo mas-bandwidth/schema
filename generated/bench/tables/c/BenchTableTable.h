@@ -11015,7 +11015,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -11371,7 +11371,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -12202,7 +12202,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
