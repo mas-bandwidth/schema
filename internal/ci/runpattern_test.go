@@ -648,7 +648,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 				"build/tables-generated-cs/cards/.stamp",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
-			run:   "make ${{ matrix.target }}${{ (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.name == 'region' && '-smoke' || '' }}",
+			run:   "make ${{ matrix.target }}",
 		},
 		{
 			job:      "dart-fuzz",

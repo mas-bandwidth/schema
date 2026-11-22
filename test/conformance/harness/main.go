@@ -165,10 +165,6 @@ func main() {
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
-	// RELAXED 2026-11-14 (maintainer: get main green): --relax-dead-bytes skips the fixed-form dead-byte mutants; re-enable: relax/dead-bytes
-	relaxDeadBytes := fs.Bool("relax-dead-bytes", false, "RELAXED 2026-11-14, relax/dead-bytes (docs/relaxed.md): a fixed-class mutant the leg refuses and the oracle accepts, whose oracle re-encoding has the same length but different bytes (dead bytes the value does not carry), is counted and not compared (wire-fuzz only)")
-	// RELAXED 2026-11-14 (maintainer: get main green): --relax-vector names the pinned vectors a leg diverges on; re-enable: relax/unknown-arm-text-<lang>
-	relaxVectors := fs.String("relax-vector", "", "RELAXED 2026-11-14 (docs/relaxed.md): comma-separated pinned vector names whose divergence is counted and not failed; a named vector that agrees with the oracle, or that the run does not carry, fails the run (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
@@ -280,7 +276,7 @@ func main() {
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")
 		}
-		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":
