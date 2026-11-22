@@ -168,10 +168,12 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 		}
 	}
 
-	// THE WRITE CONTRACT: the lawful value at the same boundary — the same
-	// writer, the same field — is the twin.
+	// THE WRITE CONTRACT: a lawful value the same writer writes at the same
+	// root is the twin. The grain is the root and not the field: the footgun
+	// is a leg that refuses the WRITER, and a per-field twin is the corpus's
+	// own business (most rows carry one beside them).
 	for _, wr := range m.WriteRefusals {
-		key := at(wr.Surface(), wr.Unit, wr.Root, wr.Path)
+		key := at(wr.Surface(), wr.Unit, wr.Root)
 		if wr.Verdict == "refused" {
 			d.refuse(wr.Surface(), wr.Name, key)
 		} else {
