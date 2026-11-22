@@ -13,7 +13,7 @@ const luaLoadIntoRefusalSchema = `package loadinto
 
 table Root {
     a int32
-    s string
+    s string(8)
     n int16
 }
 `
