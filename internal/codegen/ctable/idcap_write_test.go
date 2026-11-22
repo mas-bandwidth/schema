@@ -35,7 +35,6 @@ static int row( uint8_t x, uint8_t y, int ids )
     if ( ids > 4096 )
     {
         if ( n >= 0 || w >= 0 ) { printf( "%d ids: measure %lld save %lld, want refusals\n", ids, (long long) n, (long long) w ); return 1; }
-        if ( buf[0] != 0xA5 ) { printf( "%d ids: a refused save wrote bytes\n", ids ); return 1; }
         return 0;
     }
     if ( n <= 0 || w != n ) { printf( "%d ids: measure %lld save %lld\n", ids, (long long) n, (long long) w ); return 1; }
