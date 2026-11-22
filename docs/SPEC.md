@@ -776,6 +776,21 @@ FloatExpr   = float expression over float literals, int literals and const names
   declared defaults; the count determines which elements are used. The §5 zero form does not carry the birth
   value, for the same reason it does not carry a specified default: it is the
   all-zero form by rule.
+  **The birth value is the array's default on the table wire.** A plain
+  `[A..B]T` (neither `?` nor `| required`) holding exactly A elements, each at
+  its default, is elided by every table writer (SPEC-TABLES.md §22.2); an
+  element is at its default when a plain float's BIT PATTERN equals the
+  default's, a compressed float's value `==` the default, and a `type` or
+  `table` element's body is its terminator alone. An absent field reads as
+  that birth value on every read, a text read whose object omits the key
+  (`FromJson("{}")`) included. A message batch that stores it explicitly is a
+  field stored at its declared default and is refused under the same
+  announced shape and build (SPEC-TABLES.md §3.3(a)), except an array of
+  compressed floats, whose held values the batch does not carry. A present `?[A..B]T`
+  rides whatever it holds: presence is its presence bit, never its count. A
+  `| required` counted array rides whatever it holds, and lives only in a
+  variable table, because a fixed table refuses `required` (SPEC-TABLES.md
+  §2.3), so the message form never meets one.
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
