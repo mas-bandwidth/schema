@@ -58,6 +58,8 @@ func dartTableAnnouncementConstant(u *ir.Unit) string {
 	}
 	out.WriteString("]);\n")
 	fmt.Fprintf(&out, "const int tableAnnouncementLength = %d;\n", len(b))
+	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
+	fmt.Fprintf(&out, "const bool tableAnnouncementTooLarge = %t;\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	fmt.Fprintf(&out, "/// The unit's own build version, emitted beside the announcement.\nconst int tableBuildVersion = %d;\n\n", int64(ir.BuildVersion(u)))
 	return out.String()
 }
@@ -384,12 +386,12 @@ class TableReport {
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
 /// (§3.3) — the length, emitted beside the bytes.
-int announceMeasure() => tableAnnouncementLength;
+int announceMeasure() => tableAnnouncementTooLarge ? -1 : tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
 /// length, or -1 when the buffer is too small. Nothing here allocates.
 int announce(Uint8List buffer) {
-  if (buffer.length < tableAnnouncementLength) {
+  if (tableAnnouncementTooLarge || buffer.length < tableAnnouncementLength) {
     return -1;
   }
   buffer.setRange(0, tableAnnouncementLength, tableAnnouncement);

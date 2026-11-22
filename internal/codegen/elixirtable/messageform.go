@@ -84,6 +84,8 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  import Bitwise\n\n")
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
+	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
+	fmt.Fprintf(&b, "  @announcement_too_large %t\n", len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	records, unions := messageRecords(u)
 	b.WriteString(records)
 	b.WriteString("\n")
@@ -1763,10 +1765,10 @@ const messageRuntimeBody = `  defstruct announced: false,
   The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
   §3.3): a form-` + "`" + `1` + "`" + ` file whose body carries the build version and the vocabulary.
   """
-  def announce, do: @announcement
+  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
 
   @doc "The announcement's byte count, a constant of the unit."
-  def announce_measure, do: byte_size(@announcement)
+  def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
 
   @doc "This unit's own entry count: the capacity a receiver that talks only to its own build declares."
   def entries_here, do: @entries_here
