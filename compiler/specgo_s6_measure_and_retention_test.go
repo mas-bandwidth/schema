@@ -46,8 +46,9 @@ func TestSpecGoS6MeasureAndRetention(t *testing.T) {
 			stale: "PURPOSELY DISAGREE on a damaged wire",
 		},
 		{
-			name: "§6.5 Go's LoadMeasure is combined size",
-			want: "Go's `LoadMeasure` answers the data and attribution as one COMBINED size",
+			name:  "§6.5 every port reports data and attribution separately",
+			want:  "**EVERY PORT REPORTS THE TWO SIZES SEPARATELY**",
+			stale: "COMBINED size and its `Load` writes the directory inside the region",
 		},
 		{
 			name: "§6.5 FromJson on a locked builder",

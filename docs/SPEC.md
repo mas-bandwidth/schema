@@ -2391,7 +2391,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
-| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
+| Lobster | none (tables); `assert` today in the packet `Write`, which `--runtime-no-asserts` removes | every build tables; the packet `Write` OWES every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason. Lobster is not on the assert list, so the rule for its packet `Write` is a refusal in every build; today's packet writer asserts instead, which is a defect of that writer, not a licence |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
 is the leg's assert, "every build" its refusal. These tables record the code as
@@ -2470,7 +2470,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 unrepresentable (the storage is `intN_t`/`uintN_t`)
 
 - **C**
 
@@ -2478,7 +2478,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 unrepresentable (the storage is `intN_t`/`uintN_t`)
 
 - **C#**
 
@@ -2486,7 +2486,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 debug
 
-  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 not yet held
+  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 unrepresentable (the storage is `sbyte`…`ulong`)
 
 - **Rust**
 
@@ -2502,7 +2502,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 not yet held
+  - packet `Write`: 1–8 and 10 debug; 11 debug for an unsigned width whose Java storage is wider (`checkWrite`'s `assert value.<field> <= 2^N−1`); unrepresentable for a signed width and a `byte`-stored one, whose storage is exactly `N` bits
 
 - **Dart**
 
@@ -2518,7 +2518,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 not yet held
+  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 unrepresentable (the storage is `intN`/`uintN`)
 
 - **JavaScript**
 
@@ -2582,7 +2582,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1–6 and 10 debug; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+  - packet `Write`: 1–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps. The rule for Lobster is every build: the debug-only rows are owed as refusals
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in
