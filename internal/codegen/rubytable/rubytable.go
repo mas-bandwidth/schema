@@ -516,6 +516,10 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	if surfaces.Retain {
 		if ir.VariableTables(u)[name] {
 			b.WriteString("    def self.load_retain(data, retain, report = nil)\n")
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// store is emptied before the integrity check and the file read,
+			// so a file refused at its frame hands back no earlier capture.
+			b.WriteString("      retain.reset if retain.is_a?(TableRetain)\n")
 			if st.Integrity == "crc32c" {
 				b.WriteString("      data = SchemaTable.open_crc(data)\n")
 			}

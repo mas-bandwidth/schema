@@ -1,0 +1,5 @@
+package demo
+
+fixed table Player {
+  level int32
+}

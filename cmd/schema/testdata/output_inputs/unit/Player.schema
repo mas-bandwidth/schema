@@ -1,0 +1,6 @@
+package outcorpus
+
+fixed table Player
+{
+    level uint32
+}

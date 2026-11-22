@@ -11,14 +11,15 @@ package goosetable_test
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/execref"
 )
 
 // gooserunUseExempt names the calls a bare exec.Command is right for, by the
@@ -28,8 +29,13 @@ var gooserunUseExempt = map[string]map[string]bool{
 	"diewithparent_test.go": {"TestGooseDieWithParent": true},
 }
 
-// checkGooserunUse returns one line per bare exec.Command or exec.CommandContext
-// call in files that is not exempt, naming file, line and function.
+// checkGooserunUse returns one line per reference to os/exec's Command or
+// CommandContext in files that is not exempt, naming file, line and function.
+// Each name is resolved to what it binds to (internal/execref), and a
+// reference counts whether it is called or taken as a value: read by spelling,
+// a dot import, and a constructor assigned to a variable and called through
+// it, passed, while a local value whose method is named Command was refused
+// (the reviewer's F-230).
 func checkGooserunUse(files map[string][]byte) []string {
 	var out []string
 	names := make([]string, 0, len(files))
@@ -38,72 +44,20 @@ func checkGooserunUse(files map[string][]byte) []string {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, name, files[name], 0)
+		refs, err := execref.Find(token.NewFileSet(), name, files[name], "os/exec", "Command", "CommandContext")
 		if err != nil {
 			out = append(out, fmt.Sprintf("%s: parse: %v", name, err))
 			continue
 		}
-		local := ""
-		for _, imp := range f.Imports {
-			if strings.Trim(imp.Path.Value, `"`) != "os/exec" {
+		for _, r := range refs {
+			if gooserunUseExempt[name][r.Func] {
 				continue
 			}
-			local = "exec"
-			if imp.Name != nil {
-				local = imp.Name.Name
-			}
-			if local == "_" || local == "." {
-				local = ""
-			}
+			out = append(out, fmt.Sprintf("%s:%d: exec.%s in %s must use gooserun.Command", name, r.Pos.Line, r.Name, r.Func))
 		}
-		if local == "" {
-			continue
-		}
-		var stack []ast.Node
-		ast.Inspect(f, func(n ast.Node) bool {
-			if n == nil {
-				stack = stack[:len(stack)-1]
-				return true
-			}
-			stack = append(stack, n)
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			x, ok := sel.X.(*ast.Ident)
-			if !ok || x.Name != local {
-				return true
-			}
-			if sel.Sel.Name != "Command" && sel.Sel.Name != "CommandContext" {
-				return true
-			}
-			fn := enclosingFunction(stack)
-			if gooserunUseExempt[name][fn] {
-				return true
-			}
-			pos := fset.Position(call.Pos())
-			out = append(out, fmt.Sprintf("%s:%d: exec.%s in %s must use gooserun.Command", name, pos.Line, sel.Sel.Name, fn))
-			return true
-		})
 	}
 	slices.Sort(out)
 	return out
-}
-
-// enclosingFunction names the innermost function declaration holding the
-// inspected node, or the file's package when the call sits at package level.
-func enclosingFunction(stack []ast.Node) string {
-	for _, s := range slices.Backward(stack) {
-		if fn, ok := s.(*ast.FuncDecl); ok {
-			return fn.Name.Name
-		}
-	}
-	return "(package level)"
 }
 
 func TestGooseTestsStartProcessesThroughGooserun(t *testing.T) {
@@ -149,5 +103,26 @@ func startIt() {
 	}
 	if !strings.Contains(bad[0], "control_test.go") || !strings.Contains(bad[0], "exec.Command") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the check did not refuse the bare exec.Command by name: %v", bad[0])
+	}
+}
+
+// TestGooseTestsStartProcessesThroughGooserunPolicyCorpus runs this check
+// over the committed child-process policy corpus
+// (internal/execref/testdata/policy), which internal/ci's
+// TestEveryTestChildIsBounded reader runs too (the reviewer's F-230): a dot
+// import and a constructor taken as a value are refused, a local value whose
+// method is named Command is not, beside the direct, renamed, type-only and
+// bounded controls.
+func TestGooseTestsStartProcessesThroughGooserunPolicyCorpus(t *testing.T) {
+	t.Parallel()
+	cases, err := execref.ReadPolicyCorpus(filepath.Join("..", "..", "..", filepath.FromSlash(execref.PolicyCorpusDir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		bad := checkGooserunUse(map[string][]byte{c.Fixture: c.Src})
+		if len(bad) != c.Starts {
+			t.Errorf("%s (%s): the check refused %d reference(s) %v, want %d", c.Fixture, c.Form, len(bad), bad, c.Starts)
+		}
 	}
 }

@@ -1236,6 +1236,8 @@ end
 
 local transcodeBody: any
 local ownFieldElides: any
+local emptyOwnBody: any
+local bornOwnElem: any
 local transcodeValue: any
 
 transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, oe: any, fd: any, rep: any): (any, boolean)
@@ -1409,13 +1411,23 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 			table.sort(pairs, function(a: any, b: any) return (a.ord :: number) < (b.ord :: number) end)
 			return { kind = 16, max = oe.shape.max, pairs = pairs }, true
 		end
-		if n < oe.shape.min or n > oe.shape.max then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
+		-- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): an own fixed array
+		-- (min == max) read from a sender that announced a smaller bound holds
+		-- the n elements the sender wrote and one born element per new slot.
+		-- A counted array below its own min is still out of range.
+		local grown = oe.shape.min == oe.shape.max and n < oe.shape.min
+		if (n < oe.shape.min and not grown) or n > oe.shape.max then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
 		if pe.shape.elem == 6 and not align(r) then return nil, false end
 		local elems = {}
 		for i = 1, n do
 			local ev, eok = transcodeValue(r, pv, ov, rootName, peElem, oeElem, ef, rep)
 			if not eok then return nil, false end
 			elems[i] = ev
+		end
+		if grown then
+			for i = n + 1, oe.shape.min do
+				elems[i] = bornOwnElem(ov, rootName, oeElem, ef)
+			end
 		end
 		return { kind = 14, min = oe.shape.min, max = oe.shape.max, elemKind = oe.shape.elem, elems = elems }, true
 	end
@@ -1541,7 +1553,6 @@ ownFieldElides = function(ov: any, fd: any, oe: any, node: any): boolean
 	return eq16(node.val16, defTo16(fd.def or 0))
 end
 
-local emptyOwnBody: any
 emptyOwnBody = function(ov: any, rootName: string, desc: any): { any }
 	if desc == nil or desc.fields == nil then return {} end
 	local items: { any } = {}
@@ -1565,6 +1576,49 @@ emptyOwnBody = function(ov: any, rootName: string, desc: any): { any }
 		end
 	end
 	return items
+end
+
+-- bornOwnElem is one fresh element of an own array, as the constructor is
+-- born: the slot a grown fixed bound adds (docs/SPEC-TABLES.md §21.1). Zero,
+-- false, empty text, an empty union, None for an enum, a record at its
+-- declared defaults; never the field's whole default.
+bornOwnElem = function(ov: any, rootName: string, oe: any, fd: any): any
+	local shape = oe.shape
+	local k = shape.kind
+	if k == 0 or k == 32 then return { kind = k } end
+	if k == 1 then return { kind = 1, bit = 0 } end
+	if k == 10 then
+		if (shape.packing or 0) == 2 then
+			return { kind = 10, packing = 2, bits = shape.bits, idx = select(1, quantizeF32(shape, 0)) }
+		end
+		return { kind = 10, packing = 0, raw32 = 0 }
+	end
+	if k == 11 then return { kind = 11, lo = 0, hi = 0 } end
+	if k == 12 then return { kind = 12, max = shape.max, str = "" } end
+	if k == 13 then
+		local subDesc = if fd ~= nil and fd.t ~= nil then S.lookup(fd.t) else nil
+		return { kind = 13, fields = emptyOwnBody(ov, rootName, subDesc) }
+	end
+	if k == 14 then
+		local inner = { shape = oe.element or newShape(), element = if oe.element ~= nil then oe.element.element else nil }
+		local elems = {}
+		if shape.min == shape.max then
+			for j = 1, shape.min do
+				elems[j] = bornOwnElem(ov, rootName, inner, fd)
+			end
+		end
+		return { kind = 14, min = shape.min, max = shape.max, elemKind = shape.elem, elems = elems }
+	end
+	if k == 15 then return { kind = 15, armRef = 0, payload = nil } end
+	if k == 16 then return { kind = 16, max = shape.max, pairs = {} } end
+	if k == 30 then return { kind = 30, ref = 0 } end
+	local val16 = buffer.create(16)
+	local packed16 = checkAndPackInt16ForOwn(val16, shape)
+	if packed16 == nil then
+		-- a ranged element whose range excludes zero is born at its min
+		val16, packed16 = shape.base16, buffer.create(16)
+	end
+	return { kind = k, packing = shape.packing or 0, bits = shape.bits or kindBits(k), raw16 = packed16, val16 = val16 }
 end
 
 -- ownFieldElides forward-declared above transcodeValue
@@ -1734,8 +1788,8 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
-	if len < 1 then report.malformed = true; return -1, {} end
-	if buffer.readu8(data, 0) ~= 2 then return -1, refuse(report, "newer_form") end
+	if len < 1 then report.malformed = true; return 0, {} end
+	if buffer.readu8(data, 0) ~= 2 then return 0, refuse(report, "newer_form") end
 	-- THE INTEGRITY TRAILER IS CHECKED BEFORE ANY BODY IS DECODED
 	-- (docs/SPEC-TABLES.md §2.14, §3.3): the form byte is read first, then a
 	-- declaring root's batch must end in the CRC-32C of the bytes before it,
@@ -1746,23 +1800,23 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 		if body == nil then
 			report.malformed = true
 			report.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		data = body
 		len = buffer.len(data)
 	end
-	if not v.announced then return -1, refuse(report, "no_vocabulary") end
-	if len < 2 then report.malformed = true; return -1, {} end
+	if not v.announced then return 0, refuse(report, "no_vocabulary") end
+	if len < 2 then report.malformed = true; return 0, {} end
 	local count = buffer.readu8(data, 1) + 1
 	if count > capacity then
 		refuse(report, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	local got, bodies, malformed, dep, nonFinite = walkBodies(v, data, desc, count, false)
 	if nonFinite ~= nil then
 		-- the refusal outranks every verdict a body could reach after it
 		refuseNonFinite(report, nonFinite, true)
-		return -1, {}
+		return 0, {}
 	end
 	if malformed then
 		report.malformed = true
@@ -1779,7 +1833,7 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 				br.n = b.to
 				local tree, tok = transcodeBody(br, v, ov, desc.name, desc, report)
 				if not tok or tree == nil then
-					return got, {}
+					return 0, {}
 				end
 				transcoded[i] = { ownTree = tree, ownVocab = ov, from = b.from, to = b.to }
 			end
@@ -1802,19 +1856,20 @@ end
 -- LoadMessages is the PLAIN batch read, and it is STRICT (docs/SPEC-TABLES.md
 -- §6.5, Go's <T>LoadMessages over <T>loadMessagesWalk): a batch the
 -- walk read found damaged, or whose report counts a clamp or a kind that
--- moved, answers -1 with no body handed back and report.reason the one name
--- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name.
--- unknown and widened alone never refuse.
+-- moved, answers 0 with no body handed back and report.reason the one name
+-- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name:
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (§3.3). A delivered batch is never empty, so 0 says refused. unknown and
+-- widened alone never refuse.
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local rep: any = report or {}
 	local count, bodies = M.loadMessagesWalk(v, root, data, capacity, rep)
-	if count < 0 then return count, bodies end
-	-- a refusal the walk read already named answers as it did (batch_too_large
-	-- keeps the count the caller needs)
-	if rep.reason ~= nil and rep.reason ~= "" then return count, bodies end
-	if rep.malformed then rep.reason = "wire_damaged"; return -1, {} end
-	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return -1, {} end
-	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return -1, {} end
+	-- a refusal the walk read already named keeps its name (batch_too_large
+	-- included) and answers 0
+	if rep.reason ~= nil and rep.reason ~= "" then return 0, {} end
+	if rep.malformed then rep.reason = "wire_damaged"; return 0, {} end
+	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return 0, {} end
+	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return 0, {} end
 	return count, bodies
 end
 
@@ -2039,6 +2094,10 @@ local function mAtDefault(fd: any, val: any): boolean
 	if fd.s == "enum" then return val == (fd.def or 0) end
 	if fd.s == "float" then
 		local def = fd.def or 0.0
+		if fd.lo ~= nil then
+			if val == 0 then val = 0 end
+			if def == 0 then def = 0 end
+		end
 		if fd.f32 then
 			buffer.writef32(msgScratch, 0, val)
 			local a = buffer.readu32(msgScratch, 0)
@@ -2087,6 +2146,8 @@ end
 local function mEncodeScalar(c: any, owner: string, e: any, kind: number, shape: any, val: any, fname: string): boolean
 	local ok, why = mValidScalar(e, val)
 	if not ok then return mFail(c, why or "invalid_value", owner, fname) end
+	-- a ranged float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+	if (kind == 10 or kind == 11) and e.lo ~= nil and val == 0 then val = 0 end
 	if kind == 1 then
 		mPut(c.w, if val then 1 else 0, 1)
 		return true

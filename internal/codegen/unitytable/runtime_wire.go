@@ -2019,7 +2019,9 @@ internal static partial class TableWire
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
-        if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+        // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+        // the capacity refusal included, and nothing is decoded.
+        if (total > values.Length) { return Refuse(report, "batch_too_large"); }
         bool damagedBefore = report.Damaged;
         report.Damaged = false;
         BitReader r = new BitReader(bytes); r.At = 16;
@@ -2139,7 +2141,8 @@ internal static partial class TableWire
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
         }
-        UInt128Value raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+        // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+        UInt128Value raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)
@@ -2261,8 +2264,9 @@ internal static partial class TableWire
     public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
     static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
     static bool Named(string name) { return name != null && name != "???"; }
-    // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
-    // under a +0 default rides and reads back as -0.
+    // Elision compares BITS for a plain float (docs/SPEC-TABLES.md §3.3): a -0
+    // under a +0 default rides and reads back as -0. A COMPRESSED float's -0
+    // IS +0, so it compares by value, and under a +0 default it is elided.
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
         if (f.Kind == 10)
@@ -2275,6 +2279,15 @@ internal static partial class TableWire
             return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw);
         }
         return raw == f.DefaultRaw;
+    }
+    // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+    // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bits as +0.
+    internal static ulong StoredRaw(ulong raw, TableFieldInfo f)
+    {
+        if (!f.HasFloatRange) { return raw; }
+        if (f.Kind == 10 && (uint)raw == 0x80000000u) { return 0; }
+        if (f.Kind == 11 && raw == 0x8000000000000000ul) { return 0; }
+        return raw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)
     {
@@ -2505,7 +2518,7 @@ internal static partial class TableWire
             UInt128Value raw = f.GetWide(value, i); int width = Width(f.Kind);
             w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
     }
     static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, ReadOnlySpan<long> elemCache = default)
     {

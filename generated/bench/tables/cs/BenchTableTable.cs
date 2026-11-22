@@ -1504,7 +1504,15 @@ namespace Benchtable
                         o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                         return true;
                     case 10:
-                        return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                        // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+                        // (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+                        // fixed-compressed-negzero): it writes 0, never -0. A plain
+                        // float's -0 is a value and is written as one.
+                        {
+                            uint bits = unchecked((uint)f.GetRaw(owner, index));
+                            if (f.HasRange && bits == 0x80000000u) { bits = 0; }
+                            return WriteFloat(ref o, TableBitsToFloat(bits), true);
+                        }
                     case 11:
                         return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
                     case 2:
@@ -5239,7 +5247,9 @@ namespace Benchtable
                 int total = MessageCount(bytes, vocabulary, report);
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
-                if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+                // the capacity refusal included, and nothing is decoded.
+                if (total > values.Length) { return Refuse(report, "batch_too_large"); }
                 bool damagedBefore = report.Damaged;
                 report.Damaged = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
@@ -5359,7 +5369,8 @@ namespace Benchtable
                     TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
                 }
-                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+                // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
@@ -5481,12 +5492,24 @@ namespace Benchtable
             public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
             static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
             static bool Named(string name) { return name != null && name != "???"; }
-            // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
-            // under a +0 default rides and reads back as -0.
+            // Elision compares BITS for a plain float (docs/SPEC-TABLES.md §3.3): a -0
+            // under a +0 default rides and reads back as -0. A COMPRESSED float's -0
+            // IS +0, so it compares by value, and under a +0 default it is elided.
             static bool DefaultRaw(ulong raw, TableFieldInfo f)
             {
-                if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
+                if (f.Kind == 10)
+                {
+                    if (f.HasRange) { return BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)) == BitConverter.Int32BitsToSingle(unchecked((int)(uint)f.DefaultRaw)); }
+                    return (uint)raw == (uint)f.DefaultRaw;
+                }
                 return raw == f.DefaultRaw;
+            }
+            // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+            // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bits as +0.
+            // A compressed float is a float32 (SPEC.md §4.3).
+            internal static ulong StoredRaw(ulong raw, TableFieldInfo f)
+            {
+                return f.Kind == 10 && f.HasRange && (uint)raw == 0x80000000u ? 0 : raw;
             }
             static bool DefaultElement(object value, TableFieldInfo f, int i)
             {
@@ -5716,7 +5739,7 @@ namespace Benchtable
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
                     w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
-                else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
+                else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
             }
             static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, scoped ReadOnlySpan<long> elemCache = default)
             {
@@ -8494,7 +8517,7 @@ namespace Benchtable
             if (v.WorldTime != 0 && !ids.Add(0x3eee6b51be54fc85ul)) return false;
             if (v.FrameTick != 0 && !ids.Add(0x7bbc035f7b6d0112ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.ServerTime));
-            if (BitConverter.SingleToUInt32Bits(v.ServerTime) != 0x00000000u && !ids.Add(0x3c460475f9be69c6ul)) return false;
+            if (v.ServerTime != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0x3c460475f9be69c6ul)) return false;
             if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
             int count_11 = v.StatsCount;
             System.Diagnostics.Debug.Assert(count_11 >= 0 && count_11 <= 80);
@@ -8511,11 +8534,11 @@ namespace Benchtable
             if (!TableWire.CollectField(v, fields[14], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[15], ref ids)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.AimX));
-            if (BitConverter.SingleToUInt32Bits(v.AimX) != 0x00000000u && !ids.Add(0xdbaf7be5e24296c9ul)) return false;
+            if (v.AimX != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0xdbaf7be5e24296c9ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.AimY));
-            if (BitConverter.SingleToUInt32Bits(v.AimY) != 0x00000000u && !ids.Add(0xdbaf7ae5e2429516ul)) return false;
+            if (v.AimY != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0xdbaf7ae5e2429516ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.AimZ));
-            if (BitConverter.SingleToUInt32Bits(v.AimZ) != 0x00000000u && !ids.Add(0xdbaf79e5e2429363ul)) return false;
+            if (v.AimZ != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0xdbaf79e5e2429363ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Recoil));
             if (BitConverter.SingleToUInt32Bits(v.Recoil) != 0x00000000u && !ids.Add(0x9cef31fff7e2e457ul)) return false;
             System.Diagnostics.Debug.Assert(double.IsFinite(v.Drift));
@@ -8523,7 +8546,7 @@ namespace Benchtable
             if (v.WideKey != 0 && !ids.Add(0xa3348580461faf16ul)) return false;
             if (v.Flux != 0 && !ids.Add(0xd61bdd7908af2642ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Ping));
-            if (BitConverter.SingleToUInt32Bits(v.Ping) != 0x00000000u && !ids.Add(0xbf30e00dc53307a9ul)) return false;
+            if (v.Ping != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0xbf30e00dc53307a9ul)) return false;
             if (v.CrcHint != 0 && !ids.Add(0x560d6527ccd8515ful)) return false;
             if (v.HasExtra != false && !ids.Add(0xc08292176cfd8672ul)) return false;
             if (v.Extra != 0 && !ids.Add(0xfd29ee12a979cb69ul)) return false;
@@ -8545,7 +8568,7 @@ namespace Benchtable
             if (v.Nonce != 1ul) { n += TableWire.VarSize(ids.RefAt(34, 0x73a94c71d60dc0d8ul)) + 9; }
             if (v.WorldTime != 0) { n += TableWire.VarSize(ids.RefAt(21, 0x3eee6b51be54fc85ul)) + 9; }
             if (v.FrameTick != 0) { n += TableWire.VarSize(ids.RefAt(39, 0x7bbc035f7b6d0112ul)) + 9; }
-            if (BitConverter.SingleToUInt32Bits(v.ServerTime) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(20, 0x3c460475f9be69c6ul)) + 5; }
+            if (v.ServerTime != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u))) { n += TableWire.VarSize(ids.RefAt(20, 0x3c460475f9be69c6ul)) + 5; }
             scoped Span<long> elemCache_10 = default;
             if (!rootElemSizes.IsEmpty)
             {
@@ -8583,14 +8606,14 @@ namespace Benchtable
             n += TableWire.BodySizeField(v, fields[14], ref ids, default, out long payload_14);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[14] = payload_14; }
             n += TableWire.BodySizeField(v, fields[15], ref ids);
-            if (BitConverter.SingleToUInt32Bits(v.AimX) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(72, 0xdbaf7be5e24296c9ul)) + 5; }
-            if (BitConverter.SingleToUInt32Bits(v.AimY) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(71, 0xdbaf7ae5e2429516ul)) + 5; }
-            if (BitConverter.SingleToUInt32Bits(v.AimZ) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(70, 0xdbaf79e5e2429363ul)) + 5; }
+            if (v.AimX != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u))) { n += TableWire.VarSize(ids.RefAt(72, 0xdbaf7be5e24296c9ul)) + 5; }
+            if (v.AimY != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u))) { n += TableWire.VarSize(ids.RefAt(71, 0xdbaf7ae5e2429516ul)) + 5; }
+            if (v.AimZ != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u))) { n += TableWire.VarSize(ids.RefAt(70, 0xdbaf79e5e2429363ul)) + 5; }
             if (BitConverter.SingleToUInt32Bits(v.Recoil) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(50, 0x9cef31fff7e2e457ul)) + 5; }
             if (BitConverter.DoubleToUInt64Bits(v.Drift) != 0x0000000000000000ul) { n += TableWire.VarSize(ids.RefAt(27, 0x5ab3f9c9341f6c04ul)) + 9; }
             if (v.WideKey != 0) { n += TableWire.VarSize(ids.RefAt(55, 0xa3348580461faf16ul)) + 9; }
             if (v.Flux != 0) { n += TableWire.VarSize(ids.RefAt(68, 0xd61bdd7908af2642ul)) + 9; }
-            if (BitConverter.SingleToUInt32Bits(v.Ping) != 0x00000000u) { n += TableWire.VarSize(ids.RefAt(62, 0xbf30e00dc53307a9ul)) + 5; }
+            if (v.Ping != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u))) { n += TableWire.VarSize(ids.RefAt(62, 0xbf30e00dc53307a9ul)) + 5; }
             if (v.CrcHint != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x560d6527ccd8515ful)) + 5; }
             if (v.HasExtra != false) { n += TableWire.VarSize(ids.RefAt(63, 0xc08292176cfd8672ul)) + 2; }
             if (v.Extra != 0) { n += TableWire.VarSize(ids.RefAt(76, 0xfd29ee12a979cb69ul)) + 5; }
@@ -8647,10 +8670,10 @@ namespace Benchtable
                 w.HeaderAt(39, 0x7bbc035f7b6d0112ul, 9, ref ids);
                 w.Fixed((ulong)v.FrameTick, 8);
             }
-            if (BitConverter.SingleToUInt32Bits(v.ServerTime) != 0x00000000u)
+            if (v.ServerTime != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)))
             {
                 w.HeaderAt(20, 0x3c460475f9be69c6ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.ServerTime)), 4);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits((v.ServerTime + 0.0f))), 4);
             }
             scoped ReadOnlySpan<long> elemCache_10 = default;
             if (!rootElemSizes.IsEmpty)
@@ -8700,20 +8723,20 @@ namespace Benchtable
             long payload_14 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[14] : -1;
             TableWire.WriteBodyField(ref w, v, fields[14], ref ids, default, payload_14);
             TableWire.WriteBodyField(ref w, v, fields[15], ref ids);
-            if (BitConverter.SingleToUInt32Bits(v.AimX) != 0x00000000u)
+            if (v.AimX != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)))
             {
                 w.HeaderAt(72, 0xdbaf7be5e24296c9ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimX)), 4);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits((v.AimX + 0.0f))), 4);
             }
-            if (BitConverter.SingleToUInt32Bits(v.AimY) != 0x00000000u)
+            if (v.AimY != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)))
             {
                 w.HeaderAt(71, 0xdbaf7ae5e2429516ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimY)), 4);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits((v.AimY + 0.0f))), 4);
             }
-            if (BitConverter.SingleToUInt32Bits(v.AimZ) != 0x00000000u)
+            if (v.AimZ != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)))
             {
                 w.HeaderAt(70, 0xdbaf79e5e2429363ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimZ)), 4);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits((v.AimZ + 0.0f))), 4);
             }
             if (BitConverter.SingleToUInt32Bits(v.Recoil) != 0x00000000u)
             {
@@ -8735,10 +8758,10 @@ namespace Benchtable
                 w.HeaderAt(68, 0xd61bdd7908af2642ul, 5, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.Flux)), 8);
             }
-            if (BitConverter.SingleToUInt32Bits(v.Ping) != 0x00000000u)
+            if (v.Ping != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)))
             {
                 w.HeaderAt(62, 0xbf30e00dc53307a9ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Ping)), 4);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits((v.Ping + 0.0f))), 4);
             }
             if (v.CrcHint != 0)
             {

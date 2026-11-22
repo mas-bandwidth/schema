@@ -12,6 +12,12 @@
 // prefill the bill (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.6) requires, so
 // it cannot tell the two apart. With x = 7 and y = 9 it can: a zero fill reads
 // 0, the law reads 7 and 9.
+//
+// THE SCALAR ARRAYS BESIDE IT (F-092) hold the other half of the law: a grown
+// slot of an array of SCALARS is one born element (0), never unset and never
+// short. A reader that kept only the writer's slots passed the record array's
+// check while its scalar arrays stayed at the old length. No written scalar
+// is 0.
 
 package vold_array_fixed_grow
 
@@ -25,5 +31,7 @@ fixed table ArrayFixedGrow
 {
     lead  uint32 = 1
     vals  [4]Vec
+    ints  [4]int32
+    octet [4]uint8
     trail uint32 = 2
 }

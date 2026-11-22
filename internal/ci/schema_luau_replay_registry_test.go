@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // luauReplayRegistryProblems holds a Luau replay corpus to its INPUTS list
@@ -114,7 +116,7 @@ func TestLuauReplayCorpusIsRegistered(t *testing.T) {
 	}
 	remove := func(t *testing.T, dir, pattern string, keep int) {
 		t.Helper()
-		matches, err := filepath.Glob(filepath.Join(dir, pattern))
+		matches, err := provesran.Glob(filepath.Join(dir, pattern))
 		if err != nil || len(matches) <= keep {
 			t.Fatalf("%s matches %d files (err %v), want more than %d", pattern, len(matches), err, keep)
 		}

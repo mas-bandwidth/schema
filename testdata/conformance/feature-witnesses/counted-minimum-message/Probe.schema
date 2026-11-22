@@ -1,0 +1,11 @@
+// Probe.schema — a counted array with a positive minimum in the message form
+// (docs/SPEC-TABLES.md §3.3(a), §22.2): its birth value, the minimum count of
+// default elements, is elided like any default, a count outside [2, 4] is
+// never written, and a reader refuses the birth value stored explicitly.
+// cases.tsv beside it names the rows.
+package countedmin
+
+fixed table Root
+{
+    few [2..4]int32
+}

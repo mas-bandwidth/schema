@@ -1,0 +1,6 @@
+package decls
+
+table Holder
+{
+    c int32
+}
