@@ -171,7 +171,7 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust packet-write-refusal-rust cards-rust-conformance tables-rust-view
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
 	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
 	@test -s build/verify/bench-rust.csv

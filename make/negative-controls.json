@@ -1603,7 +1603,8 @@
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
         "packet-end-rust-negative-control",
-        "packet-write-text-rust-negative-control"
+        "packet-write-text-rust-negative-control",
+        "packet-write-refusal-rust-negative-control"
       ],
       "rust": "stable"
     },
