@@ -41,6 +41,7 @@ var catalog = []Entry{
 	e("compiler", "public driver API", "go test ./compiler", "go test ./compiler"),
 	e("docs", "spec, tutorial, contributing", "go test ./compiler", "go test ./compiler"),
 	e("editors", "TextMate grammar, VS Code, Linguist kit", "go test ./editors/...", "go test ./editors/..."),
+	e("experiments", "spec-port trials; not normative", "none", "none"),
 	e("examples", "type-wire corpus", "go test ./internal/goldens", "make check"),
 	e("examples128", "int128/fixed corpus", "go test ./internal/goldens", "make check"),
 	e("generated", "committed per-language output", "test/generated-tree/verify", "make generated-current"),
@@ -205,6 +206,7 @@ var catalog = []Entry{
 	e("tools/gotestreport", "go test -json row report and skip ledger", "go test ./tools/gotestreport", "go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json"),
 	e("tools/gotestrows", "ci-fast go-test matrix rows", "go test ./tools/gotestrows", "go run ./tools/gotestrows ./..."),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
+	e("tools/hostileledger", "hostile-corpus runner ledger: counts rows by name", "go test ./tools/hostileledger", "make hostile-ledger-corpus"),
 	e("tools/hostilecorpusexec", "native-port hostile-corpus driver", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
@@ -224,6 +226,7 @@ var catalog = []Entry{
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
 	e("tools/vacuoustests", "vacuous-test analyzer command", "go test ./internal/vacuous", "go run ./tools/vacuoustests -all"),
+	e("tools/wirefuzzrelease", "release wire-fuzz gate: rows by name, committed gate cases", "go test ./tools/wirefuzzrelease", "make wire-fuzz-release-cases"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
 
 	// test/

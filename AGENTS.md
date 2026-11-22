@@ -23,6 +23,7 @@ bin/schema check <dir>
 | `editors/` | TextMate grammar, VS Code, Linguist kit | `go test ./editors/...` | `go test ./editors/...` |
 | `examples/` | type-wire corpus | `go test ./internal/goldens` | `make check` |
 | `examples128/` | int128/fixed corpus | `go test ./internal/goldens` | `make check` |
+| `experiments/` | spec-port trials; not normative | `none` | `none` |
 | `generated/` | committed per-language output | `test/generated-tree/verify` | `make generated-current` |
 | `images/` | README art | `none` | `none` |
 | [internal/](internal/AGENTS.md) | compiler internals | `go test ./internal/...` | `go test ./internal/...` |

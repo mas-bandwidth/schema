@@ -11,6 +11,9 @@
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1 /* keep Darwin extensions visible beside any POSIX feature macro */
+#endif
 #include "cards.h"
 
 #include "CardTable.c"

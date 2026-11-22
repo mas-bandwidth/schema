@@ -16,10 +16,13 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCGeneratedTableCompilesUnderStrictC11(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the C compiler (it compiles generated output under -std=c11)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Fatalf("the strict C11 compile check needs cc: %v", err)
@@ -46,7 +49,7 @@ func TestCGeneratedTableCompilesUnderStrictC11(t *testing.T) {
 		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		out, err := exec.Command(cc, "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsyntax-only", "-I", dir, path).CombinedOutput()
+		out, err := testproc.Command(t, cc, "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsyntax-only", "-I", dir, path).CombinedOutput()
 		return string(out), err
 	}
 	// The generated file alone, then as the first thing a unit that sets the
