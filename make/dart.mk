@@ -2023,3 +2023,38 @@ packet-write-text-dart-negative-control: packet-write-text-dart
 	@echo 'packet write text Dart negative control: a removed write text contract accepts the seven ill-formed strings'
 
 test-dart: packet-write-text-dart packet-write-text-dart-negative-control
+
+# THE WRITE-REFUSAL-PACKET SURFACE, Dart leg (docs/SPEC.md §5.1; the Go leg is
+# TestWriteRefusalPacket): the shared schema and cases under
+# test/packet-write-refusal/ run through the generated packet writer under
+# --enable-asserts, where an AssertionError is the refusal and each lawful twin
+# at the same boundary is written. The control removes the scalar's upper-bound
+# assert and requires scalar_high to go red and nothing else.
+build/packet-write-refusal/dart/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema make/dart.mk
+	@mkdir -p build/packet-write-refusal/dart/gen
+	./bin/schema generate --lang dart --out build/packet-write-refusal/dart/gen test/packet-write-refusal/RefusalPacket.schema
+	@touch $@
+
+.PHONY: packet-write-refusal-dart packet-write-refusal-dart-negative-control
+packet-write-refusal-dart: build/packet-write-refusal/dart/.stamp
+	$(DART) analyze build/packet-write-refusal/dart/gen test/packet-write-refusal/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-write-refusal/dart/gen test/packet-write-refusal/dart
+	$(DART) --enable-asserts test/packet-write-refusal/dart/main.dart test/packet-write-refusal/cases.txt
+
+packet-write-refusal-dart-negative-control: packet-write-refusal-dart
+	@mkdir -p build/packet-write-refusal/dart-negative
+	go run ./tools/sabotage -name packet-write-refusal-dart-bound -out build/packet-write-refusal/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-refusal/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-refusal/dart-negative/overlay.json
+	go run -overlay=build/packet-write-refusal/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-refusal/dart-negative/gen test/packet-write-refusal/RefusalPacket.schema
+	@sed 's|../../../build/packet-write-refusal/dart/gen|$(CURDIR)/build/packet-write-refusal/dart-negative/gen|' test/packet-write-refusal/dart/main.dart > build/packet-write-refusal/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-write-refusal/dart-negative/main.dart test/packet-write-refusal/cases.txt > build/packet-write-refusal/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a Dart packet writer with no upper-bound assert stayed green'; \
+		cat build/packet-write-refusal/dart-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-refusal scalar_high: refused value was written' build/packet-write-refusal/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: scalar_high was not the failure'; cat build/packet-write-refusal/dart-negative/log; exit 1; }
+	@test "$$(grep -c '^FAILED: ' build/packet-write-refusal/dart-negative/log)" = 1 || \
+		{ echo 'NEGATIVE CONTROL FAILED: a case other than the removed bound went red'; cat build/packet-write-refusal/dart-negative/log; exit 1; }
+	@grep -m1 '^FAILED: ' build/packet-write-refusal/dart-negative/log
+	@echo 'packet write refusal Dart negative control: with no upper-bound assert scalar_high is written and nothing else goes red'
+
+test-dart: packet-write-refusal-dart packet-write-refusal-dart-negative-control
