@@ -57,6 +57,7 @@ mod tblw2;
 mod vocab9demo;
 mod vocabdemo;
 mod widelist;
+mod shapes;
 
 use std::io::{self, Read, Write};
 
@@ -381,6 +382,8 @@ const ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
     ("widelist", "Wide"),
+    ("shapes", "Bounds"),
+    ("shapes", "FixedBounds"),
 ];
 
 // A declared fixed root reads form 3 and refuses every other form by name
@@ -420,6 +423,7 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocab9demo", "Wide19"),
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
+    ("shapes", "FixedBounds"),
 ];
 
 // THE FIXED FORM (docs/SPEC-TABLES.md §3.4): every file of a declared
@@ -532,6 +536,7 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("vocabdemo", "Wide09") => fixed_arm!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, wire),
         ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
         ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire),
+        ("shapes", "FixedBounds") => fixed_arm!(shapes, fixed_bounds_fixed_load, fixed_bounds_fixed_save, fixed_bounds_fixed_measure, FixedBoundsRow, wire),
         _ => None,
     }
 }
@@ -606,6 +611,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("vocab9demo", "Wide19") => arm!(vocab9demo, wide19_load, wide19_load_retain, wide19_save, wide19_save_checked, wide19_save_retain, wide19_load_measure, wire, retain),
         ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_checked, wide00_save_retain, wide00_load_measure, wire, retain),
         ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_checked, wide09_save_retain, wide09_load_measure, wire, retain),
+        ("shapes", "Bounds") => arm!(shapes, bounds_load, bounds_load_retain, bounds_save, bounds_save_checked, bounds_save_retain, bounds_load_measure, wire, retain),
         _ => None,
     }
 }

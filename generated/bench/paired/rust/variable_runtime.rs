@@ -2379,13 +2379,18 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
+    /// the root is a VARIABLE table (docs/SPEC-TABLES.md §16.7): its text
+    /// carries &node labels, and the label rules hold in a skipped value
+    /// too. A fixed table root's text has no labels, and a skipped value
+    /// there is skipped whole.
+    pub graph: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new(), graph: false }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -2915,11 +2920,17 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
+        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
+        let at = self.p;
+        self.p = p;
+        // the label is followed by its object's , or } and nothing else
+        // (§16.7; RFC 8259's value-separator): a second key with no comma
+        // before it is not JSON, and neither is a fraction or an exponent
+        // after the digits
+        if !matches!(self.peek(), b',' | b'}') {
+            self.p = at;
             return None;
         }
-        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
-        self.p = p;
         Some(v)
     }
     /// A REFERENCE (docs/SPEC-TABLES.md §16.7): a label the text has defined,
@@ -2962,6 +2973,10 @@ impl<'a> Jr<'a> {
                  self.p += 1;
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
+                 let mut first = true;
+                 // the label a definition this skipped object opened: it
+                 // closes with the object, and a later reference reads null
+                 let mut opened: Option<u64> = None;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -2972,6 +2987,9 @@ impl<'a> Jr<'a> {
                      if self.b[self.p] == b'}' {
                          self.p += 1;
                          self.depth -= 1;
+                         if let Some(label) = opened {
+                             self.labels.insert(label, JsonLabel::Dropped);
+                         }
                          return;
                      }
                      let key = self.read_name();
@@ -2995,23 +3013,47 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
-                    // label followed by a field keeps its label as Dropped, so a
-                    // reference to it reads null; an &node alone is a reference
-                    // and defines nothing.
-                    let mut labelled = false;
-                    if key.as_deref() == Some("&node")
-                        && let Some(label) = self.read_label()
-                    {
-                        labelled = true;
-                        self.space();
-                        if self.p < self.b.len() && self.b[self.p] == b',' {
-                            self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                    // THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7), under a
+                    // variable root: an &-prefixed key is &node and the
+                    // object's first key, its label is a label; a label alone
+                    // (a trailing comma allowed) REFERS and must name a closed
+                    // definition; a label with fields DEFINES, must be new,
+                    // and stays open until this object closes, then reads null.
+                    if self.graph && key.as_deref().is_some_and(|k| k.starts_with('&')) {
+                        if !first || key.as_deref() != Some("&node") {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
                         }
+                        let Some(label) = self.read_label() else {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        };
+                        let defined = self.labels.get(&label).map(|e| !matches!(e, JsonLabel::Open));
+                        if self.peek() == b',' {
+                            self.p += 1;
+                        }
+                        if self.peek() == b'}' {
+                            self.p += 1;
+                            self.depth -= 1;
+                            if defined != Some(true) {
+                                self.damaged = true;
+                            }
+                            return;
+                        }
+                        if defined.is_some() {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        }
+                        self.labels.insert(label, JsonLabel::Open);
+                        opened = Some(label);
+                        first = false;
+                        continue;
                     }
-                    if !labelled {
-                        self.skip_value();
-                    }
+                    first = false;
+                    self.skip_value();
                     if self.damaged {
                         self.depth -= 1;
                         return;

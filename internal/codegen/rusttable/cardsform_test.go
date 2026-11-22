@@ -58,7 +58,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
+		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TString, Size: 16}}, []string{"declared minimum"}},
 	}
 
 	for _, tc := range cases {
@@ -116,12 +116,12 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
+		&ir.Field{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TString, Size: 16}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying a nonzero counted minimum was not refused")
+		t.Fatal("a card unit carrying a nonzero counted minimum of text was not refused")
 	}
 	for _, want := range []string{"Card", "samples", "declared minimum"} {
 		if !strings.Contains(err.Error(), want) {
