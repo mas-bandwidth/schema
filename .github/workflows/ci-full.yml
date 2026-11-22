@@ -186,6 +186,17 @@ jobs:
     # hosted two-core runner the SCHEMA_SLOW=1 gotable package ran past ten
     # minutes; with no cap it would finish there too, only later.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # WHAT THIS JOB PROVIDES, SO A TEST CANNOT SKIP FOR WANT OF IT. Every fleet
+    # runner's service PATH resolves node and tsc (the fleet SDK's bin), and the
+    # step below clones serialize.js beside the checkout. A test that needs one
+    # and does not find it would skip, and a skipped test exits 0; under these
+    # two variables the same absence fails by name (internal/slowtest,
+    # Program and Require; internal/ci, TestTheGoTestJobProvidesNodeAndTsc).
+    # Under the skip ledger (.github/skip-ledger.txt, schema#4525) the same
+    # promise is the classes tool:node and tool:tsc in each row's -provides.
+    env:
+      SCHEMA_REQUIRE_NODE: '1'
+      SCHEMA_REQUIRE_TSC: '1'
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -286,14 +297,14 @@ jobs:
       - name: where this row records its go test events
         run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
-      - name: Check out the C, C++, C#, Go and Rust serialize runtimes (pinned releases)
+      - name: Check out the C, C++, C#, Go, Rust and JavaScript serialize runtimes (pinned releases)
         run: |
           set -euo pipefail
           cd ..
           # A self-hosted runner's workspace PARENT persists between runs: the
           # previous run's clones are removed and re-cloned at the pinned tag
           # every time, never reused (as ci-fast's go-test-touched does).
-          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
@@ -301,6 +312,9 @@ jobs:
           # compiler.TestRustEverySchemaNameIsReachable (unit-rest) builds the
           # generated crates against the sibling serialize.rs.
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          # the JavaScript runtime the node halves of the js and compiler
+          # tests import (SCHEMA_REQUIRE_NODE, the job's env)
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0

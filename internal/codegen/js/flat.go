@@ -318,7 +318,7 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module\n")
 		h.WriteString("// scope is safe: single threaded per realm, consumed in the same op that\n")
 		h.WriteString("// fills it.\n")
-		h.WriteString("const SC = new DataView(new ArrayBuffer(8));\n\n")
+		h.WriteString("const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));\n\n")
 	}
 	h.WriteString("// Read buffers must extend at least this many bytes past the payload.\n")
 	h.WriteString("export const FlatReadSlack = 8;\n\n")
@@ -928,7 +928,7 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 		// the count guards the loop; its range is a writer contract like any
 		// other, refused in every build (SPEC §4.6, §5.1). The writer also holds
 		// the count to an integer, its contract on every number.
-		cond := fmt.Sprintf("!Number.isInteger(%s) || %s < %d || %s > %d", count, count, f.ArrayMin, count, f.ArrayBound)
+		cond := fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %d || %s > %d", count, count, f.ArrayMin, count, f.ArrayBound)
 		g.guard(cond, " // the count guards the loop; its range is a writer contract (SPEC §4.6)", ind)
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
@@ -1057,7 +1057,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		w := int64(f.Type.Width)
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
 		if w <= 32 {
-			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
+			g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
 			if w == 32 {
 				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
@@ -1077,7 +1077,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
-		g.guard(fmt.Sprintf("!Number.isFinite(%s)", name), " // a bare float must be finite", ind)
+		g.guard(fmt.Sprintf("!globalThis.Number.isFinite(%s)", name), " // a bare float must be finite", ind)
 		if g.wKnown && g.wSb == 0 {
 			// word-aligned at a static offset: the double's two little-endian
 			// words, low first, are exactly one little-endian 8-byte store
@@ -1111,7 +1111,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.guard("!Number.isFinite(Math.fround(x))", " // a bare float must be finite", ind)
+	g.guard("!globalThis.Number.isFinite(globalThis.Math.fround(x))", " // a bare float must be finite", ind)
 	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
 	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
@@ -1133,12 +1133,12 @@ func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	maxF := float32(f.FMax)
 	deltaF := maxF - minF
 	mivF := float32(maxInt)
-	g.pf("%sx = Math.fround(%s);\n", ind, name)
-	g.guard("!Number.isFinite(x)", "", ind)
+	g.pf("%sx = globalThis.Math.fround(%s);\n", ind, name)
+	g.guard("!globalThis.Number.isFinite(x)", "", ind)
 	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
-	g.pf("%sn = Math.fround(Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
+	g.pf("%sn = globalThis.Math.fround(globalThis.Math.fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
 	g.pf("%sif (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }\n", ind)
-	g.pf("%sv = Math.floor(Math.fround(Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
+	g.pf("%sv = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * %s) + 0.5));\n", ind, f32lit(float64(mivF)))
 	g.pf("%sif (v > %d) { v = %d; }\n", ind, maxInt, maxInt)
 	g.mergeW(bits, ind)
 }
@@ -1165,7 +1165,7 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 		return
 	}
 	if f.Type.Width <= 32 {
-		g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, rawMin.String(), name, rawMax.String()),
+		g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %s || %s > %s", name, name, rawMin.String(), name, rawMax.String()),
 			"", ind)
 		var off string
 		switch {
@@ -1238,14 +1238,14 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				g.chunkFlush(ind)
 				return
 			}
-			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
+			g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
 				"", ind)
 			g.emitWriteRangedNum(name, f.IntMin.Int64(), f.IntMax.Int64(), ind)
 		case "int64":
 			if w <= 32 {
 				// uint32 storage whose range escapes int32: values and offsets
 				// stay below 2^32 — exact in doubles
-				g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
+				g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
 					"", ind)
 				g.emitWriteRangedNum(name, f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				return
@@ -1294,7 +1294,7 @@ func (g *fgen) guardBareInt(f *ir.Field, name, ind string) {
 			" // a bare integer must fit its width", ind)
 		return
 	}
-	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, lo.String(), name, hi.String()),
+	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %s || %s > %s", name, name, lo.String(), name, hi.String()),
 		" // a bare integer must fit its width", ind)
 }
 
@@ -1323,7 +1323,7 @@ func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 
 func (g *fgen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
-	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", name, name, name, ref.Max),
+	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d", name, name, name, ref.Max),
 		" // headroom above the wire range cannot ride", ind)
 	if bits == 0 {
 		return
@@ -1335,7 +1335,7 @@ func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	wb := int64(ref.WireBits)
 	if wb < 64 {
 		lim := new(big.Int).Lsh(big.NewInt(1), uint(wb))
-		g.guard(fmt.Sprintf("BigInt.asUintN(64, %s) >= %sn", name, lim.String()),
+		g.guard(fmt.Sprintf("globalThis.BigInt.asUintN(64, %s) >= %sn", name, lim.String()),
 			" // a mask bit above the wire width cannot ride", ind)
 	}
 	if wb <= 32 {
@@ -1358,7 +1358,7 @@ func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 // runtime tier's.
 func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
-	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
+	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the slice; out-of-contract writes are refused", ind)
 	if f.Type.Kind == ir.TString {
 		g.needText = true
@@ -1673,7 +1673,7 @@ func (g *fgen) emitReadWide(bits int64, ind string) {
 	switch {
 	case bits <= 32:
 		g.readR(bits, ind)
-		g.pf("%sbg = BigInt(v);\n", ind)
+		g.pf("%sbg = globalThis.BigInt(v);\n", ind)
 	case bits <= 64:
 		g.readR(32, ind)
 		g.pf("%sSC.setUint32(0, v, true);\n", ind)
@@ -1687,7 +1687,7 @@ func (g *fgen) emitReadWide(bits int64, ind string) {
 		g.pf("%sSC.setUint32(4, v, true);\n", ind)
 		g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
 		g.readR(bits-64, ind)
-		g.pf("%sbg |= BigInt(v) << 64n;\n", ind)
+		g.pf("%sbg |= globalThis.BigInt(v) << 64n;\n", ind)
 	default:
 		// two scratch-assembled 64-bit halves, one shift-or — each BigInt
 		// step here allocates, so the assembly uses two, not seven (the
@@ -1736,7 +1736,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		g.readR(32, ind)
 		g.readRefuse("(v & 0x7f800000) === 0x7f800000", " // a bare float must be finite", ind)
 		g.pf("%sif ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {\n", ind)
-		g.pf("%s  SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);\n", ind)
+		g.pf("%s  SC.setBigUint64(0, (globalThis.BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (globalThis.BigInt(v & 0x7fffff) << 29n), true);\n", ind)
 		g.pf("%s  %s = SC.getFloat64(0, true);\n", ind, name)
 		g.pf("%s} else {\n", ind)
 		g.pf("%s  SC.setUint32(0, v, true);\n", ind)
@@ -1774,7 +1774,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			wb := int64(ref.WireBits)
 			if wb <= 32 {
 				g.readR(wb, ind)
-				g.pf("%s%s = BigInt(v);\n", ind, name)
+				g.pf("%s%s = globalThis.BigInt(v);\n", ind, name)
 				return
 			}
 			g.emitReadWide(wb, ind)
@@ -1796,7 +1796,7 @@ func (g *fgen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
 	if maxInt != (uint64(1)<<bits)-1 {
 		g.readRefuse(fmt.Sprintf("v > %d", maxInt), " // headroom above the quantum count is refused", ind)
 	}
-	g.pf("%s%s = Math.fround(Math.fround(Math.fround(Math.fround(v) / %s) * %s) + %s);\n",
+	g.pf("%s%s = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / %s) * %s) + %s);\n",
 		ind, name, f32lit(float64(mivF)), f32lit(float64(deltaF)), f32lit(float64(minF)))
 }
 
@@ -1901,7 +1901,7 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 				decoded = fmt.Sprintf("(v + %d) | 0", umin)
 			}
 			if w > 32 {
-				g.pf("%s%s = BigInt(%s);\n", ind, name, decoded)
+				g.pf("%s%s = globalThis.BigInt(%s);\n", ind, name, decoded)
 			} else {
 				g.pf("%s%s = %s;\n", ind, name, decoded)
 			}
@@ -1932,7 +1932,7 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 	if w == 64 {
 		g.emitReadWide(64, ind)
 		if f.Type.Signed {
-			g.pf("%s%s = BigInt.asIntN(64, bg);\n", ind, name)
+			g.pf("%s%s = globalThis.BigInt.asIntN(64, bg);\n", ind, name)
 		} else {
 			g.pf("%s%s = bg;\n", ind, name)
 		}
@@ -1963,9 +1963,9 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 			g.readRefuse(fmt.Sprintf("v > %s", diff.String()), " // a smuggled offset is refused", ind)
 		}
 		if f.IntMin.Sign() == 0 {
-			g.pf("%s%s = BigInt(v);\n", ind, name)
+			g.pf("%s%s = globalThis.BigInt(v);\n", ind, name)
 		} else {
-			g.pf("%s%s = %sn + BigInt(v);\n", ind, name, f.IntMin.String())
+			g.pf("%s%s = %sn + globalThis.BigInt(v);\n", ind, name, f.IntMin.String())
 		}
 		return
 	}
@@ -2080,7 +2080,7 @@ func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff,
 // switch inlines each arm's items — the struct-inlining move, per arm. expr
 // is the union object (a field path or a hoisted element ref).
 func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
-	g.guard(fmt.Sprintf("!Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d", expr, expr, expr, u.Max),
+	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d", expr, expr, expr, u.Max),
 		" // the tag validates BEFORE it rides (SPEC §4.8)", ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits

@@ -1,0 +1,4 @@
+package bindingcontrol
+
+type Number { value uint32 }
+type Clean { value float32 }
