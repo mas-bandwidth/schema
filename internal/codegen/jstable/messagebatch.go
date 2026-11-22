@@ -511,6 +511,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
 	if fixedStructNeedsValueCheck(st) {
 		g.needHome(st.Name + "FixedCheckBody")
+		g.needHome(st.Name + "FixedFromText")
 	}
 
 	g.emitMessageVerbs(st)
@@ -1351,13 +1352,31 @@ func (g *fixedModule) emitMessageCheck(st *ir.Struct) {
 	if !fixedStructNeedsValueCheck(st) {
 		return
 	}
+	// A VALUE A TEXT READ PLACED is the variable class's (a live-length array
+	// for a counted one, an enum's name): the preflight refuses it as the fixed
+	// class's value, so it is read into the fixed storage once and held to the
+	// same preflight (docs/SPEC-TABLES.md §3.3, §16). The caller's own array is
+	// never written; a value already in the fixed form costs the one preflight.
+	g.pf("  let vals = values;\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] !== null && values[i] !== undefined && !%sFixedCheckBody(values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("    let value = values[i];\n")
+	g.pf("    if (value !== null && value !== undefined && !%sFixedCheckBody(value)) {\n", st.Name)
+	g.pf("      value = %sFixedFromText(value, new %s());\n", st.Name, st.Name)
+	g.pf("      if (!%sFixedCheckBody(value)) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("      if (vals === values) { vals = values.slice(); }\n")
+	g.pf("      vals[i] = value;\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
 }
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	// vn names the batch the bodies are written from: the converted copy when the
+	// preflight can convert a text-placed value, the caller's own otherwise.
+	vn := "values"
+	if fixedStructNeedsValueCheck(st) {
+		vn = "vals"
+	}
 	if st.Integrity != "" {
 		g.needHome("TableIntegrityHolds", "TableIntegritySeal", "TableMessageOpenDamaged")
 	}
@@ -1371,7 +1390,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.emitMessageCheck(st)
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -1399,7 +1418,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
 	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
