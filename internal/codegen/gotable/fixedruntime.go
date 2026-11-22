@@ -1181,8 +1181,7 @@ type tableFixedCompiler struct {
 	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (docs/FIXED-FORM-ALGORITHM.md §5.4).
-	unlawful bool
-	absentIntoBare bool // writer's optional into reader's bare: refuses kind_mismatch (R2)
+	unlawful int8 // 0 none, 1 layout_malformed, 3 kind_mismatch (writer ?T into reader bare T, R2)
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -1334,7 +1333,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-		c.unlawful = true
+		c.unlawful = 1
 		return
 	}
 	myChild := mi + 1
@@ -1361,7 +1360,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	d := dst[mi]
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
-	if te.Kind == 35 && me.Kind != 35 { c.absentIntoBare = true; return }
 	if te.Kind != me.Kind && !(me.Kind == 35) {
 		if tableFixedWidens(te.Kind, me.Kind) {
 			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg}
@@ -1376,7 +1374,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		c.unlawful = true
+		c.unlawful = 3 - 2*int8(min(1, te.Kind^35)) // 3 when the writer carried ?T
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -1414,7 +1412,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if mel.Size != 0 {
 			myN = (me.Size - head) / mel.Size
 		}
-		if theirN > myN { c.unlawful = true; return }
+		if theirN > myN { c.unlawful = 1; return }
 		theirBase := theirAt + head
 		n := theirN
 		n = min(n, myN)
@@ -1432,7 +1430,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 16:
 		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
@@ -1442,7 +1440,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tee := tableFixedEntryAt(theirs, tel)
 		mee := tableFixedEntryAt(mine, mel)
 		if te.Size/tee.Size > me.Size/mee.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		for k := range mkey.Children {
@@ -1457,7 +1455,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 15:
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		theirTag := tableFixedTagBytes(theirs, ti)
@@ -1530,7 +1528,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// table.
 		if te.Size < me.Size {
 			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-				c.unlawful = true
+				c.unlawful = 1
 				return
 			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
@@ -1548,7 +1546,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		m := make([]uint16, n)
@@ -1568,7 +1566,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tableFixedPush(c, e)
 	case 12:
 		if te.Size > me.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		units := me.Size - 4
@@ -1589,7 +1587,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
 		} else {
-			c.unlawful = true
+			c.unlawful = 1
 		}
 	}
 }
@@ -1615,10 +1613,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.tooLarge {
 		return -3
 	}
-	if c.unlawful {
-		return -2
+	if c.unlawful != 0 {
+		return -1 - int(c.unlawful)
 	}
-	if c.absentIntoBare { return -4 }
 	if c.overflow {
 		return -1
 	}
@@ -1819,7 +1816,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
-			if made == -4 { // writer's ?T into reader's bare T (R2)
+			if made == -4 {
 				out[i].Why = TableRefuseKindMismatch.Error()
 				break
 			}
