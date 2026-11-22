@@ -54,7 +54,7 @@ def go(x:float):
     let rec = schema_rt.new_record(schema_rt.table_of("Root"))
     schema_rt.slot_named(rec, "value").cell.f = x
     let text, why = schema_rt.json_write(rec)
-    print(replace(text, "\n", " ") + "|" + why)
+    print("@" + text + "|" + why)
 `)
 	for _, x := range xs {
 		fmt.Fprintf(&b, "go(%s)\n", strconv.FormatFloat(x, 'e', 17, 64))
@@ -62,7 +62,10 @@ def go(x:float):
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0644); err != nil {
 		t.Fatal(err)
 	}
-	out := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", nil)), "\n"), "\n")
+	out := strings.Split(string(lobsterrun.Run(t, g.dir, "main.lobster", nil)), "@")[1:]
+	for i := range out {
+		out[i] = strings.Join(strings.Fields(out[i]), " ")
+	}
 	if len(out) != len(xs) {
 		t.Fatalf("got %d lines, want %d: %q", len(out), len(xs), out)
 	}
@@ -70,7 +73,7 @@ def go(x:float):
 		f := float32(x)
 		want := "|non_finite_float"
 		if !math.IsInf(float64(f), 0) {
-			want = fmt.Sprintf(`{   "value": %s } |`, canonical(f))
+			want = fmt.Sprintf(`{ "value": %s }|`, canonical(f))
 		}
 		if out[i] != want {
 			t.Errorf("%v: got %q, want %q", x, out[i], want)
