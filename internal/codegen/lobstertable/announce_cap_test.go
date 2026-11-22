@@ -46,7 +46,7 @@ print("read " + schema_rt.announce_read(v, schema_rt.announce(), schema_rt.LoadR
 			}
 			continue
 		}
-		if strings.Contains(got, "measure -1") || strings.Contains(got, "length 0") || !strings.Contains(got, "read 1") {
+		if strings.Contains(got, "measure -1") || strings.Contains(got, "length 0") || !strings.Contains(got, "read true") {
 			t.Fatalf("%d entries: the writer refused or the reader did:\n%s", row.entries, got)
 		}
 	}

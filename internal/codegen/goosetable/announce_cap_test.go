@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/announcefit"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -23,7 +22,7 @@ func TestGooseAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		u := fixedproof.ParseCheckUnit(t, announcefit.Schema(t, row.entries))
+		u := unitFromSchema(t, "Probe", announcefit.Schema(t, row.entries))
 		if got := len(tablewire.MessageVocabulary(u)); got != row.entries {
 			t.Fatalf("the unit announces %d entries, want %d", got, row.entries)
 		}
