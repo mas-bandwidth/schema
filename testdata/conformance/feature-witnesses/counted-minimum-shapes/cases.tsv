@@ -1,0 +1,24 @@
+# THE COUNTED-MINIMUM SHAPES CORPUS (docs/SPEC-TABLES.md §3, §4; SPEC §4.6):
+# [2..3]U and [2..3]*Leaf in a variable table R, the file form. Probe.schema
+# is the unit; every .bin is one whole save of R. The reference engine holds
+# every row: internal/tablewire TestCountedMinimumShapesWitnessPins.
+#
+# save <case> <json> wrote <wire>: read <json> as R, save; owes <wire> byte
+#   for byte. save_fresh is a fresh R: both fields at their birth, elided.
+# text <case> <json> refused -: the text read refuses (a count under Min).
+# read <case> <wire> <verdict> -: load <wire>, read or refused (the verdict
+#   only; docs/rulings.json refusal-verdict-only). arms-under and ptrs-under
+#   hold ONE element, written by the same unit spelled [..3] (the same bytes,
+#   §2.9): a count under Min, refused.
+#
+# kind	case	value	verdict	wire
+save	save_fresh	{}	wrote	fresh
+save	save_set_min	{"arms":[{"n":5},{"n":6}],"ptrs":[{"a":3},{"a":4}],"tail":1}	wrote	set-min
+save	save_set_max	{"arms":[{"s":"ab"},{"n":2},{"n":0}],"ptrs":[{"a":1},{"a":2},{"a":3}]}	wrote	set-max
+text	text_arms_under	{"arms":[{"n":1}]}	refused	-
+text	text_ptrs_under	{"ptrs":[{"a":1}]}	refused	-
+read	read_fresh	fresh	read	-
+read	read_set_min	set-min	read	-
+read	read_set_max	set-max	read	-
+read	read_arms_under	arms-under	refused	-
+read	read_ptrs_under	ptrs-under	refused	-
