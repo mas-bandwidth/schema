@@ -487,7 +487,7 @@ public struct TableReport
         Truncated = 10, PreviousForm = 11, ReservedNotZero = 12, LayoutMalformed = 13, LayoutUnknown = 14,
         LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18,
         CountOverBound = 19, LengthOverBound = 20, TextIllFormed = 21, IntegrityMismatch = 22,
-        BuildVersionMismatch = 23;
+        NoVocabulary = 23, SecondAnnouncement = 24, VocabularyTooLarge = 25, BuildVersionMismatch = 26;
 
     public static string ReasonName(int reason)
     {
@@ -516,6 +516,9 @@ public struct TableReport
             case LengthOverBound: return "length_over_bound";
             case TextIllFormed: return "text_ill_formed";
             case IntegrityMismatch: return "integrity_mismatch";
+            case NoVocabulary: return "no_vocabulary";
+            case SecondAnnouncement: return "second_announcement";
+            case VocabularyTooLarge: return "vocabulary_too_large";
             case BuildVersionMismatch: return "build_version_mismatch";
         }
         return "unknown_reason";
@@ -555,6 +558,9 @@ internal static int _MapReasonCode(_R box)
         if (s == "count_over_extent_cap") { return TableReport.CountOverExtentCap; }
         if (s == "blob_shared") { return TableReport.BlobShared; }
         if (s == "batch_too_large") { return TableReport.BatchTooLarge; }
+        if (s == "no_vocabulary") { return TableReport.NoVocabulary; }
+        if (s == "second_announcement") { return TableReport.SecondAnnouncement; }
+        if (s == "vocabulary_too_large") { return TableReport.VocabularyTooLarge; }
         if (s == "truncated") { return TableReport.Truncated; }
         if (s == "build_version_mismatch") { return TableReport.BuildVersionMismatch; }
         if (s.StartsWith("non_finite_float", StringComparison.Ordinal)) { return TableReport.NonFiniteFloat; }

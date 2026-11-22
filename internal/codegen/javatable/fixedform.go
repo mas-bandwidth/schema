@@ -2383,6 +2383,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
+	g.pf("        report.reset();\n")
 	if st.Integrity != "" {
 		g.pf("        if (data != null && data.length >= 1 && data[0] == TableFixed.form) {\n")
 		g.pf("            if (!TableFixed.integrityHolds(data)) {\n")

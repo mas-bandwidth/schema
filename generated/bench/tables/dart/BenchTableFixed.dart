@@ -6950,7 +6950,8 @@ int tableEntitySaveMessages(
     report.Refuse('batch_too_large');
     return -1;
   }
-  if (buffer.length < 2) return -1;
+  final need = tableEntityMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) return -1;
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));
@@ -7412,7 +7413,8 @@ int tableStatSaveMessages(
     report.Refuse('batch_too_large');
     return -1;
   }
-  if (buffer.length < 2) return -1;
+  final need = tableStatMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) return -1;
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));
@@ -8286,7 +8288,8 @@ int tableMixedSaveMessages(
     report.Refuse('batch_too_large');
     return -1;
   }
-  if (buffer.length < 2) return -1;
+  final need = tableMixedMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) return -1;
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));
