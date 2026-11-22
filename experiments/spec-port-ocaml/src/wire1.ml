@@ -583,7 +583,7 @@ and read_field rs c (t : ty) (k : int) depth what (slot : (value array * int) op
       read_map rs b kt vt (depth + 1) what
     | Ptr _ | Blob _ ->
       let i = leb rs c in
-      let holder = { nv = VUnit; nid = -1 } in
+      let holder = { nv = VUnit; nid = - 2 - List.length rs.pending } in
       if i <> 0 then rs.pending <- (holder, t, i) :: rs.pending;
       if i = 0 then VPtr None else VPtr (Some holder)
     | _ -> refuse ("kind_mismatch: " ^ what)
@@ -819,7 +819,7 @@ and read_node_table rs c =
   done;
   if b.p <> b.lim then refuse "wire_damaged: node table bytes left"
 
-let holder_target : (node, node) Hashtbl.t = Hashtbl.create 16
+let holder_target : (int, node) Hashtbl.t = Hashtbl.create 16
 
 let unit_types (u : unit_t) =
   let t = Hashtbl.create 16 in
@@ -862,14 +862,14 @@ let load (u : unit_t) (root : struct_d) (s : string) : value * int * int =
         if not ok then refuse "wire_damaged: wrong-type pointer target";
         (match t with Blob _ -> if Hashtbl.mem reached i then refuse "blob_shared" | _ -> ());
         Hashtbl.replace reached i ();
-        Hashtbl.replace holder_target h nd) rs.pending;
+        Hashtbl.replace holder_target h.nid nd) rs.pending;
   Hashtbl.iter (fun i _ -> if not (Hashtbl.mem reached i) then refuse "wire_damaged: node no pointer reaches") rs.nodes;
   (* splice holders, then check the graph for cycles from the root *)
   let fixed = Hashtbl.create 16 in
   let rec fix v =
     match v with
-    | VPtr (Some h) when h.nid = -1 ->
-      let t = Hashtbl.find holder_target h in
+    | VPtr (Some h) when h.nid < 0 ->
+      let t = Hashtbl.find holder_target h.nid in
       if not (Hashtbl.mem fixed t.nid) then (Hashtbl.replace fixed t.nid (); t.nv <- fix t.nv);
       VPtr (Some t)
     | VStruct fs -> VStruct (Array.map fix fs)

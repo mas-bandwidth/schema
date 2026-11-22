@@ -277,6 +277,14 @@ let main () =
   let argv = Sys.argv in
   if Array.length argv < 3 then (prerr_endline "usage: driver <manifest> list | <surface> <outdir>"; exit 3);
   let manifest = argv.(1) and surface = argv.(2) in
+  if surface = "x-layout" then begin
+    let lines = String.split_on_char (Char.chr 10) (read_file manifest) |> List.map fields_of in
+    List.iter (function "unit" :: key :: paths -> Hashtbl.replace units key paths | _ -> ()) lines;
+    let l, root = unit_root argv.(3) argv.(4) in
+    let hx s = String.concat "" (List.map (fun c -> Printf.sprintf "%02x" (Char.code c)) (List.of_seq (String.to_seq s))) in
+    Printf.printf "hash %Lu\nlayout %s\ndigest %s\n" (Fixed.own_hash root) (hx (Fixed.layout root)) (hx (Fixed.digest root));
+    List.iter (fun (e : Fixed.lineage) -> Printf.printf "lock wire=%Lu\n bytes %s\n digest %s\n" e.wire (hx e.lbytes) (hx e.ldigest)) (try Hashtbl.find l.lock root.s_name with Not_found -> []);
+    exit 0 end;
   if surface = "list" then (List.iter print_endline surfaces; exit 0);
   if not (List.mem surface surfaces) then exit 2;
   let outdir = argv.(3) in
