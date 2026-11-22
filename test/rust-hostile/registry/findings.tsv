@@ -1,0 +1,7 @@
+# THE REGISTRY CONTROL (F-240): one active finding, for a case the corpus
+# answers correctly. Beside manifest-with-case.tsv it is STALE (the case went
+# green); beside manifest-without-case.tsv it names a case the run does not
+# carry and is STALE; beside manifest-empty.tsv the run checks nothing and
+# fails. no-findings.tsv beside manifest-without-case.tsv is the green control.
+# name	slug	input	one line
+announce-newer-form	registry-control	inputs/announcement-newer-form.bin	a finding registered for a healthy case, for the registry control only

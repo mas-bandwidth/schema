@@ -528,6 +528,11 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // A MANIFEST WITH NO CASES checks nothing, so it is never a green run.
+    if manifest.is_empty() {
+        println!("rust ({profile}): the manifest names no case; a run that checks nothing is not a pass");
+        std::process::exit(1);
+    }
 
     let exe = env::current_exe().expect("current_exe");
     let next = Arc::new(AtomicUsize::new(0));
@@ -587,6 +592,15 @@ fn main() {
             println!("FAIL {name} carrier={carrier} got={got} want={expected}");
             bad.push(name.clone());
         }
+    }
+    // A FIX-CARD WHOSE CASE HAS LEFT THE MANIFEST is stale too: the finding it
+    // carries is no longer checked by anything, so it can never go green.
+    let names: std::collections::HashSet<&str> = manifest.iter().map(|f| f[0].as_str()).collect();
+    let mut orphans: Vec<(&String, &Vec<String>)> = findings.iter().filter(|(k, _)| !names.contains(k.as_str())).collect();
+    orphans.sort();
+    for (name, fc) in orphans {
+        println!("STALE {name}: FIX-CARD {} names a case the manifest does not carry ({profile})", fc[1]);
+        stale.push(name.clone());
     }
     println!(
         "rust ({profile}): {} cases: {passed} pass, {carried} carried as FIX-CARD, {} unexplained, {} stale, {skipped} skipped",

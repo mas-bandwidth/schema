@@ -58,7 +58,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		{"optional_pointer", &ir.Field{Name: "some", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}}, []string{"optional ?T"}},
+		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TString, Size: 16}}, []string{"declared minimum"}},
 	}
 
 	for _, tc := range cases {
@@ -95,9 +95,6 @@ func TestFixedClassConstructsAreCarried(t *testing.T) {
 		// the fixed-point family rides as its raw storage integer (§3, kinds
 		// 20–29); TestFixedPointRidesItsRawStorage pins storage and clamp
 		{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}},
-		// a counted array with a declared minimum (§3): damaged under Min on
-		// read, born at Min; TestRustVariableCountedArrayMinimum pins its bytes
-		{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 	} {
 		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
 			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
@@ -119,14 +116,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "samples", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}},
+		&ir.Field{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TString, Size: 16}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying an optional pointer was not refused")
+		t.Fatal("a card unit carrying a nonzero counted minimum of text was not refused")
 	}
-	for _, want := range []string{"Card", "samples", "optional ?T"} {
+	for _, want := range []string{"Card", "samples", "declared minimum"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}

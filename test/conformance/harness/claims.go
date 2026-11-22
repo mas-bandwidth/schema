@@ -190,100 +190,113 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 		out[surface][name] = info
 		return nil
 	}
+	if err := walkCases(m, add); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// walkCases calls add once for every case of every surface the manifest's
+// lines give a unit: the surface, the case's name on that surface (the name a
+// driver answers under, so a json-write case carries its ".json"), and the
+// unit and root the case reads. It is the one place that mapping is written
+// down: caseIndex reads claims from it and caseOwners (optin.go) the opt-in
+// rule.
+func walkCases(m *Manifest, add func(surface, name, unit, root string) error) error {
 	for _, inst := range m.Instances {
 		if err := add("wire", inst.Name, inst.Unit, inst.Root); err != nil {
-			return nil, err
+			return err
 		}
 		if inst.NoText {
 			continue // no text either way (§16.7), so no case on the text surfaces
 		}
 		if err := add("json-read", inst.Name, inst.Unit, inst.Root); err != nil {
-			return nil, err
+			return err
 		}
 		if err := add("json-write", inst.Name+".json", inst.Unit, inst.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, wr := range m.JSONWriteRefusals {
 		if err := add("json-write", wr.Name+".json", wr.Unit, wr.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, fc := range m.Framings {
 		if err := add("framing", fc.Name, fc.Unit, fc.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, msg := range m.Messages {
 		conn, err := m.LookupConnection(msg.Connection)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err := add("message", msg.Name, conn.Unit, msg.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, g := range m.Grown {
 		msg, err := m.LookupMessage(g.Message)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		conn, err := m.LookupConnection(msg.Connection)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if err := add("message", g.Name, conn.Unit, msg.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, md := range m.MessageDrifts {
 		if err := add("message", md.Name, md.Unit, md.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, r := range m.Reports {
 		if err := add("report", r.Name, r.Unit, r.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, rc := range m.Retains {
 		unit := rc.Unit
 		if err := add("retain", rc.Name, unit, rc.Root); err != nil {
-			return nil, err
+			return err
 		}
 		if len(rc.Saves) > 0 {
 			if err := add("retain-save", rc.Name, unit, rc.Root); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 	for _, h := range m.Hostiles {
 		if err := add("json-hostile", h.Name, h.Unit, h.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, c := range m.Cooks {
 		for _, s := range []string{"cook", "cook-foreign"} {
 			if err := add(s, c.Case, c.Unit, c.Root); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 	for _, cw := range m.CookWrites {
 		inst, err := m.LookupInstance(cw.Instance)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for _, name := range []string{cw.Instance, cw.Instance + "-be"} {
 			if err := add("cook-write", name, inst.Unit, inst.Root); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 	for _, b := range m.Blocks {
 		for _, s := range []string{"block", "block-foreign", "block-dump"} {
 			if err := add(s, b.Name, b.Unit, ""); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
@@ -292,15 +305,15 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 		if wr.Form == "message" {
 			conn, err := m.LookupConnection(wr.Unit)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			unit = conn.Unit
 		}
 		if err := add(wr.Surface(), wr.Name, unit, wr.Root); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 // coverageRow is one line of the nightly's coverage table: one leg, one

@@ -246,13 +246,13 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
     if !v.entities.is_empty() {
         debug_assert!(v.entities.len() <= 8, "entities count past 8");
         debug_assert!(!v.entities.is_empty(), "entities count under 1");
-        let mark = ids.mark();
+        let birth_mark = ids.mark();
+        let mut at_birth = v.entities.len() == 1;
         let r = ids.id_ref(0x935d0fb07bb3822a);
         let count = v.entities.len().min(8);
         let mut body = Vec::new();
         body.push(13); // the element kind
         leb_write(&mut body, count as u64);
-        let mut all_birth = count == 1;
         for (j, e) in v.entities.iter().take(count).enumerate() {
             let mut eb = Vec::new();
             let bp = path.step(9, j as u32);
@@ -261,17 +261,15 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
                 retain_emit_tail(&mut eb, ids, ret, KNOWN_IDS, bp, rep);
             }
             eb.push(0); // the body's zero reference
-            if eb.as_slice() != [0u8] { all_birth = false; }
+            if eb.as_slice() != [0u8] { at_birth = false; }
             leb_write(&mut body, eb.len() as u64);
             body.extend_from_slice(&eb);
         }
-        if all_birth {
-            ids.rollback(mark);
-        } else {
-            leb_write(out, r);
-            out.push(14);
-            leb_write(out, body.len() as u64);
-            out.extend_from_slice(&body);
+        if at_birth { ids.rollback(birth_mark); } else {
+        leb_write(out, r);
+        out.push(14);
+        leb_write(out, body.len() as u64);
+        out.extend_from_slice(&body);
         }
     }
     if !v.stats.is_empty() {
@@ -2011,6 +2009,7 @@ pub fn mixed_event_json_read(jr: &mut Jr, v: &mut MixedEvent) {
     let Some(key) = jr.read_name() else { jr.damaged = true; return; };
     if jr.peek() != b':' { jr.damaged = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     match key.as_str() {
         "hit" => {
             if jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }
@@ -2040,11 +2039,13 @@ pub fn mixed_event_json_read(jr: &mut Jr, v: &mut MixedEvent) {
             }
         }
         _ => {
-            if key.starts_with('&') { jr.damaged = true; return; }
-            jr.unknown += 1;
-            jr.skip_value();
+            if key.starts_with('&') { jr.damaged = true; } else {
+                jr.unknown += 1;
+                jr.skip_value();
+            }
         }
     }
+    jr.depth -= 1;
     if jr.damaged || jr.missing_required != 0 { return; }
     let c = jr.peek();
     if c == b',' {
@@ -2949,6 +2950,8 @@ pub fn bench_mixed_json_ptr(jr: &mut Jr) -> Option<Rc<BenchMixed>> {
                 b'}' => { jr.p += 1; jr.refer::<BenchMixed>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<BenchMixed>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
@@ -3074,6 +3077,8 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
                 b'}' => { jr.p += 1; jr.refer::<MixedChatEvent>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<MixedChatEvent>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
@@ -3328,6 +3333,8 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
                 b'}' => { jr.p += 1; jr.refer::<MixedEntity>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<MixedEntity>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
@@ -3469,6 +3476,8 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
                 b'}' => { jr.p += 1; jr.refer::<MixedHitEvent>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<MixedHitEvent>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
@@ -3594,6 +3603,8 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
                 b'}' => { jr.p += 1; jr.refer::<MixedPickupEvent>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<MixedPickupEvent>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
@@ -3719,6 +3730,8 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
                 b'}' => { jr.p += 1; jr.refer::<MixedStat>(label) }
                 b',' => {
                     jr.p += 1;
+                    // a label alone with a trailing comma is still a REFERENCE (§16.7)
+                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<MixedStat>(label); }
                     // a label already defined, or still open, takes no second definition
                     if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
