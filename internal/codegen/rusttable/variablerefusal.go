@@ -45,6 +45,13 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 		if why := vc.reason[name]; why != "" {
 			return fmt.Errorf("rust variable form: %s.%s (docs/SPEC-TABLES.md §11)", name, why)
 		}
+		// the generate path carries a counted minimum (§3, SPEC §4.6); the
+		// card slice does not, and refuses it by name
+		for _, f := range vStruct(u, name).Fields {
+			if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+				return fmt.Errorf("rust variable form: %s.%s: a counted array with a declared minimum [Min..N]T is outside the card slice (docs/SPEC-TABLES.md §11)", name, f.Name)
+			}
+		}
 	}
 	return nil
 }
@@ -206,8 +213,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
-		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}
 	if ref, ok := f.Type.Ref.(*ir.Union); ok {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
@@ -226,6 +231,11 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 		}
 		if v.Body() {
 			continue
+		}
+		// a counted minimum rides as a table field (SPEC-TABLES §3, §4.6); an
+		// arm's array is read by the arm codec, which does not carry it
+		if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
+			return "arm " + v.Name + ": a counted array with a declared minimum [Min..N]T in a union arm is outside the variable class this leg carries (§3)"
 		}
 		if why := variableFieldConstruct(v.F); why != "" {
 			if v.F.Array == ir.ArrayFixed && mapValueArrayCarried(v.F) {

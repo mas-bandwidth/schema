@@ -372,6 +372,11 @@ func fieldDefault(f *ir.Field) string {
 	if f.Array == ir.ArrayFixed {
 		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a counted [Min..N] array is BORN at Min default elements, which an
+		// absent field reads as (docs/SPEC-TABLES.md §2.3, SPEC §4.6)
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayMin, fieldDefault(scalarOnly(f)))
+	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
 	}
@@ -810,7 +815,23 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
-		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
+		rides := "!" + x + ".is_empty()"
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a field elides at its BORN state exactly: the live count is Min
+			// and each of the Min elements is at its default (docs/SPEC-TABLES.md
+			// §2.3). A table element is at its default when its body is the
+			// terminator alone: its save body writes no field, judged on a scratch
+			// buffer with the id table rolled back.
+			rides = fmt.Sprintf("%s.len() != %d", x, f.ArrayMin)
+			if classOf(f) == vTable && ir.TextListPlain(f) {
+				rides += fmt.Sprintf(" || %s.iter().any(|e| !e.value.is_empty())", x)
+			} else if classOf(f) == vTable {
+				rides += fmt.Sprintf(" || %s.iter().enumerate().any(|(j, e)| { let mk = ids.mark(); let mut eb = Vec::new(); %s(e, &mut eb, ids, g, None, None, path.step(%d, j as u32)); ids.rollback(mk); !eb.is_empty() })", x, fn(f.Type.Name, "save_body"), ordinal)
+			} else {
+				rides += fmt.Sprintf(" || %s.iter().any(|e| %s)", x, elemNonDefaultExpr(f, "e"))
+			}
+		}
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, rides))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
@@ -818,6 +839,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			// §5.1, row 3; Rust write checks are debug asserts only); the
 			// writer's storage is held by the clamp to Max above in every build
 			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count below %d\");\n", inner, x, f.ArrayMin, f.Name, f.ArrayMin)
+			}
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
@@ -1213,6 +1237,12 @@ func emitEnumDecode(b *strings.Builder, f *ir.Field, dst, bound, onBad, ind stri
 	fmt.Fprintf(b, "%selse {\n", ind)
 	fmt.Fprintf(b, "%s    match ids[vref as usize - 1] {\n", ind)
 	for i, v := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			// a deprecated variant reads as the field's (or element's) default,
+			// never as itself and never counted unknown (docs/SPEC-TABLES.md §2.15)
+			fmt.Fprintf(b, "%s        0x%016x => %s,\n", ind, ir.TableWireId(e.VariantWireName(i)), enumDefault(f))
+			continue
+		}
 		fmt.Fprintf(b, "%s        0x%016x => %s::%s,\n", ind, ir.TableWireId(e.VariantWireName(i)), e.Name, rustVariant(v))
 	}
 	fmt.Fprintf(b, "%s        _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } %s::None },\n", ind, e.Name)
@@ -1393,6 +1423,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	}
 	if cls == vTable || cls == vUnion {
 		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
+	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a present array below its minimum refuses the load (SPEC §4.6)
+		fmt.Fprintf(b, "%sif count < %d { return nodes.refuse_count(report); }\n", i4, f.ArrayMin)
 	}
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
