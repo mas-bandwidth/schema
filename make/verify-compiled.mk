@@ -187,7 +187,7 @@ _verify-java-conformance: toolchain-java build/conformance-harness build-conform
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
-_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java
+_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java packet-write-refusal-java
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-java.csv
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" bench/run.sh --quick --bare --only java --out build/verify/bench-java.csv
 	@test -s build/verify/bench-java.csv
