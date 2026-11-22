@@ -103,17 +103,26 @@ const (
 	// RuleGain — ADDING the token is a refusal, removing it passes: the fact
 	// is a compatibility break (`| required` or `?T`, docs/SPEC-TABLES.md §18.2).
 	RuleGain
+	// RuleCountMin — a counted array's MINIMUM COUNT. Any move refuses, and a
+	// line that carries no token holds a minimum of zero: see countMinFinding.
+	RuleCountMin
 )
 
 // DefaultTokenPolicy is the WHOLE compatibility policy, one row per fact.
 var DefaultTokenPolicy = map[string]TokenRule{
 	// ---- a field's own facts ----
-	"kind":    RuleFixed,  // a changed kind is skipped by every old reader, and the value is silently gone
+	"kind":    RuleFixed,  // a stored value under a kind the reader does not declare and cannot widen refuses the load `kind_mismatch`
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
 	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
 	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
 	"bound":   RuleShrink, // a count past the reader's bound refuses the load `count_over_bound`
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
+	// A COUNTED ARRAY'S MINIMUM (`[Min..N]T`, SPEC §4.6). Raised, a stored
+	// count below it refuses the load `count_over_bound`; moved either way,
+	// an array the writer elided at its born count reads back with the
+	// reader's minimum of default elements and nothing reports it. So it is
+	// not an extent that only tightens: any move refuses (countMinFinding).
+	"mincount": RuleCountMin,
 	// THE DECLARED RANGE, judged from both ends: a reader refuses a stored
 	// value past its own bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
 	// tightened range is an extent shrinking like any other — a maximum
@@ -121,6 +130,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// falls outside a wider range.
 	"max": RuleShrink,
 	"min": RuleRaise,
+	// A `bits(N)` FIELD'S N is its implied range [0, 2^N - 1], refused
+	// `out_of_range` past it (§4), and it is judged as a maximum is. A plain
+	// unsigned integer moved to `bits(N)` is judged against the width its kind
+	// implies, or against its declared maximum (see impliedExtent).
+	"bits": RuleShrink,
 	// THE ARRAY SHAPE. Fixed and bounded frame identically on the wire
 	// (docs/SPEC-TABLES.md §3), and moving between them passes. A MAP is the
 	// one shape move that is not free in both directions, so the row is
@@ -174,7 +188,13 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"member":         RuleLoss,  // a closure member that is no longer covered by this baseline
 	"flags-position": RuleFixed, // bit i is variant i, and the order IS the fact
 	"enum-variant":   RuleLoss,  // stored values naming a dropped variant read as None
-	"union-arm":      RuleLoss,  // stored bodies naming a dropped arm are skipped
+	// a variant DEPRECATED in place (§2.15): stored values naming it read as
+	// the field's declared default, and nothing is counted
+	"enum-deprecated": RuleLoss,
+	"union-arm":       RuleLoss, // stored bodies naming a dropped arm are skipped
+	// a PACKET-WIRE keyed array's key enum swapped under one layout: the
+	// protocol id does not move and every slot is renamed (SPEC §4 item 4)
+	"packet-key": RuleFixed,
 	// `was` NAMES THE FIRST WIRE NAME, FOREVER (docs/SPEC-TABLES.md §5). A
 	// second rename that names the field's own CURRENT spelling hashes a name
 	// no byte was ever written under, and every stored value orphans in
@@ -224,6 +244,7 @@ func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	out = append(out, d.diffEnums()...)
 	out = append(out, d.diffFlags()...)
 	out = append(out, d.diffUnions()...)
+	out = append(out, d.diffPackets()...)
 	return out
 }
 
@@ -241,6 +262,56 @@ func newDiffer(base, live *Unit, policy map[string]TokenRule) *differ {
 	d.unions = pairMembers(unionIdents(base), unionIdents(live), renames, none)
 	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames, none)
 	return d
+}
+
+// diffPackets refuses an enum-keyed array on the PACKET wire whose key enum
+// was swapped for another under the same layout (SPEC §4 item 4,
+// docs/SPEC-TABLES.md §18.2). There the slots are positions: the protocol id
+// does not move, and bytes written as the old enum's slots read as the new
+// enum's slots in the same places. A swap whose slot names line up passes,
+// and so does one that moves the slot count, because that moves the layout
+// and the protocol id reports it. A keyed array added or removed is the
+// layout's business too, and is judged on nothing here.
+func (d *differ) diffPackets() []Finding {
+	if d.policy["packet-key"] != RuleFixed {
+		return nil
+	}
+	live := map[string]PacketKey{}
+	for _, p := range d.live.Packets {
+		for _, k := range p.Keys {
+			live[p.Name+"."+k.Member] = k
+		}
+	}
+	var out []Finding
+	for _, p := range d.base.Packets {
+		for _, was := range p.Keys {
+			where := p.Name + "." + was.Member
+			now, ok := live[where]
+			if !ok || now.Key == was.Key || now.Bound != was.Bound || slices.Equal(now.Slots, was.Slots) {
+				continue
+			}
+			var moved []string
+			for i := range max(len(was.Slots), len(now.Slots)) {
+				a, b := slotName(was.Slots, i), slotName(now.Slots, i)
+				if a != b {
+					moved = append(moved, fmt.Sprintf("slot %d %s -> %s", i+1, a, b))
+				}
+			}
+			out = append(out, Finding{Refuse, where, fmt.Sprintf(
+				"packet array key enum %s -> %s under the same layout — the protocol id does not move and the slots are positions, so bytes written under %s's names read under %s's: %s (SPEC §4 item 4, docs/SPEC-TABLES.md §18.2)",
+				was.Key, now.Key, was.Key, now.Key, strings.Join(moved, ", "))})
+		}
+	}
+	return out
+}
+
+// slotName is the variant that names slot i, or "(unnamed)" for a slot past
+// the named variants of an enum widened with `| max`.
+func slotName(slots []string, i int) string {
+	if i < len(slots) {
+		return slots[i]
+	}
+	return "(unnamed)"
 }
 
 // diffRetired refuses a live declaration that re-adds a name or wire id the
@@ -515,7 +586,7 @@ func (d *differ) factDistance(baseName, candidate string) int {
 			}
 		}
 		for _, lt := range lf.Tokens {
-			if !seen[lt.Key] && d.policy[lt.Key] == RuleFixed {
+			if !seen[lt.Key] && (d.policy[lt.Key] == RuleFixed || d.policy[lt.Key] == RuleCountMin) {
 				n++
 			}
 		}
@@ -712,20 +783,25 @@ var mapOwnedTokens = map[string]bool{"array": true, "type": true, "keykind": tru
 // the `[..N]Pair` its entries already are is THE SAME BYTES IN BOTH
 // DIRECTIONS, where `Pair`'s fields are exactly a `key` and a `value` — which
 // is what the `kind` and `elem` rows on this same line hold — and the MAP
-// DIRECTION GAINS THE ORDER CHECK, so a wire whose pairs were not ascending
-// reads short and says so. §18.2 warns on the edit for that reason: nothing
-// already written changes meaning, and something is lost that the read
-// reports.
+// DIRECTION GAINS THE ORDER CHECK: the read is strict, so a file whose pairs
+// do not ascend strictly by key, out of order or with a key repeated, refuses
+// the whole load `wire_damaged` (§2.8, §4). It keeps no prefix and merges
+// nothing. §18.2 warns on the edit for that reason: nothing already written
+// changes meaning, and the read reports what it cannot take. In the ARRAY
+// direction every file a map wrote reads whole, as the pairs it is; what goes
+// is the rule itself, for what is written next.
+// TestMapShapePredictionsAgreeWithTheRead pins both sentences against a real
+// read of a saved file.
 func mapShapeFinding(where, was, now string, present bool) []Finding {
 	if !present || was == now || (was != "map" && now != "map") {
 		return nil
 	}
 	if now == "map" {
 		return []Finding{{Warn, where, fmt.Sprintf(
-			"array shape %s -> map — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the MAP DIRECTION GAINS THE ORDER CHECK: a wire whose pairs were not ascending keeps the ascending prefix, reads short and says so (docs/SPEC-TABLES.md §2.8, §18.2)", was)}}
+			"array shape %s -> map — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the MAP DIRECTION GAINS THE ORDER CHECK: a file whose pairs do not ascend strictly by key, out of order or with a key repeated, no longer reads: the load refuses wire_damaged (docs/SPEC-TABLES.md §2.8, §18.2)", was)}}
 	}
 	return []Finding{{Warn, where, fmt.Sprintf(
-		"array shape map -> %s — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the array direction LOSES the order check and the duplicate merge: repeated keys arrive as ordinary elements (docs/SPEC-TABLES.md §2.8, §18.2)", now)}}
+		"array shape map -> %s — the same bytes in both directions where the element's fields are exactly a `key` and a `value`: every file the map wrote reads as the pairs it holds, and the array direction LOSES the order check, so what is written next may repeat a key or leave the keys unsorted (docs/SPEC-TABLES.md §2.8, §18.2)", now)}}
 }
 
 func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
@@ -768,6 +844,9 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
+		case RuleCountMin:
+			// a minimum that vanished is a minimum of zero now
+			out = append(out, countMinFinding(where, bf, lf)...)
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
@@ -791,7 +870,16 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleGain:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
 		case RuleShrink, RuleRaise:
+			if was, ok := impliedExtent(lt.Key, bf); ok {
+				if tightened(d.policy[lt.Key], lt.Key, was, lt.Value) {
+					out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(lt.Key), was, lt.Value, tightenNote(lt.Key))})
+				}
+				continue
+			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
+		case RuleCountMin:
+			// a minimum that appeared rose from zero
+			out = append(out, countMinFinding(where, bf, lf)...)
 		}
 	}
 	// THE RENAME HINT (docs/SPEC-TABLES.md §16.4). A `was` added to a field
@@ -807,6 +895,46 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		}
 	}
 	return out
+}
+
+// impliedExtent is the extent a baseline field held WITHOUT carrying the
+// token the live field now adds, where its kind implies one. It answers only
+// for `bits`: a plain unsigned integer moved to `bits(N)` keeps its `kind`
+// (bits(9) and uint16 are both kind 7), and its domain before the edit is its
+// declared maximum's bit length, or else its kind's whole storage width. So
+// uint16 -> bits(9) is a width 16 -> 9 narrowing and warns, while
+// uint16 -> bits(16), or `uint16 | max = 300` -> bits(9), loses nothing.
+func impliedExtent(key string, bf Field) (string, bool) {
+	if key != "bits" {
+		return "", false
+	}
+	if max, ok := bf.Get("max"); ok {
+		n, ok := new(big.Int).SetString(max, 10)
+		if !ok || n.Sign() < 0 {
+			return "", false
+		}
+		return strconv.Itoa(max1(n.BitLen())), true
+	}
+	kind, _ := bf.Get("kind")
+	switch kind {
+	case strconv.Itoa(ir.TableKindU8):
+		return "8", true
+	case strconv.Itoa(ir.TableKindU16):
+		return "16", true
+	case strconv.Itoa(ir.TableKindU32):
+		return "32", true
+	case strconv.Itoa(ir.TableKindU64):
+		return "64", true
+	}
+	return "", false
+}
+
+// max1 is n, or 1 when n is 0: a range of [0, 0] still needs one bit.
+func max1(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // tightened reports whether a numeric extent moved in the direction that
@@ -947,8 +1075,7 @@ func (d *differ) substitutable(key, was, now string) []Finding {
 		return namesRide(enumIds(d.base, was), enumIds(d.live, now), now,
 			"variant id", "stored values naming them read as None and count unknown")
 	case "key":
-		return namesRide(enumIds(d.base, was), enumIds(d.live, now), now,
-			"variant id", "stored slots keyed by them are skipped and count unknown")
+		return keyRides(enumIds(d.base, was), enumIds(d.live, now), was, now)
 	case "union":
 		return d.armsRide(was, now)
 	default: // "type", "payload" — a table body, read by field id
@@ -1401,6 +1528,8 @@ func tightenNote(key string) string {
 		return "a file holding a value below the new minimum no longer reads: the load refuses out_of_range"
 	case "max":
 		return "a file holding a value above the new maximum no longer reads: the load refuses out_of_range"
+	case "bits":
+		return "a file holding a value past 2^N - 1 for the new width no longer reads: the load refuses out_of_range"
 	}
 	return "a file holding a value past the new limit no longer reads: the load refuses it"
 }
@@ -1420,6 +1549,8 @@ func tokenNoun(key string) string {
 		return "array bound"
 	case "size":
 		return "capacity"
+	case "mincount":
+		return "array minimum count"
 	case "key":
 		return "array key enum"
 	case "keykind":
@@ -1432,6 +1563,8 @@ func tokenNoun(key string) string {
 		return "declared minimum"
 	case "max":
 		return "declared maximum"
+	case "bits":
+		return "bit width"
 	case "optional":
 		return "presence"
 	case "type":
@@ -1475,14 +1608,19 @@ func (d *differ) diffEnums() []Finding {
 		}
 		// VARIANTS MATCH BY WIRE ID, as fields do: `was` keeps the id through
 		// a rename, so a renamed variant is the same variant here
-		have := map[uint64]bool{}
+		have := map[uint64]Variant{}
 		for _, v := range le.Variants {
-			have[v.Id] = true
+			have[v.Id] = v
 		}
 		for _, v := range be.Variants {
-			if !have[v.Id] {
+			lv, still := have[v.Id]
+			if !still {
 				out = append(out, Finding{Warn, "enum " + le.Name,
-					fmt.Sprintf("variant %s removed — stored values naming it read as None and count unknown", v.Name)})
+					fmt.Sprintf("variant %s removed — stored values naming it read as None and count unknown, and a stored slot of an array keyed by it is dropped and counts unknown", v.Name)})
+				continue
+			}
+			if d.policy["enum-deprecated"] == RuleLoss {
+				out = append(out, deprecatedVariantFinding(le.Name, v, lv)...)
 			}
 		}
 		out = append(out, d.variantWasChain(be, le)...)
