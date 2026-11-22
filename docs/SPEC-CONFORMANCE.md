@@ -71,6 +71,28 @@ surface ran, exit 2 means the port does not implement it, anything else is a
 failure. `test/conformance/README.md` is the authority for the details: the
 file shapes of every surface, the absence rules and the reference-leg rule.
 
+**Nothing a driver leaves out is a pass.** Each of the following is a
+FAILURE that the harness names by leg, surface and row. None of them reads as
+an absence:
+
+| the driver | the verdict |
+|---|---|
+| `list` exits 0 and names no surface | the leg is refused |
+| `list` names a surface the suite does not have | the leg is refused, by name |
+| answers no row on any surface it is asked (every surface absent, every case `.absent`) | the leg fails |
+| leaves a row unanswered: no answer file and no `<case>.absent` | the row fails |
+| writes an answer for a row the derived manifest did not send | the stray file fails |
+| writes an answer line or bytes that are not the row's | the row fails |
+| dies on a signal, or exits other than 0 or 2 | the surface fails, with its unanswered rows listed |
+| exits 2 after writing answers, or with a runtime panic on stderr | the surface fails: a crash, not an absence |
+
+A declared absence (exit 2 on a surface, or `<case>.absent`) is the only
+answer that is neither a pass nor a failure. The cell counts it against every
+row sent (`pass 16/20 +4a`), and a run that has any absence prints what was not
+answered instead of the success line. `test/conformance/README.md` ("Nothing a
+driver leaves out reads as a pass") and `harness/footgun_test.go` hold the
+same table.
+
 ## 4. How answers are judged
 
 - **Refusals are judged by verdict only.** A case that requires a refusal
