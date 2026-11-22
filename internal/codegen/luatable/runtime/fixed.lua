@@ -18,7 +18,6 @@ local utf8len = utf8.len
 
 local formByte = 3
 local maxRecordBytes = 65536
-local maxRecords = 4096
 local maxPlanEntries = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
@@ -947,10 +946,11 @@ local function load_impl(T, name, buf, strict, cap)
   -- never read as a batch of none.
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
-  -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
-  -- omitted (or nil) capacity is the default, never an unbounded read, while
-  -- a caller that sets 4,097 or more may read that many records.
-  cap = cap or maxRecords
+  -- THE CAPACITY IS THE CALLER'S ARGUMENT: an omitted (or nil) capacity is
+  -- the file's own record count, as Go's destination slice is, so a file is
+  -- never refused for a limit the spec does not state (§5.3 step 9); only a
+  -- caller-set capacity below the count refuses batch_too_large.
+  cap = cap or nRec
   -- a read into ONE value holds no value to read from a file of none (§5.3
   -- step 9), as the Go engine refuses it at a capacity of one
   if nRec == 0 and cap == 1 then error("truncated", 0) end
