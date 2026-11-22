@@ -901,11 +901,23 @@ macro_rules! with_root {
                 use cooktorture::{torture_cook_from_json_bytes as $from_json, torture_cook_load as $load, torture_cook_save_checked as $save, torture_cook_to_json_checked as $to_json};
                 Some($body)
             }
+            ("cooktorture", "TortureVarWref") => {
+                #[allow(unused_imports)]
+                use cooktorture::{torture_var_wref_from_json_bytes as $from_json, torture_var_wref_load as $load, torture_var_wref_save_checked as $save, torture_var_wref_to_json_checked as $to_json};
+                Some($body)
+            }
             ("cooktorture", "TortureFixedWref") => {
                 #[allow(unused_imports, unused_variables)]
                 use cooktorture::{torture_fixed_wref_from_json_bytes as $from_json, torture_fixed_wref_load as $load, torture_fixed_wref_to_json_checked as $to_json};
                 #[allow(unused_variables)]
                 let $save = fixed_save_from_variable!(cooktorture, TortureFixedWref, TortureFixedWrefRow, torture_fixed_wref_cook_write, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure);
+                Some($body)
+            }
+            ("cooktorture", "TortureFixedMin") => {
+                #[allow(unused_imports, unused_variables)]
+                use cooktorture::{torture_fixed_min_from_json_bytes as $from_json, torture_fixed_min_load as $load, torture_fixed_min_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(cooktorture, TortureFixedMin, TortureFixedMinRow, torture_fixed_min_cook_write, torture_fixed_min_fixed_save, torture_fixed_min_fixed_measure);
                 Some($body)
             }
             ("cooktorturewide", "TortureWideCook") => {
@@ -1334,6 +1346,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
         ("cooktorture", "TortureFixedWref") => fixed_read!(cooktorture, torture_fixed_wref_fixed_load, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure, TortureFixedWrefRow, data),
+        ("cooktorture", "TortureFixedMin") => fixed_read!(cooktorture, torture_fixed_min_fixed_load, torture_fixed_min_fixed_save, torture_fixed_min_fixed_measure, TortureFixedMinRow, data),
         ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
@@ -1421,6 +1434,12 @@ macro_rules! with_fixed_value_root {
                 use cooktorture as $k;
                 #[allow(unused_imports)]
                 use $k::{TortureFixedWrefRow as $row, TortureFixedWref as $value, torture_fixed_wref_fixed_load as $load, torture_fixed_wref_fixed_save as $save, torture_fixed_wref_fixed_measure as $measure, torture_fixed_wref_to_json_checked as $to, torture_fixed_wref_from_json_bytes as $from, torture_fixed_wref_cook_write as $cook};
+                Some($body)
+            }
+            ("cooktorture", "TortureFixedMin") => {
+                use cooktorture as $k;
+                #[allow(unused_imports)]
+                use $k::{TortureFixedMinRow as $row, TortureFixedMin as $value, torture_fixed_min_fixed_load as $load, torture_fixed_min_fixed_save as $save, torture_fixed_min_fixed_measure as $measure, torture_fixed_min_to_json_checked as $to, torture_fixed_min_from_json_bytes as $from, torture_fixed_min_cook_write as $cook};
                 Some($body)
             }
             ("tblvarevo1", "EvoMsg") => {
@@ -2529,6 +2548,83 @@ fn wref_check_torture_cook(v: &cooktorture::TortureCook, path: &str, kind: &str)
     }
 }
 
+// TortureVarWref: a count past storage and a length past storage move only
+// the count or the length; the generated save decides (SF-09, 13, 14, 15, 26).
+fn wref_torture_var_wref(v: &mut cooktorture::TortureVarWref, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("raw", "length") => {
+            v.raw = vec![b'a'; wref_usize(value)];
+            Mutation::Done
+        }
+        ("opt_arr", "count") => {
+            let first = v.opt_arr.as_ref().and_then(|a| a.first().copied()).unwrap_or(0);
+            v.opt_arr = Some(vec![first; wref_usize(value)]);
+            Mutation::Done
+        }
+        ("arm_arr.a_arr", "count") => {
+            let first = match &v.arm_arr {
+                cooktorture::WrefArm::AArr(a) => a.first().copied().unwrap_or(0),
+                _ => 0,
+            };
+            v.arm_arr = cooktorture::WrefArm::AArr(vec![first; wref_usize(value)]);
+            Mutation::Done
+        }
+        ("arm_raw.a_raw", "length") => {
+            v.arm_raw = cooktorture::WrefArm::ARaw(vec![b'a'; wref_usize(value)]);
+            Mutation::Done
+        }
+        ("arm_bits.a_bits", "int") => {
+            let mut bits = 0u16;
+            let done = wref_int(value, &mut bits);
+            v.arm_bits = cooktorture::WrefArm::ABits(bits);
+            done
+        }
+        ("arm_range.a_range", "int") => {
+            let mut n = 0i32;
+            let done = wref_int(value, &mut n);
+            v.arm_range = cooktorture::WrefArm::ARange(n);
+            done
+        }
+        ("arm_str.a_str", "length") => {
+            v.arm_str = cooktorture::WrefArm::AStr("a".repeat(wref_usize(value)));
+            Mutation::Done
+        }
+        ("chan_lim[1]", "int") => wref_int(value, &mut v.chan_lim[1]),
+        ("phase", "ordinal") => {
+            use cooktorture::tables::Phase;
+            v.phase = match value {
+                "0" => Phase::None,
+                "1" => Phase::Live,
+                "2" => Phase::Old,
+                "3" => Phase::Next,
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: TortureVarWref names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_torture_var_wref(_v: &cooktorture::TortureVarWref, _path: &str, _kind: &str) {}
+
+fn wref_torture_fixed_min_row(v: &mut cooktorture::TortureFixedMinRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("few", "count") => {
+            let n = wref_usize(value);
+            let first = v.few[0];
+            for slot in v.few.iter_mut().take(n.min(4)) {
+                *slot = first;
+            }
+            v.few_count = n as i32;
+            Mutation::Done
+        }
+        ("phase", "ordinal") => wref_int(value, &mut v.phase),
+        _ => fail(&format!("write-refusal: TortureFixedMin names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_torture_fixed_min_row(_v: &cooktorture::TortureFixedMinRow, _path: &str, _kind: &str) {}
+
 fn wref_sim_state_row(v: &mut scalars::SimStateRow, path: &str, kind: &str, value: &str) -> Mutation {
     match (path, kind) {
         ("ticks", "int") => wref_int(value, &mut v.ticks),
@@ -2720,6 +2816,13 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        ("cooktorture", "TortureFixedMin") => {
+            let mut row = wref_fixed_row!(cooktorture, torture_fixed_min_fixed_load, TortureFixedMinRow, case, wire, data);
+            match wref_torture_fixed_min_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |row| wref_check_torture_fixed_min_row(row, path, kind), cooktorture::torture_fixed_min_fixed_measure, cooktorture::torture_fixed_min_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         _ => fail(&format!("write-refusal: no fixed root {unit} {root}")),
     }
 }
@@ -2763,6 +2866,17 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                     Mutation::Done => wref_save(|| {
                         wref_check_torture_cook(&v, path, kind);
                         cooktorture::torture_cook_save_checked(&v)
+                    }),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("cooktorture", "TortureVarWref") => {
+                let mut report = cooktorture::TableReport::default();
+                let Some(mut v) = cooktorture::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_torture_var_wref(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| {
+                        wref_check_torture_var_wref(&v, path, kind);
+                        cooktorture::torture_var_wref_save_checked(&v)
                     }),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
@@ -3068,6 +3182,7 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                 ("tabledemo", "LoadoutConfig") => fixed_json_case!(tabledemo, loadout_config_fixed_load, LoadoutConfigRow, LoadoutConfig, wref_loadout_config_row, loadout_config_to_json_checked),
                 ("scalars", "SimState") => fixed_json_case!(scalars, sim_state_fixed_load, SimStateRow, SimState, wref_sim_state_row, sim_state_to_json_checked),
                 ("cooktorture", "TortureFixedWref") => fixed_json_case!(cooktorture, torture_fixed_wref_fixed_load, TortureFixedWrefRow, TortureFixedWref, wref_torture_fixed_wref_row, torture_fixed_wref_to_json_checked),
+                ("cooktorture", "TortureFixedMin") => fixed_json_case!(cooktorture, torture_fixed_min_fixed_load, TortureFixedMinRow, TortureFixedMin, wref_torture_fixed_min_row, torture_fixed_min_to_json_checked),
                 _ => fail(&format!("write-refusal-json: no fixed root {unit} {root}")),
             };
             spill(out, case, answer.as_bytes());
@@ -3092,6 +3207,16 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                 match wref_torture_cook(&mut v, path, kind, value) {
                     Mutation::Done => Ok(wref_run(|| {
                         written(cooktorture::torture_cook_to_json_checked(&v))
+                    })),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
+            ("cooktorture", "TortureVarWref") => {
+                let mut report = cooktorture::TableReport::default();
+                let Some(mut v) = cooktorture::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_torture_var_wref(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| {
+                        written(cooktorture::torture_var_wref_to_json_checked(&v))
                     })),
                     Mutation::Unrepresentable => Err("unrepresentable\n"),
                 }
