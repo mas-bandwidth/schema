@@ -494,6 +494,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -14975,15 +14980,15 @@ extern const TableTypeInfo RunsSpansEntryTableInfo;
 extern const TableTypeInfo RunsTableInfo;
 
 inline const TableFieldInfo RunsSpansEntryTableFields[] = {
-    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RunsSpansEntryTableInfo = { "RunsSpansEntry", (uint32_t) sizeof( RunsSpansEntry ), 2, RunsSpansEntryTableFields, +[]( void * p ) { RunsSpansEntryReset( *(RunsSpansEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsSpansEntryTableType() { return &RunsSpansEntryTableInfo; }
 
 inline const TableFieldInfo RunsTableFields[] = {
-    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RunsTableInfo = { "Runs", (uint32_t) sizeof( Runs ), 2, RunsTableFields, +[]( void * p ) { RunsReset( *(Runs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsTableType() { return &RunsTableInfo; }

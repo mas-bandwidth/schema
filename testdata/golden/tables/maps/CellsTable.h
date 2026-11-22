@@ -493,6 +493,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -14997,15 +15002,15 @@ extern const TableTypeInfo CellsRowsEntryTableInfo;
 extern const TableTypeInfo CellsTableInfo;
 
 inline const TableFieldInfo CellsRowsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( CellsRowsEntry, key ), (uint32_t) sizeof( CellsRowsEntry::key ), (uint32_t) offsetof( CellsRowsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( CellsRowsEntry, value ), (uint32_t) sizeof( CellsRowsEntry::value[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( CellsRowsEntry, key ), (uint32_t) sizeof( CellsRowsEntry::key ), (uint32_t) offsetof( CellsRowsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( CellsRowsEntry, value ), (uint32_t) sizeof( CellsRowsEntry::value[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CellsRowsEntryTableInfo = { "CellsRowsEntry", (uint32_t) sizeof( CellsRowsEntry ), 2, CellsRowsEntryTableFields, +[]( void * p ) { CellsRowsEntryReset( *(CellsRowsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CellsRowsEntryTableType() { return &CellsRowsEntryTableInfo; }
 
 inline const TableFieldInfo CellsTableFields[] = {
-    { "rows", "rows", "map[string(8)]int32", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Cells, rows ), (uint32_t) sizeof( CellsRowsEntry ), (uint32_t) offsetof( Cells, rows.count ), 0xffffffffu, &CellsRowsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<CellsRowsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cells, past ), (uint32_t) sizeof( Cells::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "rows", "rows", "map[string(8)]int32", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Cells, rows ), (uint32_t) sizeof( CellsRowsEntry ), (uint32_t) offsetof( Cells, rows.count ), 0xffffffffu, &CellsRowsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<CellsRowsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cells, past ), (uint32_t) sizeof( Cells::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CellsTableInfo = { "Cells", (uint32_t) sizeof( Cells ), 2, CellsTableFields, +[]( void * p ) { CellsReset( *(Cells *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CellsTableType() { return &CellsTableInfo; }

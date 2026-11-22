@@ -470,7 +470,13 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedWriteArmLoop(v, off, strconv.FormatInt(f.ArrayBound, 10), buf, armValue(val, v), depth, indent)
 	case f.Array == ir.ArrayCounted:
-		g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
+		if f.ArrayMin > 0 {
+			// R10: the declared [A..B] holds in an arm, and the write side is
+			// debug-only on this leg (§3.4, docs/SPEC.md §5.1)
+			g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] is the bound (§3.4)\n", ind, armCount(val, v), f.ArrayMin, armCount(val, v), f.ArrayBound, f.ArrayMin, f.ArrayBound)
+		} else {
+			g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
+		}
 		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, off, armCount(val, v))
 		g.emitFixedWriteArmLoop(v, off+ir.TableFixedCountBytes, armCount(val, v), buf, armValue(val, v), depth, indent)
 	default:

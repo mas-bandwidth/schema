@@ -171,7 +171,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
-			g.storageAssert(ind, count, f.ArrayBound)
+			g.storageAssertMin(ind, count, f.ArrayMin, f.ArrayBound)
 			n = count
 		}
 		elemKind := kind
@@ -233,7 +233,7 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
-			g.storageAssert(ind, count, f.ArrayBound)
+			g.storageAssertMin(ind, count, f.ArrayMin, f.ArrayBound)
 			n = count
 		}
 		elemKind := kind
@@ -264,6 +264,20 @@ func armWireLength(v ir.UnionVariant) int { return ir.ArmWireFixedWidth(v.F) }
 // union's tag lvalue and `none` the tag value to put back where the LENGTH
 // says the payload cannot be the arm's — that is framing damage: `malformed`
 // counts, and damage discards the whole load (§3, §4).
+// emitArmCountMin is the R10 read check: a counted [A..B] arm whose wire
+// count is below A is refused, exactly as the Go oracle refuses it
+// (internal/codegen/gotable/read.go, `count < ArrayMin`, count_over_bound) —
+// the minimum holds wherever the field sits (docs/SPEC-TABLES.md §2.6). The
+// union reads None, the refusal is the read's, and the parent reads on past L.
+// An arm with A = 0 emits nothing.
+func (g *tableGen) emitArmCountMin(f *ir.Field, n, tag, none, ind string) {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return
+	}
+	g.pf("%[1]sif ( %[2]s < %[3]d )\n%[1]s{\n%[1]s    %[4]s = %[5]s;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = count_over_bound;\n%[1]s    break;\n%[1]s} // below the declared [%[3]d..%[6]d]: the minimum holds in an arm (R10)\n",
+		ind, n, f.ArrayMin, tag, none, f.ArrayBound)
+}
+
 func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx string) {
 	if v.Void() {
 		g.pf("%[1]sif ( %[2]s.size != 0 )\n%[1]s{\n%[1]s    %[3]s = %[4]s;\n%[1]s    r.report->damaged = true;\n%[1]s    break;\n%[1]s} // a payload-free arm carries no payload (§2.6, §3)\n", ind, rdr, tag, none)
@@ -329,6 +343,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			// elements decode at the wire kind's width and the arm is done
 			g.pf("%s    if ( %s != %d )\n%s    {\n", ind, ek, elemKind, ind)
 			g.pf("%[1]s        if ( !TableKindWidens( %[2]s, %[3]d ) )\n%[1]s        {\n%[1]s            %[4]s = %[5]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = kind_mismatch;\n%[1]s            break;\n%[1]s        }\n", ind, ek, elemKind, tag, none)
+			g.emitArmCountMin(f, n, tag, none, ind+"        ")
 			g.pf("%s        uint64_t widened_keep%s = %s;\n", ind, sfx, n)
 			g.pf("%[1]s        if ( widened_keep%[2]s > %[3]d )\n%[1]s        {\n%[1]s            widened_keep%[4]s = %[5]d;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, sfx, bound, sfx, bound)
 			g.pf("%s        TableReader widened_sub%s( %s.buffer + %s.offset, %s.size - %s.offset, r.report, r.ids );\n", ind, sfx, rdr, rdr, rdr, rdr)
@@ -341,6 +356,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		} else {
 			g.pf("%[1]s    if ( %[2]s != %[3]d )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        break;\n%[1]s    }\n", ind, ek, elemKind, tag, none)
 		}
+		g.emitArmCountMin(f, n, tag, none, ind+"    ")
 		g.pf("%s    uint64_t %s = %s;\n", ind, keep, n)
 		g.pf("%[1]s    if ( %[2]s > %[3]d )\n%[1]s    {\n%[1]s        %[4]s = %[5]d;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, keep, bound, keep, bound)
 		if f.Type.Kind == ir.TBytes {

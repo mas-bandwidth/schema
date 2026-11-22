@@ -487,6 +487,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -13439,8 +13444,8 @@ inline const TableTypeInfo * ArchiveConfigTableType();
 extern const TableTypeInfo ArchiveConfigTableInfo;
 
 inline const TableFieldInfo ArchiveConfigTableFields[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ArchiveConfigTableInfo = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, ArchiveConfigTableFields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArchiveConfigTableType() { return &ArchiveConfigTableInfo; }

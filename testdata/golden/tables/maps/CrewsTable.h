@@ -494,6 +494,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -15331,15 +15336,15 @@ extern const TableTypeInfo CrewsMembersEntryTableInfo;
 extern const TableTypeInfo CrewsTableInfo;
 
 inline const TableFieldInfo CrewsMembersEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( CrewsMembersEntry, key ), (uint32_t) sizeof( CrewsMembersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( CrewsMembersEntry, value ), (uint32_t) sizeof( CrewsMembersEntry::value[0] ), (uint32_t) offsetof( CrewsMembersEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( CrewsMembersEntry, key ), (uint32_t) sizeof( CrewsMembersEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( CrewsMembersEntry, value ), (uint32_t) sizeof( CrewsMembersEntry::value[0] ), (uint32_t) offsetof( CrewsMembersEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CrewsMembersEntryTableInfo = { "CrewsMembersEntry", (uint32_t) sizeof( CrewsMembersEntry ), 2, CrewsMembersEntryTableFields, +[]( void * p ) { CrewsMembersEntryReset( *(CrewsMembersEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CrewsMembersEntryTableType() { return &CrewsMembersEntryTableInfo; }
 
 inline const TableFieldInfo CrewsTableFields[] = {
-    { "members", "members", "map[uint32]*Item", 0x79d594675e391090ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Crews, members ), (uint32_t) sizeof( CrewsMembersEntry ), (uint32_t) offsetof( Crews, members.count ), 0xffffffffu, &CrewsMembersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<CrewsMembersEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Crews, past ), (uint32_t) sizeof( Crews::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "members", "members", "map[uint32]*Item", 0x79d594675e391090ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Crews, members ), (uint32_t) sizeof( CrewsMembersEntry ), (uint32_t) offsetof( Crews, members.count ), 0xffffffffu, &CrewsMembersEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<CrewsMembersEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Crews, past ), (uint32_t) sizeof( Crews::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CrewsTableInfo = { "Crews", (uint32_t) sizeof( Crews ), 2, CrewsTableFields, +[]( void * p ) { CrewsReset( *(Crews *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CrewsTableType() { return &CrewsTableInfo; }

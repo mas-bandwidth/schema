@@ -596,7 +596,7 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	case af.Array != ir.ArrayNone:
 		n := strconv.FormatInt(af.ArrayBound, 10)
 		if af.Array == ir.ArrayCounted {
-			g.storageAssert(ind, count, af.ArrayBound)
+			g.storageAssertMin(ind, count, af.ArrayMin, af.ArrayBound)
 			n = count
 		}
 		g.emitMessageArray(af, entry, n, value+"[%s]", ind, pass)

@@ -287,6 +287,18 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 	g.emitCookWriteFieldAs(st, f, offset, "value."+f.Name, "at", "")
 }
 
+// cookCountAssert is a counted array's write-side storage check, debug only
+// (docs/SPEC.md §5.1). An ARM (st == nil, emitCookWriteUnion's call) holds its
+// declared [A..B] minimum too (R10), the bound the Go oracle's cook writer
+// refuses below (internal/codegen/gotable/cookwrite.go).
+func (g *tableGen) cookCountAssert(st *ir.Struct, f *ir.Field, name string) {
+	if st == nil && f.ArrayMin > 0 {
+		g.pf("    schema_assert( %s_count >= %d && %s_count <= %d ); // the declared [%d..%d] holds in an arm, debug only (§5.1)\n", name, f.ArrayMin, name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
+		return
+	}
+	g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)
+}
+
 // emitCookWriteFieldAs is that write with the STORAGE NAMED, which a union ARM
 // needs: an arm is a field line whose storage lives in the overlay rather than
 // in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
@@ -352,7 +364,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 				// docs/rulings.json fixed-dead-bytes-are-zero): the extent was
 				// zeroed, so only the live slots are written and a slot past
 				// the count keeps that zero.
-				g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)
+				g.cookCountAssert(st, f, name)
 				bound = name + "_count"
 				slots = "the live slots, the rest zero"
 			}
@@ -387,7 +399,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 			// was zeroed before any field was written, so only the live slots
 			// are written and a slot past the count keeps that zero.
 			g.pf("    // %d slots of storage, %s_count live: a slot past the count keeps the extent's zero (§7.2)\n", f.ArrayBound, name)
-			g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)
+			g.cookCountAssert(st, f, name)
 			bound := name + "_count"
 			g.pf("    for ( int32_t i%s = 0; i%s < %s; i%s++ )\n    {\n", sfx, sfx, bound, sfx)
 		} else {

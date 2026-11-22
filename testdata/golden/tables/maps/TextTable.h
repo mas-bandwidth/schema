@@ -493,6 +493,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -16024,23 +16029,23 @@ extern const TableTypeInfo TextBlobsEntryTableInfo;
 extern const TableTypeInfo TextTableInfo;
 
 inline const TableFieldInfo TextNamesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( TextNamesEntry, key ), (uint32_t) sizeof( TextNamesEntry::key ), (uint32_t) offsetof( TextNamesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( TextNamesEntry, value ), (uint32_t) sizeof( TextNamesEntry::value ), (uint32_t) offsetof( TextNamesEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( TextNamesEntry, key ), (uint32_t) sizeof( TextNamesEntry::key ), (uint32_t) offsetof( TextNamesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( TextNamesEntry, value ), (uint32_t) sizeof( TextNamesEntry::value ), (uint32_t) offsetof( TextNamesEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TextNamesEntryTableInfo = { "TextNamesEntry", (uint32_t) sizeof( TextNamesEntry ), 2, TextNamesEntryTableFields, +[]( void * p ) { TextNamesEntryReset( *(TextNamesEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TextNamesEntryTableType() { return &TextNamesEntryTableInfo; }
 
 inline const TableFieldInfo TextBlobsEntryTableFields[] = {
-    { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TextBlobsEntry, key ), (uint32_t) sizeof( TextBlobsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "bytes", 0x7ce4fd9430e80ceaull, 6, true, false, NULL, NULL, true, false, 10, (uint32_t) offsetof( TextBlobsEntry, value ), (uint32_t) sizeof( TextBlobsEntry::value[0] ), (uint32_t) offsetof( TextBlobsEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TextBlobsEntry, key ), (uint32_t) sizeof( TextBlobsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "bytes", 0x7ce4fd9430e80ceaull, 6, true, false, NULL, NULL, true, false, 10, (uint32_t) offsetof( TextBlobsEntry, value ), (uint32_t) sizeof( TextBlobsEntry::value[0] ), (uint32_t) offsetof( TextBlobsEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TextBlobsEntryTableInfo = { "TextBlobsEntry", (uint32_t) sizeof( TextBlobsEntry ), 2, TextBlobsEntryTableFields, +[]( void * p ) { TextBlobsEntryReset( *(TextBlobsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TextBlobsEntryTableType() { return &TextBlobsEntryTableInfo; }
 
 inline const TableFieldInfo TextTableFields[] = {
-    { "names", "names", "map[string(8)]string", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, names ), (uint32_t) sizeof( TextNamesEntry ), (uint32_t) offsetof( Text, names.count ), 0xffffffffu, &TextNamesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<TextNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "blobs", "blobs", "map[int32]bytes", 0x14e2eaab9cde925bull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, blobs ), (uint32_t) sizeof( TextBlobsEntry ), (uint32_t) offsetof( Text, blobs.count ), 0xffffffffu, &TextBlobsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TextBlobsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Text, past ), (uint32_t) sizeof( Text::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "names", "names", "map[string(8)]string", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, names ), (uint32_t) sizeof( TextNamesEntry ), (uint32_t) offsetof( Text, names.count ), 0xffffffffu, &TextNamesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<TextNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "blobs", "blobs", "map[int32]bytes", 0x14e2eaab9cde925bull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, blobs ), (uint32_t) sizeof( TextBlobsEntry ), (uint32_t) offsetof( Text, blobs.count ), 0xffffffffu, &TextBlobsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TextBlobsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Text, past ), (uint32_t) sizeof( Text::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TextTableInfo = { "Text", (uint32_t) sizeof( Text ), 3, TextTableFields, +[]( void * p ) { TextReset( *(Text *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TextTableType() { return &TextTableInfo; }

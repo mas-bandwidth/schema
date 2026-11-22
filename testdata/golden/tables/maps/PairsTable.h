@@ -494,6 +494,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -15322,15 +15327,15 @@ extern const TableTypeInfo PairsSlotsEntryTableInfo;
 extern const TableTypeInfo PairsTableInfo;
 
 inline const TableFieldInfo PairsSlotsEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PairsSlotsEntry, key ), (uint32_t) sizeof( PairsSlotsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (uint32_t) offsetof( PairsSlotsEntry, value ), (uint32_t) sizeof( PairsSlotsEntry::value[0] ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PairsSlotsEntry, key ), (uint32_t) sizeof( PairsSlotsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (uint32_t) offsetof( PairsSlotsEntry, value ), (uint32_t) sizeof( PairsSlotsEntry::value[0] ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo PairsSlotsEntryTableInfo = { "PairsSlotsEntry", (uint32_t) sizeof( PairsSlotsEntry ), 2, PairsSlotsEntryTableFields, +[]( void * p ) { PairsSlotsEntryReset( *(PairsSlotsEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PairsSlotsEntryTableType() { return &PairsSlotsEntryTableInfo; }
 
 inline const TableFieldInfo PairsTableFields[] = {
-    { "slots", "slots", "map[uint32]*Item", 0xe68c2e6bb1ee5646ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Pairs, slots ), (uint32_t) sizeof( PairsSlotsEntry ), (uint32_t) offsetof( Pairs, slots.count ), 0xffffffffu, &PairsSlotsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<PairsSlotsEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Pairs, past ), (uint32_t) sizeof( Pairs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "slots", "slots", "map[uint32]*Item", 0xe68c2e6bb1ee5646ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Pairs, slots ), (uint32_t) sizeof( PairsSlotsEntry ), (uint32_t) offsetof( Pairs, slots.count ), 0xffffffffu, &PairsSlotsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<PairsSlotsEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Pairs, past ), (uint32_t) sizeof( Pairs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo PairsTableInfo = { "Pairs", (uint32_t) sizeof( Pairs ), 2, PairsTableFields, +[]( void * p ) { PairsReset( *(Pairs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PairsTableType() { return &PairsTableInfo; }

@@ -12999,6 +12999,14 @@ field and `present_offset` names the `<field>_present` bool, exactly as
 and write presence without knowing the spelling that produced it, and can
 tell "absent" from "present and default" (§2.3).
 
+**A counted array carries its declared MINIMUM.** A `[A..B]T` field's
+row carries A beside its bound (`array_min` in C++, `ArrayMin` in Go; `0` on
+every other field), and a union arm's field row carries its own, so a
+generic walker holds A wherever the field sits: the text read refuses a
+count below A on a plain field and on an arm alike (R10, §2.6), with no
+schema in hand. The write side's check is the language's split (SPEC
+§4.6).
+
 **An enum-keyed array carries its KEY's vocabulary, and the columns speak
 in KEYS.** `key_type_name` names the keying enum, and `key_name( key )` and
 `key_id( key )` map an ENUM VALUE to that variant's name and to the wire id

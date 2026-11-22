@@ -381,6 +381,19 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
     return count >= 0 && count <= f->array_bound;
 }
 
+// a counted [A..B] array's companion is at or above A (SPEC §4.6, R10). The
+// union arm writer asserts it, debug only (docs/SPEC.md §5.1).
+inline bool TableJsonCountMeetsMin( const void * base, const TableFieldInfo * f )
+{
+    if ( !f->counted || f->array_min <= 0 )
+    {
+        return true;
+    }
+    int32_t count = 0;
+    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    return count >= f->array_min;
+}
+
 inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
 {
     if ( f->wide == NULL )
@@ -1309,6 +1322,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         // value walks through the field writer one key down.
         if ( arms->arms[tag].field != NULL )
         {
+            // R10: a counted [A..B] arm holds its minimum, and the write
+            // contract is debug-only on this leg (docs/SPEC.md §5.1)
+            schema_assert( TableJsonCountMeetsMin( storage, arms->arms[tag].field ) );
             if ( !TableJsonWriteField( out, storage, arms->arms[tag].field, depth + 1 ) )
             {
                 return false;
@@ -4155,6 +4171,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // a fixed array's tail keeps the defaults the prefill left there,
         // exactly as a short wire count does
         TableJsonSetCount( base, f, placed );
+        // A COUNTED [A..B] HOLDS A WHEREVER THE FIELD SITS (SPEC §4.6, R10): a
+        // text spelling fewer elements than the declared minimum is refused,
+        // a union arm's array included — the Go oracle's
+        // tableJSONCountInContract check after the same walk
+        if ( f->counted && placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
+        }
         return true;
     }
     return TableJsonReadScalar( in, storage, f, depth );

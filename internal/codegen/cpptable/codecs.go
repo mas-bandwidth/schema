@@ -879,6 +879,19 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
+// storageAssertMin is storageAssert for a counted [A..B] ARM (R10: the minimum
+// holds wherever the field sits): the writer never produces a count below A,
+// and on this assert leg that is a debug check too (docs/SPEC.md §5.1). An arm
+// with A = 0 keeps storageAssert's exact line.
+func (g *tableGen) storageAssertMin(ind, expr string, min, bound int64) {
+	if min <= 0 {
+		g.storageAssert(ind, expr, bound)
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds in an arm, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
+}
+
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline int64_t %s( const Ctx & ctx, const TableNumbering & numbering, %s & ids, const %s & value%s )\n{\n",
@@ -3543,11 +3556,18 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
+	// the counted minimum A of a [A..B] array (SPEC §4.6), the Go oracle's
+	// ArrayMin column (internal/codegen/gotable/codecs.go): the text read
+	// refuses a count below it wherever the field sits, an arm included (R10)
+	arrayMin := int64(0)
+	if f.Array == ir.ArrayCounted {
+		arrayMin = f.ArrayMin
+	}
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded())
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(), arrayMin)
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

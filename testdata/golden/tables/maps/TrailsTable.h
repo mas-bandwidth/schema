@@ -494,6 +494,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -15493,15 +15498,15 @@ extern const TableTypeInfo TrailsStepsEntryTableInfo;
 extern const TableTypeInfo TrailsTableInfo;
 
 inline const TableFieldInfo TrailsStepsEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TrailsStepsEntry, key ), (uint32_t) sizeof( TrailsStepsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( TrailsStepsEntry, value ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( TrailsStepsEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Item *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Item *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TrailsStepsEntry, key ), (uint32_t) sizeof( TrailsStepsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ItemAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ItemEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( TrailsStepsEntry, value ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( TrailsStepsEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Item *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Item *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TrailsStepsEntryTableInfo = { "TrailsStepsEntry", (uint32_t) sizeof( TrailsStepsEntry ), 2, TrailsStepsEntryTableFields, +[]( void * p ) { TrailsStepsEntryReset( *(TrailsStepsEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrailsStepsEntryTableType() { return &TrailsStepsEntryTableInfo; }
 
 inline const TableFieldInfo TrailsTableFields[] = {
-    { "steps", "steps", "map[uint32]*Item", 0x124250ad5a5b6d14ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Trails, steps ), (uint32_t) sizeof( TrailsStepsEntry ), (uint32_t) offsetof( Trails, steps.count ), 0xffffffffu, &TrailsStepsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TrailsStepsEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Trails, past ), (uint32_t) sizeof( Trails::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "steps", "steps", "map[uint32]*Item", 0x124250ad5a5b6d14ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Trails, steps ), (uint32_t) sizeof( TrailsStepsEntry ), (uint32_t) offsetof( Trails, steps.count ), 0xffffffffu, &TrailsStepsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TrailsStepsEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Trails, past ), (uint32_t) sizeof( Trails::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TrailsTableInfo = { "Trails", (uint32_t) sizeof( Trails ), 2, TrailsTableFields, +[]( void * p ) { TrailsReset( *(Trails *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrailsTableType() { return &TrailsTableInfo; }

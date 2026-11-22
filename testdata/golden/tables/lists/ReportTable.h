@@ -493,6 +493,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -19251,22 +19256,22 @@ extern const TableTypeInfo IntsTableInfo;
 extern const TableTypeInfo FloatsTableInfo;
 
 inline const TableFieldInfo BytesTableFields[] = {
-    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<uint8_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, past ), (uint32_t) sizeof( Bytes::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<uint8_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, past ), (uint32_t) sizeof( Bytes::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo BytesTableInfo = { "Bytes", (uint32_t) sizeof( Bytes ), 2, BytesTableFields, +[]( void * p ) { BytesReset( *(Bytes *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BytesTableType() { return &BytesTableInfo; }
 
 inline const TableFieldInfo IntsTableFields[] = {
-    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, past ), (uint32_t) sizeof( Ints::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, past ), (uint32_t) sizeof( Ints::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo IntsTableInfo = { "Ints", (uint32_t) sizeof( Ints ), 2, IntsTableFields, +[]( void * p ) { IntsReset( *(Ints *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * IntsTableType() { return &IntsTableInfo; }
 
 inline const TableFieldInfo FloatsTableFields[] = {
-    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<float> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, past ), (uint32_t) sizeof( Floats::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<float> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, past ), (uint32_t) sizeof( Floats::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo FloatsTableInfo = { "Floats", (uint32_t) sizeof( Floats ), 2, FloatsTableFields, +[]( void * p ) { FloatsReset( *(Floats *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FloatsTableType() { return &FloatsTableInfo; }

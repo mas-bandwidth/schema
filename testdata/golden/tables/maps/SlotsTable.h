@@ -494,6 +494,11 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a counted [A..B] array's declared minimum A (SPEC §4.6): the count a
+    // read refuses below and a write never produces, wherever the field sits,
+    // a union arm included (docs/SPEC-TABLES.md §2.6). The Go oracle's
+    // ArrayMin column; 0 on every other field.
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -15209,15 +15214,15 @@ extern const TableTypeInfo SlotsSeatsEntryTableInfo;
 extern const TableTypeInfo SlotsTableInfo;
 
 inline const TableFieldInfo SlotsSeatsEntryTableFields[] = {
-    { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SlotsSeatsEntry, key ), (uint32_t) sizeof( SlotsSeatsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( SlotsSeatsEntry, value ), (uint32_t) sizeof( SlotsSeatsEntry::value.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SlotsSeatsEntry, key ), (uint32_t) sizeof( SlotsSeatsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( SlotsSeatsEntry, value ), (uint32_t) sizeof( SlotsSeatsEntry::value.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SlotsSeatsEntryTableInfo = { "SlotsSeatsEntry", (uint32_t) sizeof( SlotsSeatsEntry ), 2, SlotsSeatsEntryTableFields, +[]( void * p ) { SlotsSeatsEntryReset( *(SlotsSeatsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SlotsSeatsEntryTableType() { return &SlotsSeatsEntryTableInfo; }
 
 inline const TableFieldInfo SlotsTableFields[] = {
-    { "seats", "seats", "map[int32]int32", 0x7f6548303072b061ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Slots, seats ), (uint32_t) sizeof( SlotsSeatsEntry ), (uint32_t) offsetof( Slots, seats.count ), 0xffffffffu, &SlotsSeatsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SlotsSeatsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, past ), (uint32_t) sizeof( Slots::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "seats", "seats", "map[int32]int32", 0x7f6548303072b061ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Slots, seats ), (uint32_t) sizeof( SlotsSeatsEntry ), (uint32_t) offsetof( Slots, seats.count ), 0xffffffffu, &SlotsSeatsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SlotsSeatsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, past ), (uint32_t) sizeof( Slots::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SlotsTableInfo = { "Slots", (uint32_t) sizeof( Slots ), 2, SlotsTableFields, +[]( void * p ) { SlotsReset( *(Slots *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SlotsTableType() { return &SlotsTableInfo; }
