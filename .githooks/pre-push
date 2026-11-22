@@ -32,6 +32,11 @@ while read -r lref lsha rref rsha; do
     fi
   else
     range=("$rsha".."$lsha")
+    # Commits already on main (merged in to bring a branch current) are not this
+    # push's: main's merge commits carry GitHub as committer.
+    if git rev-parse -q --verify origin/main >/dev/null; then
+      range+=(^origin/main)
+    fi
   fi
   while IFS=$'\t' read -r sha an ae cn ce; do
     if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then

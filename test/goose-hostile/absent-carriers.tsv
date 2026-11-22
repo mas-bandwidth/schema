@@ -1,0 +1,13 @@
+# THE CARRIERS THE GOOSE HOSTILE-CORPUS RUNNER DOES NOT READ
+# (tools/hostileledger -absent-carriers; make/goose-fuzz.mk). One line per
+# carrier: its manifest name, a tab, and one line saying why. Every case of a
+# carrier named here is counted as held; a carrier the runner answers absent
+# that no line names fails the ledger, and so does a line whose carrier the
+# runner reads or the corpus no longer has. Delete a line when its reader lands.
+announce	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+announce_bytes	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+announce_entries	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+announce_second	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+message	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+message_novocab	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent
+text	the goose port has no reader for this carrier yet (the goose text and message forms have not landed); test/goose-hostile/runner.goose answers it absent

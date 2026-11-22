@@ -106,6 +106,7 @@ $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go 
 schema-cpp-runs-hostile-corpus: $(CPP_HOSTILE_BUILD)/case $(CPP_HOSTILE_BUILD)/hostilecorpusexec
 	$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
 		-corpus "$(CPP_HOSTILE_CORPUS)" -findings "$(CPP_HOSTILE_FINDINGS)" -skips "$(CPP_HOSTILE_SKIPS)"
+	sh make/checks/hostile-carry-controls.sh cpp findings $(CPP_HOSTILE_BUILD)/carry '$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case -corpus "$$CARRY_CORPUS" -findings "$$CARRY_FINDINGS" -skips ""'
 
 # The plant: one case the engine accepts is recorded as a refusal it never
 # names, in a scratch copy of the corpus, and the runner must name it FAIL.

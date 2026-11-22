@@ -66,7 +66,28 @@ DART_HOSTILE_CASES ?= 192
 schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/reasons_test.dart
 	$(DART) run test/dart-hostile/runner.dart --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)"
+	$(call hostile_ledgered,dart,$(DART_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)",$(DART_HOSTILE_CORPUS))
+	sh make/checks/hostile-carry-controls.sh dart findings $(DART_HOSTILE_BUILD)/carry '$(DART) run test/dart-hostile/runner.dart "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
+	@# THE WRITER CONTROL (F-070): in a scratch copy, every text writer throws
+	@# after its reader accepts. Run over the committed text-corpus with a
+	@# finding that records a refusal, the throw must read FAIL as an error after
+	@# the accept, never be carried as the refusal the finding names.
+	@rm -rf $(DART_HOSTILE_BUILD)/writer && mkdir -p $(DART_HOSTILE_BUILD)/writer/build/dart-hostile $(DART_HOSTILE_BUILD)/writer/test/dart-hostile
+	@cp -R $(DART_HOSTILE_BUILD)/generated $(DART_HOSTILE_BUILD)/packet $(DART_HOSTILE_BUILD)/writer/build/dart-hostile/
+	@sed "s|^  const Loaded(this.refused, this.reason, this.written, this.exercise);$$|  Loaded(this.refused, this.reason, String Function() _, this.exercise) : written = (() => throw StateError('PLANTED text writer'));|" \
+		$(DART_HOSTILE_BUILD)/dispatch.dart > $(DART_HOSTILE_BUILD)/writer/build/dart-hostile/dispatch.dart
+	@cp test/dart-hostile/runner.dart $(DART_HOSTILE_BUILD)/writer/test/dart-hostile/runner.dart
+	@if cmp -s $(DART_HOSTILE_BUILD)/dispatch.dart $(DART_HOSTILE_BUILD)/writer/build/dart-hostile/dispatch.dart; then \
+		echo 'WRITER CONTROL FAILED: the planted text writer did not apply'; exit 1; fi
+	@if $(DART) run $(DART_HOSTILE_BUILD)/writer/test/dart-hostile/runner.dart internal/ci/hostilecorpus/testdata/carry/text-corpus \
+			internal/ci/hostilecorpus/testdata/carry/findings/text-writer-refuse.tsv > $(DART_HOSTILE_BUILD)/writer/log 2>&1; then \
+		echo 'WRITER CONTROL FAILED: a text writer that threw after an accept was carried as a refusal'; \
+		cat $(DART_HOSTILE_BUILD)/writer/log; exit 1; fi
+	@if grep -q '^FIX-CARD' $(DART_HOSTILE_BUILD)/writer/log || \
+			! grep -q '^FAIL conformance-base64-empty .*got=error after accept, the text writer raised' $(DART_HOSTILE_BUILD)/writer/log; then \
+		echo 'WRITER CONTROL FAILED: the throw after the accept did not read FAIL as an error'; \
+		cat $(DART_HOSTILE_BUILD)/writer/log; exit 1; fi
+	@echo 'dart writer control: a text writer that throws after an accept reads FAIL, never a carried refusal'
 
 test-dart: schema-dart-runs-hostile-corpus
 

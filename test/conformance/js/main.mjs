@@ -28,6 +28,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixedCodec, fixedRoots } from "./fixed.mjs";
 import { surfaceWriteRefusal } from "./writerefusal.mjs";
+import { messageLoadVerdict } from "./messageverdict.mjs";
 
 // The generated tree is a PATH, not a static import, for one reason: the
 // harness's negative control points this same driver at a sabotaged copy of
@@ -1421,9 +1422,8 @@ async function wireFuzz() {
               for (let j = 0; j < initLim; j++) { initRoot(values[j]); }
               const rep = {};
               const n = loadMessages(values, vocab, batchWire, rep);
-              const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
-              const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
-              const delivered = n >= 1 && !malformed && !refused;
+              // the public API's verdict, never a counter's (messageverdict.mjs, F-112)
+              const { refused, malformed, delivered } = messageLoadVerdict(n, rep, runtime.TableMessageOpenRefused);
               let out = null;
               if (delivered) {
                 const prevBits = runtime.TableMessageSetRefBits(runtime.TableMessageWriteRefBitsHere);
@@ -1494,13 +1494,12 @@ async function wireFuzz() {
             for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
             const rep = {};
             const n = loadMessages(values, vocabulary, wire, rep);
-            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
             // A batch that delivers no body is damage: no form byte, a short
             // count, or a body the reader discards. A named verdict is a
             // refusal. The pipe reads damaged, not malformed, and a default
-            // body saved after a failed load would be an accepted wire.
-            const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
-            const delivered = n >= 1 && !malformed && !refused;
+            // body saved after a failed load would be an accepted wire. The
+            // verdict is the public API's, never a counter's (messageverdict.mjs, F-112).
+            const { refused, malformed, delivered } = messageLoadVerdict(n, rep, runtime.TableMessageOpenRefused);
             let saved = null;
             if (delivered) {
               // EncodeMessages writes the message closure's reference width.

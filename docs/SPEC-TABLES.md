@@ -3974,7 +3974,14 @@ fraction separator. **A leap second is refused: second `60` is not accepted.**
 This kind counts UTC seconds from the epoch, and an instant in a second that a
 leap repeats has no distinct nanosecond count in that model, so no spelling of
 one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
-through 2262 — names no count and is refused with it.
+through 2262 — names no count and is refused with it. **The bounds are exact**:
+the reader converts the spelling to UTC (subtracting the offset), truncates
+the fraction to nanoseconds, and accepts the instant if and only if it lies in
+`1677-09-21T00:12:43.145224192Z` through `2262-04-11T23:47:16.854775807Z`
+inclusive, the counts `-2^63` and `2^63 − 1`; one nanosecond outside either
+bound is refused `timestamp_not_rfc3339: <field>`. A year `0000`–`1677` or
+`2263`–`9999` that the production accepts is therefore refused by this bound,
+not by the production.
 
 **WHO CARRIES IT.** `timestamp` is one of §11's GATED CONSTRUCTS: every
 built-in target carries it, and a target that does not, a NEW port included

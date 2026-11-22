@@ -213,6 +213,20 @@ reads beside the worktree (path, clone URL, tag, commit), as data a tool can
 stage without running the build; `make deps` stages any that are missing at
 those pins and leaves a present one alone.
 
+**A missing sibling stops the run at once, in one line.** A fresh clone has no
+siblings until `make deps` stages them. A goal that needs one (`test-<leg>`,
+`build/conformance-<leg>`, `conformance`, and `make sibling-<leg>` on its own)
+stops when the Makefile is read, before any recipe runs, and says which leg
+needs which checkout and the command to run:
+
+```
+Makefile:7219: *** the cs leg needs the sibling checkout ../serialize.cs (src/Serialize.cs is missing): run 'make deps'.  Stop.
+```
+
+`conformance-harness run` refuses the same way for every leg it is about to
+run. Nothing else is needed after `make deps`: it is the whole setup for the
+sibling runtimes. A leg named in `SCHEMA_SKIP_LEGS` does not need its sibling.
+
 ## How to run the tests, and the rule that sets their shape
 
 The owner's rule, said twice in one day:

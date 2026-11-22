@@ -1,1 +1,1 @@
-probe	test-probe	inputs/probe.bin	known verdict mismatch
+probe	test-probe	inputs/probe.bin	accept -	known verdict mismatch

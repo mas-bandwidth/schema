@@ -285,7 +285,9 @@ exercise = fn mod, table, value, input ->
   mod.to_json(table, value)
 end
 
-# known findings: name<TAB>slug<TAB>input<TAB>one line
+# known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where the
+# answer is what this port gives the case today, `accept <digest>` or `refuse`
+# (docs/HOSTILE-CORPUS.md). A finding carries that answer and no other (F-079).
 findings_path = System.get_env("SCHEMA_ELIXIR_HOSTILE_FINDINGS", "test/elixir-hostile/known-findings.tsv")
 
 findings =
@@ -295,8 +297,14 @@ findings =
     |> String.split("\n")
     |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
     |> Map.new(fn line ->
-      [name, slug, input, text] = String.split(line, "\t", parts: 4)
-      {name, {slug, input, text}}
+      with [name, slug, input, answer, text] <- String.split(line, "\t", parts: 5),
+           true <- answer == "refuse" or Regex.match?(~r/^accept \S+$/, answer) do
+        {name, {slug, input, answer, text}}
+      else
+        _ ->
+          IO.puts(:stderr, "#{findings_path}: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated: #{line}")
+          System.halt(2)
+      end
     end)
   else
     %{}
@@ -537,6 +545,9 @@ end
     expected = expected_answer.(verdict, want_reason, want_digest)
 
     got = isolated.(carrier, schema, table, payload)
+    # THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+    # name, which tools/hostileledger holds to the corpus folder.
+    Process.put(:hostile_ran, [name | Process.get(:hostile_ran, [])])
 
     cond do
       agrees.(got, expected) ->
@@ -545,16 +556,22 @@ end
             {p + 1, c, bad, stale}
 
           {finding, _rest} ->
-            {slug, _input, _text} = finding
+            {slug, _input, _answer, _text} = finding
             IO.puts("STALE #{name}: FIX-CARD #{slug} no longer reproduces")
             {p, c, bad, [name | stale]}
         end
 
+      # A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+      # execution failure (F-070), and never a different verdict or digest
+      # (F-079: a refusal under a finding for a wrong digest).
       Map.has_key?(findings, name) and
-          (match?({:accept, value} when is_binary(value), got) or
-           match?({:refuse, value} when is_binary(value), got)) ->
-        {slug, card_input, text} = Map.fetch!(findings, name)
-        IO.puts("FIX-CARD: #{slug}: #{card_input} #{text}")
+          (case {elem(Map.fetch!(findings, name), 2), got} do
+             {"refuse", {:refuse, value}} when is_binary(value) -> true
+             {"accept " <> digest, {:accept, digest}} -> true
+             _ -> false
+           end) ->
+        {slug, card_input, _answer, text} = Map.fetch!(findings, name)
+        IO.puts("FIX-CARD: #{slug}: #{card_input} #{text} (got #{inspect(got, limit: 6)})")
         {p, c + 1, bad, stale}
 
       true ->
@@ -566,7 +583,7 @@ end
 names = MapSet.new(manifest, &hd/1)
 
 orphans =
-  for {name, {slug, _, _}} <- findings, not MapSet.member?(names, name) do
+  for {name, {slug, _, _, _}} <- findings, not MapSet.member?(names, name) do
     IO.puts("STALE #{name}: FIX-CARD #{slug} names no case the manifest carries")
     name
   end
@@ -574,6 +591,12 @@ orphans =
 stale = stale ++ orphans
 
 IO.puts("#{length(manifest)} cases: #{passed} pass, #{carried} carried as FIX-CARD, #{length(bad)} unexplained, #{length(stale)} stale")
+
+for name <- Enum.reverse(Process.get(:hostile_ran, [])) do
+  IO.puts("hostile-ledger ran #{name}")
+end
+
+IO.puts("hostile-ledger end")
 
 # One unit per manifest case. tools/mustrun holds the count to the one the
 # recipe registers for the committed corpus, so an emptied or shortened

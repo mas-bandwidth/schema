@@ -1,0 +1,2 @@
+# F-079: a finding in the old four-column form records no answer; the runner refuses the findings file
+wire-valid	carry-no-answer	inputs/wire-valid.bin	carry control: a finding that records no answer

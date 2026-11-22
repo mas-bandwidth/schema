@@ -123,9 +123,27 @@ type answer struct {
 
 func (a answer) String() string { return a.kind + " " + a.detail }
 
-// finding is one carried line of known-findings.tsv.
+// finding is one carried line of known-findings.tsv: name, slug, input,
+// answer and one line, where the answer is what this port gives the case
+// today, `accept <digest>` or `refuse` (docs/HOSTILE-CORPUS.md). A finding
+// carries that answer and no other (F-079).
 type finding struct {
-	name, slug, input, line string
+	name, slug, input, answer, line string
+}
+
+// carries says whether a finding carries got: a refusal under `refuse`,
+// whatever its reason (docs/rulings.json refusal-verdict-only), or the very
+// accept and digest the finding records. An execution failure never (F-070).
+func (f finding) carries(got answer) bool {
+	if f.answer == "refuse" {
+		return got.kind == "refuse"
+	}
+	return got.kind == "accept" && f.answer == got.String()
+}
+
+func validAnswer(a string) bool {
+	d, ok := strings.CutPrefix(a, "accept ")
+	return a == "refuse" || (ok && d != "" && !strings.ContainsAny(d, " \t"))
 }
 
 func loadFindings(path string) (map[string]finding, []string, error) {
@@ -149,13 +167,13 @@ func loadFindings(path string) (map[string]finding, []string, error) {
 			continue
 		}
 		cols := strings.Split(line, "\t")
-		if len(cols) != 4 || cols[3] == "" {
-			return nil, nil, fmt.Errorf("%s:%d: a finding is name, slug, input and one line, tab-separated", path, n)
+		if len(cols) != 5 || cols[4] == "" || !validAnswer(cols[3]) {
+			return nil, nil, fmt.Errorf("%s:%d: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated", path, n)
 		}
 		if _, dup := out[cols[0]]; dup {
 			return nil, nil, fmt.Errorf("%s:%d: %s is carried twice", path, n, cols[0])
 		}
-		out[cols[0]] = finding{cols[0], cols[1], cols[2], cols[3]}
+		out[cols[0]] = finding{cols[0], cols[1], cols[2], cols[3], cols[4]}
 		order = append(order, cols[0])
 	}
 	return out, order, s.Err()
@@ -194,7 +212,7 @@ func loadSkips(path string) (map[string]string, []string, error) {
 }
 
 func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, budget time.Duration) (bool, error) {
-	_, cases, err := hostilecorpus.LoadManifest(corpus)
+	cases, err := hostilecorpus.Registered(corpus)
 	if err != nil {
 		return false, err
 	}
@@ -237,9 +255,19 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 
 	var pass, carried, skipped, unexplained, stale int
 	seen := map[string]bool{}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): cases the binary
+	// answered against cases the folder registers, per carrier. answers is
+	// filled by the workers; a slot none of them reached has no kind.
+	ledger := hostilecorpus.NewLedger(cases)
 	for i, c := range cases {
 		seen[c.Name] = true
 		got := answers[i]
+		switch _, held := knownSkips[c.Name]; {
+		case got.kind == "skip" && held:
+			ledger.Skipped(c.Name, knownSkips[c.Name])
+		case got.kind != "skip" && got.kind != "":
+			ledger.Ran(c.Name)
+		}
 		want := expected(c)
 		f, has := findings[c.Name]
 		_, skipKnown := knownSkips[c.Name]
@@ -267,9 +295,10 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 			} else {
 				pass++
 			}
-		// A finding carries a reader verdict disagreement, never an
-		// execution failure (crash, sanitizer, timeout, or broken runner).
-		case has && (got.kind == "accept" || got.kind == "refuse"):
+		// A finding carries the answer it records and no other: never an
+		// execution failure (crash, sanitizer, timeout, or broken runner:
+		// F-070), and never a different verdict or digest (F-079).
+		case has && f.carries(got):
 			fmt.Printf("FIX-CARD: %s: %s %s (got %s, want %s)\n", f.slug, f.input, f.line, got, want)
 			carried++
 		default:
@@ -291,6 +320,11 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 	}
 	fmt.Printf("%s: %d cases: %d pass, %d carried as FIX-CARD, %d skipped, %d unexplained, %d stale\n",
 		port, len(cases), pass, carried, skipped, unexplained, stale)
+	if err := ledger.Check(); err != nil {
+		fmt.Printf("FAIL %s %v\n", port, err)
+		return false, nil
+	}
+	fmt.Printf("%s hostile-corpus ledger: %s\n", port, ledger.Summary())
 	return unexplained == 0 && stale == 0, nil
 }
 
