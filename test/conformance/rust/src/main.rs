@@ -2504,6 +2504,15 @@ fn wref_torture_cook(v: &mut cooktorture::TortureCook, path: &str, kind: &str, v
             v.str_arr[0].value = "a".repeat(wref_usize(value));
             Mutation::Done
         }
+        // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
+        ("b_bits13", "int") => wref_int(value, &mut v.b_bits13),
+        ("opt_bits", "int") => {
+            let mut bits = 0u64;
+            let done = wref_int(value, &mut bits);
+            v.opt_bits = Some(bits);
+            done
+        }
+        ("arr_bits[0].v", "int") => wref_int(value, &mut v.arr_bits[0].v),
         _ => fail(&format!("write-refusal: TortureCook names no {kind} path {path}")),
     }
 }

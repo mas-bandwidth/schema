@@ -116,7 +116,7 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 - **Dart**: SF-16.
 - **Go**: SF-30.
 - **Tooling (Luau)**: SF-33 (rejected here, see below).
-- **Corpus (all legs)**: shared corpus cases are owed for SF-18/19 (a message-form flags value above its width, on `write-refusal-message`), SF-20/21 (fixed-array length and counted `Min` on `write-refusal-fixed` and `write-refusal-message`) and SF-03/04 (a non-required ranged field on a variable root, on `write-refusal`). Until a surface carries them, each rule is held per port by the tests named above.
+- **Corpus (all legs)**: the variable-form Save's `bits(N)` width on a plain field, an optional and an array element is held by the shared `write-refusal` rows `sfv_bits_*`, `sfv_opt_bits_*` and `sfv_elem_bits_*` (SF-03, SF-04, SF-10, SF-12). Still owed, each for a named reason in the "Silent-failure rows" section of SPEC-CONFORMANCE.md: SF-09, SF-13, SF-14, SF-15 (no corpus unit has the shape on a variable root or the walkers cannot reach it), SF-17 and SF-08's float (no corpus unit declares a ranged float), SF-18/19 (no message-capable flags root with a connection), SF-20/21 (`count` on a `[N]T`; no `[Min..N]T` unit) and SF-25/26 (no cook refusal verdict; no deprecated variant). Until a row carries them, each rule is held per port by the tests named above.
 
 ## Rejected as lawful (sample)
 

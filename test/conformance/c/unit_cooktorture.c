@@ -85,6 +85,20 @@ int conformance_write_refusal_set_cooktorture( const char * root, void * value, 
         {
             return v->str_arr_count >= 1 && conformance_write_refusal_text( v->str_arr[0].value, 16, &v->str_arr[0].value_length, kind, text );
         }
+        /* SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier */
+        if ( strcmp( kind, "int" ) == 0 )
+        {
+            if ( strcmp( path, "b_bits13" ) == 0 ) { v->b_bits13 = (uint32_t) n; return 1; }
+            if ( strcmp( path, "opt_bits" ) == 0 ) { v->opt_bits = (uint64_t) n; v->opt_bits_present = 1; return 1; }
+            if ( strcmp( path, "arr_bits[0].v" ) == 0 )
+            {
+                cooktorture_bits_cell_t * cells;
+                if ( v->arr_bits.count < 1 || v->arr_bits.items.value == 0 ) { return 0; }
+                cells = (cooktorture_bits_cell_t *) (void *) ( (uint8_t *) (void *) &v->arr_bits.items + v->arr_bits.items.value );
+                cells[0].v = (uint64_t) n;
+                return 1;
+            }
+        }
         return 0;
     }
     return 0;
