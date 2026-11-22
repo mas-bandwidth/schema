@@ -16,7 +16,7 @@
 # harness's.
 # `retain` selects only --builder --retain, and `all` adds it to both plain
 # arms. Every mode compiles the unit legs once before running its arms.
-set -u
+set -eu -o pipefail
 goose=$1 harness=$2 units=$3 work=$4 seed=$5 n=$6
 # Direct callers keep the original two plain arms unless they opt in.
 mode=${7:-plain}
@@ -41,7 +41,7 @@ known_red=0
 # callers may set GOOSE_FUZZ_JOBS. The arms run one by one.
 jobs=${GOOSE_FUZZ_JOBS:-4}
 for d in "$units"/*/; do
-	ls "$d"*Table.goose >/dev/null 2>&1 && echo "$(basename "$d")"
+	if ls "$d"*Table.goose >/dev/null 2>&1; then basename "$d"; fi
 done >"$work/units.txt"
 xargs -P "$jobs" -I{} sh -c 'sh make/goose-wirefuzz-build.sh "$1" "$2/{}" "$3/{}" || echo "{}" >>"$3/build-failed.txt"' _ "$goose" "$units" "$work" <"$work/units.txt"
 for u in $(cat "$work/units.txt"); do
@@ -58,9 +58,9 @@ for u in $(cat "$work/units.txt"); do
             retain) flag="--builder --retain"; driver_arm=builder ;;
         esac
 		log="$work/$u.$arm.log"
+		rc=0
 		"$harness" wire-fuzz $flag --driver "$work/$u/wirefuzz $u $driver_arm" --seed "$seed" --n "$n" \
-			--failed "$work/failed-$u-$arm.bin" >"$log" 2>&1
-		rc=$?
+			--failed "$work/failed-$u-$arm.bin" >"$log" 2>&1 || rc=$?
 		noroots=$(awk -F'\t' -v u="$u" -v a="$arm" '$1 == u && $2 == a { print $3 }' "$noroots_file")
 		if [ $rc -ne 0 ] && grep -q 'the leg has a codec for none' "$log"; then
 			if [ -n "$noroots" ]; then

@@ -47,7 +47,7 @@ jobs:
     # runs), so each profile is a row of its own and cargo uses every core
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +80,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: the pinned serialize.rs

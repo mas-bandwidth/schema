@@ -15,6 +15,7 @@ CS_COOK_WRITE_NC := build/conformance-cs-cook-write-negative-control
 .PHONY: conformance-cs-cook-write conformance-cs-cook-write-negative-control
 conformance-cs-cook-write: build-conformance-cs build/conformance-harness
 	@mkdir -p $(CS_COOK_WRITE)
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --only cs --work $(CS_COOK_WRITE)/run > $(CS_COOK_WRITE)/log 2>&1 || true
 	@awk '$$1=="cook-write" && $$2=="pass" { split($$3, n, "/"); if (n[1] != "" && n[1] == n[2] && $$4 == "") ok=1 } END { exit(ok ? 0 : 1) }' \
 		$(CS_COOK_WRITE)/log || { cat $(CS_COOK_WRITE)/log; echo "conformance-cs-cook-write FAILED: cook-write is not pass N/N with the same N twice and no +Ka absence suffix"; exit 1; }
@@ -27,7 +28,7 @@ conformance-cs-cook-write-negative-control: build-conformance-cs build/conforman
 	@cp -R build/tables-generated-cs $(CS_COOK_WRITE_NC)/generated
 	@for f in $(CS_COOK_WRITE_NC)/generated/examples/TabledemoTable.cs \
 		$(CS_COOK_WRITE_NC)/generated/examples/TabledemoRegion.cs; do \
-		perl -pi -e 's/\Qint count = f.IsArray ? live : 1;\E/int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1; \/* SABOTAGED: dead counted slots written *\//' $$f; \
+		perl -pi -e 's/\Qint count = f.IsArray ? live : 1;\E/int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1; \/* SABOTAGED: dead counted slots written *\//' $$f || exit 1; \
 	done
 	@grep -rqF 'SABOTAGED: dead counted slots written' $(CS_COOK_WRITE_NC)/generated/examples || \
 		{ echo "NEGATIVE CONTROL FAILED: the dead-slot sabotage did not apply"; exit 1; }
@@ -38,6 +39,7 @@ conformance-cs-cook-write-negative-control: build-conformance-cs build/conforman
 		-o $(CS_COOK_WRITE_NC)/checker > $(CS_COOK_WRITE_NC)/build.log 2>&1 || \
 		{ cat $(CS_COOK_WRITE_NC)/build.log; echo "NEGATIVE CONTROL FAILED: the sabotaged driver does not compile"; exit 1; }
 	@printf 'cs %s %s/checker/schemaconformance.dll\n' "$(DOTNET)" "$(CURDIR)/$(CS_COOK_WRITE_NC)" > $(CS_COOK_WRITE_NC)/drivers
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --only cs --drivers $(CS_COOK_WRITE_NC)/drivers --work $(CS_COOK_WRITE_NC)/run > $(CS_COOK_WRITE_NC)/log 2>&1 || true
 	@if awk '$$1=="cook-write" && $$2=="pass" { split($$3, n, "/"); if (n[1] != "" && n[1] == n[2] && $$4 == "") ok=1 } END { exit(ok ? 0 : 1) }' \
 		$(CS_COOK_WRITE_NC)/log; then \

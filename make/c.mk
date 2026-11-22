@@ -317,7 +317,8 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | sed -n 1p | cut -d' ' -f2); \
 		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
-			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
+			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out || \
+			{ echo "json walk: extracting the walk from $$f failed"; exit 1; }; \
 		if [ ! -s $$out ]; then \
 			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \

@@ -9,7 +9,7 @@
 #
 # usage: cpp-clean-format.sh <ratchet-file> <census|check> <tree>...
 # env:   CLANG_FORMAT, JOBS, OUT (scratch dir)
-set -eu
+set -eu -o pipefail
 ratchet=$1
 mode=$2
 shift 2
@@ -30,7 +30,7 @@ xargs -P "$JOBS" -n 1 sh -c '"$CLANG_FORMAT" --style="$style" "$1" | cmp -s "$1"
 
 if [ "$mode" = census ]; then cat "$OUT/format/drift.txt"; exit 0; fi
 
-grep -v '^#' "$ratchet" | grep . | sort > "$OUT/format/allowed.txt" || true
+sed -e '/^#/d' -e '/^$/d' "$ratchet" | sort > "$OUT/format/allowed.txt"
 bad=0
 comm -13 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while read -r f; do
 	echo "tables-cpp-clean: clang-format drift in $f, which $ratchet does not list (the list only shrinks)"

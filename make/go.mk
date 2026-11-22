@@ -419,7 +419,8 @@ cards-conformance-create: cards-driver-go
 		done; \
 	done
 	@for s in load save render parse bounds upgrade edit taskhash view; do \
-		./build/cards-driver-go tables/cards/conformance/MANIFEST.txt $$s tables/cards/conformance/expected; \
+		./build/cards-driver-go tables/cards/conformance/MANIFEST.txt $$s tables/cards/conformance/expected || \
+			{ echo "cards-conformance-create: the Go driver failed on $$s"; exit 1; }; \
 	done
 	@echo "cards-conformance-create: wrote the Go reference answers into tables/cards/conformance/expected"
 
@@ -600,7 +601,10 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > /dev/null 2>&1 || true
+	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > build/conformance-go-fuzz-work.log 2>&1 || true
+	@test -n "$$(ls -A build/conformance-go-fuzz-work/fixtures 2>/dev/null)" || \
+		{ cat build/conformance-go-fuzz-work.log; echo "tables-go-fuzz: the harness wrote no fixtures under build/conformance-go-fuzz-work/fixtures"; exit 1; }
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
 

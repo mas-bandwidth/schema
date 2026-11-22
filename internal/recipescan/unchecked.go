@@ -32,16 +32,79 @@ func uncheckedStatements(toks []token, makefile bool) []token {
 	loop := 0
 	start := 0
 	closersOnly := func(k int) bool {
-		for _, t := range toks[k:] {
+		for j := k; j < len(toks); j++ {
+			t := toks[j]
 			if t.op && (t.text == ";" || t.text == ")") {
 				continue
 			}
 			if !t.op && (t.text == "fi" || t.text == "}" || t.text == "esac") {
 				continue
 			}
+			// the last statement of a then-branch is the if's status: the
+			// else / elif branches after it never run when it did
+			if !t.op && (t.text == "else" || t.text == "elif") && commandStart(toks, j) {
+				depth := 0
+				for j++; j < len(toks); j++ {
+					w := toks[j]
+					if w.op || !commandStart(toks, j) {
+						continue
+					}
+					if w.text == "if" {
+						depth++
+					} else if w.text == "fi" {
+						if depth == 0 {
+							break
+						}
+						depth--
+					}
+				}
+				continue
+			}
 			return false
 		}
 		return true
+	}
+	// failsAfter reports whether, from k on and before the enclosing block
+	// closes, the shell reaches "exit N" (N != 0): "diagnose; diagnose; exit
+	// 1" fails whatever the diagnostics did.
+	failsAfter := func(k int) bool {
+		depth := 0
+		for j := k; j < len(toks); j++ {
+			t := toks[j]
+			if t.op {
+				switch t.text {
+				case "(":
+					depth++
+				case ")":
+					if depth == 0 {
+						return false
+					}
+					depth--
+				case "||", "&&":
+					return false
+				}
+				continue
+			}
+			if !commandStart(toks, j) {
+				continue
+			}
+			switch t.text {
+			case "if", "for", "while", "until", "case", "{":
+				depth++
+			case "fi", "done", "esac", "}", "else", "elif", "then", "do":
+				if depth == 0 {
+					return false
+				}
+				if t.text == "fi" || t.text == "done" || t.text == "esac" || t.text == "}" {
+					depth--
+				}
+			default:
+				if depth == 0 && loudExit(toks, j) {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	nextReadsStatus := func(k int) bool {
 		for j := k + 1; j < len(toks); j++ {
@@ -88,6 +151,11 @@ func uncheckedStatements(toks []token, makefile bool) []token {
 			return
 		}
 		if nextReadsStatus(k) {
+			return
+		}
+		// "restore; exit 1": the shell fails whatever the statement did, so
+		// its status decides nothing and losing it loses nothing.
+		if failsAfter(k + 1) {
 			return
 		}
 		out = append(out, seg[0])

@@ -1,6 +1,6 @@
 #!/bin/sh
 # A run-scoped reference corpus, built once at this source and runtime pin.
-set -eu
+set -eu -o pipefail
 archive=${2:-build/python-ci-fixed-corpus.tar}
 source_head=$(git rev-parse HEAD)
 test -z "$(git status --porcelain)" || { echo 'corpus: source checkout is dirty' >&2; exit 1; }

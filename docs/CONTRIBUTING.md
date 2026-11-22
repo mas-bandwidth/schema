@@ -340,6 +340,52 @@ merging, not just a green pull request.
 One more gate is not CI at all. A pull request is not merged until its authors
 have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).
 
+## Nothing fails silently
+
+Glenn, 2026-11-22: "Nothing is allowed to fail silently." In the CI area (every
+workflow under `.github/workflows/`, the root `Makefile` and every makefile
+and script under `make/`, `tools/` and `bench/`) a step that fails ends red,
+nonzero, naming its cause. `internal/recipescan` reads all of it, parse only,
+and its test `TestCIAreaFailsLoudly` refuses any of these (the fast lane runs
+it on every diff that touches the area):
+
+- `|| true`, `|| :`, `|| exit 0`, `|| echo ...` or `; true` after anything but
+  housekeeping (`rm`, `kill`, `mkdir`, ...): **swallow**;
+- a `-` prefixed recipe line: **ignore-prefix**;
+- a script without `set -e` or, if it pipes, without `set -o pipefail`; a
+  workflow shell (a step's, a job's or the workflow's default) that is not
+  bash with `-e -o pipefail`, a step that pipes under GitHub's own default
+  (`bash -e {0}`), and `shell: cmd`: **no-strict-shell**;
+- `set +e` / `set +o pipefail`: **unset-strict**;
+- a command whose status nothing reads (a recipe runs under
+  `bash -o pipefail` without `-e`, so `a; b` loses `a`): **unchecked**;
+- a background job, or a `wait`, whose status is lost: **background**;
+- `grep -q`, `head` or `sed q` reading a pipe in a condition: **early-exit**;
+- a `command -v` / `which` / `hash` probe whose absence branch never exits
+  nonzero, so a missing tool skips the work and passes: **tool-skip**;
+- `continue-on-error`: **continue-on-error**;
+- a job that runs under `always()` / `!cancelled()` / `failure()` after its
+  needs, does no work of its own and never reads `needs.<job>.result` (or
+  `toJSON(needs)`): it reports success over a red dependency:
+  **unchecked-needs**.
+
+Make it loud: read the status (`st=0; cmd || st=$?`), refuse by name, assert
+a negative control's failure with `if cmd; then echo "...exited 0"; exit 1;
+fi`, and make a skip a failure under `SCHEMA_REQUIRE_CORPUS=1`. Where losing a
+status is deliberate and correct (cleanup, a version label, a harness run
+whose verdict is the named row read from its log right after), say why on
+the line above:
+
+```
+# loud-ok: <why losing this status loses nothing>
+```
+
+(`@# loud-ok: ...` as a recipe line inside a `define`). The excuse covers the
+logical line under it; a bare `loud-ok:` excuses nothing, and a loud-ok with
+no finding under it is itself a finding (**stale-loud-ok**), so an excuse
+cannot outlive its code. Run the scan with `go run ./tools/recipescan`
+(the whole tree, the CI area and beyond).
+
 ## Negative controls
 
 A negative control breaks what a gate watches and requires the gate to go red.

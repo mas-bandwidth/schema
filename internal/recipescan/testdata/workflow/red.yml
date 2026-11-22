@@ -1,0 +1,43 @@
+name: red
+on: [push]
+defaults:
+  run:
+    shell: go run ./tools/pgroup -- bash -e {0}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tests whose failure is lost
+        run: |
+          go test ./... || true
+      - name: a step that may fail
+        continue-on-error: true
+        run: make lint
+      - name: a skipped tool
+        shell: bash
+        run: |
+          if command -v golangci-lint >/dev/null 2>&1; then
+            golangci-lint run
+          fi
+  hosted:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      - run: cl /c x.cpp
+  plain:
+    runs-on: ubuntu-latest
+    steps:
+      - shell: python
+        run: print(1)
+      - run: |
+          go test ./... | tee log
+  verdict:
+    needs: [test, plain]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: echo all done

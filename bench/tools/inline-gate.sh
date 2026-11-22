@@ -49,7 +49,7 @@
 # also fires on compiler-version changes — accepted deliberately by issue
 # #25; telling those apart is manual. Improving a budget is a deliberate
 # ledger edit in the same commit as the improvement.
-set -u
+set -eu -o pipefail
 
 cd "$(dirname "$0")/../.."      # repo root
 
@@ -174,7 +174,11 @@ check)
             /^[ \t]*(#|$)/ { print; next }
             $1 == l && $4 == o { if (($2 "/" $3) in seen) print; next }
             { print }' "$BUDGET" > "$GATE_DIR/budget-$lang-$opt.txt"
-        assert_verdicts "$lang" "$opt" "$GATE_DIR/slice-$lang-$opt.txt" "$GATE_DIR/budget-$lang-$opt.txt" || echo "FAILED $lang $opt" >> "$GATE_DIR/check.fails"
+        # the loop runs in a pipe's subshell: a failed slice is recorded in a
+        # file the parent reads after it, so no failure is lost with the subshell
+        if ! assert_verdicts "$lang" "$opt" "$GATE_DIR/slice-$lang-$opt.txt" "$GATE_DIR/budget-$lang-$opt.txt"; then
+            echo "FAILED $lang $opt" >> "$GATE_DIR/check.fails"
+        fi
     done
     if [ -f "$GATE_DIR/check.fails" ]; then rc=1; rm -f "$GATE_DIR/check.fails"; fi
     exit $rc
@@ -507,8 +511,8 @@ fn slow_path() {}
 pub fn hot_path() {}
 EOF
     RE="$(rust_cold_regex "$ST/crate")"
-    if echo "_ZN9serialize9slow_path17h0123456789abcdefE" | grep -Eq "$RE" \
-       && ! echo "_ZN9serialize8hot_path17h0123456789abcdefE" | grep -Eq "$RE"; then
+    if echo "_ZN9serialize9slow_path17h0123456789abcdefE" | grep -E "$RE" >/dev/null \
+       && ! echo "_ZN9serialize8hot_path17h0123456789abcdefE" | grep -E "$RE" >/dev/null; then
         ok "rust cold scan: #[cold] fn matches by mangled token, hot fn does not"
     else
         fail "rust cold scan: regex '$RE' must match the #[cold] fn's mangled token and not the hot fn"

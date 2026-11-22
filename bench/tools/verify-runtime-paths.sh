@@ -15,7 +15,7 @@
 # SERIALIZE_RS / SERIALIZE_CS / SERIALIZE_JS. Exits non-zero on ANY mismatch — run.sh calls
 # the same checks before emitting a preamble, and pass-driver.sh calls this
 # before its first leg so a lying pass refuses before it costs a night.
-set -u
+set -eu -o pipefail
 
 cd "$(dirname "$0")/../.."      # repo root
 

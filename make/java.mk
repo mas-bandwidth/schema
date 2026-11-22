@@ -229,6 +229,7 @@ tables-java-generated-fresh: bin/schema
 	@# The stamp's plan is read once, and every reader takes all of its input:
 	@# under pipefail `make -n | grep -q` let make die of SIGPIPE and every unit
 	@# read as missing (the F-067 shape). Zero generate lines is red too.
+# loud-ok: a grep that fails for any reason lists the unit as missing, which the next line refuses
 	@plan=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null); \
 	dirs=$$(printf '%s\n' "$$plan" | grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //'); \
 	if [ -z "$$dirs" ]; then echo "tables-java-generated-fresh: the stamp's plan has no generate line"; exit 1; fi; \

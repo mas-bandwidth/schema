@@ -199,9 +199,14 @@ tables-cpp-bench-gate-negative-control: generated/bench/tables/cpp/.stamp
 	@cp testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin
 	@cp bench/corpus/variants/bench_table.variants.bin build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin
 	@b=$$(od -An -tu1 -j1000 -N1 build/cpp-bench-gate-sabotage/wire/bench_table.bin | tr -d ' '); \
-		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/wire/bench_table.bin bs=1 seek=1000 conv=notrunc 2>/dev/null; \
-		cmp -s testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin && \
-		{ echo "NEGATIVE CONTROL FAILED: the golden was not changed"; exit 1; } || true
+		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/wire/bench_table.bin bs=1 seek=1000 conv=notrunc 2>/dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: the golden's byte 1000 could not be rewritten"; exit 1; }; \
+		st=0; cmp -s testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin || st=$$?; \
+		case $$st in \
+			0) echo "NEGATIVE CONTROL FAILED: the golden was not changed"; exit 1 ;; \
+			1) ;; \
+			*) echo "NEGATIVE CONTROL FAILED: cmp could not compare the golden (exit $$st)"; exit 1 ;; \
+		esac
 	@if ./build/schema_tables_bench_cpp --gate --wire-dir build/cpp-bench-gate-sabotage/wire > build/cpp-bench-gate-sabotage/golden.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a golden one byte off left the bench gate green"; \
 		cat build/cpp-bench-gate-sabotage/golden.log; exit 1; \

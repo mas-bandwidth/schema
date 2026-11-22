@@ -11,13 +11,13 @@
 # too. Prints the gem count, which the install holds its verified count to.
 # Toolchain-free and milliseconds; its controls are the committed fixtures
 # under testdata/ruby-gems-lock-controls (ruby-gems-lock-controls).
-set -u
+set -eu -o pipefail
 lock=$1
 fail() { echo "ruby gems lock $lock: $1" >&2; exit 1; }
 [ -f "$lock" ] || fail "the lock does not exist"
 [ -z "$(tail -c 1 "$lock")" ] || fail "the lock does not end in a newline, so its last line would not be read"
-bad=$(grep -vE '^(#.*)?$' "$lock" | grep -vE '^[A-Za-z0-9_.-]+==[0-9A-Za-z_.-]+ sha256:[0-9a-f]{64}$' | head -1)
+bad=$(sed -E -e '/^(#.*)?$/d' -e '/^[A-Za-z0-9_.-]+==[0-9A-Za-z_.-]+ sha256:[0-9a-f]{64}$/d' "$lock" | sed -n 1p)
 [ -z "$bad" ] || fail "\"$bad\" is not name==version sha256:<64 hex>"
-n=$(grep -cvE '^(#.*)?$' "$lock")
+n=$(sed -E '/^(#.*)?$/d' "$lock" | wc -l | tr -d ' ')
 [ "$n" -gt 0 ] || fail "the lock names no gem"
 echo "ruby gems lock $lock: $n gem(s)"

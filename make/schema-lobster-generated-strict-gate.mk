@@ -63,6 +63,7 @@ endef
 # J4, `tables-<lang>-clean`).
 tables-lobster-clean: schema-lobster-generated-strict-gate
 schema-lobster-generated-strict-gate: toolchain-lobster bin/schema
+# loud-ok: the probe exits 1 naming a missing lobster; the second only defines strict_unit, whose every call reads its status
 	@$(SCHEMA_LOBSTER_STRICT_PROBE); $(SCHEMA_LOBSTER_STRICT_FN); \
 	rm -rf $(SCHEMA_LOBSTER_STRICT_DIR) && mkdir -p $(SCHEMA_LOBSTER_STRICT_DIR)/manifest || exit 1; \
 	for t in $(SCHEMA_LOBSTER_STRICT_TREES); do \
@@ -101,6 +102,7 @@ schema-lobster-generated-strict-gate: toolchain-lobster bin/schema
 # compiling nothing.
 .PHONY: schema-lobster-generated-strict-gate-negative-control
 schema-lobster-generated-strict-gate-negative-control: toolchain-lobster bin/schema
+# loud-ok: the probe exits 1 naming a missing lobster; the second only defines strict_unit, whose every call reads its status
 	@$(SCHEMA_LOBSTER_STRICT_PROBE); $(SCHEMA_LOBSTER_STRICT_FN); \
 	nc=$(SCHEMA_LOBSTER_STRICT_NC_DIR); \
 	rm -rf $$nc && mkdir -p $$nc || exit 1; \

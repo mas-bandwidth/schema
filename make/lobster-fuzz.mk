@@ -63,6 +63,7 @@ $(LOBSTER_WIRE_FUZZ_ILL_TEXT): testdata/wire/tables/store_full_message.bin
 # runner that installs no Lobster of its own.
 .PHONY: lobster-dist-present
 lobster-dist-present:
+# loud-ok: a lobster found on PATH is linked in; otherwise the recipe goes on to make dist-lobster, which fails loudly
 	@if [ -x "$(LOBSTER)" ]; then exit 0; fi; \
 	if [ "$(origin LOBSTER)" = "file" ]; then \
 		lob=$$(command -v lobster 2>/dev/null) || true; \

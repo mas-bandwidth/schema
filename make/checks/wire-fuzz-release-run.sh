@@ -23,7 +23,7 @@
 # An owed arm still RUNS when the leg has a driver, so an owed entry that has
 # gone green turns the gate red until the entry is removed; an owed arm is
 # never a silent skip.
-set -u
+set -eu -o pipefail
 leg=$1 arm=$2 seed=$3 n=$4 dir=$5
 owedfile=${WFR_OWED:-test/conformance/wire-fuzz-owed.txt}
 mkdir -p "$dir"
@@ -48,9 +48,9 @@ retain=
 [ "$arm" = retain ] && retain=--retain
 start=$(date +%s)
 # shellcheck disable=SC2086 # WFR_ENV and WFR_FLAGS are word lists by design
+status=0
 env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
-	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1
-status=$?
+	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1 || status=$?
 secs=$(( $(date +%s) - start ))
 
 # Python's release row must not hide an absent generated corpus entry.
@@ -73,7 +73,7 @@ if [ $status -eq 0 ] && grep -qE '(^|[^0-9])0 divergences' "$log" && grep -qE '[
 	# for, M = E + R and the arm named. A process that printed "0 divergences"
 	# after 1 mutant, after none, or with no count at all used to certify a
 	# row at N=100000.
-	summary=$(grep -E ': seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$log" | tail -1)
+	summary=$(sed -nE '/: seed [0-9]+, [0-9]+ seeds over [0-9]+ roots/p' "$log" | sed -n '$p')
 	count='.*, ([0-9]+) enumerated \+ ([0-9]+) random = ([0-9]+) mutants, 0 divergences.*'
 	got_seed=$(printf '%s\n' "$summary" | sed -nE 's/^[a-z-]+( retain)?: seed ([0-9]+), .*/\2/p')
 	enumerated=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\1/p")
@@ -114,11 +114,11 @@ fi
 # and the row carries the root, the mutant (the one after the P that passed)
 # and what differs. Anything else (a leg that died, a roster it did not
 # answer) is the harness's first error line.
-first=$(grep -m1 -E 'FAILED after [0-9]+ mutants' "$log")
+first=$(sed -nE '/FAILED after [0-9]+ mutants/{p;q;}' "$log")
 if [ -n "$first" ]; then
 	passed=$(printf '%s\n' "$first" | sed -nE 's/.*FAILED after ([0-9]+) mutants.*/\1/p')
 	what=$(printf '%s\n' "$first" | sed -E 's/.*FAILED after [0-9]+ mutants: //')
-	where=$(grep -m1 -E '^ *corpus seed ' "$log" | sed -nE 's/^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),.*/\1, pass \2/p')
+	where=$(sed -nE '/^ *corpus seed /{s/^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),.*/\1, pass \2/p;q;}' "$log")
 	verdict="RED: $where, mutant $((passed + 1)): $what"
 else
 	line=$(grep -m1 -E 'FAILED|harness:|wire-fuzz:|panic|error' "$log" || tail -1 "$log")

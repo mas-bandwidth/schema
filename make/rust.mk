@@ -199,8 +199,11 @@ RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
 tables-rust-big-endian: build/tables-generated-rust/.stamp
+# loud-ok: rustc answers nothing for a target that is not installed; the empty answer is the skip below, named, and a failure under SCHEMA_REQUIRE_CORPUS=1
 	@libdir="$$(PATH="$(RUSTUP_BIN):$$PATH" rustc --print target-libdir --target $(RUST_BE_TARGET) 2>/dev/null || true)"; \
 	if [ -z "$$libdir" ] || ! ls "$$libdir"/libstd* >/dev/null 2>&1; then \
+		if [ "$(SCHEMA_REQUIRE_CORPUS)" = 1 ]; then \
+			echo "FAIL tables-rust-big-endian: $(RUST_BE_TARGET) is not installed and SCHEMA_REQUIRE_CORPUS=1 (rustup target add $(RUST_BE_TARGET))"; exit 1; fi; \
 		echo "SKIP tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \

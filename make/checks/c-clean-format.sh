@@ -8,8 +8,9 @@
 #
 # usage: c-clean-format.sh <ratchet-file> <tree>...
 # env:   CLANG_FORMAT, OUT (scratch dir)
-set -eu
+set -eu -o pipefail
 allow=$1
+[ -r "$allow" ] || { echo "tables-c-clean: the ratchet $allow cannot be read" >&2; exit 1; }
 shift
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build}
@@ -17,6 +18,7 @@ mkdir -p "$OUT"
 seen=$OUT/c-format-seen.txt
 : > "$seen"
 style="file:$(pwd)/.clang-format"
+# loud-ok: a worker count, not a verdict: nproc on Linux, sysctl on macOS, 4 where neither answers
 jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 work=$OUT/c-format-workers
 rm -rf "$work" && mkdir -p "$work"
@@ -85,7 +87,7 @@ if [ "$judged" -ne "$checked" ]; then
 	echo "tables-c-clean: $judged verdicts for $checked files; the format check did not finish" >&2
 	bad=1
 fi
-for f in $(grep -v '^#' "$allow" | grep . || true); do
+for f in $(sed -e '/^#/d' -e '/^$/d' "$allow"); do
 	if [ ! -f "$f" ]; then
 		echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1
 	elif ! grep -Fxq "$f" "$OUT/c-format-files.txt"; then

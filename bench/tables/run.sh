@@ -24,7 +24,7 @@
 # numbers against any earlier board. Two corpora, two passes, two boards, and
 # every row carries family `table` so a cross-family division refuses on its
 # own (§5.3).
-set -e
+set -e -o pipefail
 
 ONLY=""
 GATE=0
@@ -51,15 +51,20 @@ if [ ! -d bench/tables ]; then
     exit 1
 fi
 
+# loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
 HOST="$(hostname -s 2>/dev/null || echo unknown)"
 ARCH="$(uname -m)"
 case "$ARCH" in
+    # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
     arm64|aarch64) CPU="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //' || echo unknown)" ;;
+    # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
     *)             CPU="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //' || echo unknown)" ;;
 esac
 
 commit_of() {
+    # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
     sha="$(git -C "$1" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
     branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     dirty=""
     if [ "$sha" != "unknown" ] && ! git -C "$1" diff --quiet HEAD -- 2>/dev/null; then
@@ -93,11 +98,13 @@ else
         echo "# build: Release"
         echo "# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)"
         echo "# c compiler: $(${CC:-cc} --version 2>/dev/null | head -1)"
+        # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
         echo "# go: $(go version 2>/dev/null || echo absent)"
         echo "# c flags: -std=c99 -Wall -Wextra -Werror -ffp-contract=off -${BENCH_OPT_LEVEL:-O3} -DNDEBUG"
         echo "# cpp flags: -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -${BENCH_OPT_LEVEL:-O3} -DNDEBUG -fno-rtti"
         echo "# dotnet tiered compilation: ${DOTNET_TieredCompilation:-runtime-default}"
         echo "# cpp compiler: $(${CXX:-c++} --version 2>/dev/null | head -1)"
+        # loud-ok: a provenance label for the results header; a missing probe is recorded as the fallback word, never a verdict
         echo "# dotnet: $(dotnet --version 2>/dev/null || echo 'not present')"
         echo "# rounds: $ROUNDS"
         echo "# pinning: not set by this driver; external affinity, if any, must be recorded in noise"

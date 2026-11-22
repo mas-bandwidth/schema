@@ -90,12 +90,14 @@ verify-toolchain-ruby:
 	@$(MAKE) --no-print-directory ruby-toolchain-check
 
 verify-toolchain-lua:
+# loud-ok: absence installs the pinned tool (make dist-<tool>), which fails loudly when it cannot
 	@test -x "$(LUA)" || command -v "$(LUA)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-lua
 
 verify-toolchain-luau:
 	@if [ ! -x "$(LUAU)" ] || [ ! -x "$(LUAU_ANALYZE)" ]; then $(MAKE) --no-print-directory dist-luau; fi
 
 verify-toolchain-squirrel:
+# loud-ok: absence installs the pinned tool (make dist-<tool>), which fails loudly when it cannot
 	@test -x "$(SQ)" || command -v "$(SQ)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-squirrel
 
 verify-toolchain-moo:
@@ -104,9 +106,11 @@ verify-toolchain-moo:
 	fi
 
 verify-toolchain-goose:
+# loud-ok: absence installs the pinned tool (make dist-<tool>), which fails loudly when it cannot
 	@test -x "$(GOOSE)" || command -v "$(GOOSE)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-goose
 
 verify-toolchain-lobster:
+# loud-ok: absence installs the pinned tool (make dist-<tool>), which fails loudly when it cannot
 	@if [ ! -d "$(LOBSTER_DIST)/modules" ] && [ -d "$${NOVA_SDK:-/home/nova/sdk}/lobster-$(LOBSTER_VERSION)/modules" ]; then \
 		mkdir -p "$(LOBSTER_DIST)" && ln -sfn "$${NOVA_SDK:-/home/nova/sdk}/lobster-$(LOBSTER_VERSION)"/* "$(LOBSTER_DIST)/"; \
 	elif [ ! -x "$(LOBSTER)" ] && ! command -v "$(LOBSTER)" >/dev/null 2>&1; then \

@@ -32,8 +32,24 @@
 # it errors on an ambiguous package name, which verify_runtime turns into a
 # refusal.
 
+# Every caller runs strict (set -e -o pipefail) and so does this file: it
+# sets the same flags, so a caller that forgot them still cannot lose a
+# failure in runtime_paths_init. verify_runtime is called in a condition
+# ("x=$(verify_runtime ...) || rc=$?"), where it returns its own status.
+set -e -o pipefail
+
 # realpath for directories, portable (macOS bash 3.2 has no realpath -m)
 rp_dir() { (cd "$1" 2>/dev/null && pwd -P); }
+
+# rp_dir_or_empty: the directory's real path, or NOTHING when it does not
+# exist. Empty is an answer every caller checks and refuses by name ("does not
+# exist — cannot prove the recorded path"); an existing directory that cannot
+# be entered is an error, never an empty answer.
+rp_dir_or_empty() {
+    if [ -d "$1" ]; then
+        (cd "$1" && pwd -P)
+    fi
+}
 
 # cargo, whether or not rustup's shims are on PATH (same fallback run.sh uses)
 rt_cargo() { PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo "$@"; }
@@ -48,12 +64,12 @@ runtime_paths_init() {
 
     RT_OVR="build/bench/runtime-override"
     ABS_ROOT="$(pwd -P)"
-    ABS_SERIALIZE="$(rp_dir "$SERIALIZE" || true)"
-    ABS_SERIALIZE_C="$(rp_dir "$SERIALIZE_C" || true)"
-    ABS_SERIALIZE_GO="$(rp_dir "$SERIALIZE_GO" || true)"
-    ABS_SERIALIZE_RS="$(rp_dir "$SERIALIZE_RS" || true)"
-    ABS_SERIALIZE_CS="$(rp_dir "$SERIALIZE_CS" || true)"
-    ABS_SERIALIZE_JS="$(rp_dir "$SERIALIZE_JS" || true)"
+    ABS_SERIALIZE="$(rp_dir_or_empty "$SERIALIZE")"
+    ABS_SERIALIZE_C="$(rp_dir_or_empty "$SERIALIZE_C")"
+    ABS_SERIALIZE_GO="$(rp_dir_or_empty "$SERIALIZE_GO")"
+    ABS_SERIALIZE_RS="$(rp_dir_or_empty "$SERIALIZE_RS")"
+    ABS_SERIALIZE_CS="$(rp_dir_or_empty "$SERIALIZE_CS")"
+    ABS_SERIALIZE_JS="$(rp_dir_or_empty "$SERIALIZE_JS")"
 
     # effective build arguments — empty means "the checked-in default,
     # byte-identical to a run with no env vars set"
@@ -66,7 +82,7 @@ runtime_paths_init() {
     local def
 
     # ---- rust override: four generated manifests, absolute paths ----
-    def="$(rp_dir ../serialize.rs || true)"
+    def="$(rp_dir_or_empty ../serialize.rs)"
     if [ -n "$ABS_SERIALIZE_RS" ] && [ "$ABS_SERIALIZE_RS" != "$def" ]; then
         mkdir -p "$RT_OVR/rust/example" "$RT_OVR/rust/benchcorpus" "$RT_OVR/rust/realworld" "$RT_OVR/rust/bench"
         cat > "$RT_OVR/rust/example/Cargo.toml" <<EOF
@@ -158,7 +174,7 @@ EOF
     # Only the MAIN module's replace directives apply in Go, so overriding
     # bench/go's modfile controls the whole graph — generated/go's own
     # replace line is ignored by construction.
-    def="$(rp_dir ../serialize.go || true)"
+    def="$(rp_dir_or_empty ../serialize.go)"
     if [ -n "$ABS_SERIALIZE_GO" ] && [ "$ABS_SERIALIZE_GO" != "$def" ] \
         && [ -f bench/go/go.mod ] && command -v go >/dev/null 2>&1; then
         mkdir -p "$RT_OVR"
@@ -172,7 +188,7 @@ EOF
 
     # ---- cs override: an msbuild property the csproj's Compile includes
     # consume (<SerializeCsRoot>, defaulting to the checked-in path) ----
-    def="$(rp_dir ../serialize.cs || true)"
+    def="$(rp_dir_or_empty ../serialize.cs)"
     if [ -n "$ABS_SERIALIZE_CS" ] && [ "$ABS_SERIALIZE_CS" != "$def" ]; then
         CS_PROP_ARGS="--property:SerializeCsRoot=$ABS_SERIALIZE_CS"
         CS_MSBUILD_ARGS="-p:SerializeCsRoot=$ABS_SERIALIZE_CS"
@@ -184,7 +200,7 @@ EOF
     # root-relative setting; empty at the default path, so a default run's
     # environment is byte-identical to a run with no env vars set ----
     JS_ENV=""
-    def="$(rp_dir ../serialize.js || true)"
+    def="$(rp_dir_or_empty ../serialize.js)"
     if [ -n "$ABS_SERIALIZE_JS" ] && [ "$ABS_SERIALIZE_JS" != "$def" ]; then
         JS_ENV="SERIALIZE_JS=$ABS_SERIALIZE_JS"
     fi
@@ -197,7 +213,7 @@ EOF
 #             cannot run, or it has no runtime checkout (reason on stderr);
 #           1 MISMATCH or unprovable — the caller must refuse to emit rows.
 verify_runtime() {
-    local want got id items
+    local want got id items lock_out
     case "$1" in
 
     cpp)
@@ -224,7 +240,7 @@ verify_runtime() {
         got="$(cd bench/go && go list $GO_MODFILE_ARG -m \
             -f '{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}' \
             github.com/mas-bandwidth/serialize.go/v2 2>/dev/null)"
-        got="$(rp_dir "$got" || true)"
+        got="$(rp_dir_or_empty "$got")"
         if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "go: the build resolves serialize.go to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_GO=$SERIALIZE_GO ($want)" >&2
             return 1
@@ -246,7 +262,11 @@ verify_runtime() {
         # pkgid needs a lockfile; generating one is exactly what the build
         # itself would do (path deps only, no network), so it proves nothing
         # the build would not.
-        rt_cargo generate-lockfile --manifest-path "$RS_MANIFEST" >/dev/null 2>&1 || true
+        if ! lock_out="$(rt_cargo generate-lockfile --manifest-path "$RS_MANIFEST" 2>&1)"; then
+            echo "rust: cargo cannot write the lockfile for $RS_MANIFEST (the build would fail the same way):" >&2
+            echo "$lock_out" | sed 's/^/    /' >&2
+            return 1
+        fi
         # The PACKAGE name is read out of the manifest rather than written here.
         # serialize.rs publishes as serialize-official (the bare name is taken on
         # crates.io) while its [lib] stays `serialize`, so the dependency is
@@ -254,7 +274,7 @@ verify_runtime() {
         # hardcoded in this gate is a second copy of somebody else's decision,
         # and it rotted the moment that rename landed. Falls back to the
         # dependency name, which is what an unrenamed dep resolves as anyway.
-        rs_pkg="$(sed -n 's/^serialize = .*package = "\([^"]*\)".*/\1/p' "$RS_MANIFEST" | head -1)"
+        rs_pkg="$(sed -n 's/^serialize = .*package = "\([^"]*\)".*/\1/p' "$RS_MANIFEST" | sed -n 1p)"
         [ -n "$rs_pkg" ] || rs_pkg=serialize
         if ! id="$(rt_cargo pkgid --manifest-path "$RS_MANIFEST" "$rs_pkg" 2>&1)"; then
             echo "rust: cargo cannot resolve a unique $rs_pkg crate from $RS_MANIFEST:" >&2
@@ -262,7 +282,7 @@ verify_runtime() {
             return 1
         fi
         got="$(echo "$id" | sed -E 's|^(path\+)?file://||; s|#.*$||')"
-        got="$(rp_dir "$got" || true)"
+        got="$(rp_dir_or_empty "$got")"
         if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "rust: the build resolves serialize to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_RS=$SERIALIZE_RS ($want)" >&2
             return 1
@@ -292,8 +312,8 @@ verify_runtime() {
         local item dir root
         while IFS= read -r item; do
             case "$item" in
-                /*) dir="$(rp_dir "$(dirname "$item")" || true)" ;;
-                *)  dir="$(rp_dir "bench/cs/$(dirname "$item")" || true)" ;;
+                /*) dir="$(rp_dir_or_empty "$(dirname "$item")")" ;;
+                *)  dir="$(rp_dir_or_empty "bench/cs/$(dirname "$item")")" ;;
             esac
             root="${dir%/src}"
             if [ -z "$dir" ] || [ "$root" != "$want" ]; then
@@ -318,7 +338,7 @@ EOF
         # will actually import for it — the toolchain's own resolution, never
         # this script's intent — under the exact environment the leg runs with
         got="$(cd bench/js && env $JS_ENV node main.mjs --print-runtime 2>/dev/null)"
-        got="$(rp_dir "$got" || true)"
+        got="$(rp_dir_or_empty "$got")"
         if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "js: the runner resolves serialize.js to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_JS=$SERIALIZE_JS ($want)" >&2
             return 1

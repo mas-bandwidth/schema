@@ -102,6 +102,7 @@ SQUIRREL_WIRE_PIN ?= 97
 
 .PHONY: conformance-squirrel-wire-pin
 conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@set -eu; \
 	rm -rf build/conformance-squirrel build/schema-squirrel; \
 	$(MAKE) build/conformance-harness build/conformance-squirrel; \

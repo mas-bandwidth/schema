@@ -2327,8 +2327,12 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 	@mkdir -p build
 	@perl -0pe 's|(static int surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
 		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
-	@cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp || st=$$?; \
+	case $$st in \
+		0) echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1 ;; \
+		1) ;; \
+		*) echo "NEGATIVE CONTROL FAILED: cmp could not compare the sabotaged driver (exit $$st)"; exit 1 ;; \
+	esac
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
 		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
 	@rm -rf build/conformance-absent-work
@@ -3061,6 +3065,7 @@ BE_RUN ?= qemu-s390x
 # and the emulator invocation is just the binary.
 build/schema_test_tables_be: build/tables-generated-be/.stamp build/tables-main-be-smoke.cpp
 	@mkdir -p build
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-generated-be) -Wno-unused-function build/tables-main-be-smoke.cpp -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
@@ -3136,6 +3141,7 @@ build/schema_test_fixed_endian: build/fixed-endian/.stamp test/tables/fixed_endi
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 build/schema_test_fixed_endian_be: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 .PHONY: tables-big-endian-collections
@@ -3245,6 +3251,7 @@ tables-big-endian-control-only: build/tables-main-be-control.cpp
 	@./build/schema-host-order generate --lang cpp --out build/tables-host-order/examples tables/examples
 	@# Both compilers at once, each waited on by its own pid (F-068): a bare
 	@# wait returned 0 when either compile failed.
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	@set -e; \
 	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & host=$$!; \
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & be=$$!; \
@@ -3379,9 +3386,9 @@ tables-hostile-negative-control: tables-hostile-values
 	else \
 		echo "NEGATIVE CONTROL FAILED: relaxing the number grammar left num-leading-plus refused"; exit 1; \
 	fi
-	@./bin/schema pack --root RootConfig --out build/loose.bin \
-		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1 && \
-		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
+	@if ./bin/schema pack --root RootConfig --out build/loose.bin \
+		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; fi
 
 # The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
 # encoder — elide a present `?T`, which §2.3 forbids — and the golden must go
@@ -4497,6 +4504,7 @@ tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
 	@rm -rf build/tables-list-preorder/cooks && mkdir -p build/tables-list-preorder/cooks
+# loud-ok: the sabotaged writer is meant to fail; cook-check below must refuse the cook it laid, by name, and a run that laid no cook fails that check too
 	@SCHEMA_LIST_COOK_DIR=build/tables-list-preorder/cooks ./build/schema_test_lists_preorder > /dev/null 2>&1 || true
 	@if ./bin/schema cook-check --root Army build/tables-list-preorder/cooks/army.cook tables/lists > build/list-preorder-check.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cook-check accepted the cook the sabotaged writer laid"; exit 1; \
@@ -6789,12 +6797,13 @@ TOOLCHAIN_GREEN = toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $
 .PHONY: toolchain
 toolchain: toolchain-names
 	@rm -rf build/toolchain && mkdir -p build/toolchain
+# loud-ok: each leg's status is collected into $missing and refused by name below
 	@missing=""; \
 	$(foreach leg,$(PROBED_TOOLCHAIN_LEGS), \
 		$(MAKE) --no-print-directory toolchain-$(leg) \
 			> build/toolchain/$(leg).log 2> build/toolchain/$(leg).err \
 			|| missing="$$missing $(leg)"; \
-		cat build/toolchain/$(leg).log; \
+		cat build/toolchain/$(leg).log || exit 1; \
 		grep -q "REFUSES: the $(leg) leg" build/toolchain/$(leg).log \
 			|| cat build/toolchain/$(leg).err;) \
 	$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
@@ -7209,6 +7218,7 @@ endef
 # deps lets the sibling staging hang off deps without running first.
 .PHONY: deps-go
 deps-go:
+# loud-ok: a label only: the tag or commit printed beside the build, never a verdict
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -7728,6 +7738,7 @@ proof-negative-control: build/conformance-harness build/conformance-go table-bas
 		{ echo "proof-negative-control: the clean Go leg failed"; cat $(PROOF_CONTROL)/clean.out; exit 1; }
 	@go run ./tools/matrix proof -results $(PROOF_CONTROL)/clean.json -cell 'surface wire/go' || \
 		{ echo "NEGATIVE CONTROL FAILED: the clean Go leg's surface wire cell is not proven"; exit 1; }
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/sabotaged.txt --work $(PROOF_CONTROL)/sabotaged-work --results $(PROOF_CONTROL)/sabotaged.json > $(PROOF_CONTROL)/sabotaged.out 2>&1 || true
 	@if go run ./tools/matrix proof -results $(PROOF_CONTROL)/sabotaged.json -cell 'surface wire/go' > $(PROOF_CONTROL)/cell.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: with go's wire/root_full answer deleted, the cell stayed proven"; cat $(PROOF_CONTROL)/cell.out; exit 1; fi
@@ -7942,6 +7953,7 @@ tables-go-checked-cook:
 #   - pins-conformance:       testdata/conformance/tables/cook/ and forgeries.txt
 
 define pins_generate_dirs
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	@set -eu; \
 	tmp="build/pins-tmp/$(3)"; \
 	rm -rf "$$tmp" && mkdir -p "$$tmp"; \
@@ -7976,6 +7988,7 @@ define pins_generate_dirs
 endef
 
 define pins_compile_cxx
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	@set -eu; \
 	objdir="build/pins-tmp/$(4)-objs"; \
 	rm -rf "$$objdir" && mkdir -p "$$objdir"; \
@@ -8118,6 +8131,7 @@ pins-conformance: bin/schema build/conformance-harness
 
 
 define tables_run_arm
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	set -eu; \
 	tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
@@ -8172,8 +8186,7 @@ endef
 # was the row. Overlap them. $(1) blockful env, $(3) blockless env,
 # $(2) label, $(4) heavy|rest|empty.
 define tables_run_both_arms
-	@set +e; \
-	( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
+	@( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
 	( $(call tables_run_arm,$(3),$(2) blockless,$(4)) ) & p2=$$!; \
 	e1=0; e2=0; \
 	wait $$p1 || e1=$$?; \
@@ -8348,6 +8361,7 @@ build/tables-main-be-control.cpp: test/tables/main.cpp
 
 build/schema_test_tables_be_full: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 .PHONY: tables-big-endian-tables-full tables-big-endian-control-full
@@ -8368,6 +8382,7 @@ tables-big-endian-control-full:
 	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
 	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
 		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
 		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
 	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \

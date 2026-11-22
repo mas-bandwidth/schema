@@ -10,7 +10,7 @@
 # refused too. Toolchain-free and milliseconds; its controls are the committed
 # fixtures under testdata/moo-wire-fuzz-pinned-controls
 # (tables-moo-wire-fuzz-pinned-list-controls).
-set -u
+set -eu -o pipefail
 list=$1
 dir=$2
 fail() { echo "moo pinned list $list: $1" >&2; exit 1; }

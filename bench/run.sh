@@ -86,7 +86,7 @@
 #   BENCH_NOISE   noise label recorded in the results preamble, e.g.
 #                 "NOISY: game server owns isolated cores, bench on shared core 0"
 
-set -e
+set -e -o pipefail
 
 cd "$(dirname "$0")/.."     # repo root
 
@@ -124,8 +124,8 @@ done
 # that produced its rows. ----
 if [ -n "${RENDER:-}" ]; then
     [ -r "$RENDER" ] || { echo "render: cannot read $RENDER" >&2; exit 1; }
-    R_HOST="$(sed -n 's/^# host: \([^ ]*\).*/\1/p' "$RENDER" | head -1)"
-    R_CPU="$(sed -n 's/^# cpu: \(.*\)/\1/p' "$RENDER" | head -1)"
+    R_HOST="$(sed -n 's/^# host: \([^ ]*\).*/\1/p' "$RENDER" | sed -n 1p)"
+    R_CPU="$(sed -n 's/^# cpu: \(.*\)/\1/p' "$RENDER" | sed -n 1p)"
     {
         echo ""
         echo "rendered from $RENDER"
@@ -199,15 +199,18 @@ case "$(uname -s)" in
 esac
 
 # language toolchain versions — every CSV carries its exact builders
-GO_VERSION="$(go version 2>/dev/null | head -1 || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+GO_VERSION="$(go version 2>/dev/null | sed -n 1p || true)"
 RUST_VERSION=""
 if command -v cargo >/dev/null 2>&1; then
-    RUST_VERSION="$(cargo --version 2>/dev/null | head -1); $(rustc --version 2>/dev/null | head -1)"
+    RUST_VERSION="$(cargo --version | sed -n 1p); $(rustc --version | sed -n 1p)"
 elif [ -x /opt/homebrew/opt/rustup/bin/cargo ]; then
-    RUST_VERSION="$(/opt/homebrew/opt/rustup/bin/cargo --version | head -1); $(/opt/homebrew/opt/rustup/bin/rustc --version | head -1)"
+    RUST_VERSION="$(/opt/homebrew/opt/rustup/bin/cargo --version | sed -n 1p); $(/opt/homebrew/opt/rustup/bin/rustc --version | sed -n 1p)"
 fi
-DOTNET_VERSION="$(dotnet --version 2>/dev/null | head -1 || true)"
-NODE_VERSION="$(node --version 2>/dev/null | head -1 || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+DOTNET_VERSION="$(dotnet --version 2>/dev/null | sed -n 1p || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+NODE_VERSION="$(node --version 2>/dev/null | sed -n 1p || true)"
 
 # The codegen-only legs (java, dart, elixir): schema's backends for these
 # languages emit self-contained code with no runtime library, so the legs
@@ -218,8 +221,10 @@ JAVA_BIN="${JAVA:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/java}"
 JAVAC_BIN="${JAVAC:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/javac}"
 DART_BIN="${DART:-$PWD/dist/dart-sdk-3.13.2/bin/dart}"
 BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
-JAVA_VERSION="$("$JAVA_BIN" --version 2>/dev/null | head -1 || true)"
-DART_VERSION="$("$DART_BIN" --version 2>/dev/null | head -1 || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+JAVA_VERSION="$("$JAVA_BIN" --version 2>/dev/null | sed -n 1p || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+DART_VERSION="$("$DART_BIN" --version 2>/dev/null | sed -n 1p || true)"
 # beam_pinned: true only when an executable named $1 sits in one of
 # BEAM_PATH's OWN directories. The elixir leg REQUIRES the pin the way java
 # and dart require their absolute $JAVAC_BIN and $DART_BIN: a `command -v`
@@ -263,14 +268,16 @@ fi
 # the leg would refuse to run on
 ELIXIR_VERSION=""
 if beam_pinned elixir && beam_pinned erl; then
-    ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | head -1 || true)"
+    # loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+    ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | sed -n 1p || true)"
 fi
 # Goose (docs/PORT-GOOSE.md): the pinned compiler `make dist-goose` installs,
 # or $GOOSE. Its runtime is vendored into the generated unit, so like the
 # codegen-only legs there is no runtime checkout; the target is behind the
 # schema_leg_goose tag, so the leg builds build/schema-goose itself.
 GOOSE_BIN="${GOOSE:-$PWD/dist/goose-v2026.2-linux-x64/goose}"
-GOOSE_VERSION="$("$GOOSE_BIN" version 2>/dev/null | head -1 || true)"
+# loud-ok: a toolchain version label for the CSV header; an absent toolchain records 'not present' and its leg is skipped by name below
+GOOSE_VERSION="$("$GOOSE_BIN" version 2>/dev/null | sed -n 1p || true)"
 
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
@@ -288,7 +295,7 @@ COMMON_FLAGS="-std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igen
 # to unsigned < 0). Those are emitter findings, not bench findings — tracked
 # for a fix; suppressed here so the bench builds on both compilers with
 # -Werror otherwise live.
-if $CXX_BIN --version 2>/dev/null | head -1 | grep -qi 'g++\|gcc'; then
+if $CXX_BIN --version 2>/dev/null | sed -n 1p | grep -i 'g++\|gcc' >/dev/null; then
     COMMON_FLAGS="$COMMON_FLAGS -Wno-class-memaccess -Wno-type-limits"
 fi
 # The optimization level and the runners' opt column come from ONE variable,
@@ -319,7 +326,7 @@ C_COMMON_FLAGS="-std=c99 -Wall -Wextra -Werror -Igenerated/bench/c -I$SERIALIZE_
 # accommodations above; every space-box era to date carried this flag by hand
 # in its build script (realworld-build.sh) — this lets bench/run.sh build the
 # C leg on gcc directly. Warning suppression only: codegen flags unchanged.
-if $CC_BIN --version 2>/dev/null | head -1 | grep -qi 'gcc'; then
+if $CC_BIN --version 2>/dev/null | sed -n 1p | grep -i 'gcc' >/dev/null; then
     C_COMMON_FLAGS="$C_COMMON_FLAGS -Wno-stringop-truncation"
 fi
 C_RELEASE_FLAGS="-$OPT_LEVEL -DNDEBUG -DBENCH_OPT=\"$OPT_LEVEL\" $C_COMMON_FLAGS"
@@ -352,17 +359,21 @@ if [ "$PGO" = 1 ]; then
 fi
 
 emit_preamble() {
-    local build="$1"
+    local build="$1" cpp_flags="$DEBUG_FLAGS" c_flags="$C_DEBUG_FLAGS"
+    if [ "$build" = Release ]; then
+        cpp_flags="$RELEASE_FLAGS"
+        c_flags="$C_RELEASE_FLAGS"
+    fi
     {
         echo "# schema bench results"
         echo "# date: $(date -u +%FT%TZ)"
         echo "# host: $HOST  arch: $ARCH  os: $(uname -sr)"
         echo "# cpu: $CPU"
         echo "# build: $build"
-        echo "# cpp compiler: $($CXX_BIN --version 2>/dev/null | head -1)"
-        echo "# cpp flags: $([ "$build" = Release ] && echo "$RELEASE_FLAGS" || echo "$DEBUG_FLAGS")"
-        echo "# c compiler: $($CC_BIN --version 2>/dev/null | head -1)"
-        echo "# c flags: $([ "$build" = Release ] && echo "$C_RELEASE_FLAGS" || echo "$C_DEBUG_FLAGS") (serialize.c compiled in, no LTO)"
+        echo "# cpp compiler: $($CXX_BIN --version 2>/dev/null | sed -n 1p)"
+        echo "# cpp flags: $cpp_flags"
+        echo "# c compiler: $($CC_BIN --version 2>/dev/null | sed -n 1p)"
+        echo "# c flags: $c_flags (serialize.c compiled in, no LTO)"
         echo "# pgo: $PGO_NOTE"
         echo "# go: ${GO_VERSION:-not present} (go run, default optimized build)"
         echo "# rust: ${RUST_VERSION:-not present} (cargo run --release at opt-level ${OPT_LEVEL#O}, no LTO)"
@@ -400,7 +411,9 @@ emit_preamble() {
 
 commit_of() {
     local sha branch dirty
+    # loud-ok: a provenance label for the CSV header; outside a git checkout it records 'unknown', never a verdict
     sha="$(git -C "$1" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    # loud-ok: a provenance label for the CSV header; outside a git checkout it records 'unknown', never a verdict
     branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     # -dirty when the tree differs from HEAD (tracked changes only): a sweep
     # of uncommitted work must SAY so, or the archaeology of an experiment
@@ -1031,12 +1044,21 @@ fi
 # language disassembly pass and a JIT leg has no AOT artifact to walk —
 # js rows keep inline=unknown, which correctly refuses their ratios.
 if [ "$INLINE" = 1 ]; then
+    inline_failed=""
     for lang in cpp c go rust cs; do
-        if { [ -z "$ONLY" ] || [ "$ONLY" = "$lang" ]; } && grep -q "^$lang," "$OUT" 2>/dev/null; then
-            bench/tools/inline-verdict.sh "$lang" "$OUT" \
-                || echo "inline verdict failed for $lang — its rows stay unknown (un-ratioable)" >&2
+        if { [ -z "$ONLY" ] || [ "$ONLY" = "$lang" ]; } && grep -q "^$lang," "$OUT"; then
+            if ! bench/tools/inline-verdict.sh "$lang" "$OUT"; then
+                echo "inline verdict failed for $lang — its rows stay unknown (un-ratioable)" >&2
+                inline_failed="$inline_failed $lang"
+            fi
         fi
     done
+    # --inline asked for the verdict: a leg that could not get one is a
+    # failed pass, named, never a green run with unknown rows
+    if [ -n "$inline_failed" ]; then
+        echo "FAIL: the inline verdict pass failed for:$inline_failed (rows in $OUT stay inline=unknown)" >&2
+        exit 1
+    fi
 fi
 
 # ---- --quick: the headline table — one row per language over bench_mixed,

@@ -199,7 +199,7 @@ jobs:
       SCHEMA_REQUIRE_TSC: '1'
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     # MANY ROWS, because this job was 650 s median (2026-09-11) and a matrix
     # row is a job: the emitter packages, the compiler package in 15 rows,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
@@ -978,6 +978,7 @@ jobs:
         if: matrix.group == 'unit-codegen-lobster-3'
         run: |
           set -euo pipefail
+          # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
           all=$( { make -pq test-lobster 2>/dev/null || true; } | sed -n '/^test-lobster: /{s///p;q;}')
           [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
           targets=()
@@ -1771,7 +1772,7 @@ jobs:
       PGROUP_WALL: ''
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1876,7 +1877,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       pins: ${{ steps.pick.outputs.pins }}
       cs: ${{ steps.pick.outputs.cs }}
@@ -1981,7 +1982,7 @@ jobs:
             target: tables-block-zero-cost-c-rest
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -2104,7 +2105,7 @@ jobs:
             target: pins-conformance
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2199,7 +2200,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
@@ -2259,7 +2260,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.conformance-matrix.outputs.matrix) }}
@@ -2526,7 +2527,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     permissions:
       contents: read
       actions: read
@@ -2577,7 +2578,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2691,7 +2692,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2753,7 +2754,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2864,7 +2865,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2928,7 +2929,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -3096,6 +3097,7 @@ jobs:
           fi
 
       - name: what the pins resolved to
+        shell: bash
         run: |
           if [ "${{ matrix.leg }}" != "go" ]; then
             s390x-linux-gnu-g++-13 --version | head -1
@@ -3150,7 +3152,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PINNED to the module's own Go version, and it moves WITH the
@@ -3268,7 +3270,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -3529,6 +3531,7 @@ jobs:
           } > build/msvc/negative.cmd
 
       - name: cl /W4 /WX over the generated corpus, one translation unit at a time
+        # loud-ok: cmd is the MSVC toolchain's own shell; every command that decides the step ends in || exit /b 1 or asserts its own ERRORLEVEL
         shell: cmd
         run: |
           call build\msvc\vc.cmd || exit /b 1
@@ -3541,6 +3544,7 @@ jobs:
       # proves nothing. The planted extension must make cl refuse, and if cl
       # accepts it the step goes red saying exactly why that matters.
       - name: negative control — cl must REFUSE a GNU extension in a generated header
+        # loud-ok: cmd is the MSVC toolchain's own shell; every command that decides the step ends in || exit /b 1 or asserts its own ERRORLEVEL
         shell: cmd
         run: |
           call build\msvc\vc.cmd || exit /b 1
@@ -3566,7 +3570,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -3614,7 +3618,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3753,7 +3757,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -3808,7 +3812,7 @@ jobs:
       PGROUP_WALL: ''
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}
@@ -4043,7 +4047,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       # no checkout, so tools/pgroup is not here: plain bash
       - name: every job of this run succeeded (failed, cancelled or skipped is red)

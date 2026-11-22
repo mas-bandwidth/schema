@@ -74,7 +74,8 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	go run ./tools/sabotage -name packet-end-squirrel-end -out build/packet-end/squirrel-negative/read.gotext internal/codegen/squirrel/read.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/read.go":"%s/build/packet-end/squirrel-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/squirrel-negative/overlay.json
 	go run -overlay=build/packet-end/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-end/squirrel-negative/gen test/packet-end/End.schema
-	"$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel-negative/gen --vectors $(PACKET_END_SQUIRREL_VECTORS) > build/packet-end/squirrel-negative/log 2>&1 || true
+	@if "$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel-negative/gen --vectors $(PACKET_END_SQUIRREL_VECTORS) > build/packet-end/squirrel-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the sabotaged Squirrel end check exited 0'; cat build/packet-end/squirrel-negative/log; exit 1; fi
 	@grep -Fq 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Squirrel end check removal accepted the trailing byte'; cat build/packet-end/squirrel-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding packet accepted' build/packet-end/squirrel-negative/log || \
@@ -105,7 +106,8 @@ packet-write-bareint-squirrel-negative-control: packet-write-bareint-squirrel
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-bareint/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-bareint/squirrel-negative/overlay.json
 	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/bareint test/packet-write-bareint/BareInt.schema
 	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/carriers test/packet-write-bareint/squirrel/Carriers.schema
-	-"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1
+	@if "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the unchecked Squirrel bare-integer width exited 0'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; fi
 	@if grep -Fq 'packet write bare-int Squirrel: ' build/packet-write-bareint/squirrel-negative/log; then \
 		echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked bare-integer width passed'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; fi
 	@grep -Fq 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log || \

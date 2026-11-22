@@ -8,7 +8,7 @@
 # Exits 0 when the replay is green, 3 when the driver stalled (the harness's
 # watchdog), 1 on any other red, 2 when the sed patched nothing or the leg
 # does not build. The harness's output is <work dir>/log.
-set -u
+set -eu -o pipefail
 goose=$1 schema=$2 harness=$3 work=$4 script=$5
 rm -rf "$work" && mkdir -p "$work" || exit 2
 "$schema" generate --lang goose --out "$work/unit" testdata/conformance/feature-witnesses/full/Features.schema >/dev/null || exit 2

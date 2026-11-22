@@ -19,7 +19,7 @@
 #
 # usage: cpp-clean-warnings.sh <ratchet-file> <census|check> <tree>...
 # env:   CLANGXX, SERIALIZE_DIR, JOBS, OUT (scratch dir)
-set -eu
+set -eu -o pipefail
 # Byte order for every sort and comm here: files.txt is compared with Go's
 # slices.Sort, and a locale such as en_US.UTF-8 collates Wides.h after WidesBlock.h.
 export LC_ALL=C
@@ -65,9 +65,11 @@ if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ unde
 #                     leaving them in would make the ratchet depend on the
 #                     version of the host's clang.
 WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call"
-if ! printf '' | $CLANGXX -std=c++17 -fsyntax-only -Wallocator-wrappers -x c++ - 2>&1 | grep -q 'unknown warning option'; then
-	WFLAGS="$WFLAGS -Wno-allocator-wrappers"
-fi
+# a probe, not a verdict: what clang says about the flag decides, never its status
+case $(printf '' | $CLANGXX -std=c++17 -fsyntax-only -Wallocator-wrappers -x c++ - 2>&1) in
+*'unknown warning option'*) ;;
+*) WFLAGS="$WFLAGS -Wno-allocator-wrappers" ;;
+esac
 export WFLAGS
 export CPATH=
 
@@ -96,9 +98,9 @@ bad=0
 comm -13 "$OUT/allowed.txt" "$OUT/found.txt" > "$OUT/new.txt"
 if [ -s "$OUT/new.txt" ]; then
 	echo "tables-cpp-clean: clang++ -Weverything findings the ratchet ($ratchet) does not list (the list only shrinks; fix the emitter):"
-	sed 's/^/  /' "$OUT/new.txt" | head -60
+	sed -n '1,60s/^/  /p' "$OUT/new.txt"
 	n=$(wc -l < "$OUT/new.txt" | tr -d ' ')
-	[ "$n" -le 60 ] || echo "  ... and $((n - 60)) more (the full list is $OUT/new.txt)"
+	if [ "$n" -gt 60 ]; then echo "  ... and $((n - 60)) more (the full list is $OUT/new.txt)"; fi
 	bad=1
 fi
 # allowed and no longer observed (or the file is gone). A kind this compiler
@@ -108,18 +110,19 @@ fi
 comm -23 "$OUT/allowed.txt" "$OUT/found.txt" > "$OUT/gone.all"
 : > "$OUT/gone.txt"
 for k in $(awk '{print $2}' "$OUT/gone.all" | sort -u); do
-	if printf '' | $CLANGXX -std=c++17 -fsyntax-only -W"$k" -x c++ - 2>&1 | grep -q 'unknown warning option'; then
-		echo "tables-cpp-clean: note: $CLANGXX does not know -W$k, so its ratchet entries are not checked here" >&2
-	else
-		awk -v k="$k" '$2 == k' "$OUT/gone.all" >> "$OUT/gone.txt"
-	fi
+	case $(printf '' | $CLANGXX -std=c++17 -fsyntax-only -W"$k" -x c++ - 2>&1) in
+	*'unknown warning option'*)
+		echo "tables-cpp-clean: note: $CLANGXX does not know -W$k, so its ratchet entries are not checked here" >&2 ;;
+	*)
+		awk -v k="$k" '$2 == k' "$OUT/gone.all" >> "$OUT/gone.txt" ;;
+	esac
 done
 sort -o "$OUT/gone.txt" "$OUT/gone.txt"
 if [ -s "$OUT/gone.txt" ]; then
 	echo "tables-cpp-clean: ratchet entries that no longer occur — delete them from $ratchet:"
-	sed 's/^/  /' "$OUT/gone.txt" | head -60
+	sed -n '1,60s/^/  /p' "$OUT/gone.txt"
 	n=$(wc -l < "$OUT/gone.txt" | tr -d ' ')
-	[ "$n" -le 60 ] || echo "  ... and $((n - 60)) more (the full list is $OUT/gone.txt)"
+	if [ "$n" -gt 60 ]; then echo "  ... and $((n - 60)) more (the full list is $OUT/gone.txt)"; fi
 	bad=1
 fi
 [ $bad -eq 0 ] || exit 1

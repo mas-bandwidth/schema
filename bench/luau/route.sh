@@ -20,7 +20,7 @@
 # labels say so. LUAU overrides the interpreter. `csv ` lines go to stdout,
 # `log ` lines to stderr, and ANY other line on the program's stdout is
 # refused, so a stray print fails the leg.
-set -e
+set -e -o pipefail
 
 ROOT="$(pwd -P)"
 LUAU="${LUAU:-$ROOT/dist/luau-0.741/luau}"

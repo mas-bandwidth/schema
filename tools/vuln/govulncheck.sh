@@ -46,7 +46,7 @@
 # `no such host`, `connection refused`, `connection reset by peer`,
 # `i/o timeout`, `network is unreachable`, `temporary failure in name
 # resolution`.
-set -o pipefail
+set -e -o pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 VERSION=${GOVULNCHECK_VERSION:-v1.7.0}

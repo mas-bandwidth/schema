@@ -169,7 +169,10 @@ func lex(src string, makefile bool) (toks []token, subs []sub) {
 					word.WriteString(src[i : i+2])
 					i += 2
 				case src[i] == '$':
-					i = substitution(i)
+					end := substitution(i)
+					// a substitution may span lines: what follows it is that many lines on
+					line += strings.Count(src[i:end], "\n")
+					i = end
 				case src[i] == '`':
 					j := strings.IndexByte(src[i+1:], '`')
 					end := n
@@ -203,7 +206,10 @@ func lex(src string, makefile bool) (toks []token, subs []sub) {
 			i = end
 		case c == '$':
 			start()
-			i = substitution(i)
+			end := substitution(i)
+			// a substitution may span lines: what follows it is that many lines on
+			line += strings.Count(src[i:end], "\n")
+			i = end
 		case c == '<' && i+1 < n && src[i+1] == '<' && (i+2 >= n || src[i+2] != '<'):
 			// a here-document: its body is data, not shell text
 			j := i + 2

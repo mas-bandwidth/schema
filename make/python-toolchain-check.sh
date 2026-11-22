@@ -16,7 +16,7 @@
 #
 # Every interpreter runs isolated (-I): no PYTHON* environment variable, no
 # user site directory, no script directory on sys.path.
-set -u
+set -eu -o pipefail
 root=${1:-.}
 fail=0
 
@@ -31,7 +31,7 @@ version_of() {
 
 check_interpreter() {
 	pin=$1 path=$2 want=$3
-	got=$(version_of "$path")
+	if ! got=$(version_of "$path"); then got=; fi
 	if [ "$got" != "$want" ]; then
 		refuse "the python leg's pinned $pin is CPython ${got:-<no answer>}, the pin is $want"
 		echo "  $pin = $path"
@@ -43,7 +43,7 @@ check_interpreter PYTHON "${PYTHON:?PYTHON is not set; run this through make pyt
 check_interpreter PYTHON_FLOOR "${PYTHON_FLOOR:?}" "${PYTHON_FLOOR_VERSION:?}"
 
 mypy_want=${PYTHON_MYPY_VERSION:?}
-mypy_got=$("${MYPY:?}" --version 2>/dev/null)
+if ! mypy_got=$("${MYPY:?}" --version 2>/dev/null); then mypy_got=; fi
 case "$mypy_got" in
 "mypy $mypy_want "* | "mypy $mypy_want") ;;
 *)
@@ -59,21 +59,26 @@ esac
 # (dist/python-3.11.18/bin/python3.11) is no PATH lookup; the patterns below
 # match a command word, not a path component.
 files=$(cd "$root" && {
-	find make internal/codegen test/conformance compiler \
-		\( -path 'make/python*' -o -path 'internal/codegen/python*' -o -path 'test/conformance/python*' -o -path 'compiler/*python*' \) \
-		-type f 2>/dev/null
-	find third_party/serialize.py \( -name Makefile -o -name '*.py' -o -name '*.sh' -o -name '*.mk' \) -type f 2>/dev/null
+	for d in make internal/codegen test/conformance compiler; do
+		if [ -d "$d" ]; then
+			find "$d" \( -path 'make/python*' -o -path 'internal/codegen/python*' -o -path 'test/conformance/python*' -o -path 'compiler/*python*' \) -type f
+		fi
+	done
+	if [ -d third_party/serialize.py ]; then
+		find third_party/serialize.py \( -name Makefile -o -name '*.py' -o -name '*.sh' -o -name '*.mk' \) -type f
+	fi
 } | sort)
 if [ -z "$files" ]; then
 	refuse "found none of the leg's files under $root; the gate would have checked nothing"
 fi
 for f in $files; do
 	[ "$f" = make/python-toolchain-check.sh ] && continue
-	hits=$(cd "$root" && grep -nE \
+	# grep's 1 is "no line runs python from PATH"; its 2 is an error and stays red
+	hits=$(cd "$root" && { grep -nE \
 		-e '(^|[^A-Za-z0-9_./$-])python3([^A-Za-z0-9_.-]|$)' \
 		-e '/usr/bin/env[[:space:]]+python' \
 		-e '(Command|LookPath)\("python' \
-		"$f" | grep -vE '^[0-9]+:[[:space:]]*(#|//)')
+		"$f" || [ $? -eq 1 ]; } | sed -E '/^[0-9]+:[[:space:]]*(#|\/\/)/d')
 	if [ -n "$hits" ]; then
 		refuse "$f runs an interpreter from PATH, not a pin:"
 		echo "$hits" | sed 's/^/  /'

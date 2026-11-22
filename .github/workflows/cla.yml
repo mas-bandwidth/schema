@@ -107,7 +107,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       # Pull requests only. `github.event.issue.pull_request` is present only
       # when an issue_comment was posted on a PR; on a plain issue it is null

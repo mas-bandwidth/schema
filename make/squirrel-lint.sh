@@ -18,7 +18,7 @@
 #            that apply to Squirrel text.
 #
 # An empty set of files is a refusal, never a pass.
-set -eu
+set -eu -o pipefail
 
 [ $# -ge 2 ] || { echo "usage: $0 SQ DIR..." >&2; exit 2; }
 sq=$1

@@ -218,6 +218,7 @@ _verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-har
 
 _verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-elixir.csv
+# loud-ok: PATH additions for the bench; a missing elixir or erl fails toolchain-elixir (a prerequisite) and the bench run by name
 	@beam_extra="$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v elixir 2>/dev/null || echo /nonexistent)"):$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v erl 2>/dev/null || echo /nonexistent)")"; \
 		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --bare --only elixir --out build/verify/bench-elixir.csv
 	@test -s build/verify/bench-elixir.csv

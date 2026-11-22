@@ -19,7 +19,7 @@
 # copied tree with nothing planted) must pass, so a refusal is the plant's and
 # not the tree's. Run from the repository root; scratch lives in
 # build/bench-lobster-control and the tree is never edited.
-set -u
+set -eu -o pipefail
 
 ROOT="$(pwd -P)"
 W=build/bench-lobster-control

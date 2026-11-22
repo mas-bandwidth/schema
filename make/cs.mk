@@ -1068,6 +1068,7 @@ endef
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean)
+# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
 
 .PHONY: tables-cs-clean-run
@@ -1091,6 +1092,7 @@ TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
 .PHONY: tables-cs-clean-negative-control
 tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean-negative-control)
+# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
 .PHONY: tables-cs-clean-negative-control-run
@@ -1127,6 +1129,7 @@ PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generate
 .PHONY: packet-clean-cs
 packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
 	$(call cs_clean_probe,packet-clean-cs)
+# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
 
 .PHONY: packet-clean-cs-run

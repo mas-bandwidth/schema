@@ -688,14 +688,14 @@ build/schema-luau-nightly: $(GO_SOURCES) $(EMBED_SOURCES) cmd/schema/*.go
 
 luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau
 	@mkdir -p $(LUAU_NF)/findings
-	@set +e; \
+	@\
 	$(LUAU_NF_HOST) $(LUAU_NF)/fuzz.luau $(LUAU_FUZZ_TIME) $(LUAU_FUZZ_SEED) > $(LUAU_NF)/fuzz.log 2>&1; \
 	status=$$?; cat $(LUAU_NF)/fuzz.log; \
 	if [ $$status -ne 0 ]; then echo "luau nightly fuzz: the harness died (exit $$status)"; exit $$status; fi; \
 	if grep -q '^FINDING|' $(LUAU_NF)/fuzz.log; then \
 		grep '^FINDING' $(LUAU_NF)/fuzz.log | while IFS='|' read -r tag kind unit root seed iter why hex; do \
 			f=$(LUAU_NF)/findings/$$kind-$$unit-$$root-$$seed-$$iter.bin; \
-			printf '%s' "$$hex" | xxd -r -p > "$$f"; \
+			printf '%s' "$$hex" | xxd -r -p > "$$f" || exit 1; \
 			{ echo seed=$$seed; echo iteration=$$iter; echo kind=$$kind; echo unit=$$unit; \
 			  echo root=$$root; echo "reason=$$why"; \
 			  [ "$$tag" = FINDING-MIN ] && echo minimised=yes; true; } > "$$f.meta"; \
@@ -790,11 +790,11 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		if grep -q 'if count < 0 or count > math.floor' "$$f"; then \
 			sites=$$(grep -c 'if count < 0 or count > math.floor' "$$f"); \
 			if [ "$$sites" -ne 2 ]; then echo "negative control: $$f carries $$sites id-table count sign checks, want 2 (open and frame)" >&2; exit 1; fi; \
-			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/g; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
+			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/g; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f" || exit 1; \
 			planted=$$((planted + 1)); fi; done; \
 	if [ $$planted -lt 1 ]; then echo "negative control: no id-table count sign check was planted" >&2; exit 1; fi; \
 	echo "negative control: planted in $$planted generated schema_load.luau copies"
-	@set +e; \
+	@\
 	$(LUAU_NF_HOST) $(LUAU_NF_NC)/fuzz.luau $(LUAU_NF_NC_TIME) $(LUAU_NF_NC_SEED) > $(LUAU_NF_NC)/fuzz.log 2>&1; \
 	status=$$?; cat $(LUAU_NF_NC)/fuzz.log; \
 	if [ $$status -ne 0 ] || ! grep -q '^FUZZ-DONE|' $(LUAU_NF_NC)/fuzz.log; then \
@@ -807,14 +807,14 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 	[ -n "$$line" ] || line=$$(grep '^FINDING|' $(LUAU_NF_NC)/fuzz.log | sed -n 1p); \
 	echo "$$line" | while IFS='|' read -r _ kind unit root seed iter why hex; do \
 		f=$(LUAU_NF_NC)/findings/nc-input.bin; \
-		printf '%s' "$$hex" | xxd -r -p > "$$f"; \
+		printf '%s' "$$hex" | xxd -r -p > "$$f" || exit 1; \
 		{ echo seed=$$seed; echo iteration=$$iter; echo kind=$$kind; echo unit=$$unit; \
 		  echo root=$$root; echo "reason=$$why"; } > "$$f.meta"; \
 	done; \
 	[ -s $(LUAU_NF_NC)/findings/nc-input.bin ] || { echo "negative control failed: no input saved" >&2; exit 1; }
 	@echo nc-input.bin > $(LUAU_NF_NC)/findings/INPUTS
 	@sh $(LUAU_NF_NC)/gen-replay.sh $(LUAU_NF_NC)/findings $(LUAU_NF_NC)/replaydata.luau
-	@set +e; \
+	@\
 	$(LUAU) $(LUAU_NF_NC)/replay.luau > $(LUAU_NF_NC)/replay.log 2>&1; status=$$?; \
 	cat $(LUAU_NF_NC)/replay.log; \
 	if [ $$status -eq 0 ] || ! grep -q '^REPLAY-FAIL|nc-input.bin|' $(LUAU_NF_NC)/replay.log; then \
@@ -823,13 +823,13 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 	@rm -rf $(LUAU_NF_NC)/clean && mkdir -p $(LUAU_NF_NC)/clean \
 		&& cp -r $(LUAU_NF)/generated $(LUAU_NF_NC)/clean/generated \
 		&& cp $(LUAU_NF)/manifest.luau $(LUAU_NF)/replay.luau $(LUAU_NF_NC)/replaydata.luau $(LUAU_NF_NC)/clean/
-	@set +e; \
+	@\
 	$(LUAU) $(LUAU_NF_NC)/clean/replay.luau > $(LUAU_NF_NC)/clean/replay.log 2>&1; status=$$?; \
 	cat $(LUAU_NF_NC)/clean/replay.log; \
 	if [ $$status -ne 0 ] || ! grep -q '^REPLAY-DONE|inputs=1|failed=0|' $(LUAU_NF_NC)/clean/replay.log; then \
 		echo "negative control failed: the saved input does not replay green on the unplanted reader" >&2; exit 1; fi; \
 	echo "negative control: the same input replays green on the unplanted reader"
-	@set +e; \
+	@\
 	$(LUAU_NF_HOST) $(LUAU_NF)/fuzz.luau $(LUAU_NF_NC_TIME) $(LUAU_NF_NC_SEED) > $(LUAU_NF_NC)/clean/fuzz.log 2>&1; \
 	status=$$?; grep -v '^FINDING' $(LUAU_NF_NC)/clean/fuzz.log | tail -3; \
 	if [ $$status -ne 0 ] || ! grep -q '^FUZZ-DONE|' $(LUAU_NF_NC)/clean/fuzz.log; then \

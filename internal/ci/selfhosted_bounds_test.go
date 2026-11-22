@@ -14,7 +14,7 @@ import (
 // the whole group when the step ends, so a child a test left running (an
 // `sq` outliving `go test -timeout`) cannot keep the step, and the runner,
 // busy. `bash -e {0}` is what GitHub runs when a step names no shell.
-const pgroupShell = "go run ./tools/pgroup -- bash -e {0}"
+const pgroupShell = "go run ./tools/pgroup -- bash -e -o pipefail {0}"
 
 // maxFleetMinutes is the largest timeout a fleet job outside the nightly may
 // carry. Every bound in the tree is sized from measured durations and is well

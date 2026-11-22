@@ -60,7 +60,7 @@ jobs:
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: the pinned Go 1.26 is on the path
@@ -95,7 +95,7 @@ jobs:
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: the pinned Lua 5.4.8 (official tarball, pinned sha256)
