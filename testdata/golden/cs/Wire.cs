@@ -357,6 +357,7 @@ namespace Example
         {
             {
                 // flat run: 16 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.Version < 1ul << 3, "value.Version is wider than its 3-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = (171UL) & 0xffUL;
                 ulong f1 = ((ulong)value.Version) & 0x7UL;
                 ulong f2 = 0UL;
@@ -462,6 +463,8 @@ namespace Example
         {
             {
                 // flat run: 202 bits in 4 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.Small < 1ul << 9, "value.Small is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.Boundary < 1ul << 33, "value.Boundary is wider than its 33-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.Small) & 0x1ffUL;
                 ulong f1 = ((ulong)value.Boundary) & 0x1ffffffffUL;
                 ulong f2 = (ulong)value.Wide;
@@ -1684,6 +1687,9 @@ namespace Example
                 Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
                 Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
                 Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
+                Debug.Assert((ulong)value.D < 1ul << 8, "value.D is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.E < 1ul << 8, "value.E is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.F < 1ul << 8, "value.F is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)(unchecked((uint)(value.A) - unchecked((uint)(-100))))) & 0xffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.B) - unchecked((uint)(-100))))) & 0xffUL;
                 ulong f2 = ((ulong)(unchecked((uint)(value.C) - unchecked((uint)(-100))))) & 0xffUL;
