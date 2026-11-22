@@ -4627,6 +4627,17 @@ a map, whose VALUES) are enum values. It does NOT cover a keyed `[Enum]T`:
 a deprecated variant's slot does not apply there. A text-list spelling
 (`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
 
+The conformance rows hold both halves on every leg. The ARRAY element half:
+`sp-enum-elem-deprecated-array` (text), `sp_enum_fixed_deprecated` and
+`sp_enum_evolved_deprecated` (the fixed read and the compiled plan), on the root
+`Moods`. The SCALAR half, a deprecated variant reading as the field's declared
+default and not as zero: `sp-enum-scalar-deprecated` (text),
+`sp_enum_scalar_fixed_deprecated` and `sp_enum_scalar_evolved_deprecated`
+(the fixed read and a compiled plan), `jref_enum_scalar_deprecated` and
+`jref_enum_scalar_deprecated_ok` (the text writer), on the root `MoodField`
+(`mood Mood = Fierce`, where `Old` is deprecated and the expected read is
+`Fierce`). A new implementer is held to all of them.
+
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
 deprecated field is never refused because its value is the writer's own

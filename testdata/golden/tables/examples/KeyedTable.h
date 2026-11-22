@@ -664,7 +664,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 164;
+    static const int32_t kCapacity = 167;
     static const int32_t kBuckets = 512;
 
     uint64_t ids[kCapacity];
@@ -1844,7 +1844,7 @@ static const int64_t kTableMessageRefBitsHere = 8;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 129;
+static const int64_t kTableMessageEntriesHere = 131;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -2451,7 +2451,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 129 entries and 1534 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 131 entries and 1553 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -2469,7 +2469,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 1534;
+static const int64_t kTableAnnounceBytes = 1553;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -2482,20 +2482,20 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x21,
-    0x78,
-    0x0b,
-    0xe2,
-    0x40,
-    0x3b,
-    0xb7,
-    0xc3,
+    0xe1,
+    0x0c,
+    0x2b,
+    0x2b,
+    0xa5,
+    0xaf,
+    0xaf,
+    0x50,
     0x02,
     0x0e,
-    0xd6,
+    0xe9,
     0x0b,
     0x06,
-    0xd3,
+    0xe6,
     0x0b,
     0xc5,
     0x67,
@@ -2810,6 +2810,25 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x00,
     0x08,
     0x0d,
+    0xbe,
+    0x77,
+    0x38,
+    0xc4,
+    0xa2,
+    0xfa,
+    0x5c,
+    0x0d,
+    0x1e,
+    0x23,
+    0xd7,
+    0x98,
+    0x07,
+    0xef,
+    0x56,
+    0x4c,
+    0xd9,
+    0x07,
+    0x00,
     0x9b,
     0xad,
     0x11,
@@ -4262,12 +4281,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the peer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0xc3b73b40e20b7821ull )
+    if ( vocabulary.strict && version != 0x50afafa52b2b0ce1ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0xc3b73b40e20b7821ull;
+        to->build_version_own = 0x50afafa52b2b0ce1ull;
         return false;
     }
 
@@ -9331,7 +9350,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 164;
+static const int32_t kTableRetainKnownIds = 167;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9345,6 +9364,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0x065ee827cf99fbb4ull,
     0x08a60c07b54d8dc7ull,
     0x09ae5613b0051271ull,
+    0x0d5cfaa2c43877beull,
     0x0f8897557f37c021ull,
     0x10bda981fe095518ull,
     0x13cdc5ede73d2fd7ull,
@@ -9374,6 +9394,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0x3066b130dfbd7890ull,
     0x32a89b2977c48ad4ull,
     0x334d24e1420dbc1full,
+    0x33de720d0bcfd78aull,
     0x36c1c83b51f24394ull,
     0x38b429bf239b38dbull,
     0x39f7fcec8fcb623dull,
@@ -9475,6 +9496,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xd363dfa465acf27aull,
     0xd6633ae4e94deecfull,
     0xd90a4e7682f799c5ull,
+    0xd94c56ef0798d723ull,
     0xdbff4cc56c2092f0ull,
     0xdc2cbe6953343d48ull,
     0xdcc67d18feea8c19ull,
@@ -10632,7 +10654,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xc3b73b40e20b7821ull;
+static const uint64_t BuildVersion = 0x50afafa52b2b0ce1ull;
 
 } // namespace tabledemo
 
@@ -10994,10 +11016,10 @@ inline bool TableEnumRef( TableIds & ids, Weapon value, uint64_t & ref )
             ref = 0;
             return true;
         case Weapon::Cannon:
-            ref = ids.ref_at( 55, 0x5854debe3b2e767cull );
+            ref = ids.ref_at( 57, 0x5854debe3b2e767cull );
             return true;
         case Weapon::Missile:
-            ref = ids.ref_at( 105, 0xb528592e5a4583e3ull );
+            ref = ids.ref_at( 107, 0xb528592e5a4583e3ull );
             return true;
         case Weapon::Mine:
             ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull );
@@ -11013,10 +11035,10 @@ inline bool TableEnumRef( TableRetainIds & ids, Weapon value, uint64_t & ref )
             ref = 0;
             return true;
         case Weapon::Cannon:
-            ref = ids.ref_at( 55, 0x5854debe3b2e767cull );
+            ref = ids.ref_at( 57, 0x5854debe3b2e767cull );
             return true;
         case Weapon::Missile:
-            ref = ids.ref_at( 105, 0xb528592e5a4583e3ull );
+            ref = ids.ref_at( 107, 0xb528592e5a4583e3ull );
             return true;
         case Weapon::Mine:
             ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull );
@@ -11043,13 +11065,13 @@ inline bool TableEnumSlot( Weapon value, uint64_t & slot )
             slot = 0;
             return true;
         case Weapon::Cannon:
-            slot = 125;
+            slot = 127;
             return true;
         case Weapon::Missile:
-            slot = 126;
+            slot = 128;
             return true;
         case Weapon::Mine:
-            slot = 127;
+            slot = 129;
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11106,13 +11128,13 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
             ref = 0;
             return true;
         case Team::Red:
-            ref = ids.ref_at( 86, 0x9ff1de19feac1b7cull );
+            ref = ids.ref_at( 88, 0x9ff1de19feac1b7cull );
             return true;
         case Team::Blue:
-            ref = ids.ref_at( 148, 0xecf3d3a7c1693e2dull );
+            ref = ids.ref_at( 151, 0xecf3d3a7c1693e2dull );
             return true;
         case Team::Green:
-            ref = ids.ref_at( 127, 0xcf00d78fd5953f1cull );
+            ref = ids.ref_at( 129, 0xcf00d78fd5953f1cull );
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11125,13 +11147,13 @@ inline bool TableEnumRef( TableRetainIds & ids, Team value, uint64_t & ref )
             ref = 0;
             return true;
         case Team::Red:
-            ref = ids.ref_at( 86, 0x9ff1de19feac1b7cull );
+            ref = ids.ref_at( 88, 0x9ff1de19feac1b7cull );
             return true;
         case Team::Blue:
-            ref = ids.ref_at( 148, 0xecf3d3a7c1693e2dull );
+            ref = ids.ref_at( 151, 0xecf3d3a7c1693e2dull );
             return true;
         case Team::Green:
-            ref = ids.ref_at( 127, 0xcf00d78fd5953f1cull );
+            ref = ids.ref_at( 129, 0xcf00d78fd5953f1cull );
             return true;
         default: return false;
     }
@@ -11155,13 +11177,13 @@ inline bool TableEnumSlot( Team value, uint64_t & slot )
             slot = 0;
             return true;
         case Team::Red:
-            slot = 122;
+            slot = 124;
             return true;
         case Team::Blue:
-            slot = 123;
+            slot = 125;
             return true;
         case Team::Green:
-            slot = 124;
+            slot = 126;
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11218,13 +11240,13 @@ inline bool TableEnumRef( TableIds & ids, Hull value, uint64_t & ref )
             ref = 0;
             return true;
         case Hull::Interceptor:
-            ref = ids.ref_at( 101, 0xae61a6cbe88c2cf4ull );
+            ref = ids.ref_at( 103, 0xae61a6cbe88c2cf4ull );
             return true;
         case Hull::Gunship:
-            ref = ids.ref_at( 36, 0x334d24e1420dbc1full );
+            ref = ids.ref_at( 37, 0x334d24e1420dbc1full );
             return true;
         case Hull::Freighter:
-            ref = ids.ref_at( 64, 0x6c2321a3d00e23dbull );
+            ref = ids.ref_at( 66, 0x6c2321a3d00e23dbull );
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11237,13 +11259,13 @@ inline bool TableEnumRef( TableRetainIds & ids, Hull value, uint64_t & ref )
             ref = 0;
             return true;
         case Hull::Interceptor:
-            ref = ids.ref_at( 101, 0xae61a6cbe88c2cf4ull );
+            ref = ids.ref_at( 103, 0xae61a6cbe88c2cf4ull );
             return true;
         case Hull::Gunship:
-            ref = ids.ref_at( 36, 0x334d24e1420dbc1full );
+            ref = ids.ref_at( 37, 0x334d24e1420dbc1full );
             return true;
         case Hull::Freighter:
-            ref = ids.ref_at( 64, 0x6c2321a3d00e23dbull );
+            ref = ids.ref_at( 66, 0x6c2321a3d00e23dbull );
             return true;
         default: return false;
     }
@@ -11267,13 +11289,13 @@ inline bool TableEnumSlot( Hull value, uint64_t & slot )
             slot = 0;
             return true;
         case Hull::Interceptor:
-            slot = 113;
+            slot = 115;
             return true;
         case Hull::Gunship:
-            slot = 114;
+            slot = 116;
             return true;
         case Hull::Freighter:
-            slot = 115;
+            slot = 117;
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11455,10 +11477,10 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
 inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 126, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
+    if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-    if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 114, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
+    if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     return bytes;
 }
 
@@ -11476,14 +11498,14 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.spawn_count != 4 )
     {
-        w.header( ids.ref_at( 126, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        w.header( ids.ref_at( 128, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return false; }
     if ( value.banner_length > 0 )
     {
-        w.header( ids.ref_at( 114, 0xbca0dab1c7a00ccfull ), 12 ); // banner
+        w.header( ids.ref_at( 116, 0xbca0dab1c7a00ccfull ), 12 ); // banner
         w.putleb( (uint64_t) value.banner_length );
         w.raw( value.banner, value.banner_length );
     }
@@ -11803,13 +11825,13 @@ inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & va
 {
     if ( value.spawn_count != 4 )
     {
-        w.put( 95, kTableMessageRefBitsHere );
+        w.put( 97, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.spawn_count ), 7 );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
-        w.put( 96, kTableMessageRefBitsHere );
+        w.put( 98, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.banner_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.banner, value.banner_length );
@@ -12122,8 +12144,8 @@ inline int64_t GunnerConfigMeasureBody( TableIds & ids, const GunnerConfig & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.reaction ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 107, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
-    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 95, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
+    if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 109, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
+    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 97, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
     return bytes;
 }
 
@@ -12139,13 +12161,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) )
     {
-        w.header( ids.ref_at( 107, 0xb75aa3662201646aull ), 10 ); // reaction
+        w.header( ids.ref_at( 109, 0xb75aa3662201646aull ), 10 ); // reaction
         if ( !TableFloatFinite( value.reaction ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.reaction ) );
     }
     if ( value.tracking != false )
     {
-        w.header( ids.ref_at( 95, 0xa6bf719a4602b0bcull ), 1 ); // tracking
+        w.header( ids.ref_at( 97, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -12672,12 +12694,12 @@ inline int64_t TurretConfigMeasureBody( TableIds & ids, const TurretConfig & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.damage ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) ) { bytes += TableLebBytes( ids.ref_at( 70, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) ) { bytes += TableLebBytes( ids.ref_at( 72, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.cooldown ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 139, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
+    if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 142, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
     if ( value.gunner_present ) // ?GunnerConfig: presence decides, not content
     {
-        const uint64_t ref_gunner = ids.ref_at( 42, 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 44, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) { return -1; }
         bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); // gunner
@@ -12697,19 +12719,19 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) )
     {
-        w.header( ids.ref_at( 70, 0x7f6308be8ab37fc0ull ), 10 ); // damage
+        w.header( ids.ref_at( 72, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         if ( !TableFloatFinite( value.damage ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) )
     {
-        w.header( ids.ref_at( 139, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
+        w.header( ids.ref_at( 142, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
         if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.cooldown ) );
     }
     if ( value.gunner_present ) // ?GunnerConfig
     {
-        const uint64_t ref_gunner = ids.ref_at( 42, 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 44, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         w.header( ref_gunner, 13 );
@@ -13027,19 +13049,19 @@ inline bool TurretConfigSaveMessageBody( TableBitWriter & w, const TurretConfig 
 {
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) )
     {
-        w.put( 97, kTableMessageRefBitsHere );
+        w.put( 99, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.damage ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) table_float_to_bits( value.damage ), 32 );
     }
     if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) )
     {
-        w.put( 98, kTableMessageRefBitsHere );
+        w.put( 100, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) table_float_to_bits( value.cooldown ), 32 );
     }
     if ( value.gunner_present ) // ?GunnerConfig
     {
-        w.put( 94, kTableMessageRefBitsHere );
+        w.put( 96, kTableMessageRefBitsHere );
         if ( !GunnerConfigSaveMessageBody( w, value.gunner ) ) { return false; }
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -13353,12 +13375,12 @@ inline int64_t HullConfigMeasureBody( TableIds & ids, const HullConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 71, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
+    if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 73, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 22, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
+    if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 23, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
     {
         const int32_t mark_turrets = ids.count;
-        const uint64_t ref_turrets = ids.ref_at( 75, 0x84f8260bc283608cull );
+        const uint64_t ref_turrets = ids.ref_at( 77, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
@@ -13397,19 +13419,19 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) )
     {
-        w.header( ids.ref_at( 71, 0x7f69d4b5288ba9cfull ), 10 ); // health
+        w.header( ids.ref_at( 73, 0x7f69d4b5288ba9cfull ), 10 ); // health
         if ( !TableFloatFinite( value.health ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.health ) );
     }
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) )
     {
-        w.header( ids.ref_at( 22, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
+        w.header( ids.ref_at( 23, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
         if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.mass ) );
     }
     {
         const int32_t mark_turrets = ids.count;
-        const uint64_t ref_turrets = ids.ref_at( 75, 0x84f8260bc283608cull );
+        const uint64_t ref_turrets = ids.ref_at( 77, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
@@ -14265,7 +14287,7 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_teams = ids.count;
-        const uint64_t ref_teams = ids.ref_at( 112, 0xbaaeb048a5a8fa6dull );
+        const uint64_t ref_teams = ids.ref_at( 114, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -14291,7 +14313,7 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
     }
     {
         const int32_t mark_hulls = ids.count;
-        const uint64_t ref_hulls = ids.ref_at( 125, 0xce0ac3c25694d8ffull );
+        const uint64_t ref_hulls = ids.ref_at( 127, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
@@ -14340,7 +14362,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
 {
     {
         const int32_t mark_teams = ids.count;
-        const uint64_t ref_teams = ids.ref_at( 112, 0xbaaeb048a5a8fa6dull );
+        const uint64_t ref_teams = ids.ref_at( 114, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -14391,7 +14413,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
     }
     {
         const int32_t mark_hulls = ids.count;
-        const uint64_t ref_hulls = ids.ref_at( 125, 0xce0ac3c25694d8ffull );
+        const uint64_t ref_hulls = ids.ref_at( 127, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
@@ -15381,7 +15403,7 @@ inline int64_t ScoreBoardMeasureBody( TableIds & ids, const ScoreBoard & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_per_team = ids.count;
-        const uint64_t ref_per_team = ids.ref_at( 151, 0xf10fad739a0e1660ull );
+        const uint64_t ref_per_team = ids.ref_at( 154, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -15413,7 +15435,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
 {
     {
         const int32_t mark_per_team = ids.count;
-        const uint64_t ref_per_team = ids.ref_at( 151, 0xf10fad739a0e1660ull );
+        const uint64_t ref_per_team = ids.ref_at( 154, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -15859,7 +15881,7 @@ inline bool ScoreBoardSaveMessageBody( TableBitWriter & w, const ScoreBoard & va
         }
         if ( pairs_per_team > 0 )
         {
-            w.put( 91, kTableMessageRefBitsHere );
+            w.put( 93, kTableMessageRefBitsHere );
             w.put( (uint64_t) pairs_per_team, 2 );
             // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
             // this writer's choice and a reader must not rely on it: every
@@ -19066,10 +19088,10 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
 inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 126, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
+    if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-    if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 114, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
+    if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -19078,14 +19100,14 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
 {
     if ( value.spawn_count != 4 )
     {
-        w.header( ids.ref_at( 126, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        w.header( ids.ref_at( 128, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return false; }
     if ( value.banner_length > 0 )
     {
-        w.header( ids.ref_at( 114, 0xbca0dab1c7a00ccfull ), 12 ); // banner
+        w.header( ids.ref_at( 116, 0xbca0dab1c7a00ccfull ), 12 ); // banner
         w.putleb( (uint64_t) value.banner_length );
         w.raw( value.banner, value.banner_length );
     }
@@ -19264,8 +19286,8 @@ inline int64_t GunnerConfigMeasureBodyRetain( TableRetainIds & ids, const Gunner
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.reaction ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 107, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
-    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 95, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
+    if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 109, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
+    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 97, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -19274,13 +19296,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigSaveBodyRetain( TableWriter & w, TableRe
 {
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) )
     {
-        w.header( ids.ref_at( 107, 0xb75aa3662201646aull ), 10 ); // reaction
+        w.header( ids.ref_at( 109, 0xb75aa3662201646aull ), 10 ); // reaction
         if ( !TableFloatFinite( value.reaction ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.reaction ) );
     }
     if ( value.tracking != false )
     {
-        w.header( ids.ref_at( 95, 0xa6bf719a4602b0bcull ), 1 ); // tracking
+        w.header( ids.ref_at( 97, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -19408,12 +19430,12 @@ inline int64_t TurretConfigMeasureBodyRetain( TableRetainIds & ids, const Turret
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.damage ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) ) { bytes += TableLebBytes( ids.ref_at( 70, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) ) { bytes += TableLebBytes( ids.ref_at( 72, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.cooldown ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 139, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
+    if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 142, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
     if ( value.gunner_present ) // ?GunnerConfig: presence decides, not content
     {
-        const uint64_t ref_gunner = ids.ref_at( 42, 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 44, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBodyRetain( ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_gunner < 0 ) { return -1; }
         bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); // gunner
@@ -19426,19 +19448,19 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBodyRetain( TableWriter & w, TableRe
 {
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 10.0f ) )
     {
-        w.header( ids.ref_at( 70, 0x7f6308be8ab37fc0ull ), 10 ); // damage
+        w.header( ids.ref_at( 72, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         if ( !TableFloatFinite( value.damage ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( table_float_to_bits( value.cooldown ) != table_float_to_bits( 0.5f ) )
     {
-        w.header( ids.ref_at( 139, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
+        w.header( ids.ref_at( 142, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
         if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.cooldown ) );
     }
     if ( value.gunner_present ) // ?GunnerConfig
     {
-        const uint64_t ref_gunner = ids.ref_at( 42, 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 44, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBodyRetain( ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         w.header( ref_gunner, 13 );
@@ -19608,12 +19630,12 @@ inline int64_t HullConfigMeasureBodyRetain( TableRetainIds & ids, const HullConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 71, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
+    if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 73, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-    if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 22, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
+    if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 23, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
     {
         const int32_t mark_turrets = ids.count;
-        const uint64_t ref_turrets = ids.ref_at( 75, 0x84f8260bc283608cull );
+        const uint64_t ref_turrets = ids.ref_at( 77, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
@@ -19645,19 +19667,19 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBodyRetain( TableWriter & w, TableReta
 {
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) )
     {
-        w.header( ids.ref_at( 71, 0x7f69d4b5288ba9cfull ), 10 ); // health
+        w.header( ids.ref_at( 73, 0x7f69d4b5288ba9cfull ), 10 ); // health
         if ( !TableFloatFinite( value.health ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.health ) );
     }
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) )
     {
-        w.header( ids.ref_at( 22, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
+        w.header( ids.ref_at( 23, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
         if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.mass ) );
     }
     {
         const int32_t mark_turrets = ids.count;
-        const uint64_t ref_turrets = ids.ref_at( 75, 0x84f8260bc283608cull );
+        const uint64_t ref_turrets = ids.ref_at( 77, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
@@ -19934,7 +19956,7 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_teams = ids.count;
-        const uint64_t ref_teams = ids.ref_at( 112, 0xbaaeb048a5a8fa6dull );
+        const uint64_t ref_teams = ids.ref_at( 114, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -19960,7 +19982,7 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
     }
     {
         const int32_t mark_hulls = ids.count;
-        const uint64_t ref_hulls = ids.ref_at( 125, 0xce0ac3c25694d8ffull );
+        const uint64_t ref_hulls = ids.ref_at( 127, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
@@ -20000,7 +20022,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
 {
     {
         const int32_t mark_teams = ids.count;
-        const uint64_t ref_teams = ids.ref_at( 112, 0xbaaeb048a5a8fa6dull );
+        const uint64_t ref_teams = ids.ref_at( 114, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -20051,7 +20073,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
     }
     {
         const int32_t mark_hulls = ids.count;
-        const uint64_t ref_hulls = ids.ref_at( 125, 0xce0ac3c25694d8ffull );
+        const uint64_t ref_hulls = ids.ref_at( 127, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
@@ -20414,7 +20436,7 @@ inline int64_t ScoreBoardMeasureBodyRetain( TableRetainIds & ids, const ScoreBoa
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_per_team = ids.count;
-        const uint64_t ref_per_team = ids.ref_at( 151, 0xf10fad739a0e1660ull );
+        const uint64_t ref_per_team = ids.ref_at( 154, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
@@ -20439,7 +20461,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
 {
     {
         const int32_t mark_per_team = ids.count;
-        const uint64_t ref_per_team = ids.ref_at( 151, 0xf10fad739a0e1660ull );
+        const uint64_t ref_per_team = ids.ref_at( 154, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {

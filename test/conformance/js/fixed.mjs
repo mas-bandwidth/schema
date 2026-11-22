@@ -37,6 +37,7 @@ export const fixedRoots = [
   ["tabledemo", "CountedMin", "examples/TablesTable.js"],
   ["tabledemo", "FloatBound", "examples/TablesTable.js"],
   ["tabledemo", "Moods", "examples/TablesTable.js"],
+  ["tabledemo", "MoodField", "examples/TablesTable.js"],
   ["tabledemo", "KeyedConfig", "examples/KeyedTable.js"],
   ["tabledemo", "WideBlob", null],
   ["tblv1", "Cfg", "v1/V1Table.js"],

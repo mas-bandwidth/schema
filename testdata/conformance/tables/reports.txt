@@ -133,6 +133,8 @@ sp_count_min_evolved_below refused
 sp_count_min_evolved_max read
 sp_enum_evolved_deprecated read
 sp_enum_fixed_deprecated read
+sp_enum_scalar_evolved_deprecated read
+sp_enum_scalar_fixed_deprecated read
 text_total_and_count refused
 trace_count_past_bound refused
 trace_elem_kind    refused

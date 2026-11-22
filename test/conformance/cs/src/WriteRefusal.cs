@@ -177,6 +177,12 @@ static partial class Program
                             return true;
                     }
                     break;
+                case Tabledemo.MoodField moodField:
+                    switch (path + " " + kind)
+                    {
+                        case "mood ordinal": moodField.Mood = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); return true;
+                    }
+                    break;
                 case Backenddemo.StorePurchase purchase:
                     switch (path + " " + kind)
                     {

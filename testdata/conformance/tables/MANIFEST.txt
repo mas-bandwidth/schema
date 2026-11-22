@@ -1907,3 +1907,16 @@ framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wi
 # a deprecated variant is never written (docs/SPEC-TABLES.md §2.15): Old (2) refused, Fierce (3) the lawful twin
 write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
 write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+
+# THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
+# deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
+# element it reads as None. The text, the fixed form read by the writer's own layout, the compiled plan
+# of a writer whose Mood is wider, and the text writer's refusal.
+json-hostile sp-enum-scalar-deprecated          tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-deprecated read
+json-hostile sp-enum-scalar-live                tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-live read
+report  sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+report  sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+rewrite sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote

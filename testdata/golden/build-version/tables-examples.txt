@@ -1,4 +1,4 @@
-0xc3b73b40e20b7821
+0x50afafa52b2b0ce1
 schema-build-version 6
 protocol 5c9bc5717146f630
 byteorder little
@@ -45,6 +45,9 @@ record LoadoutConfig sizeof=176 alignof=8
     field bf31137ff783e939 kind=13 offset=24 size=28 type=WeaponConfig
     field de28f0f5118acc24 kind=13 offset=52 size=56 type=WeaponConfig elem=28 array=fixed bound=2
     field f901aa0340249a41 kind=13 offset=108 size=68 type=Attachment elem=8 array=bounded bound=8 countmin=0
+record MoodField sizeof=4 alignof=2
+    field 0d5cfaa2c43877be kind=30 offset=0 size=1 enum=Mood default=Fierce
+    field d94c56ef0798d723 kind=7 offset=2 size=2
 record Moods sizeof=8 alignof=4
     field 8a0bc1196111ad9b kind=30 offset=0 size=8 enum=Mood elem=1 array=bounded bound=4 countmin=0
 record PackConfig sizeof=740 alignof=4

@@ -113,7 +113,10 @@ fixed table ProfileConfig
 // reads. FloatBound: a compressed float32 is held at float32 against ends held
 // at float32, so max = 0.1 admits the float32 0.1 and refuses the float32 one
 // step past it. Moods: an array element naming a deprecated variant reads as
-// the ELEMENT default, None.
+// the ELEMENT default, None. MoodField: the same rule on a SCALAR field, where
+// the deprecated variant reads as the field's declared default, Fierce. Its
+// second field, tail, is the one a writer built before it was appended lacks,
+// which makes that writer's layout one the reader compiles a plan for.
 
 enum Mood
 {
@@ -135,4 +138,10 @@ fixed table FloatBound
 fixed table Moods
 {
     row [..4]Mood
+}
+
+fixed table MoodField
+{
+    mood Mood = Fierce
+    tail uint16
 }

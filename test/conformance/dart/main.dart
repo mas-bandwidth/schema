@@ -1579,8 +1579,16 @@ void _w2f_examples_Moods(tabledemo.Moods w, tabledemo_fixed.Moods f) {
   f.rowCount = w.row.length;
   for (var i = 0; i < w.row.length; i++) f.row[i] = (w.row[i] as int);
 }
+void _w2f_examples_MoodField(tabledemo.MoodField w, tabledemo_fixed.MoodField f) {
+  f.mood = (w.mood as dynamic);
+  f.tail = w.tail;
+}
 void _f2w_examples_Moods(tabledemo_fixed.Moods f, tabledemo.Moods w) {
   w.row = List.generate(f.rowCount, (i) => (f.row[i] as dynamic));
+}
+void _f2w_examples_MoodField(tabledemo_fixed.MoodField f, tabledemo.MoodField w) {
+  w.mood = (f.mood as dynamic);
+  w.tail = f.tail;
 }
 void _w2f_m1_Open(tblm1.Open w, tblm1_fixed.Open f) {
   _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
@@ -2509,6 +2517,16 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
       }
       return _fixedResave(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
+    case 'tabledemo MoodField':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodFieldWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.MoodField();
+        _w2f_examples_MoodField(w, f);
+        return _fixedSaveOne(f, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -2962,6 +2980,13 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = tabledemo_fixed.Moods();
       _w2f_examples_Moods(w, f);
       return _fixedSaveOne(f, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
+    case 'tabledemo MoodField':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.moodFieldFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.MoodField();
+      _w2f_examples_MoodField(w, f);
+      return _fixedSaveOne(f, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
     case 'tabledemo ProfileConfig':
       final rep = tabledemo.TableTextReport();
       final w = tabledemo.profileConfigFromJson(text, rep);
@@ -3453,6 +3478,18 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = tabledemo.Moods();
       _f2w_examples_Moods(f, w);
       return tabledemo.moodsToJson(w);
+    case 'tabledemo MoodField':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodFieldWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.moodFieldToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.MoodField();
+      _f2w_examples_MoodField(f, w);
+      return tabledemo.moodFieldToJson(w);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3805,6 +3842,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.floatBoundFixedLoad);
     case 'tabledemo Moods':
       return _fixedReportLine(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.moodsFixedLoad);
+    case 'tabledemo MoodField':
+      return _fixedReportLine(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.moodFieldFixedLoad);
     case 'tabledemo ProfileConfig':
       return _fixedReportLine(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.profileConfigFixedLoad);
     case 'tabledemo RootConfig':
@@ -4551,6 +4590,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = tabledemo.TableTextReport();
         final v = tabledemo.moodsFromJson(text, r);
         encode = () => tabledemo.moodsToJson(v);
+        break;
+      case 'tabledemo MoodField':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.moodFieldFromJson(text, r);
+        encode = () => tabledemo.moodFieldToJson(v);
         break;
       case 'blobdemo Catalog':
         r = blobdemo.TableTextReport();
@@ -5893,6 +5937,9 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tabledemo Moods':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.moodsFixedLoad, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave));
+    case 'tabledemo MoodField':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.moodFieldFixedLoad, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave));
     case 'tabledemo ProfileConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.profileConfigFixedLoad, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave));
@@ -6463,6 +6510,15 @@ int surfaceWriteRefusal(String outDir, String surface) {
           if ('$path $vkind' != 'row[0] ordinal' || w.row.isEmpty) return 1;
           w.row[0] = (int.parse(text) as dynamic);
           answer = _catchWrite(() => tabledemo.moodsToJson(w).isEmpty ? -1 : 0);
+          break;
+        case 'tabledemo MoodField':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.MoodField();
+          _f2w_examples_MoodField(fx, w);
+          if ('$path $vkind' != 'mood ordinal') return 1;
+          w.mood = (int.parse(text) as dynamic);
+          answer = _catchWrite(() => tabledemo.moodFieldToJson(w).isEmpty ? -1 : 0);
           break;
         case 'tabledemo LoadoutConfig':
           final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);

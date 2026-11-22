@@ -6965,6 +6965,37 @@ int64_t MoodsToJson( const Moods & value, char * buffer, int64_t capacity )
     return TableJsonWrite( &value, MoodsTableType(), buffer, capacity );
 }
 
+bool MoodFieldFromJson( MoodField & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MoodFieldTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        MoodFieldTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t MoodFieldToJsonMeasure( const MoodField & value )
+{
+    return TableJsonWrite( &value, MoodFieldTableType(), NULL, 0 );
+}
+
+int64_t MoodFieldToJson( const MoodField & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, MoodFieldTableType(), buffer, capacity );
+}
+
 bool AttachmentFromJson( Attachment & value, const char * text, int64_t bytes, TableReport * report )
 {
     TableReport read;
@@ -7366,6 +7397,51 @@ bool MoodsEditTextForm( const char * document, int64_t document_bytes, const Tab
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !MoodsFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodFieldLoadTextForm( const char * text, int64_t bytes, MoodField & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, MoodFieldTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MoodFieldFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodFieldLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MoodField & value, const char ** refusal )
+{
+    if ( !MoodFieldLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MoodFieldSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MoodFieldEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MoodField & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MoodFieldTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MoodFieldFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
         *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;

@@ -3759,6 +3759,20 @@ static const tabledemo_table_field_info_t schema_tabledemo_moods_fields_[] = {
 
 const tabledemo_table_type_info_t schema_tabledemo_moods_info_ = { "Moods", (uint32_t) sizeof( tabledemo_moods_t ), 1, schema_tabledemo_moods_fields_, schema_tabledemo_moods_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const tabledemo_table_variant_info_t schema_tabledemo_mood_field_mood_variants_[] = {
+    { "None", 0x0000000000000000ull },
+    { "Calm", 0xdfa47a9ce9ac16d6ull },
+    { "Old", 0x3018cd19bf898cd6ull },
+    { "Fierce", 0x199c482b49ef9acbull },
+};
+static const uint8_t schema_tabledemo_mood_field_mood_deprecated_[] = { 0, 0, 1, 0 };
+static const tabledemo_table_field_info_t schema_tabledemo_mood_field_fields_[] = {
+    { "mood", "mood", "Mood", 0x0d5cfaa2c43877beull, 30, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_mood_field_t, mood ), (uint32_t) sizeof( ( (tabledemo_mood_field_t *) 0 )->mood ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_mood_field_mood_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 3, schema_tabledemo_mood_field_mood_deprecated_ },
+    { "tail", "tail", "uint16", 0xd94c56ef0798d723ull, 7, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_mood_field_t, tail ), (uint32_t) sizeof( ( (tabledemo_mood_field_t *) 0 )->tail ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+};
+
+const tabledemo_table_type_info_t schema_tabledemo_mood_field_info_ = { "MoodField", (uint32_t) sizeof( tabledemo_mood_field_t ), 2, schema_tabledemo_mood_field_fields_, schema_tabledemo_mood_field_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+
 static const tabledemo_table_field_info_t schema_tabledemo_attachment_fields_[] = {
     { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, slot ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
     { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, power ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
@@ -3846,6 +3860,16 @@ int schema_tabledemo_moods_from_json_( tabledemo_moods_t * value, const char * t
 int64_t schema_tabledemo_moods_to_json_( const tabledemo_moods_t * value, char * buffer, int64_t capacity )
 {
     return tabledemo_table_json_write( value, &schema_tabledemo_moods_info_, buffer, capacity );
+}
+
+int schema_tabledemo_mood_field_from_json_( tabledemo_mood_field_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    return tabledemo_table_json_read( value, &schema_tabledemo_mood_field_info_, text, bytes, report );
+}
+
+int64_t schema_tabledemo_mood_field_to_json_( const tabledemo_mood_field_t * value, char * buffer, int64_t capacity )
+{
+    return tabledemo_table_json_write( value, &schema_tabledemo_mood_field_info_, buffer, capacity );
 }
 
 int schema_tabledemo_attachment_from_json_( tabledemo_attachment_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )

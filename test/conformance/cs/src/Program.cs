@@ -554,6 +554,8 @@ static partial class Program
             Tabledemo.Schema.FloatBoundFromJson, Tabledemo.Schema.FloatBoundToJsonMeasure, Tabledemo.Schema.FloatBoundToJson),
         Demo<Tabledemo.Moods>("Moods", Tabledemo.Schema.MoodsLoad, Tabledemo.Schema.MoodsMeasure, Tabledemo.Schema.MoodsSave,
             Tabledemo.Schema.MoodsFromJson, Tabledemo.Schema.MoodsToJsonMeasure, Tabledemo.Schema.MoodsToJson),
+        Demo<Tabledemo.MoodField>("MoodField", Tabledemo.Schema.MoodFieldLoad, Tabledemo.Schema.MoodFieldMeasure, Tabledemo.Schema.MoodFieldSave,
+            Tabledemo.Schema.MoodFieldFromJson, Tabledemo.Schema.MoodFieldToJsonMeasure, Tabledemo.Schema.MoodFieldToJson),
         Row<Tblv1.Cfg, Tblv1.TableReport>("tblv1", "Cfg", () => new Tblv1.TableReport(), Copy,
             Tblv1.Schema.CfgLoad, Tblv1.Schema.CfgMeasure, Tblv1.Schema.CfgSave,
             Tblv1.Schema.CfgFromJson, Tblv1.Schema.CfgToJsonMeasure, Tblv1.Schema.CfgToJson),

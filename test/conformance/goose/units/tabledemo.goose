@@ -62,6 +62,11 @@ fn unit_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) -> boo
         verdict_of(v, text, out, tabledemo::MoodsFromJson, tabledemo::MoodsToJson);
         return true;
     }
+    if root == "MoodField" {
+        var v = tabledemo::NewMoodField();
+        verdict_of(v, text, out, tabledemo::MoodFieldFromJson, tabledemo::MoodFieldToJson);
+        return true;
+    }
     if root == "ProfileConfig" {
         var v = tabledemo::NewProfileConfig();
         verdict_of(v, text, out, tabledemo::ProfileConfigFromJson, tabledemo::ProfileConfigToJson);
