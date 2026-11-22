@@ -22,45 +22,45 @@ public final class BenchBitsDescriptor {
             t.name = "BenchBits";
             t.table = false;
             t.doc = "";
-            t.tags = new String[0];
+            t.tags = new java.lang.String[0];
             TableFieldInfo[] fields = new TableFieldInfo[8];
             TableFieldInfo f0 = TableFieldInfo.of("b7", 6, "value", 0L);
-            f0.view(null, "bits(7)", 0x0000000000000000L, false, "", "", new String[0]);
+            f0.view(null, "bits(7)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f0.at(false, false, 0, 4, -1, -1);
             f0.longs(BenchBitsDescriptor::get_0, BenchBitsDescriptor::set_0);
             fields[0] = f0;
             TableFieldInfo f1 = TableFieldInfo.of("b13", 7, "value", 0L);
-            f1.view(null, "bits(13)", 0x0000000000000000L, false, "", "", new String[0]);
+            f1.view(null, "bits(13)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f1.at(false, false, 4, 4, -1, -1);
             f1.longs(BenchBitsDescriptor::get_1, BenchBitsDescriptor::set_1);
             fields[1] = f1;
             TableFieldInfo f2 = TableFieldInfo.of("b23", 8, "value", 0L);
-            f2.view(null, "bits(23)", 0x0000000000000000L, false, "", "", new String[0]);
+            f2.view(null, "bits(23)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f2.at(false, false, 8, 4, -1, -1);
             f2.longs(BenchBitsDescriptor::get_2, BenchBitsDescriptor::set_2);
             fields[2] = f2;
             TableFieldInfo f3 = TableFieldInfo.of("b3", 6, "value", 0L);
-            f3.view(null, "bits(3)", 0x0000000000000000L, false, "", "", new String[0]);
+            f3.view(null, "bits(3)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f3.at(false, false, 12, 4, -1, -1);
             f3.longs(BenchBitsDescriptor::get_3, BenchBitsDescriptor::set_3);
             fields[3] = f3;
             TableFieldInfo f4 = TableFieldInfo.of("b32", 8, "value", 0L);
-            f4.view(null, "bits(32)", 0x0000000000000000L, false, "", "", new String[0]);
+            f4.view(null, "bits(32)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f4.at(false, false, 16, 4, -1, -1);
             f4.longs(BenchBitsDescriptor::get_4, BenchBitsDescriptor::set_4);
             fields[4] = f4;
             TableFieldInfo f5 = TableFieldInfo.of("b11", 7, "value", 0L);
-            f5.view(null, "bits(11)", 0x0000000000000000L, false, "", "", new String[0]);
+            f5.view(null, "bits(11)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f5.at(false, false, 20, 4, -1, -1);
             f5.longs(BenchBitsDescriptor::get_5, BenchBitsDescriptor::set_5);
             fields[5] = f5;
             TableFieldInfo f6 = TableFieldInfo.of("b19", 8, "value", 0L);
-            f6.view(null, "bits(19)", 0x0000000000000000L, false, "", "", new String[0]);
+            f6.view(null, "bits(19)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f6.at(false, false, 24, 4, -1, -1);
             f6.longs(BenchBitsDescriptor::get_6, BenchBitsDescriptor::set_6);
             fields[6] = f6;
             TableFieldInfo f7 = TableFieldInfo.of("b48", 9, "value", 0L);
-            f7.view(null, "bits(48)", 0x0000000000000000L, false, "", "", new String[0]);
+            f7.view(null, "bits(48)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f7.at(false, false, 32, 8, -1, -1);
             f7.longs(BenchBitsDescriptor::get_7, BenchBitsDescriptor::set_7);
             fields[7] = f7;
@@ -71,71 +71,71 @@ public final class BenchBitsDescriptor {
         }
     }
 
-    private static long get_0(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b7);
+    private static long get_0(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b7);
     }
 
-    private static void set_0(Object h, int i, long x) {
+    private static void set_0(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b7 = (int) x;
     }
 
-    private static long get_1(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b13);
+    private static long get_1(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b13);
     }
 
-    private static void set_1(Object h, int i, long x) {
+    private static void set_1(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b13 = (int) x;
     }
 
-    private static long get_2(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b23);
+    private static long get_2(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b23);
     }
 
-    private static void set_2(Object h, int i, long x) {
+    private static void set_2(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b23 = (int) x;
     }
 
-    private static long get_3(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b3);
+    private static long get_3(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b3);
     }
 
-    private static void set_3(Object h, int i, long x) {
+    private static void set_3(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b3 = (int) x;
     }
 
-    private static long get_4(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b32);
+    private static long get_4(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b32);
     }
 
-    private static void set_4(Object h, int i, long x) {
+    private static void set_4(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b32 = (int) x;
     }
 
-    private static long get_5(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b11);
+    private static long get_5(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b11);
     }
 
-    private static void set_5(Object h, int i, long x) {
+    private static void set_5(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b11 = (int) x;
     }
 
-    private static long get_6(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b19);
+    private static long get_6(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchBitsVariable.Value) h).b19);
     }
 
-    private static void set_6(Object h, int i, long x) {
+    private static void set_6(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b19 = (int) x;
     }
 
-    private static long get_7(Object h, int i) {
+    private static long get_7(java.lang.Object h, int i) {
         return ((BenchBitsVariable.Value) h).b48;
     }
 
-    private static void set_7(Object h, int i, long x) {
+    private static void set_7(java.lang.Object h, int i, long x) {
         ((BenchBitsVariable.Value) h).b48 = x;
     }
 
-    private static void reset(Object h) {
+    private static void reset(java.lang.Object h) {
         BenchBitsVariable.Value v = (BenchBitsVariable.Value) h;
         v.b7 = 0;
         v.b13 = 0;
