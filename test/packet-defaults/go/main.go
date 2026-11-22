@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	d "packetdefaults"
-	p "packetplain"
 	hexadd "constanthexadecimaladdition"
 	unsub "constantunsignedsubtraction"
+	d "packetdefaults"
+	p "packetplain"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
