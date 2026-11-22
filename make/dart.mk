@@ -127,7 +127,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema
+build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/surfaces/Surfaces.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
@@ -179,6 +179,12 @@ build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witn
 	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/varevo3 test/tables/varevo/VarEvo3.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/cooktorture test/tables/cooktorture/CookTorture.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	# THE 2026-11-22 SURFACES (test/conformance/README.md): tblsurf's roots. The
+	# announcement-cap units tblann4096 and tblann4097 are NOT generated here: the
+	# Dart emitter's 4094-deep else-if chain over a 4095-variant enum fails the
+	# compiler ("too many nested expressions or statements"), so the driver
+	# answers their two announce rows absent, naming that cause.
+	./bin/schema generate --lang dart --out build/tables-generated-dart/surfaces test/tables/surfaces
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's

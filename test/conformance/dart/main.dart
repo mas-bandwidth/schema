@@ -149,6 +149,9 @@ import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' 
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideCook.dart' as cooktorturewidecook;
+import '../../../build/tables-generated-dart/surfaces/SurfacesWire.dart' as surfw;
+import '../../../build/tables-generated-dart/surfaces/SurfacesFixed.dart' as surff;
+import '../../../build/tables-generated-dart/surfaces/SurfacesCook.dart' as surfcook;
 
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
@@ -2261,6 +2264,18 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, tblw1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblw1.fleetWireLoad, tblw1.fleetWireSave);
     case 'tblw2 Fleet':
       return _wireResaveOne(wire, tblw2.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblw2.fleetWireLoad, tblw2.fleetWireSave);
+    case 'tblsurf Chain':
+      return _wireResaveOne(wire, surfw.TableWireReport.new, (rep) => (rep.refused, rep.refusal), surfw.chainWireLoad, surfw.chainWireSave);
+    case 'tblsurf Holder':
+      return _wireResaveOne(wire, surfw.TableWireReport.new, (rep) => (rep.refused, rep.refusal), surfw.holderWireLoad, surfw.holderWireSave);
+    case 'tblsurf Counted':
+      return _wireResaveOne(wire, surfw.TableWireReport.new, (rep) => (rep.refused, rep.refusal), surfw.countedWireLoad, surfw.countedWireSave);
+    case 'tblsurf Narrow':
+      return _fixedResave(wire, surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.narrowFixedLoad, surff.narrowFixedMeasure, surff.narrowFixedSave);
+    case 'tblsurf Wide':
+      return _fixedResave(wire, surff.Wide.new, surff.wideFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.wideFixedLoad, surff.wideFixedMeasure, surff.wideFixedSave);
+    case 'tblsurf Arrays':
+      return _fixedResave(wire, surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.arraysFixedLoad, surff.arraysFixedMeasure, surff.arraysFixedSave);
     case 'graphdemo Scene':
       return _wireResaveOne(wire, graphdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), graphdemo.sceneWireLoad, graphdemo.sceneWireSave);
     case 'blobdemo Catalog':
@@ -2630,6 +2645,42 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = tblw2.fleetFromJson(text, rep);
       if (rep.refused) return null;
       return tblw2.fleetWireSave(v);
+    case 'tblsurf Chain':
+      final rep = surfw.TableTextReport();
+      final v = surfw.chainFromJson(text, rep);
+      if (rep.refused) return null;
+      return surfw.chainWireSave(v);
+    case 'tblsurf Holder':
+      final rep = surfw.TableTextReport();
+      final v = surfw.holderFromJson(text, rep);
+      if (rep.refused) return null;
+      return surfw.holderWireSave(v);
+    case 'tblsurf Counted':
+      final rep = surfw.TableTextReport();
+      final v = surfw.countedFromJson(text, rep);
+      if (rep.refused) return null;
+      return surfw.countedWireSave(v);
+    case 'tblsurf Narrow':
+      final rep = surfw.TableTextReport();
+      final w = surfw.narrowFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = surff.Narrow();
+      _w2f_surf_Narrow(w, f);
+      return _fixedSaveOne(f, surff.narrowFixedMeasure, surff.narrowFixedSave);
+    case 'tblsurf Wide':
+      final rep = surfw.TableTextReport();
+      final w = surfw.wideFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = surff.Wide();
+      _w2f_surf_Wide(w, f);
+      return _fixedSaveOne(f, surff.wideFixedMeasure, surff.wideFixedSave);
+    case 'tblsurf Arrays':
+      final rep = surfw.TableTextReport();
+      final w = surfw.arraysFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = surff.Arrays();
+      _w2f_surf_Arrays(w, f);
+      return _fixedSaveOne(f, surff.arraysFixedMeasure, surff.arraysFixedSave);
     case 'graphdemo Scene':
       final rep = graphdemo.TableTextReport();
       final v = graphdemo.sceneFromJson(text, rep);
@@ -3020,6 +3071,39 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = tblw2.fleetWireLoad(wire, rep);
       if (rep.refused) return null;
       return tblw2.fleetToJson(v);
+    case 'tblsurf Chain':
+      final rep = surfw.TableWireReport();
+      final v = surfw.chainWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return surfw.chainToJson(v);
+    case 'tblsurf Holder':
+      final rep = surfw.TableWireReport();
+      final v = surfw.holderWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return surfw.holderToJson(v);
+    case 'tblsurf Counted':
+      final rep = surfw.TableWireReport();
+      final v = surfw.countedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return surfw.countedToJson(v);
+    case 'tblsurf Narrow':
+      final f = _fixedLoadOne(wire, surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.narrowFixedLoad);
+      if (f == null) return null;
+      final w = surfw.Narrow();
+      _f2w_surf_Narrow(f, w);
+      return surfw.narrowToJson(w);
+    case 'tblsurf Wide':
+      final f = _fixedLoadOne(wire, surff.Wide.new, surff.wideFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.wideFixedLoad);
+      if (f == null) return null;
+      final w = surfw.Wide();
+      _f2w_surf_Wide(f, w);
+      return surfw.wideToJson(w);
+    case 'tblsurf Arrays':
+      final f = _fixedLoadOne(wire, surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.arraysFixedLoad);
+      if (f == null) return null;
+      final w = surfw.Arrays();
+      _f2w_surf_Arrays(f, w);
+      return surfw.arraysToJson(w);
     case 'graphdemo Scene':
       final rep = graphdemo.TableWireReport();
       final v = graphdemo.sceneWireLoad(wire, rep);
@@ -5396,7 +5480,8 @@ const String surfaces =
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
-    'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n';
+    'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
+    'write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -5989,6 +6074,20 @@ int run(List<String> args) {
     case 'write-refusal-message':
     case 'write-refusal-json':
       return surfaceWriteRefusal(out, surface);
+    case 'write-refusal-cook':
+      return surfaceWriteRefusalCook(out);
+    case 'write-refusal-block':
+      // ABSENT, the whole surface: <Root>Block.begin takes the caller's bytes
+      // and a base and writes the prologue; rows are the caller's bytes, so no
+      // block builder is handed the row's value
+      stderr.writeln('write-refusal-block: the Dart leg has no block builder that takes a value (<Root>Block.begin writes the prologue alone)');
+      return 2;
+    case 'announce':
+      return surfaceAnnounce(out);
+    case 'read-into':
+      return surfaceReadInto(out);
+    case 'json-write-into':
+      return surfaceJsonWriteInto(out);
   }
   return 2;
 }
@@ -6306,6 +6405,10 @@ int surfaceWriteRefusal(String outDir, String surface) {
       }
       unit = conn[2];
     }
+    if (_roots1122.contains('$unit $root')) {
+      _spill1122(outDir, name, _writeRefusal1122(surface, unit, root, wirePath, path, vkind, text));
+      continue;
+    }
     final wire = File(wirePath).readAsBytesSync();
     var answer = '';
     if (surface == 'write-refusal-json') {
@@ -6536,6 +6639,477 @@ int surfaceWriteRefusal(String outDir, String surface) {
       return 1;
     }
     File('$outDir/$name').writeAsStringSync('$answer\n');
+  }
+  return 0;
+}
+
+// ---- THE 2026-11-22 SURFACES (test/conformance/README.md, "The 2026-11-22
+// surfaces ask what no surface asked before"). Every answer is what the
+// generated runtime did; the driver only reports it.
+
+void _w2f_surf_Arrays(surfw.Arrays w, surff.Arrays f) {
+  for (var i = 0; i < f.trio.length && i < w.trio.length; i++) {
+    f.trio[i] = w.trio[i];
+  }
+  for (var i = 0; i < f.per.length && i < w.per.length; i++) {
+    f.per[i] = w.per[i];
+  }
+  f.marks = w.marks;
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+}
+
+void _f2w_surf_Arrays(surff.Arrays f, surfw.Arrays w) {
+  w.trio = List<int>.of(f.trio);
+  w.per = List<int>.of(f.per);
+  w.marks = f.marks;
+  w.name = _f2wUtf8(f.name, f.nameLength);
+}
+
+void _w2f_surf_Narrow(surfw.Narrow w, surff.Narrow f) => f.hp = w.hp;
+void _f2w_surf_Narrow(surff.Narrow f, surfw.Narrow w) => w.hp = f.hp;
+void _w2f_surf_Wide(surfw.Wide w, surff.Wide f) => f.hp = w.hp;
+void _f2w_surf_Wide(surff.Wide f, surfw.Wide w) => w.hp = f.hp;
+
+// A writer that neither refuses nor writes, but throws something that is not
+// a refusal, answers `threw <type>` for that row: named, and never a refusal
+// it did not make.
+String _catchNew(int Function() fn) {
+  try {
+    return _catchWrite(fn);
+  } on Object catch (e) {
+    return 'threw ${e.runtimeType}';
+  }
+}
+
+// `elems` (and `count`) on a list: more elements are copies of element 0,
+// fewer drop the tail.
+List<int> _resized(List<int> l, int n) {
+  if (n < 0) throw ArgumentError('a count of $n');
+  if (l.isEmpty && n > 0) throw ArgumentError('no element 0 to copy');
+  return List<int>.generate(n, (i) => i < l.length ? l[i] : l[0]);
+}
+
+// THE COOK WRITER's answer: measure, then cook in little-endian order.
+String _cookAnswer(int Function() measure, bool Function(Uint8List) cook) => _catchNew(() {
+      final n = measure();
+      if (n < 1) return -1;
+      return cook(Uint8List(n)) ? 0 : -1;
+    });
+
+T _loadedFixed<T>(T? value, String key, String path) {
+  if (value == null) throw StateError('$key: load refused $path');
+  return value;
+}
+
+// The roots the 2026-11-22 rows name; every other row keeps its own path.
+const Set<String> _roots1122 = {
+  'tblsurf Arrays',
+  'tblsurf Counted',
+  'tblsurf Narrow',
+  'tblsurf Wide',
+  'tblsurf Big',
+  'mapdemo Fleet',
+  'tabledemo ProfileConfig',
+};
+
+// _writeRefusal1122 answers one write-refusal row of the 2026-11-22 rows:
+// `wrote`, `refused`, `unrepresentable`, `threw <type>`, or `absent:<why>`.
+String _writeRefusal1122(String surface, String unit, String root, String wirePath, String path, String vkind, String text) {
+  final key = '$unit $root';
+  final mutation = '$path $vkind';
+  Uint8List bytes() => File(wirePath).readAsBytesSync();
+  switch (key) {
+    case 'tblsurf Arrays':
+      final fx = _loadedFixed(
+          _fixedLoadOne(bytes(), surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.arraysFixedLoad), key, wirePath);
+      if (surface == 'write-refusal-fixed' || surface == 'write-refusal-message') {
+        // the fixed form's storage: a native Int32List(3) holds 3 values and
+        // no other count
+        switch (mutation) {
+          case 'trio elems':
+            if (fx.trio.length != int.parse(text)) return 'unrepresentable';
+          case 'per elems':
+            if (fx.per.length != int.parse(text)) return 'unrepresentable';
+          case 'marks mask':
+            fx.marks = int.parse(text);
+          default:
+            throw StateError('$surface $key: unsupported mutation $mutation');
+        }
+        if (surface == 'write-refusal-fixed') {
+          return _catchNew(() {
+            final n = surff.arraysFixedMeasure(1);
+            return surff.arraysFixedSave(<surff.Arrays>[fx], 1, Uint8List(n)) == n ? 0 : -1;
+          });
+        }
+        return _catchNew(() {
+          final batch = <surff.Arrays>[fx];
+          final n = surff.arraysMeasureMessages(batch, surff.TableReport());
+          if (n < 0) return -1;
+          return surff.arraysSaveMessages(batch, Uint8List(n), surff.TableReport()) == n ? 0 : -1;
+        });
+      }
+      final w = surfw.Arrays();
+      _f2w_surf_Arrays(fx, w);
+      switch (mutation) {
+        case 'trio elems':
+          w.trio = _resized(w.trio, int.parse(text));
+        case 'per elems':
+          w.per = _resized(w.per, int.parse(text));
+        case 'marks mask':
+          w.marks = int.parse(text);
+        default:
+          throw StateError('$surface $key: unsupported mutation $mutation');
+      }
+      switch (surface) {
+        case 'write-refusal':
+          return _catchNew(() {
+            surfw.arraysWireSave(w);
+            return 0;
+          });
+        case 'write-refusal-json':
+          return _catchNew(() => surfw.arraysToJson(w).isEmpty ? -1 : 0);
+        case 'write-refusal-cook':
+          return _cookAnswer(() => surfcook.ArraysCookWire.cookMeasure(w), (out) => surfcook.ArraysCookWire.cook(w, out, Endian.little));
+      }
+    case 'tblsurf Counted':
+      final rep = surfw.TableWireReport();
+      final w = surfw.countedWireLoad(bytes(), rep);
+      if (rep.refused) throw StateError('$key: load refused $wirePath');
+      if (mutation != 'few count') throw StateError('$surface $key: unsupported mutation $mutation');
+      final n = int.parse(text);
+      // `count -1` is a value that is no list: a List<int> field holds a list
+      if (n < 0) return 'unrepresentable';
+      w.few = _resized(w.few, n);
+      switch (surface) {
+        case 'write-refusal':
+          return _catchNew(() {
+            surfw.countedWireSave(w);
+            return 0;
+          });
+        case 'write-refusal-json':
+          return _catchNew(() => surfw.countedToJson(w).isEmpty ? -1 : 0);
+        case 'write-refusal-cook':
+          return _cookAnswer(() => surfcook.CountedCook.cookMeasure(w), (out) => surfcook.CountedCook.cook(w, out, Endian.little));
+      }
+    case 'tblsurf Narrow':
+      if (surface != 'write-refusal-message' || mutation != 'hp int') break;
+      final fx = _loadedFixed(
+          _fixedLoadOne(bytes(), surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.narrowFixedLoad), key, wirePath);
+      fx.hp = int.parse(text);
+      return _catchNew(() {
+        final batch = <surff.Narrow>[fx];
+        final n = surff.narrowMeasureMessages(batch, surff.TableReport());
+        if (n < 0) return -1;
+        return surff.narrowSaveMessages(batch, Uint8List(n), surff.TableReport()) == n ? 0 : -1;
+      });
+    case 'tblsurf Wide':
+      if (surface != 'write-refusal-message' || mutation != 'hp int') break;
+      final fx = _loadedFixed(
+          _fixedLoadOne(bytes(), surff.Wide.new, surff.wideFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.wideFixedLoad), key, wirePath);
+      fx.hp = int.parse(text);
+      return _catchNew(() {
+        final batch = <surff.Wide>[fx];
+        final n = surff.wideMeasureMessages(batch, surff.TableReport());
+        if (n < 0) return -1;
+        return surff.wideSaveMessages(batch, Uint8List(n), surff.TableReport()) == n ? 0 : -1;
+      });
+    case 'tblsurf Big':
+      if (surface != 'write-refusal-message') break;
+      return 'absent:the Dart emitter generates no message form for Big (no fixed form past the 65536-byte record ceiling)';
+    case 'mapdemo Fleet':
+      final rep = mapdemo.TableWireReport();
+      final w = mapdemo.fleetWireLoad(bytes(), rep);
+      if (rep.refused) throw StateError('$key: load refused $wirePath');
+      if (mutation != 'ships dupkey') throw StateError('$surface $key: unsupported mutation $mutation');
+      if (text == '1') {
+        if (w.ships.isEmpty) throw StateError('$key: the map holds no first entry');
+        // a map held as a list of entries can hold one key twice
+        w.ships = [...w.ships, w.ships[0]];
+      } else if (text != '0') {
+        throw StateError('$key: dupkey takes 0 or 1, not $text');
+      }
+      switch (surface) {
+        case 'write-refusal':
+          return _catchNew(() {
+            mapdemo.fleetWireSave(w);
+            return 0;
+          });
+        case 'write-refusal-json':
+          return _catchNew(() => mapdemo.fleetToJson(w).isEmpty ? -1 : 0);
+      }
+    case 'tabledemo ProfileConfig':
+      if (surface != 'write-refusal') break;
+      final wire = bytes();
+      tabledemo.ProfileConfig w;
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        w = tabledemo.profileConfigWireLoad(wire, rep);
+        if (rep.refused) throw StateError('$key: load refused $wirePath');
+      } else {
+        final fx = _loadedFixed(
+            _fixedLoadOne(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.profileConfigFixedLoad), key, wirePath);
+        w = tabledemo.ProfileConfig();
+        _f2w_examples_ProfileConfig(fx, w);
+      }
+      // a Dart int is 64 bits: every row's value is representable, and the
+      // writer judges it
+      switch (mutation) {
+        case 'tilt int':
+          w.tilt = int.parse(text);
+        case 'badge int':
+          w.badge = int.parse(text);
+        case 'experience int':
+          w.experience = int.parse(text);
+        default:
+          throw StateError('$surface $key: unsupported mutation $mutation');
+      }
+      return _catchNew(() {
+        tabledemo.profileConfigWireSave(w);
+        return 0;
+      });
+    case 'graphdemo Scene':
+      if (surface != 'write-refusal-cook' || vkind != 'point') break;
+      final rep = graphdemo.TableWireReport();
+      final w = graphdemo.sceneWireLoad(bytes(), rep);
+      if (rep.refused) throw StateError('$key: load refused $wirePath');
+      final graphdemo.ListNode? node = switch (text) {
+        'head' => w.head,
+        'alias' => w.alias,
+        _ => throw StateError('$key: point at $text'),
+      };
+      if (node == null) throw StateError('$key: $text points at nothing');
+      switch (path) {
+        case 'head.next':
+          final head = w.head;
+          if (head == null) throw StateError('$key: head is null');
+          head.next = node;
+        case 'alias':
+          w.alias = node;
+        default:
+          throw StateError('$key: point $path');
+      }
+      return _cookAnswer(() => ck.SceneCook.cookMeasure(w), (out) => ck.SceneCook.cook(w, out, Endian.little));
+    case 'tabledemo RootConfig':
+      if (surface != 'write-refusal-cook') break;
+      // a fixed root's form 3 file, carried into the value the cook takes
+      final fx = _loadedFixed(
+          _fixedLoadOne(bytes(), tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad), key, wirePath);
+      final w = tabledemo.RootConfig();
+      _f2w_examples_RootConfig(fx, w);
+      if (!_mutateRootConfigWire(w, path, vkind, text)) return 'unrepresentable';
+      return _cookAnswer(() => tablescook.RootConfigCookWire.cookMeasure(w), (out) => tablescook.RootConfigCookWire.cook(w, out, Endian.little));
+  }
+  throw StateError('$surface: unsupported $key $mutation');
+}
+
+void _spill1122(String outDir, String name, String answer) {
+  if (answer.startsWith('absent:')) {
+    File('$outDir/$name.absent').writeAsStringSync(answer.substring(7));
+  } else {
+    File('$outDir/$name').writeAsStringSync('$answer\n');
+  }
+}
+
+int surfaceWriteRefusalCook(String outDir) {
+  for (final f in kind('write-refusal-cook')) {
+    _spill1122(outDir, f[1], _writeRefusal1122('write-refusal-cook', f[2], f[3], f[4], f[5], f[6], f[7]));
+  }
+  return 0;
+}
+
+// THE ANNOUNCEMENT (announce): the writer's bytes, a strict or lenient read
+// of a peer's announcement, or a SaveMessages with no announcement in hand.
+int surfaceAnnounce(String outDir) {
+  for (final f in kind('announce')) {
+    final name = f[1];
+    final unit = f[2];
+    final root = f[3];
+    final mode = f[4];
+    final input = f[5];
+    String answer;
+    switch (mode) {
+      case 'write':
+        if (unit == 'tblann4096' || unit == 'tblann4097') {
+          File('$outDir/$name.absent').writeAsStringSync(
+              "the Dart emitter's output for tblann4096/4097 (a 4095-variant enum) does not compile: too many nested expressions or statements");
+          continue;
+        }
+        final (int Function() measure, int Function(Uint8List) announce) = switch (unit) {
+          'tblsurf' => (surff.announceMeasure, surff.announce),
+          'messagedemo' => (messagedemo_fixed.announceMeasure, messagedemo_fixed.announce),
+          _ => throw StateError('announce $name: no announcement writer for $unit'),
+        };
+        final n = measure();
+        if (n < 1) {
+          answer = 'refused';
+          break;
+        }
+        final out = Uint8List(n);
+        final written = announce(out);
+        if (written < 0) {
+          answer = 'refused';
+          break;
+        }
+        if (written != n) {
+          stderr.writeln('announce $name: announce wrote $written bytes, announceMeasure said $n');
+          return 1;
+        }
+        File('$outDir/$name').writeAsBytesSync(out);
+        continue;
+      case 'strict':
+      case 'lenient':
+        final data = File(input).readAsBytesSync();
+        bool read;
+        switch (unit) {
+          case 'messagedemo':
+            final v = messagedemo_fixed.TableVocabulary(entries: _entries(() => messagedemo_fixed.TableMessageEntry(0, 0)));
+            if (mode == 'strict') v.strict = true;
+            final rep = messagedemo_fixed.TableReport();
+            read = messagedemo_fixed.announceRead(v, data, rep) && !rep.refused;
+          case 'tblsurf':
+            final v = surff.TableVocabulary(entries: _entries(() => surff.TableMessageEntry(0, 0)));
+            if (mode == 'strict') v.strict = true;
+            final rep = surff.TableReport();
+            read = surff.announceRead(v, data, rep) && !rep.refused;
+          default:
+            stderr.writeln('announce $name: no announcement reader for $unit');
+            return 1;
+        }
+        answer = read ? 'read' : 'refused';
+      case 'send':
+        final wire = input == '-' ? null : File(input).readAsBytesSync();
+        switch ('$unit $root') {
+          case 'tblsurf Narrow':
+            final fx = wire == null
+                ? surff.Narrow()
+                : _loadedFixed(_fixedLoadOne(wire, surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.narrowFixedLoad), name, input);
+            final batch = <surff.Narrow>[fx];
+            final n = surff.narrowMeasureMessages(batch, surff.TableReport());
+            final out = Uint8List(n < 0 ? 0 : n);
+            if (n < 0 || surff.narrowSaveMessages(batch, out, surff.TableReport()) != n) {
+              answer = 'refused';
+              break;
+            }
+            File('$outDir/$name').writeAsBytesSync(out);
+            continue;
+          case 'tblsurf Arrays':
+            final fx = wire == null
+                ? surff.Arrays()
+                : _loadedFixed(_fixedLoadOne(wire, surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, (rep) => rep.refused != 0, surff.arraysFixedLoad), name, input);
+            final batch = <surff.Arrays>[fx];
+            final n = surff.arraysMeasureMessages(batch, surff.TableReport());
+            final out = Uint8List(n < 0 ? 0 : n);
+            if (n < 0 || surff.arraysSaveMessages(batch, out, surff.TableReport()) != n) {
+              answer = 'refused';
+              break;
+            }
+            File('$outDir/$name').writeAsBytesSync(out);
+            continue;
+          default:
+            stderr.writeln('announce $name: no message writer for $unit.$root');
+            return 1;
+        }
+      default:
+        stderr.writeln('announce $name: unknown mode $mode');
+        return 1;
+    }
+    File('$outDir/$name').writeAsStringSync('$answer\n');
+  }
+  return 0;
+}
+
+// one read of a read-into row: `read`, `refused`, or `threw` (a read refuses
+// through its report, never by throwing: FL-29)
+String _readIntoLine(bool Function() read) {
+  try {
+    return read() ? 'read\n' : 'refused\n';
+  } on Object {
+    return 'threw\n';
+  }
+}
+
+// READ INTO THE CALLER'S VALUES (read-into): one report and one set of values
+// through a lawful read, a refused read and the lawful read again.
+int surfaceReadInto(String outDir) {
+  for (final f in kind('read-into')) {
+    final name = f[1];
+    final unit = f[2];
+    final root = f[3];
+    final form = f[4];
+    final lawful = File(f[5]).readAsBytesSync();
+    switch (form) {
+      case 'variable':
+      case 'json':
+        File('$outDir/$name.absent').writeAsStringSync(
+            "Dart's <root>WireLoad and <root>FromJson take no caller value: they return a new one");
+        continue;
+      case 'fixed-nocap':
+        // NO CALL TO HOLD: <root>FixedLoad always takes a capacity
+        File('$outDir/$name').writeAsStringSync('unrepresentable\n');
+        continue;
+    }
+    final damaged = File(f[6]).readAsBytesSync();
+    final count = int.parse(f[7]);
+    final answer = StringBuffer();
+    switch ('$form $unit $root') {
+      case 'fixed tblsurf Narrow':
+        final values = List<surff.Narrow>.generate(count, (_) => surff.Narrow());
+        final report = surff.TableFixedReport();
+        final plan = surff.narrowFixedNewPlan();
+        bool read(Uint8List b) => surff.narrowFixedLoad(values, count, b, b.length, plan, report) >= 0 && report.refused == 0;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        for (final v in values) {
+          final w = surfw.Narrow();
+          _f2w_surf_Narrow(v, w);
+          answer.write(surfw.narrowToJson(w));
+        }
+        answer.write(_readIntoLine(() => read(lawful)));
+      case 'message backenddemo StorePurchase':
+        final vocab = backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0)));
+        final announced = backenddemo_fixed.TableReport();
+        if (!backenddemo_fixed.announceRead(vocab, File(f[8]).readAsBytesSync(), announced) || announced.refused) {
+          stderr.writeln('read-into $name: announceRead refused ${f[8]}');
+          return 1;
+        }
+        final values = List<backenddemo_fixed.StorePurchase>.generate(count, (_) => backenddemo_fixed.StorePurchase());
+        final report = backenddemo_fixed.TableReport();
+        bool read(Uint8List b) => backend.storePurchaseLoadMessages(values, b, vocab, report) > 0 && !report.refused;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        for (final v in values) {
+          final w = backenddemo.StorePurchase();
+          _f2w_backend_StorePurchase(v, w);
+          answer.write(backenddemo.storePurchaseToJson(w));
+        }
+        answer.write(_readIntoLine(() => read(lawful)));
+      default:
+        stderr.writeln('read-into $name: no reader for $form $unit.$root');
+        return 1;
+    }
+    File('$outDir/$name').writeAsStringSync(answer.toString());
+  }
+  return 0;
+}
+
+// THE TEXT WRITER IN A COMMA-DECIMAL LOCALE (json-write-into). DART HAS NO
+// PROCESS LOCALE TO SET: dart:core formats numbers with no locale at all and
+// dart:io's Platform.localeName is read-only, so the harness's
+// SCHEMA_COMMA_LOCALE has no call to go to. <root>ToJson returns its own
+// String (no caller buffer), so the answer is the text it returned.
+int surfaceJsonWriteInto(String outDir) {
+  final locale = Platform.environment['SCHEMA_COMMA_LOCALE'] ?? '';
+  if (locale.isEmpty) {
+    stderr.writeln('json-write-into: the harness handed no SCHEMA_COMMA_LOCALE');
+    return 1;
+  }
+  for (final f in kind('json-write-into')) {
+    final text = jsonWriteText(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (text == null) {
+      stderr.writeln('json-write-into ${f[1]}: no text writer for ${f[2]}.${f[3]}, or it refused');
+      return 1;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(text);
   }
   return 0;
 }
