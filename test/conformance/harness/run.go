@@ -1022,15 +1022,17 @@ func answeredNothing(lang string, byS map[string]*result) string {
 		if len(r.failures) > 0 {
 			return ""
 		}
-		surfacesAsked++
+		if r.total > 0 {
+			surfacesAsked++
+		}
 		sent += r.total
 		got += r.pass + r.named
 	}
 	if got > 0 {
 		return ""
 	}
-	if surfacesAsked == 0 {
-		return "the leg was asked no surface (--surfaces selected none it runs): a leg that answered nothing is not a pass"
+	if sent == 0 {
+		return "the leg was sent no row (--surfaces, or the corpus, left it nothing to answer): a leg that answered nothing is not a pass"
 	}
 	return fmt.Sprintf("the leg answered none of the %d row(s) sent on %d surface(s) — every surface absent or every case `.absent`: a leg that answered nothing is not a pass",
 		sent, surfacesAsked)
@@ -1444,7 +1446,9 @@ func reportRun(w io.Writer, langs []string, results map[string]map[string]*resul
 				continue
 			}
 			switch {
-			case r.absent:
+			case r.absent && r.total > 0:
+				// (an absent surface the corpus sent no row leaves no row
+				// unanswered; a LISTED one of 0 rows is FAIL 0/0, strictRows)
 				notAnswered = append(notAnswered, fmt.Sprintf("  %s / %s: ABSENT, the whole surface (%d row(s) not answered)", l, s, r.total))
 			case r.missing > 0:
 				notAnswered = append(notAnswered, fmt.Sprintf("  %s / %s: %d of %d row(s) ABSENT", l, s, r.missing, r.total))
