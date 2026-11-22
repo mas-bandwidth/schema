@@ -17,6 +17,12 @@ import (
 // for a capacity refusal to protect (docs/SPEC-TABLES.md §3.3, "A refused batch
 // returns a count of `0`", has no capacity case to answer here). The fixture
 // owes both bodies, each carrying 40.
+//
+// EVERY REFUSAL ANSWERS THE SAME SHAPE (ruling R4): the fixture with its form
+// byte changed (a framing refusal) and the fixture with its last byte dropped
+// (a body or close refusal) each hand back nil, never an empty list for one
+// and nil for the other. With nothing handed in there is no caller storage to
+// reset; the shape is the whole of the rule here.
 func TestLuaMessageLoadCapacityFixture(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -36,12 +42,15 @@ assert(T.AnnounceRead(vocab, inputs.announce, { damaged = false, refused = 0 }))
 local report = { damaged = false, refused = 0 }
 local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
 print("two " .. tostring(values and #values) .. " " .. tostring(values and values[1] and values[1].client_build) .. " " .. tostring(values and values[2] and values[2].client_build))
+local framing = T.LoadMessages("LoginRequest", vocab, "\3" .. inputs.batch:sub(2), { damaged = false, refused = 0 })
+local body = T.LoadMessages("LoginRequest", vocab, inputs.batch:sub(1, #inputs.batch - 1), { damaged = false, refused = 0 })
+print("framing " .. type(framing) .. " body " .. type(body))
 `)
 	out := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{
 		"announce": readFile(t, filepath.Join(repo, "testdata", "wire", "tables", "backend_conn.bin")),
 		"batch":    readFile(t, filepath.Join("testdata", "batch_capacity_two.bin")),
 	})))
-	if out != "two 2 40 40" {
-		t.Fatalf("capacity fixture: want \"two 2 40 40\", got %q", out)
+	if out != "two 2 40 40\nframing nil body nil" {
+		t.Fatalf("capacity fixture: want \"two 2 40 40\" then both refusals nil, got %q", out)
 	}
 }

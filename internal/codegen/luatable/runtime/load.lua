@@ -2727,11 +2727,22 @@ local function strict_refusal(bytes, report, root)
   return nil
 end
 
+-- refuse_into answers a refusal: nil, with the caller's `into` (when one was
+-- handed in and the root is known) put back to its declared defaults.
+local function refuse_into(T, desc, into)
+  if into ~= nil and desc ~= nil then D.reset(T, desc, into) end
+  return nil
+end
+
 -- Load is THE STRICT READ (docs/SPEC-TABLES.md §6.5: THE PLAIN NAME IS THE
 -- STRICT READ): it runs the walk into the caller's report, overwriting
 -- it with THIS read's report, and answers the root only where the strict set
 -- accepts the wire. Otherwise it answers nil, raising nothing, with
 -- report.reason naming the refusal. A nil report refuses the same way (§6.5).
+-- EVERY REFUSAL LEAVES `into` AT ITS DECLARED DEFAULTS (ruling R4): a framing
+-- refusal (previous_form, integrity, an unopenable file) and a body or strict
+-- refusal alike put the caller's value back IN PLACE with D.reset, so no partly
+-- read value survives a nil answer.
 function L.Load(T, name, bytes, report, state, into)
   local r = report
   if r == nil then r = {} end
@@ -2755,7 +2766,7 @@ function L.Load(T, name, bytes, report, state, into)
   if desc ~= nil and not desc.variable and type(bytes) == "string" and #bytes >= 1 and bytes:byte(1) == 1 then
     r.refused = 1
     r.reason = "previous_form"
-    return nil
+    return refuse_into(T, desc, into)
   end
   -- THE WIRE ALONE (§6.5): every byte is held to the wire's own rules, the
   -- bytes the walk skips or reads last-wins included (wirecheck.go), BEFORE
@@ -2783,7 +2794,7 @@ function L.Load(T, name, bytes, report, state, into)
   end
   if reason ~= nil then
     r.reason = reason
-    return nil
+    return refuse_into(T, desc, into)
   end
   return root
 end

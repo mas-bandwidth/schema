@@ -1457,6 +1457,9 @@ end
 -- LoadRetain is Load's path into a REGION (§6.5, §6.6): the plain load runs
 -- unchanged and the capture walk adds what it could not name. A FIXED-class
 -- root is refused by name, as the Go reference's const is.
+-- A REFUSAL LEAVES `into` AT ITS DECLARED DEFAULTS (ruling R4): load.Load resets
+-- it on its own refusals, and a refusal the capture walk finds afterwards resets
+-- it here.
 function S.LoadRetain(T, name, bytes, retain, report, into)
   local desc = T.Tables[name]
   if desc == nil then return nil end
@@ -1507,9 +1510,13 @@ function S.LoadRetain(T, name, bytes, retain, report, into)
       retain.origNode = nil
     end
     rep.retained, rep.retainLost = retainedBefore, lostBefore
+    if into ~= nil then D.reset(T, desc, into) end
     return nil
   end
-  if rep.damaged then return nil end
+  if rep.damaged then
+    if into ~= nil then D.reset(T, desc, into) end
+    return nil
+  end
   return v
 end
 

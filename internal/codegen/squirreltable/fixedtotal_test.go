@@ -1,14 +1,15 @@
 package squirreltable_test
 
 // TOTAL OVER THE BATCH on the Squirrel leg (docs/FIXED-FORM-ALGORITHM.md §5.3,
-// "TOTAL OVER THE BATCH"; tla/FixedBatch.tla): the emitted <Root>FixedLoad
-// checks every record before the first one lands, so a refusal on the LAST
-// record of a batch leaves every row of the caller's storage exactly as the
-// caller poisoned it — out[0..k-1] as untouched as out[k]. One clean
+// "TOTAL OVER THE BATCH"; tla/FixedBatch.tla) under ruling R4: the emitted
+// <Root>FixedLoad checks every record before the first one lands, and a
+// refusal on the LAST record of a batch leaves EVERY row of the caller's
+// storage at its declared default, whatever the caller poisoned it with —
+// out[0..k-1] as much as out[k]: no partly read value survives. One clean
 // three-record file is written by the emitted FixedSave; each case forges ONE
-// condition into the last record only. The negative control plants the
-// interleaved loop back (decode record k straight into out[k]) and requires
-// the rows to read touched.
+// condition into the last record only. The negative control plants the old
+// behaviour back (the refusal resets nothing) and requires the rows to read
+// off their defaults.
 
 import (
 	"encoding/binary"
@@ -48,9 +49,10 @@ const sqTotalFill = `for (local k = 0; k < 3; k++) {
 }
 `
 
-// sqTotalProbe poisons three caller rows, dumps them, loads inputs["file"],
-// and prints "ok <n>" with the landed rows, or "refused <reason> w<widened>
-// untouched|touched" from a fresh dump of every row.
+// sqTotalProbe poisons three caller rows, loads inputs["file"], and prints
+// "ok <n>" with the landed rows, or "refused <reason> w<widened>
+// defaults|not-defaults" from a dump of every row against a dump of three
+// freshly constructed rows.
 func sqTotalProbe(g *sqEvoGen) string {
 	return sqEvoDumper(g) + `local rows = [];
 for (local k = 0; k < 3; k++) {
@@ -58,7 +60,7 @@ for (local k = 0; k < 3; k++) {
   r.F = 9.25; r.Shade = "Dark"; r.S = "zz"; r.M = [9, 9, 9];
   rows.append(r);
 }
-for (local k = 0; k < 3; k++) dump("r" + k, rows[k]);
+for (local k = 0; k < 3; k++) dump("r" + k, T.TR());
 local before = lines;
 lines = [];
 local got = T.TRFixedLoad(inputs["file"], rows, null);
@@ -66,7 +68,7 @@ for (local k = 0; k < 3; k++) dump("r" + k, rows[k]);
 if (got < 0) {
   local same = before.len() == lines.len();
   for (local i = 0; same && i < lines.len(); i++) if (before[i] != lines[i]) same = false;
-  print("refused " + T.FixedReason + " w" + T.FixedWidened + (same ? " untouched" : " touched") + "\n");
+  print("refused " + T.FixedReason + " w" + T.FixedWidened + (same ? " defaults" : " not-defaults") + "\n");
   return;
 }
 print("ok " + got + "\n");
@@ -92,6 +94,9 @@ func sqTotalCases() []sqTotalCase {
 		{"a text length past its bound", "length_over_bound", func(b []byte, rec int) { u32(b, rec+15, 5) }},
 		{"ill-formed text", "text_ill_formed", func(b []byte, rec int) { b[rec+19], b[rec+20] = 0xC0, 0xAF }},
 		{"a live count past its bound", "count_over_bound", func(b []byte, rec int) { u32(b, rec+23, 4) }},
+		// framing refusals before any record (ruling R4 resets every row on these too)
+		{"a newer form byte", "newer_form", func(b []byte, rec int) { b[0] = 9 }},
+		{"a reserved header byte", "reserved_not_zero", func(b []byte, rec int) { b[1] = 1 }},
 	}
 }
 
@@ -124,7 +129,7 @@ func TestSquirrelFixedLoadIsTotalOverTheBatch(t *testing.T) {
 		file := sqEvoClone(clean)
 		c.forge(file, rec)
 		got := g.run(t, sqTotalProbe(g), map[string][]byte{"file": file})
-		if want := "refused " + c.reason + " w0 untouched"; got != want {
+		if want := "refused " + c.reason + " w0 defaults"; got != want {
 			t.Errorf("%s on the last record: %q, want %q", c.name, got, want)
 		}
 	}
@@ -141,15 +146,14 @@ func TestSquirrelFixedLoadIsTotalOverTheBatch(t *testing.T) {
 	}
 	ranged := sqEvoClone(oldClean)
 	binary.LittleEndian.PutUint32(ranged[sqTotalLastBody(t, oldClean):], 60)
-	if got, want := gw.run(t, sqTotalProbe(gw), map[string][]byte{"file": ranged}), "refused out_of_range w0 untouched"; got != want {
+	if got, want := gw.run(t, sqTotalProbe(gw), map[string][]byte{"file": ranged}), "refused out_of_range w0 defaults"; got != want {
 		t.Errorf("a value past the writer's range on the last record: %q, want %q", got, want)
 	}
 }
 
-// TestSquirrelFixedLoadIsTotalNegativeControl plants the interleaved loop
-// back: each record decodes straight into the caller's out[k], so a refusal
-// on the last record leaves the first two landed. Every case must read
-// touched.
+// TestSquirrelFixedLoadIsTotalNegativeControl plants the old behaviour back:
+// the refusal resets nothing, so the caller's poisoned rows stay as they were.
+// Every case must read not-defaults.
 func TestSquirrelFixedLoadIsTotalNegativeControl(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
@@ -157,13 +161,13 @@ func TestSquirrelFixedLoadIsTotalNegativeControl(t *testing.T) {
 	g := sqEvoGenerate(t, u, nil)
 	clean := g.save(t, "TR", sqTotalFill)
 	rec := sqTotalLastBody(t, clean)
-	g.plant(t, "    local v = _M.TR();\n", "    local v = out[k];\n")
+	g.plant(t, "  if (n >= 0 || out == null) return n;\n", "  return n;\n")
 	for _, c := range sqTotalCases() {
 		file := sqEvoClone(clean)
 		c.forge(file, rec)
 		got := g.run(t, sqTotalProbe(g), map[string][]byte{"file": file})
-		if !strings.HasSuffix(got, " touched") {
-			t.Errorf("the negative control: %s on the last record still reads %q under the interleaved loop", c.name, got)
+		if !strings.HasSuffix(got, " not-defaults") {
+			t.Errorf("the negative control: %s on the last record still reads %q with the reset taken out", c.name, got)
 		}
 	}
 }

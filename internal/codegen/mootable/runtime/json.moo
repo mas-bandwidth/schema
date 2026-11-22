@@ -3552,7 +3552,19 @@ function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 				rep.reason = "wire_damaged"
 			end
 		end
+		-- EVERY REFUSAL LEAVES rec AT EXACTLY ITS DECLARED DEFAULTS (ruling R4): a
+		-- key the failed read set that the fresh value does not hold (an optional
+		-- field left nil, say) is cleared first, then the fresh value's keys land
 		local fresh = d.new()
+		local stale = {}
+		for k in rec do
+			if fresh[k] == nil then
+				table.insert(stale, k)
+			end
+		end
+		for _, k in stale do
+			rec[k] = nil
+		end
 		for k, v in fresh do
 			rec[k] = v
 		end

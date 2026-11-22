@@ -1184,16 +1184,17 @@ _M.SaveMessages <- function(T, root, values, out, report) {
 // LoadMessages IS THE STRICT READ (docs/SPEC-TABLES.md §3.3, §6.5): the whole
 // batch, or no body. Each body reads into a fresh row in the caller's storage
 // slot (omitted fields take their declared defaults, whatever the slot held).
-// On a refusal every row the read wrote, the refused one included, is reset
-// to its declared defaults, and rows it never reached are untouched: the Go
-// engine's LoadMessages, which resets values[0..i] and, on a bad batch end,
-// values[0..count-1]. Damage answers 0 with bodyDamaged and wire_damaged; a
-// named refusal (no_vocabulary, newer_form, batch_too_large, kind_mismatch,
-// out_of_range, length_over_bound, count_over_bound, non_finite_float)
-// answers 0 with that name: "A refused batch returns a count of `0`, as
-// every refused batch does" (§3.3). A delivered batch is never empty.
-_M.LoadMessages <- function(T, root, storage, v, bytes, report) {
-  reset(report);
+// EVERY REFUSAL RESETS EVERY ROW OF storage (ruling R4): a framing refusal
+// before any body (no_vocabulary, a short batch, newer_form, batch_too_large,
+// a plain table), a body refusal and a close refusal alike put each row the
+// caller handed in, its whole length, back to the root's declared defaults
+// (d.make()), so no partly read value survives. Damage answers 0 with
+// bodyDamaged and wire_damaged; a named refusal (no_vocabulary, newer_form,
+// batch_too_large, kind_mismatch, out_of_range, length_over_bound,
+// count_over_bound, non_finite_float) answers 0 with that name: "A refused
+// batch returns a count of `0`, as every refused batch does" (§3.3). A
+// delivered batch is never empty.
+local loadMessagesWalk = function(T, root, storage, v, bytes, report) {
   if(v==null||!("Announced" in v)||!v.Announced)return refuseLoad(report,"no_vocabulary");
   if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return 0;}
   if((bytes[0]&0xff)!=2)return refuseLoad(report,"newer_form");
@@ -1209,9 +1210,16 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local whole=readBatch(T,v,r,d,storage,count);
   if(report!=null){report.unknown=r.unknown;report.widened=r.widened;}
   if(whole)return count;
-  for(local i=0;i<r.written;i++)storage[i]=d.make();
   if(r.refusal!=null)return refuseLoad(report,r.refusal);
   if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}
+  return 0;
+};
+_M.LoadMessages <- function(T, root, storage, v, bytes, report) {
+  reset(report);
+  local n=loadMessagesWalk(T,root,storage,v,bytes,report);
+  if(n>0||storage==null)return n;
+  local d=T.Descriptors[root];
+  if(d!=null)for(local i=0;i<storage.len();i++)storage[i]=d.make();
   return 0;
 };
 readBatch = function(T, v, r, d, storage, count) {
