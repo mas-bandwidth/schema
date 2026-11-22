@@ -10,6 +10,12 @@ const schema = @import("schema.zig");
 const value = @import("value.zig");
 const wire = @import("wire.zig");
 const json = @import("json.zig");
+const fixed = @import("fixed.zig");
+
+/// Save at the value's own root form: form 3 for a declared fixed table, else form 1.
+fn saveAt(a: Allocator, s: *value.Struct) wire.Error![]u8 {
+    return if (s.decl.is_fixed) fixed.save(a, s) else wire.save(a, s);
+}
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Value = value.Value;
@@ -17,6 +23,7 @@ const Value = value.Value;
 const surfaces = [_][]const u8{
     "wire",       "json-read",     "json-write",         "report",
     "framing",    "json-hostile",  "write-refusal",      "write-refusal-json",
+    "write-refusal-fixed",
 };
 
 const Ctx = struct {
@@ -141,6 +148,7 @@ pub fn main(init: std.process.Init) !u8 {
             (std.mem.eql(u8, surface, "framing") and eq(kind, "framing"))) try surfReport(&c, ca, f);
         if (std.mem.eql(u8, surface, "json-hostile") and eq(kind, "json-hostile")) try surfHostile(&c, ca, f);
         if (std.mem.eql(u8, surface, "write-refusal") and eq(kind, "write-refusal")) try surfWriteRefusal(&c, ca, f, false);
+        if (std.mem.eql(u8, surface, "write-refusal-fixed") and eq(kind, "write-refusal-fixed")) try surfWriteRefusal(&c, ca, f, false);
         if (std.mem.eql(u8, surface, "write-refusal-json") and eq(kind, "write-refusal-json")) try surfWriteRefusal(&c, ca, f, true);
     }
     return 0;
@@ -170,8 +178,10 @@ fn root(c: *Ctx, a: Allocator, case: []const u8, unit_key: []const u8, name: []c
 fn loadAt(c: *Ctx, a: Allocator, case: []const u8, r: Root, bytes: []const u8) !?*value.Struct {
     if (r.decl.is_fixed) {
         if (bytes.len > 0 and bytes[0] == 3) {
-            try c.absent(a, case, "fixed form (form 3) not implemented");
-            return null;
+            return fixed.load(a, r.unit, r.decl, bytes) catch |e| {
+                try refused(c, case, e);
+                return null;
+            };
         }
         // SPEC-GAP 6: the framing battery reads form 1 at the fixed root `Cfg`
         // and owes values; the report battery's previous_form rows refuse it.
@@ -197,7 +207,7 @@ fn surfWire(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
     const s = (try loadAt(c, a, f[1], r, bytes)) orelse return;
-    const out = wire.save(a, s) catch |e| return refused(c, f[1], e);
+    const out = saveAt(a, s) catch |e| return refused(c, f[1], e);
     try c.put(f[1], out);
 }
 
@@ -217,8 +227,7 @@ fn surfJsonRead(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const path = try std.fmt.allocPrint(a, "testdata/conformance/tables/json/{s}.json", .{f[1]});
     const text = c.readFile(a, path) orelse return;
     const s = json.read(a, r.unit, r.decl, text) catch |e| return refused(c, f[1], e);
-    if (r.decl.is_fixed) return c.absent(a, f[1], "accepted; the form-3 save is not implemented");
-    const out = wire.save(a, s) catch |e| return refused(c, f[1], e);
+    const out = saveAt(a, s) catch |e| return refused(c, f[1], e);
     try c.put(f[1], out);
 }
 
@@ -248,7 +257,7 @@ fn surfReport(c: *Ctx, a: Allocator, f: []const []const u8) !void {
 }
 
 fn answer(c: *Ctx, a: Allocator, case: []const u8, s: *value.Struct) !void {
-    const w = wire.save(a, s) catch |e| {
+    const w = saveAt(a, s) catch |e| {
         std.debug.print("{s}: accepted, then the save refused: {s}\n", .{ case, wire.last_reason });
         return refused(c, case, e);
     };
@@ -266,7 +275,6 @@ fn surfHostile(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const path = try std.fmt.allocPrint(a, "{s}/{s}.json", .{ f[4], f[3] });
     const text = c.readFile(a, path) orelse return c.absent(a, f[1], "no tree");
     const s = json.read(a, r.unit, r.decl, text) catch |e| return refused(c, f[1], e);
-    if (r.decl.is_fixed) return c.absent(a, f[1], "accepted; the form-3 save is not implemented");
     try answer(c, a, f[1], s);
 }
 
@@ -277,7 +285,6 @@ const Unrepresentable = error{Unrepresentable};
 /// write-refusal[-json] <case> <unit> <root> <wire> <path> <kind> <value>
 fn surfWriteRefusal(c: *Ctx, a: Allocator, f: []const []const u8, text: bool) !void {
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
-    if (r.decl.is_fixed) return c.absent(a, f[1], "fixed form not implemented");
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
     var rep: wire.Report = .{};
     const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch return c.absent(a, f[1], "the row's wire did not load");
@@ -289,7 +296,7 @@ fn surfWriteRefusal(c: *Ctx, a: Allocator, f: []const []const u8, text: bool) !v
     if (text) {
         _ = json.write(a, s) catch |e| return refused(c, f[1], e);
     } else {
-        _ = wire.save(a, s) catch |e| return refused(c, f[1], e);
+        _ = saveAt(a, s) catch |e| return refused(c, f[1], e);
     }
     try c.put(f[1], "wrote\n");
 }
