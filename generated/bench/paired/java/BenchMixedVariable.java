@@ -45,7 +45,11 @@ public final class BenchMixedVariable {
         public int extra = 0;
         public int idleTicks = 0;
 
-        public Value() {}
+        public Value() {
+            for (int i = 0; i < 1; i++) {
+                entities.add(new MixedEntityVariable.Value());
+            }
+        }
     }
 
     public static final long TYPE_ID = 0xeb80cfd516eb3d5cL;
@@ -1448,7 +1452,13 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        if (!v.entities.isEmpty()) {
+        boolean rides_entities = v.entities.size() != 1;
+        for (int i = 0; !rides_entities && i < 1; i++) {
+            if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
+                rides_entities = true;
+            }
+        }
+        if (rides_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -2133,6 +2143,7 @@ public final class BenchMixedVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
+        in.graph = false;
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
@@ -2574,6 +2585,14 @@ public final class BenchMixedVariable {
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
         int c = in.peek();
+        if (c != '}' && c != ',') {
+            in.bad = true;
+            return null;
+        }
+        if (c == ',') {
+            in.p++;
+            c = in.peek();
+        }
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
@@ -2589,12 +2608,7 @@ public final class BenchMixedVariable {
                 return null;
             }
             return (Value) entry.value;
-        } else if (c == ',') {
-            in.p++;
-            if (in.peek() == '}') {
-                in.bad = true;
-                return null;
-            }
+        } else {
             if (in.labels.containsKey(labelId)) {
                 in.bad = true;
                 return null;
@@ -2605,9 +2619,6 @@ public final class BenchMixedVariable {
             jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
-        } else {
-            in.bad = true;
-            return null;
         }
     }
 
@@ -2874,7 +2885,7 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (repeated && in.peek() != 'n') {
+                    if (in.peek() != 'n' || (repeated && in.peek() != 'n')) {
                         v.entities = new ArrayList<>();
                     }
                     if (in.peek() == '[') {
