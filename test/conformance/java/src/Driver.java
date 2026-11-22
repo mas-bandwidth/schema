@@ -1541,7 +1541,7 @@ public final class Driver {
                 return true;
             }
             if (kind.equals("int") || kind.equals("ordinal")) {
-                return writeRefusalIndexedInt(container, last.index, text);
+                return writeRefusalIndexedInt(current, field, container, last.index, text);
             }
             if (kind.equals("length")) {
                 if (container instanceof java.util.List<?> rawList) {
@@ -1639,31 +1639,43 @@ public final class Driver {
         }
     }
 
-    private static boolean writeRefusalIndexedInt(Object container, int index, String text) {
+    private static boolean writeRefusalIndexedInt(
+            Object owner, java.lang.reflect.Field field, Object container, int index, String text) {
         java.math.BigInteger big = new java.math.BigInteger(text);
-        if (container instanceof byte[] arr) {
-            arr[index] = (byte) big.intValue();
-            return true;
-        } else if (container instanceof short[] arr) {
-            arr[index] = (short) big.intValue();
-            return true;
-        } else if (container instanceof int[] arr) {
-            arr[index] = big.intValue();
-            return true;
-        } else if (container instanceof long[] arr) {
-            arr[index] = big.longValue();
+        String declared = writeRefusalDeclared(owner, field);
+        if (container != null && container.getClass().isArray()) {
+            int bits = writeRefusalStorageBits(container.getClass().getComponentType());
+            if (bits == 0) {
+                return false;
+            }
+            Long stored = writeRefusalStored(big, bits, declared);
+            if (stored == null) {
+                return false;
+            }
+            if (container instanceof byte[] arr) {
+                arr[index] = stored.byteValue();
+            } else if (container instanceof short[] arr) {
+                arr[index] = stored.shortValue();
+            } else if (container instanceof int[] arr) {
+                arr[index] = stored.intValue();
+            } else {
+                ((long[]) container)[index] = stored;
+            }
             return true;
         } else if (container instanceof java.util.List<?> rawList) {
             @SuppressWarnings("unchecked")
             java.util.List<Object> list = (java.util.List<Object>) rawList;
             Object cur = list.get(index);
-            if (cur instanceof Integer) {
-                list.set(index, Integer.valueOf(big.intValue()));
-                return true;
-            } else if (cur instanceof Long) {
-                list.set(index, Long.valueOf(big.longValue()));
-                return true;
+            int bits = cur == null ? 0 : writeRefusalStorageBits(cur.getClass());
+            if (bits != 32 && bits != 64) {
+                return false;
             }
+            Long stored = writeRefusalStored(big, bits, declared);
+            if (stored == null) {
+                return false;
+            }
+            list.set(index, bits == 32 ? (Object) Integer.valueOf(stored.intValue()) : (Object) stored);
+            return true;
         }
         return false;
     }
@@ -1696,21 +1708,61 @@ public final class Driver {
             return;
         }
         if (fieldValue instanceof java.util.List<?> list) {
-            writeRefusalResize(list, count);
+            writeRefusalResize(owner, name, list, count);
             return;
         }
         throw new NoSuchFieldException(name + " carries no count");
     }
 
-    private static void writeRefusalResize(java.util.List<?> list, int count) {
+    private static void writeRefusalResize(Object owner, String name, java.util.List<?> list, int count)
+            throws ReflectiveOperationException {
         @SuppressWarnings("unchecked")
         java.util.List<Object> raw = (java.util.List<Object>) list;
         while (raw.size() > count) {
             raw.remove(raw.size() - 1);
         }
         while (raw.size() < count) {
-            raw.add(raw.isEmpty() ? null : raw.get(0));
+            // AN EMPTY LIST HAS NO ELEMENT TO REPEAT: the new one is the
+            // element type's own fresh value, never null (a writer is owed a
+            // value at every index it is told to write).
+            raw.add(raw.isEmpty() ? writeRefusalFreshElement(owner, name) : raw.get(0));
         }
+    }
+
+    private static Object writeRefusalFreshElement(Object owner, String name)
+            throws ReflectiveOperationException {
+        java.lang.reflect.Field field = writeRefusalField(owner.getClass(), name);
+        if (!(field.getGenericType() instanceof java.lang.reflect.ParameterizedType listType)
+                || !(listType.getActualTypeArguments()[0] instanceof Class<?> element)) {
+            throw new NoSuchFieldException(name + " names no element type");
+        }
+        if (element == Boolean.class) {
+            return Boolean.FALSE;
+        }
+        if (element == Byte.class) {
+            return (byte) 0;
+        }
+        if (element == Short.class) {
+            return (short) 0;
+        }
+        if (element == Integer.class) {
+            return 0;
+        }
+        if (element == Long.class) {
+            return 0L;
+        }
+        if (element == Float.class) {
+            return 0f;
+        }
+        if (element == Double.class) {
+            return 0d;
+        }
+        if (element == String.class) {
+            return "";
+        }
+        java.lang.reflect.Constructor<?> fresh = element.getDeclaredConstructor();
+        fresh.setAccessible(true);
+        return fresh.newInstance();
     }
 
     private static void writeRefusalLength(
@@ -1789,33 +1841,21 @@ public final class Driver {
             throws ReflectiveOperationException {
         java.math.BigInteger big = new java.math.BigInteger(text);
         Class<?> type = field.getType();
-        if (type == int.class) {
-            if (big.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0
-                    || big.compareTo(java.math.BigInteger.valueOf(0xFFFFFFFFL)) > 0) {
+        int bits = writeRefusalStorageBits(type);
+        if (bits > 0) {
+            Long stored = writeRefusalStored(big, bits, writeRefusalDeclared(owner, field));
+            if (stored == null) {
                 return false;
             }
-            field.setInt(owner, big.intValue());
-            return true;
-        } else if (type == long.class) {
-            if (big.compareTo(java.math.BigInteger.valueOf(Long.MIN_VALUE)) < 0
-                    || big.compareTo(new java.math.BigInteger("18446744073709551615")) > 0) {
-                return false;
+            if (type == int.class) {
+                field.setInt(owner, stored.intValue());
+            } else if (type == long.class) {
+                field.setLong(owner, stored);
+            } else if (type == short.class) {
+                field.setShort(owner, stored.shortValue());
+            } else {
+                field.setByte(owner, stored.byteValue());
             }
-            field.setLong(owner, big.longValue());
-            return true;
-        } else if (type == short.class) {
-            if (big.compareTo(java.math.BigInteger.valueOf(Short.MIN_VALUE)) < 0
-                    || big.compareTo(java.math.BigInteger.valueOf(0xFFFF)) > 0) {
-                return false;
-            }
-            field.setShort(owner, (short) big.intValue());
-            return true;
-        } else if (type == byte.class) {
-            if (big.compareTo(java.math.BigInteger.valueOf(Byte.MIN_VALUE)) < 0
-                    || big.compareTo(java.math.BigInteger.valueOf(0xFF)) > 0) {
-                return false;
-            }
-            field.setByte(owner, (byte) big.intValue());
             return true;
         } else if (fieldValue != null && type.getSimpleName().equals("Int128")) {
             java.math.BigInteger min128 = java.math.BigInteger.ONE.shiftLeft(127).negate();
@@ -1841,6 +1881,97 @@ public final class Driver {
         } else {
             throw new NoSuchFieldException(field.getName() + " is not an integer");
         }
+    }
+
+    // EVERY INTEGER THE DRIVER ASSIGNS GOES THROUGH writeRefusalStored: a
+    // scalar field, an array or list element, a map entry's key or value and a
+    // nested record's field alike. It answers the bits to store, or null when
+    // this leg's storage cannot hold the value AS THE DECLARED KIND, which is
+    // the row's `unrepresentable` (FORMAT.md), the answer the Go reference
+    // driver gives for the same row:
+    //
+    //   - a declared int8..int64 holds what its Java storage holds, signed. Java
+    //     spells int32 and uint32 with one type, so a value only the unsigned
+    //     reading could hold is not a value of a signed field;
+    //   - a declared uint8..uint64 holds no negative value, and holds up to its
+    //     own unsigned maximum where the storage is exactly that wide (uint32
+    //     in an int) and up to the storage's signed maximum where it is wider
+    //     (uint8 in an int: 256 is stored, and refusing it is the writer's job);
+    //   - any other declared kind (bits(N), an enum's ordinal, a union's tag, a
+    //     fixed point's raw value, a field no descriptor names) keeps the wide
+    //     reading: either sign's spelling of the storage.
+    private static Long writeRefusalStored(java.math.BigInteger big, int bits, String declared) {
+        java.math.BigInteger one = java.math.BigInteger.ONE;
+        java.math.BigInteger signedMin = one.shiftLeft(bits - 1).negate();
+        java.math.BigInteger signedMax = one.shiftLeft(bits - 1).subtract(one);
+        java.math.BigInteger unsignedMax = one.shiftLeft(bits).subtract(one);
+        java.math.BigInteger low = signedMin;
+        java.math.BigInteger high = unsignedMax;
+        switch (declared) {
+            case "int8": case "int16": case "int32": case "int64":
+                high = signedMax;
+                break;
+            case "uint8": case "uint16": case "uint32": case "uint64":
+                low = java.math.BigInteger.ZERO;
+                high = Integer.parseInt(declared.substring(4)) >= bits ? unsignedMax : signedMax;
+                break;
+            default:
+                break;
+        }
+        if (big.compareTo(low) < 0 || big.compareTo(high) > 0) {
+            return null;
+        }
+        return big.longValue();
+    }
+
+    // The width of an integer storage type, or 0 for a type that is not one.
+    private static int writeRefusalStorageBits(Class<?> type) {
+        if (type == byte.class || type == Byte.class) {
+            return 8;
+        }
+        if (type == short.class || type == Short.class) {
+            return 16;
+        }
+        if (type == int.class || type == Integer.class) {
+            return 32;
+        }
+        if (type == long.class || type == Long.class) {
+            return 64;
+        }
+        return 0;
+    }
+
+    // writeRefusalDeclared reads a field's declared type from the descriptor
+    // beside its owner (<Type>Descriptor.tableType()): the scalar's own type,
+    // or an array's or list's element type. "" for a field no descriptor
+    // names.
+    private static String writeRefusalDeclared(Object owner, java.lang.reflect.Field field) {
+        Class<?> top = owner.getClass();
+        while (top.getEnclosingClass() != null) {
+            top = top.getEnclosingClass();
+        }
+        String base = top.getName();
+        for (String suffix : new String[] {"Variable", "Fixed", "Row"}) {
+            if (base.endsWith(suffix)) {
+                base = base.substring(0, base.length() - suffix.length());
+                break;
+            }
+        }
+        try {
+            Object info = Class.forName(base + "Descriptor").getMethod("tableType").invoke(null);
+            Object[] fields = (Object[]) info.getClass().getField("fields").get(info);
+            String folded = writeRefusalFold(field.getName());
+            for (Object f : fields) {
+                String name = (String) f.getClass().getField("name").get(f);
+                if (name != null && writeRefusalFold(name).equals(folded)) {
+                    String typeName = (String) f.getClass().getField("typeName").get(f);
+                    return typeName == null ? "" : typeName;
+                }
+            }
+        } catch (ReflectiveOperationException | ClassCastException absent) {
+            return "";
+        }
+        return "";
     }
 
     private static boolean writeRefusalOrdinal(

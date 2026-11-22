@@ -275,16 +275,19 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 					shape = "(" + shape + "||in.peek()=='n')"
 				}
 				fmt.Fprintf(&b, "        if(%s){\n", shape)
-				depthExpr := "depth + 1"
-				if arm.Body() {
-					depthExpr = "depth"
-				}
-				readJsonFieldValue(&b, u, st, &one, depthExpr)
+				// DEPTH (§16.2; internal/tabletext readUnion): the holder is
+				// at depth, the union object at depth+1, and the arm's value
+				// at depth+2. A body arm and a field arm both read through
+				// the field walk one level down, whose own scalar walk adds
+				// the level, so a body arm's table is at depth+2 as Go reads it.
+				readJsonFieldValue(&b, u, st, &one, "depth + 1")
 				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			}
 			b.WriteString("        }else ")
 		}
-		b.WriteString("{in.rep.unknown++;in.skipValue();}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
+		// an unknown arm's value is skipped where it sits, at depth+2, so
+		// one level past the cap refuses as the engine's does (§16.2)
+		b.WriteString("{in.rep.unknown++;in.skipValue(depth + 2);}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
 	}
 	// Enum payload helpers use the same ID-to-ordinal rule as table fields.
 	for _, f := range st.Fields {
@@ -357,7 +360,7 @@ func writeUnionFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "        if(v.%s.tag!=0){w.putLeb(w.ref(F_%s));w.put8(15);%sVariable.writePayload(w,graph,v.%s);}\n", m, m, un.Name, m)
 		return
 	}
-	fmt.Fprintf(b, "        if(!v.%s.isEmpty()){w.putLeb(w.ref(F_%s));w.put8(14);\n", m, m)
+	fmt.Fprintf(b, "        if(%s){w.putLeb(w.ref(F_%s));w.put8(14);\n", variableArrayRides(b, f, m), m)
 	writeVariablePayload(b, u, st.Name, f, "v."+m, "w", 0)
 	b.WriteString("        }\n")
 }
