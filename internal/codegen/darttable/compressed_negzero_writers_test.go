@@ -1,6 +1,7 @@
 package darttable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,9 +90,7 @@ func TestDartCompressedNegZeroWriters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range packetFiles(t, u) {
-		files[name] = data
-	}
+	maps.Copy(files, packetFiles(t, u))
 	files["probe.dart"] = []byte(dartNegZeroProbe)
 	dir := t.TempDir()
 	writeFiles(t, dir, files)

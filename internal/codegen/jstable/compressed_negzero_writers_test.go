@@ -87,7 +87,7 @@ func TestJavaScriptCompressedFloatStoresAreGuarded(t *testing.T) {
 		"return TableVariableSameFloat(e.f32, TableVariableStoredFloat(e, x), e.def);",
 		"const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);",
 		"if (value.z !== 0) {",
-		"if (!Object.is(value.p, 0)) {",
+		"if (!globalThis.Object.is(value.p, 0)) {",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the generated module does not carry %q", want)
