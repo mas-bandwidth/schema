@@ -154,6 +154,41 @@ leg is the worked example: it registered with `json-read` and `json-write`
 ABSENT, and both cells moved to `pass 18/18` when the C# walk landed — nothing
 in the data or in this contract moved with them.
 
+**A ROW THAT CANNOT FAIL IS NOT CREDITED: THE LAWFUL TWIN**
+(`harness/discriminate.go`). A must-refuse row passes when the leg refuses,
+and a leg that refuses the whole FORM refuses it too: a fixed root read
+through the wrong reader, a root the leg refuses every file of, a construct it
+has no reader for. That refusal is the answer the leg gives the lawful value as
+well, so it proves nothing about the rule the row was written for. Seen on
+2026-11-22: the Go leg read listdemo Bounded's framing vectors through the
+plain `BoundedLoad`, which refuses every form-1 file at a fixed root, and
+`array_elem_terminator_early` and `array_elem_L_past_body` passed for that
+reason alone. Two rules close it, both in the harness:
+
+1. **Every must-refuse row has a lawful twin in the corpus**: a row of the same
+   group (surface, unit and root; the base image for `block-foreign`,
+   `cook-foreign` and the forgeries) that must be ACCEPTED. A group with none
+   of its own falls back to the surface that drives the same entry point at
+   that root (`report` to `wire`, `json-hostile` to `json-read`,
+   `write-refusal-json` to `json-write`; a root read nowhere to the unit's
+   `wire` rows); `framing` has no fallback, since at a fixed root it reads
+   through the variable entry point no other surface drives. `harness run`
+   refuses a corpus with a twinless refusal and names the row, and
+   `TestEveryMustRefuseRowHasALawfulTwin` holds the committed one. The
+   `twin_*` rows in `MANIFEST.txt` are the twins that were missing.
+2. **A refusal is credited only beside an answered twin.** A must-refuse row
+   the leg refused, where the same leg answered none of the row's lawful twins
+   correctly, is REFUSAL-ONLY: never a pass, counted in the cell as `+Nr`
+   (`pass 10/10 +2r`), and named in a REFUSAL-ONLY block under the matrix. For
+   the reference leg it is a failure, as an absence is.
+
+**THE SCORE** (docs/SPEC-CONFORMANCE.md §4) prints under the matrix, one line
+per leg — `credited C of T; absent A; refusal-only R; failed F` — and the same
+block is appended to `$GITHUB_STEP_SUMMARY` when CI sets it, so every job that
+runs the matrix shows the legs that score by refusing. **Absent and
+refusal-only are counted apart and never credited**: a leg that answers
+nothing, or refuses everything, scores zero however its cells read.
+
 **A DRIVER MAY TAKE ITS GENERATED TREE FROM THE ENVIRONMENT**, and the
 JavaScript leg does (`SCHEMA_JS_GENERATED`). That is not a contract change — the
 harness still hands a manifest, a surface and an output directory and nothing

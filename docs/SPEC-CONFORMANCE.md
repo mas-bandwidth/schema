@@ -85,6 +85,24 @@ file shapes of every surface, the absence rules and the reference-leg rule.
 - **Accepted values are judged by the value** the golden states, in the
   canonical text form.
 
+- **A refusal counts only beside an accepted twin.** Every case that requires
+  a refusal has a lawful twin in the corpus: a case of the same group (the
+  same surface, unit and root) that requires acceptance. A port's refusal is
+  credited only when the same port also answers at least one of its twins
+  correctly; otherwise the case is REFUSAL-ONLY. A port that refuses a whole
+  form (reads a root through the wrong reader, or has no reader for it)
+  refuses the lawful value too, and has not reached the rule the refusal case
+  tests. `test/conformance/README.md` states the groups and the harness
+  enforces both halves: it refuses a corpus with a refusal case that has no
+  twin, and scores refusal-only cases apart.
+
+**The score.** For each port the suite prints `credited C of T; absent A;
+refusal-only R; failed F` over every case of every surface it was asked.
+CREDITED is a correct answer (a refusal only as above). ABSENT (a surface the
+port does not list, exit code 2, or `<case>.absent`) and REFUSAL-ONLY are
+reported separately and are **never counted as passes**: a port conforms only
+when C equals T.
+
 Expected answers come from the committed goldens and manifests, never from
 another language's leg.
 

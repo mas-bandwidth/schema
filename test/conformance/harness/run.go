@@ -684,6 +684,11 @@ type runOptions struct {
 	// a case whose unit uses a registered construct the leg's target carries
 	// (compiler/carries.go), on a surface the leg runs.
 	claims *claimSet
+	// summary, when set, is a file the SCORE and REFUSAL-ONLY block is
+	// appended to: `harness run` passes $GITHUB_STEP_SUMMARY, so every CI job
+	// that runs the matrix shows on its summary page which legs score only by
+	// refusing (discriminate.go).
+	summary string
 	// coverage, when set, receives one row per leg, surface and class.
 	coverage *[]coverageRow
 	// results, when set, is where every case's verdict is written
@@ -896,7 +901,26 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 	}
-	return report(w, langs, results), nil
+	ok := report(w, langs, results)
+	if opts.summary != "" {
+		if err := appendSummary(opts.summary, langs, results); err != nil {
+			return false, err
+		}
+	}
+	return ok, nil
+}
+
+// appendSummary writes the score block to a CI step summary, in Markdown.
+func appendSummary(path string, langs []string, results map[string]map[string]*result) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	_, werr := fmt.Fprintf(f, "### Tables conformance score\n\n```\n%s```\n", scoreBlock(langs, results))
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	return werr
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker

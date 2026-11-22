@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -102,6 +103,14 @@ func TestARefusalIsCreditedOnlyBesideAnAnsweredTwin(t *testing.T) {
 	d.credit("cpp", map[string]*result{"framing": reference}, true)
 	if len(reference.failures) != 1 || !strings.Contains(reference.failures[0], "REFUSAL-ONLY") {
 		t.Fatalf("the reference leg's refusal-only row is not a failure: %+v", reference.failures)
+	}
+
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	if err := appendSummary(summary, []string{"lobster"}, map[string]map[string]*result{"lobster": {"framing": refusesAll}}); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := os.ReadFile(summary); err != nil || !strings.Contains(string(text), "lobster / framing: 1 row(s)") {
+		t.Fatalf("the CI summary does not name the refusal-only leg (%v):\n%s", err, text)
 	}
 
 	var out strings.Builder
