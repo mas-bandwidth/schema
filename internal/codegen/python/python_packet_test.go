@@ -239,6 +239,15 @@ type packetPin struct {
 	note  string
 }
 
+// wireDir is the directory under testdata/wire that holds the pin's golden.
+func (p packetPin) wireDir() string {
+	paths := strings.Join(p.paths, "|")
+	if strings.Contains(paths, "packet-defaults") || strings.Contains(paths, "constant-defaults") {
+		return "packet-defaults"
+	}
+	return ""
+}
+
 // packetPins maps every C++-pinned packet golden under testdata/wire to the
 // one root type it pins. The concatenated goldens and the table-wire pin have
 // no single root and carry their note instead.
@@ -248,6 +257,11 @@ func packetPins() []packetPin {
 	bench := []string{"bench/corpus/Bench.schema"}
 	real := []string{"bench/corpus/RealWorld.schema"}
 	defaults := []string{"test/packet-defaults/Defaults.schema"}
+	// the C and C++ writers' constant defaults (O-01, O-02), pinned beside
+	// the packet-defaults goldens
+	constant := func(name string) []string {
+		return []string{"test/conformance/packet/testdata/constant-defaults/" + name + "/Defaults.schema"}
+	}
 	return []packetPin{
 		{"shipcreate_flags", examples, "ShipCreate", ""},
 		{"chat", examples, "Chat", ""},
@@ -281,6 +295,8 @@ func packetPins() []packetPin {
 		{"batch-defaults", defaults, "Batch", ""},
 		{"zero-count", defaults, "ZeroCount", ""},
 		{"choice-sample", defaults, "Choice", ""},
+		{"hexadecimal-addition", constant("hexadecimal-addition"), "Value", ""},
+		{"unsigned-subtraction", constant("unsigned-subtraction"), "Value", ""},
 	}
 }
 

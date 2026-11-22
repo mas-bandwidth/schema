@@ -59,14 +59,16 @@ func driverSource(t *testing.T, lang, name string) []byte {
 	return data
 }
 
-func run(t *testing.T, dir string, env []string, name string, args ...string) {
+func run(t *testing.T, dir string, env []string, name string, args ...string) []byte {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
 	}
+	return out
 }
 
 func envOr(name, fallback string) string {

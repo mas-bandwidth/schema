@@ -163,12 +163,26 @@ type packetPin struct {
 	note  string
 }
 
+// wireDir is the directory under testdata/wire that holds the pin's golden.
+func (p packetPin) wireDir() string {
+	paths := strings.Join(p.paths, "|")
+	if strings.Contains(paths, "packet-defaults") || strings.Contains(paths, "constant-defaults") {
+		return "packet-defaults"
+	}
+	return ""
+}
+
 func packetPins() []packetPin {
 	examples := []string{"examples"}
 	ludicrous := []string{"examples128"}
 	bench := []string{"bench/corpus/Bench.schema"}
 	real := []string{"bench/corpus/RealWorld.schema"}
 	defaults := []string{"test/packet-defaults/Defaults.schema"}
+	// the C and C++ writers' constant defaults (O-01, O-02), pinned beside
+	// the packet-defaults goldens
+	constant := func(name string) []string {
+		return []string{"test/conformance/packet/testdata/constant-defaults/" + name + "/Defaults.schema"}
+	}
 	return []packetPin{
 		{"shipcreate_flags", examples, "ShipCreate", ""},
 		{"chat", examples, "Chat", ""},
@@ -202,6 +216,8 @@ func packetPins() []packetPin {
 		{"batch-defaults", defaults, "Batch", ""},
 		{"zero-count", defaults, "ZeroCount", ""},
 		{"choice-sample", defaults, "Choice", ""},
+		{"hexadecimal-addition", constant("hexadecimal-addition"), "Value", ""},
+		{"unsigned-subtraction", constant("unsigned-subtraction"), "Value", ""},
 	}
 }
 
@@ -333,11 +349,10 @@ func TestRubyPacketClose(t *testing.T) {
 	root := repoRoot(t)
 	known := map[string]bool{"bench_table.bin": true}
 	for _, pin := range packetPins() {
-		dir := ""
-		if strings.Contains(strings.Join(pin.paths, "|"), "packet-defaults") {
-			dir = "packet-defaults/"
+		key := pin.name + ".bin"
+		if dir := pin.wireDir(); dir != "" {
+			key = dir + "/" + key
 		}
-		key := dir + pin.name + ".bin"
 		if known[key] && pin.name != "bench_table" {
 			t.Errorf("duplicate packet pin %s", key)
 		}
@@ -385,9 +400,7 @@ func TestRubyPacketClose(t *testing.T) {
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, intField, boolField, intMin, intMax)
 			pinDir := filepath.Join(root, "testdata", "wire")
-			if strings.Contains(strings.Join(pin.paths, "|"), "packet-defaults") {
-				pinDir = filepath.Join(pinDir, "packet-defaults")
-			}
+			pinDir = filepath.Join(pinDir, pin.wireDir())
 			data, err := os.ReadFile(filepath.Join(pinDir, pin.name+".bin"))
 			if err != nil {
 				t.Fatal(err)
