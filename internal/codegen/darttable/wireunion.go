@@ -184,6 +184,11 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
 		et := g.listElemType(f)
+		if f.BornCount() > 0 {
+			// a counted [A..B] is BORN at A elements, each at its default
+			// (docs/SPEC-TABLES.md §2.3): a plain field and an arm line alike
+			return fmt.Sprintf("List<%s> %s = List<%s>.generate(%d, (_) => %s);", et, name, et, f.BornCount(), g.elemDefault(f))
+		}
 		return fmt.Sprintf("List<%s> %s = <%s>[];", et, name, et)
 	case isUnionField(f):
 		return fmt.Sprintf("%s %s = %s();", f.Type.Name, name, f.Type.Name)
@@ -1204,7 +1209,7 @@ func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
 // over element kind 15 (§3): the live count, then each element's arm header,
 // a None element the single zero byte. An empty array elides (§2.9).
 func (g *wireGen) emitSaveUnionList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, 0)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindUnion)

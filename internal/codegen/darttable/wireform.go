@@ -2759,11 +2759,44 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s}\n", ind)
 }
 
+// countedRides is the condition a counted or unbounded array rides under. An
+// array with no minimum elides when empty. A counted [A..B] elides exactly at
+// its BORN state (docs/SPEC-TABLES.md §2.3, internal/tablewire encodeArray):
+// the live count is A and every element writes nothing, which is a scalar at
+// its default (a float by bits), a None union, a null pointer, or a table
+// whose save body is its terminator alone, judged on a scratch writer with
+// the id table rolled back.
+func (g *wireGen) countedRides(f *ir.Field, expr string, ordinal int) string {
+	min := f.BornCount()
+	if min <= 0 || f.Type.Optional || ir.TextListPlain(f) {
+		return expr + ".isNotEmpty"
+	}
+	var elem string
+	switch listElementKind(f) {
+	case wireKindUnion:
+		elem = "e.armTag != 0"
+	case wireKindPtr:
+		elem = "e != null"
+	case wireKindTable:
+		if f.Type.Pointer {
+			elem = "e != null"
+			break
+		}
+		return fmt.Sprintf("%s.length != %d || %s.asMap().entries.any((x) { final mk = w.state.mark(); final b = w.sub(); b.path = [...w.path, %d, x.key]; %sWireSaveBody(b, x.value); w.state.rollback(mk); return b.buf.length > 1; })",
+			expr, min, expr, ordinal, dartName(f.Type.Name))
+	case wireKindF32, wireKindF64:
+		elem = wireFloatRides(singleOf(f), "e", g.elemDefault(f))
+	default:
+		elem = "e != " + g.elemDefault(f)
+	}
+	return fmt.Sprintf("%s.length != %d || %s.any((e) => %s)", expr, min, expr, elem)
+}
+
 // emitSavePointerList writes a []*T as kind 14 over element kind 17 (§3.1):
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, 0)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2783,7 +2816,7 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, ordinal)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2809,7 +2842,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, 0)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
