@@ -104,7 +104,7 @@ _verify-c-conformance: build/conformance-harness build/conformance-c build/schem
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only c --claims --work build/verify/conformance-c --results $(VERIFY_RESULTS_DIR)/c.json
 
-_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c
+_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c packet-write-refusal-c
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-c.csv
 	bench/run.sh --quick --bare --only c --out build/verify/bench-c.csv
 	@test -s build/verify/bench-c.csv

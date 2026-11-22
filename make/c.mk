@@ -2431,6 +2431,44 @@ packet-write-text-c-negative-control: packet-write-text-c
 
 test-c: packet-write-text-c packet-write-text-c-negative-control
 
+# write-refusal-packet (docs/SPEC.md §5.1): the shared packet-write-refusal
+# battery in a C debug build, one child per case; an abort is the refusal and
+# a written twin is read back. The control removes the ranged-integer assert
+# from the emitter and requires exactly the ranged-integer rows to go red.
+build/packet-write-refusal/c/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema
+	@mkdir -p build/packet-write-refusal/c
+	./bin/schema generate --lang c --out build/packet-write-refusal/c test/packet-write-refusal/RefusalPacket.schema
+	@touch $@
+
+build/packet-write-refusal/c/driver: build/packet-write-refusal/c/.stamp test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-refusal/c \
+		test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-refusal-c packet-write-refusal-c-negative-control
+packet-write-refusal-c: build/packet-write-refusal/c/driver
+	./build/packet-write-refusal/c/driver test/packet-write-refusal/cases.txt
+
+packet-write-refusal-c-negative-control: packet-write-refusal-c
+	@mkdir -p build/packet-write-refusal/c-negative
+	go run ./tools/sabotage -name packet-write-refusal-c-range-write \
+		-out build/packet-write-refusal/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-refusal/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-refusal/c-negative/overlay.json
+	go build -overlay=build/packet-write-refusal/c-negative/overlay.json -o build/packet-write-refusal/c-negative/schema ./cmd/schema
+	./build/packet-write-refusal/c-negative/schema generate --lang c --out build/packet-write-refusal/c-negative/generated test/packet-write-refusal/RefusalPacket.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-refusal/c-negative/generated \
+		test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-refusal/c-negative/driver -lm
+	@if ./build/packet-write-refusal/c-negative/driver test/packet-write-refusal/cases.txt > build/packet-write-refusal/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: C packet Write without the ranged-integer assert passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-refusal scalar_high: expected debug assert' build/packet-write-refusal/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on scalar_high'; cat build/packet-write-refusal/c-negative/log; exit 1; }
+	@if grep '^FAILED: ' build/packet-write-refusal/c-negative/log | grep -Fvq -e 'scalar_high:' -e 'scalar_low:' -e 'const_wrong:' -e 'reserved_wrong:'; then \
+		echo 'NEGATIVE CONTROL FAILED: a case other than the ranged-integer rows went red'; cat build/packet-write-refusal/c-negative/log; exit 1; fi
+	@grep -Fm1 'FAILED: packet-write-refusal scalar_high:' build/packet-write-refusal/c-negative/log
+	@echo 'C packet Write refusal negative control: removing the ranged-integer assert fails exactly the ranged-integer rows'
+
+test-c: packet-write-refusal-c packet-write-refusal-c-negative-control
+
 # Hash-zero IDs are ordinary retained identities, distinct from wire None.
 .PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
 tables-c-retain-hashzero:
