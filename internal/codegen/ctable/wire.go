@@ -61,6 +61,8 @@ func (g *tableGen) wirePrimitives() string {
 			slots *= 2
 		}
 		runtime = strings.ReplaceAll(runtime, "@ID_SLOTS@", strconv.Itoa(slots))
+		// THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): the 4097th id overflows.
+		runtime = strings.ReplaceAll(runtime, "@ID_LIMIT@", strconv.Itoa(min(len(ir.TableWireIds(g.unit))+1, ir.TableWireIdTableBound)))
 		// THE ORDINAL SLOT CACHE's inverse column is as narrow as the
 		// vocabulary allows: an ordinal indexes a set of len(TableWireIds)
 		// ids, and -1 is the entry a RUNTIME id took. Sixteen bits carry
@@ -175,7 +177,7 @@ static SCHEMA_UNUSED uint64_t table_writer_id( TableWriter * w, uint64_t id )
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==@CAPACITY@) { w->overflow=1; return 0; }
+    if(v->count>=@ID_LIMIT@) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
