@@ -42,6 +42,15 @@ func emitMessageForm(g *luau.Gen) error {
 	g.Pf("\tfor i = 1, #v do buffer.writeu8(b, i - 1, v[i]) end\n")
 	g.Pf("\treturn b\nend)()\n")
 	g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3).
+	if len(tablewire.MessageVocabulary(g.Unit)) > ir.TableVocabularyMaxEntries {
+		g.Pf("function %s.AnnounceMeasure(): number return -1 end\n", g.Self)
+		g.Pf("function %s.Announce(): buffer? return nil end\n", g.Self)
+	} else {
+		g.Pf("function %s.AnnounceMeasure(): number return %s.TableMessageAnnouncementLength end\n", g.Self, g.Self)
+		g.Pf("function %s.Announce(): buffer? return %s.TableMessageAnnouncement end\n", g.Self, g.Self)
+	}
 	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.Unit))))
 	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(tablewire.MessageVocabulary(g.Unit)))
 	g.Pf("%s.TableMessageBuildVersion = %s\n\n", g.Self, luau.IntegerLit(new(big.Int).SetUint64(ir.BuildVersion(g.Unit))))

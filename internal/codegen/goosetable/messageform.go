@@ -1283,7 +1283,17 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.g.Declare(n + "LoadMessages")
 	e.p(0, "// ---- %s, the message form, form byte 2 (docs/SPEC-TABLES.md §3.3) ----", n)
 	e.p(0, "// %sAnnounce is the unit's announcement (MessageAnnouncement, the message form's package module).", n)
-	e.p(0, "let %sAnnounce: const u8[:] = MessageAnnouncement;\n", n)
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3): %sAnnounceRefused
+	// is true and %sAnnounce is empty.
+	e.g.Declare(n + "AnnounceRefused")
+	if len(tablewire.MessageVocabulary(e.g.Unit)) > ir.TableVocabularyMaxEntries {
+		e.p(0, "let %sAnnounceRefused: bool = true;", n)
+		e.p(0, "let %sAnnounce: const u8[:] = \"\";\n", n)
+	} else {
+		e.p(0, "let %sAnnounceRefused: bool = false;", n)
+		e.p(0, "let %sAnnounce: const u8[:] = MessageAnnouncement;\n", n)
+	}
 
 	for _, measure := range []bool{true, false} {
 		e.loop = 0
