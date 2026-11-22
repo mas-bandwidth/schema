@@ -1213,6 +1213,34 @@ end
 		return n
 	end
 
+	-- A 64-BIT INTEGER FIELD holds a Luau integer, an unsigned one its
+	-- two's-complement wrap, so a token reaches it EXACTLY: tonumber rounds
+	-- 18446744073709551615 to 2^64, which no uint64 holds, and the writer
+	-- refused a value the declaration admits (wref_var_u64_ok). A token the
+	-- field's 64 bits cannot hold distinctly (past 2^64 - 1 unsigned, outside
+	-- int64 signed, or negative unsigned) is unrepresentable.
+	local function wrefInteger64(text: string, signed: boolean): integer?
+		local negative = string.sub(text, 1, 1) == "-"
+		local digits = if negative then string.sub(text, 2) else text
+		if string.match(digits, "^%d+$") == nil or (negative and not signed) then return nil end
+		local acc = 0i
+		for i = 1, #digits do
+			if integer.ult(0x1999999999999999i, acc) then return nil end
+			local t = integer.mul(acc, 10i)
+			local sum = integer.add(t, integer.create(string.byte(digits, i) - 48))
+			if integer.ult(sum, t) then return nil end
+			acc = sum
+		end
+		if not signed then return acc end
+		local min64 = integer.bnot(0x7fffffffffffffffi)
+		if negative then
+			if integer.ult(min64, acc) then return nil end
+			return integer.sub(0i, acc)
+		end
+		if integer.lt(acc, 0i) then return nil end
+		return acc
+	end
+
 local function wrefSet(u: any, root: string, v: any, path: string, what: string, text: string)
 	local owner, fd, idx = wrefWalk(u, root, v, path)
 	local holder: any = owner
@@ -1224,6 +1252,10 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 	local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
 	if what == "ordinal" then
 		local n = wrefWhole(text)
+		if n == nil then return true end
+		holder[key] = n
+	elseif what == "int" and d.s == "int" and d.kw == 8 then
+		local n = wrefInteger64(text, d.signed == true)
 		if n == nil then return true end
 		holder[key] = n
 	elseif what == "int" then

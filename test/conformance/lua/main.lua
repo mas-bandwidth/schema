@@ -1137,7 +1137,20 @@ local function wrefSet(u, root, v, path, what, text)
     local n = wrefInteger(text, false)
     if n == nil then return UNREPRESENTABLE end
     local arr = holder[key] or {}
-    for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
+    -- THE NEW ELEMENTS ARE REAL ONES: a copy of the first, or, when the array
+    -- is empty, the element type's own default. deepCopy(arr[1]) of an empty
+    -- array is nil, so the list never grew, the writer saw the old count and
+    -- the row answered `wrote` for a count past the bound
+    -- (wref_var_layers_count, graph_tree's empty layers)
+    local function fresh()
+      if arr[1] ~= nil then return deepCopy(arr[1]) end
+      local elem = fd.elem or {}
+      local new = elem.target ~= nil and u.T["New" .. elem.target] or nil
+      if elem.shape == "table" and new ~= nil then return new() end
+      if elem.default ~= nil then return deepCopy(elem.default) end
+      fail(path .. ": count " .. text .. " grows an empty array whose element has no default")
+    end
+    for i = #arr + 1, n do arr[i] = fresh() end
     for i = #arr, n + 1, -1 do arr[i] = nil end
     holder[key] = arr
   elseif what == "length" then
