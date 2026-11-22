@@ -539,8 +539,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
 	nodeSeen := false
-	twice := func() bool {
-		s := v.Entries[:count]
+	twice := func(s []TableMessageEntry) bool {
 		slices.SortFunc(s, func(a, b TableMessageEntry) int {
 			return slices.Compare(words[a.Shape.Min:a.Shape.Max], words[b.Shape.Min:b.Shape.Max])
 		})
@@ -553,7 +552,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	}
 	for src.Offset < int64(len(words)) {
 		if count >= int64(len(v.Entries)) {
-			if twice() {
+			if twice(v.Entries[:count]) {
 				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -573,7 +572,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		v.Entries[count] = e
 		count++
 	}
-	if twice() {
+	if twice(v.Entries[:count]) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
@@ -803,6 +802,11 @@ func tableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	raw, ok := r.Get(tableMessageBits(uint64(s.Max - s.Min)))
 	return raw + uint64(s.Min), ok
 }
+
+// tableMessageOverMax is a count past the ANNOUNCED max, which its bits can
+// spell and no conforming writer emits (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3); a read
+// shape's max is never negative, and the guard says so.
+func tableMessageOverMax(n uint64, s TableMessageShape) bool { return s.Max < 0 || n > uint64(s.Max) }
 
 // field is set where the payload is a FIELD's own, an unknown field of a body:
 // a conforming writer elides a None union field, so an explicit arm reference
@@ -3491,7 +3495,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 						return false
 					}
@@ -3558,7 +3562,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.stats")
 						return false
 					}
@@ -3738,7 +3742,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.loadout")
 						return false
 					}
@@ -3833,7 +3837,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 15 || n > uint64(entry.Shape.Max) {
+					if n > 15 || tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TableMixed.player_name")
 						return false
 					}
@@ -3874,7 +3878,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.payload")
 						return false
 					}

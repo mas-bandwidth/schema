@@ -248,7 +248,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 16 || n > uint64(entry.Shape.Max) {
+					if n > 16 || tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TeamConfig.banner")
 						return false
 					}
@@ -1185,7 +1185,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "HullConfig.turrets")
 						return false
 					}
@@ -1533,7 +1533,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "KeyedConfig.teams")
 						return false
 					}
@@ -1625,7 +1625,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "KeyedConfig.hulls")
 						return false
 					}
@@ -1872,7 +1872,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > uint64(entry.Shape.Max) {
+					if tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseCountOverBound, "ScoreBoard.per_team")
 						return false
 					}
