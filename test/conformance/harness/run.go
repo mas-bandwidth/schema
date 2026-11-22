@@ -692,6 +692,10 @@ type runOptions struct {
 	// JS and Dart text-boundary gates) names them here, or the ticked-cell rule
 	// (ticked.go) reads the surfaces it leaves out as owed and absent.
 	only map[string]bool
+	// strictRows turns a surface a leg lists and the corpus gave 0 rows into a
+	// failure. The real gate (main.go) sets it; the fake-corpus tests that
+	// carry rows for three surfaces and list thirteen leave it off.
+	strictRows bool
 }
 
 // parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
@@ -839,6 +843,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 			for _, line := range exemptions {
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
+			}
+			// A SURFACE A LEG LISTS AND RUNS OVER NO ROWS IS A FAILURE, NOT A
+			// PASS. `pass 0/0` reads as a green cell and proves nothing: a
+			// manifest that lost the surface's rows, or a derived corpus built
+			// without them, would leave every leg comparing against nothing.
+			if opts.strictRows && len(legWant) == 0 {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"the leg lists the %s surface and the corpus gave it 0 rows to run: a surface that ran no rows is not a pass", s))
 			}
 			for _, e := range legWant {
 				pass, named, missing := r.pass, r.named, r.missing

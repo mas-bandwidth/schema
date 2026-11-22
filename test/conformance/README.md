@@ -355,6 +355,29 @@ instance the driver did not build. A dump parser would add a component to every
 port and cover nothing those three do not. Where a backend has no text form, the
 gap is real and the matrix says so rather than a parser papering over it.
 
+## A skip, or a surface of 0 rows, is never a pass
+
+A test that cannot find its prerequisite must fail where the prerequisite is
+promised, and a surface that ran no rows must not print a green cell.
+
+- **A missing oracle corpus fails in CI.** The fixed-form byte oracle
+  (`build/fixedform-corpus`, `make tables-fixedform-corpus`) cannot be built by a
+  test. A test that needs it fails, by name, when `SCHEMA_REQUIRE_CORPUS` is set
+  (every make leg gate sets it) or when `CI` is set and the slow half was asked
+  for (`SCHEMA_SLOW=1`): `slowtest.CorpusRequired()`. It skips only on a
+  developer's machine or in a default run, with the reason the skip ledger
+  (`.github/skip-ledger.txt`) reads. A new test that reads the corpus calls
+  `slowtest.CorpusRequired()` rather than reading the variable itself.
+- **A leg's driver names what it was not built with.** The C# driver checks
+  `test/conformance/cs/.../schemaconformance.dll` and
+  `test/cs-cook/.../schemacooktest.dll` and exits 1 naming the make target
+  (`build-conformance-cs`, `build-cs-cook`) instead of running `dotnet` over a
+  missing file and printing `FAIL 0/N` with no cause. `make conformance` builds both.
+- **A surface a leg lists and the corpus gave 0 rows is `FAIL 0/0`.** The gate
+  runs with `strictRows` (`main.go`); `pass 0/0` can no longer appear.
+- **Every skip that remains is ledgered** in `.github/skip-ledger.txt` with its
+  class; a skip with no ledger line is red at the pull request that writes it.
+
 ## Registering a language
 
 1. Write a driver at `test/conformance/<lang>/driver` that answers `list` and
