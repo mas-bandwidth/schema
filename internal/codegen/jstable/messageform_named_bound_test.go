@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -219,7 +219,7 @@ console.log("JS loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason 
 			if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(node, probePath)
+			cmd := testproc.Command(t, node, probePath)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {
