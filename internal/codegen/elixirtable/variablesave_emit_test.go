@@ -55,8 +55,8 @@ fixed table Fx
 		{"a [2..4] holds its Min", "min_count: 2,"},
 		{"an absent [2..4] lands two defaults", "default: [0, 0]"},
 		{"a compressed -0 is folded on the variable read", "clamp_int(cfloat_zero(float_of(payload, f.width, f.non_finite), f), f, report)"},
-		{"a compressed -0 is folded on the variable write", "v = cfloat_zero(Map.get(value, f.name, f.default), f)"},
-		{"a compressed -0 is folded on the fixed write", "R.f32_bits(R.cfloat_zero("},
+		{"a compressed -0 is folded on the variable write", "v = stored_float(f, Map.get(value, f.name, f.default))"},
+		{"a compressed -0 is folded on the fixed write", "R.cf32_bits("},
 	}
 	for _, w := range want {
 		if !strings.Contains(text, w.needle) {
@@ -84,10 +84,10 @@ fixed table Fx
 
 	// the fixed writer folds the compressed float only: a plain float keeps
 	// its sign (docs/SPEC-TABLES.md §3.3)
-	if !strings.Contains(text, "R.f32_bits(R.cfloat_zero(") {
+	if !strings.Contains(text, "R.cf32_bits(") {
 		t.Errorf("the fixed writer of the compressed tilt does not fold -0")
 	}
-	if strings.Count(text, "R.f32_bits(") == strings.Count(text, "R.f32_bits(R.cfloat_zero(") {
+	if strings.Count(text, "R.f32_bits(") == 0 {
 		t.Errorf("the fixed writer of the plain flat folds -0: a plain float keeps its sign")
 	}
 }
