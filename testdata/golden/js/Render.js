@@ -56,28 +56,28 @@ export function WriteRenderSprite(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.meshId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.materialId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.layer;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.team;
@@ -116,7 +116,7 @@ export class RenderBlock {
   constructor() {
     this.workerIndex = 0;
     this.spriteCountHint = 0;
-    this.sprites = Array.from({ length: RenderBlockMaxSprites }, () => new RenderSprite());
+    this.sprites = globalThis.Array.from({ length: RenderBlockMaxSprites }, () => new RenderSprite());
     this.spritesCount = 0;
   }
 }
@@ -148,21 +148,21 @@ export function ZeroRenderBlock(value) {
 }
 
 export function WriteRenderBlock(stream, value) {
-  if (!Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.workerIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.spriteCountHint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > RenderBlockMaxSprites) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > RenderBlockMaxSprites) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.spritesCount;

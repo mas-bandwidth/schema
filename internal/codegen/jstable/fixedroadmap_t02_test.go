@@ -343,7 +343,7 @@ func t02W14(t *testing.T) {
 	_, src := t02Table(t, t02Flat)
 	// The identity plan IS the leg's single run: op COPY, src 0, dst 0 — the
 	// root's offsetof — and size sizeof(T).
-	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
+	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new globalThis.Int32Array([", "]);"), ",")
 	if len(lanes) < 4 {
 		t.Fatalf("W14: the identity plan has %d lanes, want eleven: %q", len(lanes), lanes)
 	}
@@ -545,7 +545,7 @@ fixed table T
 		t.Errorf("W11: the emitted layout's blob kind byte = %d, want 14", got)
 	}
 	// And the module carries those bytes.
-	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new Uint8Array([", "]);")
+	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new globalThis.Uint8Array([", "]);")
 	if len(block) != len(own) {
 		t.Fatalf("W11: the module carries %d layout bytes, want %d", len(block), len(own))
 	}
@@ -569,7 +569,7 @@ func t02W12(t *testing.T) {
 	if ir.TableFixedLayoutHash(layout, st) == ir.TableFixedLayoutHash(mutated, st) {
 		t.Error("W12: the hash ignores the layout's 4-byte entry count")
 	}
-	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new Uint8Array([", "]);")
+	block := t02Bytes(t, t02Emit(t, u), "const TFixedLayout = new globalThis.Uint8Array([", "]);")
 	if got := binary.LittleEndian.Uint32(block[:4]); got != 3 {
 		t.Errorf("W12: the module's layout count = %d, want 3", got)
 	}

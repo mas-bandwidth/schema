@@ -1,0 +1,23 @@
+# A go-test job that declares node and tsc and clones serialize.js: no gap.
+name: fixture
+on: workflow_dispatch
+jobs:
+  go-test:
+    name: go-test (${{ matrix.group }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    env:
+      SCHEMA_REQUIRE_NODE: '1'
+      SCHEMA_REQUIRE_TSC: '1'
+    steps:
+      - name: Check out the runtimes
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+      - name: go test the compiler package
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler
+  later:
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    steps:
+      - run: echo later

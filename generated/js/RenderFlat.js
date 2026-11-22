@@ -8,7 +8,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -28,18 +28,18 @@ export function WriteRenderSpriteFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
-  if (!Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.meshId) || value.meshId < 0 || value.meshId > 4294967295) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.materialId) || value.materialId < 0 || value.materialId > 4294967295) { // a bare integer must fit its width
     return -1;
   }
   view.setUint32(8, (((value.meshId) >>> 0)), true);
-  if (!Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.layer) || value.layer < 0 || value.layer > 255) { // a bare integer must fit its width
     return -1;
   }
   view.setUint32(12, (((value.materialId) >>> 0)), true);
-  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
   lo = (((value.layer) & 0xff) | ((value.team & 0x3) << 8));
@@ -128,14 +128,14 @@ export function ReadRenderSpriteFlatBits(view, numBits, value) {
 // must hold RenderBlockMaxBytes.
 export function WriteRenderBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.spriteCountHint) || value.spriteCountHint < 0 || value.spriteCountHint > 4294967295) { // a bare integer must fit its width
     return -1;
   }
   view.setUint32(0, (((value.workerIndex) >>> 0)), true);
-  if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
@@ -166,10 +166,10 @@ export function WriteRenderBlockFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
       return -1;
     }
-    if (!Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
       return -1;
     }
     v = (((e0.meshId) >>> 0)) >>> 0;
@@ -181,7 +181,7 @@ export function WriteRenderBlockFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
       return -1;
     }
     v = (((e0.materialId) >>> 0)) >>> 0;
@@ -193,7 +193,7 @@ export function WriteRenderBlockFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
+    if (!globalThis.Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
       return -1;
     }
     v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
