@@ -186,7 +186,7 @@ Haskell and `Li` Common Lisp, each with its gap number.
 | 14 | The `framing` surface reads its fixed root through the declaration's VARIABLE twin; every other read at a fixed root refuses form `1` (SPEC-TABLES §3.4; README) | the `framing` battery at `tblr1 Cfg`; `report previous_form_*` | Sw9, OC7, ObjC8, Zig6 |
 | 15 | The LADDER is a normative table; never across signedness (FIXED-FORM-ALGORITHM §5) | `report fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` | OC9 |
 | 16 | A fixed root's binary read has batch capacity one; older layouts come from the unit's `schema.lock` (README) | `report fixedevo_v3_batch2`; `fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` | OC11, ObjC6, Zig16 |
-| 17 | A skipped value: label rules at every variable root, label grammar only at a fixed root; any other `&` key refuses at every root (SPEC-TABLES §16.7, R7) | `reserved-ampersand-in-skipped-value`, `skipped-label-*`, `skipped-ampersand-stray-key`, `skipped-ampersand-node-not-first` (#4676, on main) | OC8, OC12, ObjC5, ObjC9, Zig7, Hs10, Li10 |
+| 17 | A skipped value: label rules at every variable root, label grammar only at a fixed root; any other `&` key refuses at every root (SPEC-TABLES §16.7, R7) | `reserved-ampersand-in-skipped-value`, `skipped-label-*`, `skipped-ampersand-stray-key`, `skipped-ampersand-node-not-first`, `skipped-ampersand-key-variable`, `skipped-label-undefined-pointer-free` | OC8, OC12, ObjC5, ObjC9, Zig7, Hs10, Li10 |
 | 18 | Every key in a skipped value is capped at 255 bytes (SPEC-TABLES §16.2) | `skipped-key-255-bytes`, `skipped-key-256-bytes` | ObjC4, Zig9, Hs9, Li8 |
 | 19 | A deprecated variant where no default is declared reads `None`, in every form (SPEC-TABLES §16.2; FIXED-FORM-ALGORITHM §4) | `sp-enum-elem-deprecated-array` (#4689) | OC13, ObjC7, Li11 |
 | 20 | A union and its structural payload are two levels (SPEC-TABLES §4) | `rr-depth-placed-union-map-128`, `-129` | Zig5, Hs8, Li4 |
@@ -195,11 +195,14 @@ Haskell and `Li` Common Lisp, each with its gap number.
 | 23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3) | `feature-witnesses/compressed-f32-ends` | Li6 |
 | 24 | A float32 field is written as a float32 (SPEC-TABLES §16.2) | the `text_float*` rows | Sw11 |
 | 25 | A node is reached along every kind-17 edge from the root (SPEC-TABLES §4) | `framing varevo_cycle_*` | Hs7 |
-| 26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2) | none yet: no corpus unit declares a literal within half a float64 ulp of a float32 tie | Hs4 |
-| 27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2) | none yet: no corpus `was` is non-ASCII | Li1 |
+| 26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2) | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`): a literal just past a float32 tie, as a default, a range end and inside an expression | Hs4 |
+| 27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2) | `testdata/conformance/frontend/vector.txt`: non-ASCII `was` on a table, a field and an arm | Li1 |
 
-Rows 26 and 27 hold their rule in the text only; a row is owed with the first
-unit that reaches them.
+Rows 26 and 27 are a FRONT-END vector, as row 12's digest is: both rules bind
+what a port resolves from schema text — a default's bits, a wire id — so a port
+that reads `.schema` text checks its front end against `vector.txt`. The
+generated legs take both values from the reference compiler, which the
+vector's test holds, so no language leg can differ on them.
 
 **Already stated: the section that says it.**
 

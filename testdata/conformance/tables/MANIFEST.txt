@@ -694,6 +694,12 @@ json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  test
 # key included, because a skipped value has no declaration to tell one apart.
 json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
 json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
+# R7 AT A VARIABLE ROOT (docs/SPEC-TABLES.md §16.7): a stray `&` key in a
+# skipped value refuses at a variable root as at a fixed one, and a variable
+# root holds a skipped value to the definition rules whether or not its unit
+# declares a pointer (listdemo declares none).
+json-hostile skipped-ampersand-key-variable graphdemo Scene       testdata/conformance/tables/json-hostile/skipped-ampersand-key-variable refused
+json-hostile skipped-label-undefined-pointer-free listdemo Army   testdata/conformance/tables/json-hostile/skipped-label-undefined-pointer-free refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused

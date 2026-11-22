@@ -1,0 +1,26 @@
+// THE FRONT-END VECTOR (docs/SPEC-CONFORMANCE.md §8, rows 26 and 27): what a
+// port that reads schema text must resolve from it, held to vector.txt.
+//
+// A FLOAT LITERAL IS A float64 FIRST (SPEC.md §4.2). The literal below lies
+// just above 1 + 2^-24, the float32 tie between 1 and 1 + 2^-23: rounded once
+// to float32 it is 1 + 2^-23, rounded to float64 first it is exactly the tie
+// and then 1. Every float32 value below takes the second answer.
+//
+// A `was` ALIAS HASHES ITS UTF-8 BYTES (SPEC.md §4.2): each alias below is
+// non-ASCII, and its wire id is fnv1a64 over the alias's UTF-8 bytes as
+// written, with no normalization.
+package frontendlit
+
+union Pick
+{
+    plain int32 | was = "ärm"
+}
+
+table Literals | was = "Été"
+{
+    tie32   float32 = 1.00000005960464477550 | min = 1.00000005960464477550, max = 2.0
+    tie64   float64 = 1.00000005960464477550
+    sum32   float32 = 0.1 + 0.2
+    renamed int32 | was = "naïve"
+    pick    Pick
+}
