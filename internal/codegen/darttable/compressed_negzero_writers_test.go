@@ -72,7 +72,8 @@ func TestDartCompressedFloatStoresAreGuarded(t *testing.T) {
 }
 
 // TestDartCompressedNegZeroWriters runs the corpus's 15 rows and every
-// writer's -0/+0 twin under the Dart VM.
+// writer's -0/+0 twin under the Dart VM, in a debug and a release build. The
+// conformance lane runs it (make/dart-compressed-negzero.mk).
 func TestDartCompressedNegZeroWriters(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart (it runs the generated library)")
@@ -91,14 +92,19 @@ func TestDartCompressedNegZeroWriters(t *testing.T) {
 		t.Fatal(err)
 	}
 	maps.Copy(files, packetFiles(t, u))
-	files["probe.dart"] = []byte(dartNegZeroProbe)
+	files["negzero_probe.dart"] = []byte(dartNegZeroProbe) // not probe.dart: the unit emits Probe.dart, and a case-folding file system (macOS) would let one overwrite the other
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
-	cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart", corpus)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "\nPASS rows=15 twins=84\n") {
-		t.Fatalf("dart probe: %v\n%s", err, out)
+	// BOTH BUILDS: Dart's write checks are debug asserts, but the -0 store
+	// is not a check, so a release build (no --enable-asserts) owes every row
+	// and every twin as well.
+	for _, args := range [][]string{{"--enable-asserts", "negzero_probe.dart", corpus}, {"negzero_probe.dart", corpus}} {
+		cmd := testproc.Command(t, dart, args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil || !strings.Contains(string(out), "\nPASS rows=15 twins=84\n") {
+			t.Fatalf("dart probe %v: %v\n%s", args[:len(args)-1], err, out)
+		}
 	}
 }
 
