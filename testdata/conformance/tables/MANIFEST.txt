@@ -1312,6 +1312,30 @@ report fixedevo_v1_dead_tail    tblfixedevo EvoRoot testdata/conformance/tables/
 report fixedevo_v3_utf8_trunc   tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_utf8_trunc.bin
 report fixedevo_v3_batch2       tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_batch2.bin
 
+# REGRESSION ROWS 1122 (docs/fix-ledger-1122.md): one shared row per rule a
+# 2026-11-22 per-language fix established, so a new port is held to it
+# (docs/SPEC-CONFORMANCE.md, Regression rows). Expected answers from the Go
+# oracle (`harness generate`).
+json-hostile rr-comment-illformed-utf8       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-illformed-utf8 refused
+json-hostile rr-comment-lone-surrogate       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-lone-surrogate refused
+json-hostile rr-comment-nul                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-nul refused
+json-hostile rr-comment-wellformed-utf8      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-wellformed-utf8 read
+json-hostile rr-num-negative-zero-long-token tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-num-negative-zero-long-token read
+json-hostile rr-label-past-2-53-distinct     graphdemo  Scene       testdata/conformance/tables/json-hostile/rr-label-past-2-53-distinct read
+json-hostile rr-label-past-2-53-undefined    graphdemo  Scene       testdata/conformance/tables/json-hostile/rr-label-past-2-53-undefined refused
+json-hostile rr-depth-placed-union-map-128   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-union-map-128 read
+json-hostile rr-depth-placed-union-map-129   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-union-map-129 refused
+json-hostile rr-depth-placed-keyed-map-128   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-keyed-map-128 read
+json-hostile rr-depth-placed-keyed-map-129   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-keyed-map-129 refused
+framing rr_map_key_repeated     listdemo    Squad   testdata/wire/tables/framing/rr_map_key_repeated.bin refused -
+framing rr_fixed_zero_records   tblfixedevo EvoRoot testdata/wire/tables/framing/rr_fixed_zero_records.bin refused -
+write-refusal      rr_wref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal      rr_wref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+write-refusal-fixed rr_fref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal-fixed rr_fref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+write-refusal-json rr_jref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal-json rr_jref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
 # other unit's build version or vocabulary moves. The root's storage is eight

@@ -2468,6 +2468,16 @@ truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
 finite value off its range, and no writer quantizes one into it in the build
 where its check is active (docs/plans/strict-only.md, decision 8).
+
+**Every field the value carries is checked, `required` or not, and three
+shapes a dynamic language's native value can hold fall under the same rule.**
+A map whose native keys hold one schema key twice (an integer-keyed map holding
+`7` and `"07"`, or one key stored twice), a fixed array `[N]T` handed more than
+`N` elements, and an enum value that names no variant or names a deprecated
+one (SPEC-TABLES §2.15) are refused by every writer that can be handed them,
+the text writer included, by the leg's mechanism. A writer never writes a key
+twice, never keeps one of the two, never cuts a list at `N`, and never writes
+a deprecated variant.
 **One rule holds in every leg on top of the table.** A count or a length that
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release

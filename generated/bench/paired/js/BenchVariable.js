@@ -3733,6 +3733,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     }
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
+      // a float32 field holds its value at float32: a double past the float32
+      // range is refused, never written as a float64 token (SPEC-TABLES §16.3)
+      if (!TableVariableFiniteFloat(d.f32, val)) { return false; }
       if (!TableVariableFloatValid(d, val)) { return false; }
       const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }

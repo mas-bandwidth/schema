@@ -6250,6 +6250,14 @@ time."*
 `MeasureMessages` sizes the buffer. There is no singular verb, because a caller
 with one message passes one and pays a count of eight bits for it.
 
+**The writer needs no announcement in hand.** `SaveMessages` and
+`MeasureMessages` write every body under the sender's OWN vocabulary, the one
+its own announcement carries, so a sender that has not announced, or has not
+yet read its peer's announcement, still writes; no port refuses or returns
+nothing for want of a vocabulary. **A refused `SaveMessages` writes nothing
+into the caller's buffer**: it measures the whole batch before its first byte,
+so a refusal leaves no partial batch behind.
+
 **THE BATCH SURFACE'S FOUR ANSWERS, each stated rather than left to a codec.**
 
 - **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
@@ -7385,6 +7393,10 @@ caller's array of values is the whole of its storage.
   only), and `0` never means "take the default" in any port. 4096 entries is eight times the 500-entry unit that is
   already a large one. A receiver holds ONE vocabulary a direction for the life
   of the connection, so its memory is that bound and nothing else.
+  **The sender holds the same default**: `Announce` and `AnnounceMeasure`
+  refuse a vocabulary of more than 4096 entries and write one of exactly
+  4096, so no sender produces an announcement a receiver at the defaults
+  refuses.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
@@ -8681,6 +8693,11 @@ FixedBounds( rows, report );          // the bounds pass, after either plan: ref
 The prefill runs only once every check has passed, so a refused load never
 leaves a partly landed row: **after ANY refusal, every row the call was handed
 holds its declared defaults** (§6.5, THE CALLER'S VALUES AFTER A REFUSAL).
+
+**A CALLER THAT STATES NO CAPACITY IS BOUNDED BY THE FILE.** Where a port's
+fixed load lets the caller omit the capacity (step 10), the omitted capacity
+is the file's own record count, so a lawful file of any record count reads;
+no port invents a default capacity of its own, 4096 records or any other.
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
 AND THE PLAN SAYS WHERE THE SECOND HALF STARTS.** Entries are independent —
@@ -16268,6 +16285,14 @@ int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes noth
 ShipConfigToJson( ship, buffer, size );              // returns size; -1 = refused
 ```
 
+**A text writer into a caller's buffer writes the bytes it returns and nothing
+else**: no terminating NUL and no byte past the returned size, so the caller's
+buffer past that size is untouched. **Float text never reads the process
+locale**: every conversion, read and write, runs under the C locale on the
+calling thread alone, so a program whose locale spells the decimal point as a
+comma or as a multi-byte sequence reads and writes the same bytes, and no other
+thread's locale changes.
+
 **These are declarations in `<Base>Table.h` and definitions in
 `<Base>Table.cpp`** (§6.1, §13.5). Compile the generated `.cpp` to call
 them:
@@ -16572,7 +16597,10 @@ document's own size bound. There is no separate number-length limit, so a
 `1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
 six hundred zeros is an out-of-range integer, refused `out_of_range`, not a
 `malformed` token. Every engine gives the same answer for one, as it does for
-every other token.
+every other token. **The sign of a zero survives a token of any length**: `-0.`
+followed by a thousand zeros reads negative zero into a float field, exactly as
+`-0.0` does, and a reader that hands a long token to a second path never drops
+the sign there (conformance row `rr-num-negative-zero-long-token`).
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A wide integer — `int64`, `uint64`, `int128`, `uint128`, and a fixed kind
@@ -16759,6 +16787,12 @@ written as something else.
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
+- **A `float32` field holding a value past float32's own range.** A
+  language whose number is wider than float32 holds the value as it was set;
+  the writer rounds it to float32 first, writes that float32's text, and
+  refuses one that rounds to an infinity (`non_finite_float`), as every binary
+  writer does (rows `rr_wref_f32_past_range`, `rr_fref_f32_past_range`,
+  `rr_jref_f32_past_range`).
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
@@ -17101,7 +17135,11 @@ reader is exactly the unknown key §4 exists to survive.
 - **The label is a positive integer, spelled as one**: digits, no sign, no
   fraction, no exponent, no leading zero. `1`, never `1.0` or `01`. A writer
   numbers the nodes it shares from `1` in the order it first writes them, and
-  a reader takes whatever it is given.
+  a reader takes whatever it is given. **A label is its exact unsigned 64-bit
+  value**, read and compared as an integer and never through a double:
+  `9007199254740992` and `9007199254740993` are two labels, and a label past
+  `2^64 − 1` refuses (rows `rr-label-past-2-53-distinct`,
+  `rr-label-past-2-53-undefined`, `label-overflow`).
 - **`&node` is the FIRST key of a pointer's object.** After a field it is
   `malformed`.
 - **A label the text has not defined, followed by the node's fields, DEFINES

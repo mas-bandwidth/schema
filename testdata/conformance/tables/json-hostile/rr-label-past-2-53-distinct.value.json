@@ -1,0 +1,28 @@
+{
+  "name": "",
+  "version": 1,
+  "head": {
+    "&node": 1,
+    "value": 7,
+    "name": "",
+    "next": {
+      "value": 8,
+      "name": "",
+      "next": null
+    }
+  },
+  "tree": null,
+  "settings": null,
+  "alias": {
+    "&node": 1
+  },
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}
