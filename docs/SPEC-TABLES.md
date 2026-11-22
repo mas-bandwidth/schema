@@ -1336,6 +1336,9 @@ table Player
 - **The writer ALWAYS writes it.** A required field never elides at its
   default: it rides on every record, and a variable table's writer emits it
   even when it holds zero. Absence is no longer expressible for the field.
+  A `*T | required` pointer that is null rides as its null index (`0`), and
+  its reader reads it back null and present: a null pointer is a value, not
+  an absence.
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall

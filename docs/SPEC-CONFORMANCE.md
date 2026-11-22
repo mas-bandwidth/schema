@@ -112,3 +112,38 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## 7. Regression rows (2026-11-22)
+
+Every fix made on 2026-11-22 in any port is held by a shared row, so a new port
+meets the same rule. The rules, their spec sections and the per-language tests
+are in `docs/fix-ledger-1122.md` (FL ids). A rule the harness cannot ask yet
+says so there; it is held per port until a surface carries it.
+
+| rule | shared rows |
+|---|---|
+| FL-01 compressed -0 stored as +0 | `testdata/conformance/tables/feature-witnesses/compressed-negzero-go` |
+| FL-05 enum `null` and `"None"` are one value | `sp-enum-none-name` |
+| FL-07 comment bytes are well-formed UTF-8 with no NUL | `rr-comment-illformed-utf8`, `rr-comment-lone-surrogate`, `rr-comment-nul`, `rr-comment-wellformed-utf8` |
+| FL-08 announcement over capacity refused before any entry | hostile corpus `announce-entries-too-large` |
+| FL-09 map key bounded by its own `string(N)` | `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` |
+| FL-10 the JSON read holds bytes to the UTF-8 rules | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` |
+| FL-12 the read depth cap counts every container | `rr-depth-placed-union-map-128`, `rr-depth-placed-union-map-129`, `rr-depth-placed-keyed-map-128`, `rr-depth-placed-keyed-map-129`, `sp-skip-depth-129`, `sp-skip-depth-130` |
+| FL-13 the sign of zero survives a long token | `rr-num-negative-zero-long-token` |
+| FL-19 deprecated enum variant (owned by #4689) | `sp-enum-elem-deprecated-array` |
+| FL-20 labels are exact 64-bit values | `rr-label-past-2-53-distinct`, `rr-label-past-2-53-undefined`, `label-overflow` |
+| FL-21 every field is checked on write | the `write-refusal` surface |
+| FL-23 float32 past range is refused by every writer | `rr_wref_f32_past_range`, `rr_wref_f32_max`, `rr_fref_f32_past_range`, `rr_fref_f32_max`, `rr_jref_f32_past_range`, `rr_jref_f32_max` |
+| FL-24 text form refuses an ill-formed comment | `test/conformance/textform/refusals/comment-illformed` |
+| FL-25 counted arrays born at their minimum (#4689; R10 inside a union arm, owned elsewhere) | `test/verify-tablegen` op 7; `feature-witnesses/counted-minimum-message`; `sp-count-min-*` |
+| FL-26 a repeated binary map key is damage | `rr_map_key_repeated`, `map_descending` |
+| FL-27 non-canonical base64 refuses | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` |
+| FL-30 nothing is silently omitted | the absence rule (§2) |
+| FL-31 names some target cannot build are refused at check | `internal/check` buildable-names cases |
+| FL-33, FL-34, FL-35 R2, R5, R9 | `internal/ci` `TestRulingsR2R5R9PortRows` |
+| FL-37 R7 labels in a skipped value | `skipped-label-*` |
+| FL-38 R8 id cap | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema`, `tablewire.AnnounceSchema` per port |
+| FL-39 a fixed-form file holds at least one record | `rr_fixed_zero_records` |
+| FL-40 assert legs check writes in debug builds | the `write-refusal` surfaces |
+
+Rows from open PRs land with them: `skipped-label-*` (#4676), `TestRulingsR2R5R9PortRows` (#4680), `IdCapSchema` (#4678), `AnnounceSchema` (#4685), the `sp-*` rows (#4688, #4689).
