@@ -51,7 +51,7 @@ Every fixed row lands three ways:
 | JavaScript | 5 (+1 noticed) | 3 (SF-38 rejected) | 2 |
 | Elixir | 4 | 3 | 1 |
 | Lua | 0 | 0 | 0 |
-| Luau | 1 | 0 (SF-33 rejected here) | 0 |
+| Luau | 1 | 1 (SF-33: re-vendored) | 0 |
 | Squirrel | 0 | 0 | 0 |
 | MOO | 1 (tooling) | 1 | 0 |
 | Lobster | 4 (+1 noticed) | 5 | 0 |
@@ -120,7 +120,7 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 
 ## Rejected as lawful (sample)
 
-- **SF-33 (Luau, `pcall(Stream.family("bitpacker"))`)**: rejected as a fix in this repository. `serialize_bytes.luau` is vendored VERBATIM from mas-bandwidth/serialize.luau at the commit `SERIALIZE_PIN` names, with one sha256 per file (docs/PORT-LUAU.md, THE RUNTIME LAYOUT); an edit here fails `TestVendoredLuauSerializeIsThePin`. The vendored set always carries `serialize_bitpacker.luau`, so the probe fails only on a broken vendored file, which the pin refuses. The fix (re-raise anything but the "absent" error) belongs upstream, then a pin bump. Held here by `TestVendoredLuauBitpackerFamilyLoads`: the family loads, so the silent fallback is unreachable.
+- **SF-33 (Luau, `pcall(Stream.family("bitpacker"))`)**: fixed upstream, no PR needed. serialize.luau v2.1.4 (dc94987) has no probe at all; `SERIALIZE_PIN` now names it and the runtime is re-vendored verbatim. `TestVendoredLuauHasNoDiscardedBitpackerProbe` is red when the old probe is planted back; `TestVendoredLuauBitpackerFamilyLoads` holds the family loads.
 - **SF-38 (JavaScript, `FixedFromText`, an enum-keyed value with no `length`)**: rejected. The variable text read builds an enum-keyed value as an `Array` sized to the slots (`TableVariableTextKeyed`, `fd.slots.map`), so it always has a `length`; a field absent from the text keeps its declared default, which is lawful (SPEC-TABLES §4). Nothing falls back silently.
 
 - **Read-side clamps that set `refused`.** C, C++, Java, Rust, Elixir and Go all have them, and each refuses the whole load. SPEC.md §5: "a refusal is terminal."
