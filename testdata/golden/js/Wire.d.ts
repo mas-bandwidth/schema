@@ -21,7 +21,7 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 
@@ -33,7 +33,7 @@ export declare const TickRate: number;
 
 export declare const SpinRate: number;
 
-export declare const Weapon: Readonly<{
+export declare const Weapon: globalThis.Readonly<{
   None: 0;
   Laser: 1;
   Missile: 2;
@@ -127,7 +127,7 @@ export declare function ZeroProbeSlab(value: ProbeSlab): void;
 export declare function WriteProbeSlab(stream: SerializeStream, value: ProbeSlab): boolean;
 export declare function ReadProbeSlab(stream: SerializeStream, value: ProbeSlab): boolean;
 
-export declare const ProbeShapeType: Readonly<{
+export declare const ProbeShapeType: globalThis.Readonly<{
   None: 0;
   Ring: 1;
   Slab: 2;
@@ -205,7 +205,7 @@ export declare function WriteTest(stream: SerializeStream, value: Test): boolean
 export declare function ReadTest(stream: SerializeStream, value: Test): boolean;
 
 export declare class Block {
-  data: Uint8Array;
+  data: globalThis.Uint8Array;
   dataLength: number;
 }
 export declare const BlockMaxBits: number;
@@ -216,7 +216,7 @@ export declare function WriteBlock(stream: SerializeStream, value: Block): boole
 export declare function ReadBlock(stream: SerializeStream, value: Block): boolean;
 
 export declare class Chat {
-  text: Uint8Array;
+  text: globalThis.Uint8Array;
   textLength: number;
 }
 export declare const ChatMaxBits: number;
@@ -259,8 +259,8 @@ export declare class TestData {
   uint64Value: bigint;
   int64Full: bigint;
   int64Range: bigint;
-  fixedBytes: Uint8Array;
-  text: Uint8Array;
+  fixedBytes: globalThis.Uint8Array;
+  text: globalThis.Uint8Array;
   textLength: number;
 }
 export declare const TestDataMaxBits: number;
