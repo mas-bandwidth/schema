@@ -589,14 +589,10 @@ but a maintainer has to enter it in the ledger by hand. Comment `recheck` on a
 pull request to re-run the check once that is done. Any other open pull request
 of yours stays red until it is rechecked too.
 
-### Commit identity is checked before the push
+### Commit identity in agent clones
 
-Run `make setup` (`make deps` runs it) once per clone. It points `core.hooksPath` at
-the tracked `.githooks/`, whose `pre-push` hook refuses a push when any commit being
-pushed has an author or committer outside the CAA allowlist, which it reads from
-the `allowlist:` line of `.github/workflows/cla.yml`. It prints the offending
-commits and the one-line fix. Set the clone's identity once, right after cloning,
-instead of on every command:
+An agent clone sets its identity once, right after cloning, and runs `make setup`
+(`make deps` runs it too):
 
 ```bash
 git config user.name "Rowan Claude"
@@ -604,8 +600,11 @@ git config user.email 305107455+rowan-claude@users.noreply.github.com
 make setup
 ```
 
-An outside contributor who signs the CAA rather than being allowlisted pushes with
-`SCHEMA_ALLOW_ANY_AUTHOR=1 git push`.
+`make setup` points `core.hooksPath` at the tracked `.githooks/`. Its `pre-push`
+hook acts only in a clone whose `user.email` is that rowan-claude address: there it
+refuses a push when any pushed commit has an author or committer other than
+rowan-claude, and prints the offending commits and the one-line fix. In every
+other clone the hook does nothing; the CAA check on GitHub covers those.
 
 ## License
 
