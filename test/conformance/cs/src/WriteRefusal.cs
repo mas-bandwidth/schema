@@ -123,6 +123,7 @@ static partial class Program
     // false: the leg's storage cannot hold the value at all.
     static bool WriteRefusalSet(Codec codec, byte[] wire, object value, string path, string kind, string text)
     {
+        if (kind == "point") { return WriteRefusalPoint(value, path, text); }
         try
         {
             switch (value)
@@ -151,7 +152,7 @@ static partial class Program
                             // a count past storage is set as is, for the writer to refuse
                             for (int i = root.WeaponsCount; i < Math.Min(n, root.Weapons.Length); i++)
                             {
-                                root.Weapons[i] = ((Tabledemo.RootConfig)codec.Load(wire, new Report())).Weapons[0];
+                                root.Weapons[i] = ((Tabledemo.RootConfig)WriteRefusalFreshRoot(codec, wire)).Weapons[0];
                             }
                             root.WeaponsCount = n;
                             return true;
@@ -354,7 +355,7 @@ static partial class Program
                 int cap = WriteRefusalCapacity(buf);
                 for (int i = oldCount; i < Math.Min(n, cap); i++)
                 {
-                    object freshRoot = codec.Load(wire, new Report());
+                    object freshRoot = WriteRefusalFreshRoot(codec, wire);
                     object freshBuf = f.GetValue(freshRoot);
                     WriteRefusalElementSet(buf, i, WriteRefusalElementGet(freshBuf, 0));
                 }
@@ -380,6 +381,9 @@ static partial class Program
                 lf.SetValue(holder, rawBytes.Length);
                 return true;
             }
+            case "elems": return WriteRefusalElems(codec, wire, holder, f, text);
+            case "mask": return WriteRefusalMask(holder, f, text);
+            case "dupkey": return WriteRefusalDupkey(codec, wire, holder, f, text);
             case "units":
                 return false;
             default:
@@ -396,6 +400,9 @@ static partial class Program
             case Tabledemo.LoadoutConfig loadout: return Tabledemo.Schema.LoadoutConfigFixedSave(loadout, buffer);
             case Scalardemo.SimState sim: return Scalardemo.Schema.SimStateFixedSave(sim, buffer);
             case Cooktorture.TortureFixedWref tfw: return Cooktorture.Schema.TortureFixedWrefFixedSave(tfw, buffer);
+            case Surfaces.Arrays arrays: return Surfaces.Schema.ArraysFixedSave(arrays, buffer);
+            case Surfaces.Narrow narrow: return Surfaces.Schema.NarrowFixedSave(narrow, buffer);
+            case Surfaces.Wide wide: return Surfaces.Schema.WideFixedSave(wide, buffer);
         }
         throw new InvalidOperationException("write-refusal-fixed: no FixedSave for " + value.GetType().Name);
     }
@@ -444,8 +451,10 @@ static partial class Program
                 Console.Error.WriteLine("driver: " + surface + " " + f[1] + " names no codec " + unit + "." + f[3]);
                 return 1;
             }
-            byte[] wire = File.ReadAllBytes(f[4]);
-            object value = codec.Load(wire, new Report());
+            // a wire of `-` is the root's fresh value: a root with no file form
+            // (SF-05, SF-06) starts from its declared defaults
+            byte[] wire = f[4] == "-" ? null : File.ReadAllBytes(f[4]);
+            object value = WriteRefusalFreshRoot(codec, wire);
             if (value == null)
             {
                 Console.Error.WriteLine("driver: " + f[1] + " does not load");
@@ -461,6 +470,8 @@ static partial class Program
                     case "write-refusal-fixed": verdict = WriteRefusalSave(() => WriteRefusalFixedSave(value, buffer)); break;
                     case "write-refusal-message": verdict = WriteRefusalSave(() => codec.MessageSave(value, buffer)); break;
                     case "write-refusal-json": verdict = WriteRefusalJson(codec, value, f[6], f[7]); break;
+                    case "write-refusal-cook": verdict = WriteRefusalCook(codec, value, f[1]); break;
+                    case "write-refusal-block": verdict = WriteRefusalBlock(value, f[1]); break;
                     default: verdict = WriteRefusalSave(() => codec.Save(value, buffer)); break;
                 }
             }

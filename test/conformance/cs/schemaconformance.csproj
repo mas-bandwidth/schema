@@ -78,6 +78,9 @@
     <Compile Include="$(TablesGeneratedDir)/p1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/p3/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/block/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/surfaces/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/announce4096/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/announce4097/*.cs" />
     <!-- The cards unit (tables/cards), from cards-cs-generate: the Card root
          rides the wire fuzzer and its retain arm (cards-cs-wire-fuzz and
          cards-cs-retain-fuzz in make/cs.mk). Its own directory property, so a
