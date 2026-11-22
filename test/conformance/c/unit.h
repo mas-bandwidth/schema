@@ -303,4 +303,22 @@
       schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL, schema_conformance_damage_##TYPE, \
       schema_conformance_load_variable_##TYPE, NULL, schema_conformance_measure_variable_##TYPE, schema_conformance_save_variable_##TYPE, schema_conformance_message_count_##TYPE }
 
+
+/* THE ANNOUNCEMENT of this unit (docs/SPEC-TABLES.md §3.3; README, `announce`):
+   its writer, and its reader into a fresh vocabulary with room for the widest
+   announcement the corpus sends, the strict flag set as the row asks */
+#define SCHEMA_CONFORMANCE_ANNOUNCE_1122 \
+    static int64_t schema_conformance_announce_measure_( void ) { return SCHEMA_CONFORMANCE_Q(announce_measure)(); } \
+    static int64_t schema_conformance_announce_write_( uint8_t * buffer, int64_t capacity ) { return SCHEMA_CONFORMANCE_Q(announce)( buffer, capacity ); } \
+    static int schema_conformance_announce_read_( const uint8_t * announcement, int64_t bytes, int strict ) \
+    { \
+        enum { vocab_cap = SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE) > 4096 ? SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE) : 4096 }; \
+        static SCHEMA_CONFORMANCE_Q(table_message_entry_t) entries[vocab_cap]; \
+        SCHEMA_CONFORMANCE_Q(table_vocabulary_t) vocabulary = SCHEMA_CONFORMANCE_Q(table_vocabulary)( entries, vocab_cap ); \
+        SCHEMA_CONFORMANCE_Q(table_report_t) report; \
+        memset( &report, 0, sizeof( report ) ); \
+        vocabulary.strict = strict; \
+        return SCHEMA_CONFORMANCE_Q(announce_read)( &vocabulary, announcement, bytes, &report ); \
+    }
+
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

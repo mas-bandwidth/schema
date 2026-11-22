@@ -35,6 +35,17 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
                                              const char * kind, const char * text )
 {
     const long long n = strtoll( text, NULL, 10 );
+    if ( strcmp( root, "ProfileConfig" ) == 0 && strcmp( kind, "int" ) == 0 )
+    {
+        /* a bare intN field held to its own storage's width: an int8_t holds
+           no 128, which is unrepresentable here and not the writer's refusal */
+        tabledemo_profile_config_t * v = (tabledemo_profile_config_t *) value;
+        long long m = 0;
+        int set;
+        if ( strcmp( path, "tilt" ) == 0 ) { set = conformance_write_refusal_int( text, INT8_MIN, INT8_MAX, &m ); if ( set == 1 ) { v->tilt = (int8_t) m; } return set; }
+        if ( strcmp( path, "badge" ) == 0 ) { set = conformance_write_refusal_int( text, 0, UINT8_MAX, &m ); if ( set == 1 ) { v->badge = (uint8_t) m; } return set; }
+        if ( strcmp( path, "experience" ) == 0 ) { set = conformance_write_refusal_int( text, 0, (long long) UINT32_MAX, &m ); if ( set == 1 ) { v->experience = (uint32_t) m; } return set; }
+    }
     if ( strcmp( root, "RootConfig" ) == 0 )
     {
         tabledemo_root_config_t * v = (tabledemo_root_config_t *) value;

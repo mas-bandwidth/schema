@@ -249,4 +249,63 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_buffer_destroy( ConformanceBuf
     buffer->base = NULL;
 }
 
+
+/* THE 2026-11-22 SURFACES (test/conformance/README.md, "The 2026-11-22
+ * surfaces ask what no surface asked before"). The two writers beside the four
+ * above: the COOK writer is every codec's own cook_measure / cook, and the
+ * BLOCK writer is a unit's, through its `write`. A setter answers
+ * CONFORMANCE_SET_UNREPRESENTABLE for a value this leg's STORAGE cannot hold
+ * (a native [N]T holds exactly N elements, an int8_t holds no 128), which the
+ * row answers `unrepresentable` and never `refused` on the runtime's behalf. */
+#define CONFORMANCE_WRITE_COOK 4
+#define CONFORMANCE_WRITE_BLOCK 5
+#define CONFORMANCE_SET_UNREPRESENTABLE 2
+#define CONFORMANCE_UNREPRESENTABLE 5
+#define CONFORMANCE_DIED 6     /* the writer's child died by a signal that is no assert: unanswered, and named */
+#define CONFORMANCE_ROW_WIRE 7 /* the row's own wire did not load: a corpus fault, never a verdict */
+/* an `int` row's value against [min, max]: 1 set into *out, 0 for a value that
+   does not parse, CONFORMANCE_SET_UNREPRESENTABLE for one past the storage */
+int conformance_write_refusal_int( const char * text, long long min, long long max, long long * out );
+/* an `elems` row against a NATIVE array of `storage` elements: the declared
+   count leaves it as loaded (1), and any other count is unrepresentable */
+int conformance_write_refusal_elems( const char * text, long long storage );
+int conformance_write_refusal_set_tblsurf( const char * root, void * value, const char * path,
+                                           const char * kind, const char * text );
+int conformance_write_refusal_write_tblsurf( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                             int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_mapdemo( const char * root, void * value, const char * path,
+                                           const char * kind, const char * text );
+int conformance_write_refusal_set_graphdemo( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text );
+/* a unit no fixed, message or block row names writes through no unit writer */
+int conformance_write_refusal_write_none( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                          int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+
+/* ONE UNIT's announcement, send and read-into, for the `announce` and
+ * `read-into` surfaces. Every pointer calls the unit's REAL generated runtime;
+ * NULL where the unit is named by no such row. */
+typedef struct ConformanceUnit1122
+{
+    const char * unit;
+    int64_t ( *announce_measure )( void );
+    int64_t ( *announce )( uint8_t * buffer, int64_t capacity );
+    /* AnnounceRead into a fresh vocabulary whose strict flag is `strict` */
+    int ( *announce_read )( const uint8_t * announcement, int64_t bytes, int strict );
+    /* SaveMessages of one, with no announcement read or written on the
+       connection: 1 wrote (*out, *size), 0 refused, -1 no such root */
+    int ( *send )( const char * root, const void * value, uint8_t ** out, int64_t * size );
+    /* one report and one set of values through the lawful read, the damaged
+       read, the text of every value, and the lawful read again: 0 answered,
+       1 no such root or form, 2 unanswered (named on stderr) */
+    int ( *read_into )( const char * root, const char * form, const uint8_t * lawful, int64_t lawful_bytes,
+                        const uint8_t * damaged, int64_t damaged_bytes, int64_t count,
+                        const uint8_t * announcement, int64_t announcement_bytes, ConformanceText * answer );
+} ConformanceUnit1122;
+const ConformanceUnit1122 * conformance_unit1122_tblsurf( void );
+const ConformanceUnit1122 * conformance_unit1122_tblann4096( void );
+const ConformanceUnit1122 * conformance_unit1122_tblann4097( void );
+const ConformanceUnit1122 * conformance_unit1122_messagedemo( void );
+const ConformanceUnit1122 * conformance_unit1122_backenddemo( void );
+const ConformanceCodec * conformance_codecs_tblsurf( int * count );
+
 #endif /* SCHEMA_CONFORMANCE_DRIVER_H */

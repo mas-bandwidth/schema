@@ -110,6 +110,15 @@
 #include "SharedTable.h"
 #include "MigrateTable.h"
 #include "ReportTable.h"
+// THE 2026-11-22 SURFACES (test/conformance/README.md): their own unit, the
+// two announcement-cap units (both Announce.schema, so each by its directory)
+// and the backend unit's BLOCK BUILDER, which write-refusal-block drives
+#include <cerrno>
+#include <clocale>
+#include "SurfacesTable.h"
+#include "announce4096/AnnounceTable.h"
+#include "announce4097/AnnounceTable.h"
+#include "BackendBlock.h"
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -386,6 +395,11 @@ static const Codec codecs[] = {
     CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
+    // THE 2026-11-22 SURFACES' unit: Big is past the fixed form's ceiling
+    CODEC( "tblsurf", surfaces, Narrow ),
+    CODEC( "tblsurf", surfaces, Wide ),
+    CODEC( "tblsurf", surfaces, Arrays ),
+    NOFILE_CODEC( "tblsurf", surfaces, Big ),
 };
 
 // ---------------------------------------------------------------------------
@@ -505,6 +519,9 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "messagedemo", messagedemo, ToolEnvelope ),
     VARCODEC( "featurewitnesses", featurewitnesses, Root ),
     VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),
+    VARCODEC( "tblsurf", surfaces, Chain ),
+    VARCODEC( "tblsurf", surfaces, Holder ),
+    VARCODEC( "tblsurf", surfaces, Counted ),
 };
 
 // ---------------------------------------------------------------------------
@@ -528,6 +545,10 @@ struct MsgCodec
     // out-parameter.
     bool ( *batch )( const uint8_t * announcement, int64_t announcement_bytes,
                      const uint8_t * message, int64_t message_bytes, int64_t & reported );
+    // An `announce send` row (test/conformance/README.md): SaveMessages of one
+    // body with NO announcement read or written, so under the writer's own
+    // vocabulary (FL-18). False when the writer refuses.
+    bool ( *send )( const void * value, std::vector<uint8_t> & out );
 };
 
 #define MSGCODEC( unit_key, ns, type )                                                          \
@@ -562,6 +583,13 @@ struct MsgCodec
             reported = (int64_t) values.size();                                                 \
             (void) ns::type##LoadMessages( values.data(), &reported, vocabulary, b, n, &loaded ); \
             return true;                                                                        \
+        },                                                                                      \
+        []( const void * v, std::vector<uint8_t> & out ) {                                      \
+            ns::TableReport inner;                                                              \
+            const int64_t size = ns::type##MeasureMessages( (const ns::type *) v, 1, &inner );  \
+            if ( size < 0 ) return false;                                                       \
+            out.assign( (size_t) size, 0 );                                                     \
+            return ns::type##SaveMessages( (const ns::type *) v, 1, out.data(), size, &inner ) == size; \
         }                                                                                       \
     }
 
@@ -577,6 +605,10 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     MSGCODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     MSGCODEC( "messagedemo", messagedemo, ToolMessage ),
+    MSGCODEC( "tblsurf", surfaces, Narrow ),
+    MSGCODEC( "tblsurf", surfaces, Wide ),
+    MSGCODEC( "tblsurf", surfaces, Arrays ),
+    MSGCODEC( "tblsurf", surfaces, Big ),
 };
 
 // ---------------------------------------------------------------------------
@@ -2197,6 +2229,7 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
     if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
+    if ( root == "Arrays" ) { wrote = surfaces::ArraysFixedSave( (const surfaces::Arrays *) value, 1, buffer, capacity ); return true; }
     return false;
 }
 
@@ -2216,6 +2249,18 @@ static bool write_refusal_message_save( const std::string & unit, const std::str
         if ( root == "StorePurchase" ) { wrote = backenddemo::StorePurchaseSaveMessages( (const backenddemo::StorePurchase *) value, 1, buffer, capacity, &report ); return true; }
         if ( root == "LoginRequest" ) { wrote = backenddemo::LoginRequestSaveMessages( (const backenddemo::LoginRequest *) value, 1, buffer, capacity, &report ); return true; }
         if ( root == "MatchResult" ) { wrote = backenddemo::MatchResultSaveMessages( (const backenddemo::MatchResult *) value, 1, buffer, capacity, &report ); return true; }
+        return false;
+    }
+    if ( unit == "tblsurf" )
+    {
+        std::vector<surfaces::TableMessageEntry> entries( (size_t) surfaces::kTableMessageEntriesHere );
+        surfaces::TableVocabulary vocabulary( entries.data(), surfaces::kTableMessageEntriesHere );
+        surfaces::TableReport report;
+        if ( !surfaces::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &report ) ) _exit( 2 );
+        if ( root == "Narrow" ) { wrote = surfaces::NarrowSaveMessages( (const surfaces::Narrow *) value, 1, buffer, capacity, &report ); return true; }
+        if ( root == "Wide" ) { wrote = surfaces::WideSaveMessages( (const surfaces::Wide *) value, 1, buffer, capacity, &report ); return true; }
+        if ( root == "Arrays" ) { wrote = surfaces::ArraysSaveMessages( (const surfaces::Arrays *) value, 1, buffer, capacity, &report ); return true; }
+        if ( root == "Big" ) { wrote = surfaces::BigSaveMessages( (const surfaces::Big *) value, 1, buffer, capacity, &report ); return true; }
         return false;
     }
     if ( unit == "tblvarevo3" )
@@ -2250,12 +2295,229 @@ static bool write_refusal_json_holds_zero( const std::string & json, const std::
     return value.find( "\\u0000" ) != std::string::npos;
 }
 
+// THE 2026-11-22 KINDS (testdata/conformance/tables/FORMAT.md, `write-refusal`):
+// `elems`, `mask`, `dupkey`, `point`, a decimal `float`, a `count` of -1 and
+// an `int` past a bare intN's width. A kind this leg's STORAGE cannot hold is
+// answered `unrepresentable`, never `refused` on the runtime's behalf: a native
+// `[N]T` holds exactly N elements, an `int8_t` holds no 128. The child exits
+// with this code for it.
+enum
+{
+    kUnrepresentableExit = 12,
+    kRowWireExit = 2, // the row's own wire did not load: a corpus fault, never a verdict
+};
+
+enum WrefSet
+{
+    kWrefNotMine, // a (root, path, kind) this setter does not know: the older setter's
+    kWrefSet,
+    kWrefUnrep,
+    kWrefBad, // a value the row spells that does not parse
+};
+
+// a bare intN field, held to its own storage's width
+template <typename T>
+static WrefSet wref_int( T & field, const std::string & text )
+{
+    char * end = NULL;
+    errno = 0;
+    const long long n = strtoll( text.c_str(), &end, 10 );
+    if ( end == NULL || *end != 0 || errno != 0 ) return kWrefBad;
+    if ( n < (long long) std::numeric_limits<T>::min() || n > (long long) std::numeric_limits<T>::max() ) return kWrefUnrep;
+    field = (T) n;
+    return kWrefSet;
+}
+
+// a flags field's raw bits, in decimal: the storage is the unit's 64-bit mask
+template <typename T>
+static WrefSet wref_mask( T & field, const std::string & text )
+{
+    char * end = NULL;
+    errno = 0;
+    const unsigned long long n = strtoull( text.c_str(), &end, 10 );
+    if ( end == NULL || *end != 0 || errno != 0 ) return kWrefBad;
+    if ( n > (unsigned long long) std::numeric_limits<T>::max() ) return kWrefUnrep;
+    field = (T) n;
+    return kWrefSet;
+}
+
+// a NATIVE fixed array of `storage` elements: the declared count leaves it as
+// loaded, and any other count is a value it cannot hold
+static WrefSet wref_elems( int64_t storage, const std::string & text )
+{
+    char * end = NULL;
+    const long long n = strtoll( text.c_str(), &end, 10 );
+    if ( end == NULL || *end != 0 ) return kWrefBad;
+    return n == storage ? kWrefSet : kWrefUnrep;
+}
+
+// `point`: the pointer at `path` is aimed at the node the pointer at `text`
+// points at. A region slot is SELF-RELATIVE (docs/SPEC-TABLES.md §6.3), so the
+// slot holds the delta from its own address. head.next aimed at head is a
+// cycle; alias aimed at head is the lawful sharing of one node.
+static bool wref_point_scene( graphdemo::Scene & v, const std::string & path, const std::string & text )
+{
+    if ( text != "head" || v.head.value == 0 ) return false;
+    uint8_t * target = (uint8_t *) &v.head + v.head.value;
+    graphdemo::TableRef * slot = NULL;
+    if ( path == "head.next" ) slot = &( (graphdemo::ListNode *) target )->next;
+    else if ( path == "alias" ) slot = &v.alias;
+    else return false;
+    slot->value = (int64_t) ( target - (uint8_t *) slot );
+    return true;
+}
+
+static WrefSet write_refusal_set_1122( const std::string & root, void * value, const std::string & path,
+                                       const std::string & kind, const std::string & text )
+{
+    if ( root == "ProfileConfig" && kind == "int" )
+    {
+        tabledemo::ProfileConfig & v = *(tabledemo::ProfileConfig *) value;
+        if ( path == "tilt" ) return wref_int( v.tilt, text );
+        if ( path == "badge" ) return wref_int( v.badge, text );
+        if ( path == "experience" ) return wref_int( v.experience, text );
+    }
+    if ( root == "Arrays" )
+    {
+        surfaces::Arrays & v = *(surfaces::Arrays *) value;
+        if ( path == "trio" && kind == "elems" ) return wref_elems( (int64_t) ( sizeof( v.trio ) / sizeof( v.trio[0] ) ), text );
+        if ( path == "per" && kind == "elems" ) return wref_elems( (int64_t) ( sizeof( v.per.slots ) / sizeof( v.per.slots[0] ) ), text );
+        if ( path == "marks" && kind == "mask" ) return wref_mask( v.marks, text );
+    }
+    if ( root == "Counted" && path == "few" && kind == "count" )
+    {
+        // a counted array's count, element 0 copied into new elements; -1 is a
+        // negative count, which this leg's int32 count holds
+        surfaces::Counted & v = *(surfaces::Counted *) value;
+        char * end = NULL;
+        const long long n = strtoll( text.c_str(), &end, 10 );
+        if ( end == NULL || *end != 0 ) return kWrefBad;
+        const int32_t storage = (int32_t) ( sizeof( v.few ) / sizeof( v.few[0] ) );
+        for ( int32_t i = v.few_count; i < (int32_t) n && i < storage; i++ ) v.few[i] = v.few[0];
+        v.few_count = (int32_t) n;
+        return kWrefSet;
+    }
+    if ( root == "Narrow" && path == "hp" && kind == "int" ) return wref_int( ( (surfaces::Narrow *) value )->hp, text );
+    if ( root == "Wide" && path == "hp" && kind == "int" ) return wref_int( ( (surfaces::Wide *) value )->hp, text );
+    if ( root == "Big" )
+    {
+        surfaces::Big & v = *(surfaces::Big *) value;
+        if ( path == "hp" && kind == "int" ) return wref_int( v.hp, text );
+        if ( path == "mask" && kind == "int" ) return wref_int( v.mask, text );
+        if ( path == "ratio" && kind == "float" ) return parse_wref_f32( text, v.ratio ) ? kWrefSet : kWrefBad;
+    }
+    if ( root == "MatchResult" && path == "players" && kind == "elems" )
+    {
+        backenddemo::MatchResult & v = *(backenddemo::MatchResult *) value;
+        return wref_elems( (int64_t) ( sizeof( v.players ) / sizeof( v.players[0] ) ), text );
+    }
+    if ( root == "Scene" && kind == "point" ) return wref_point_scene( *(graphdemo::Scene *) value, path, text ) ? kWrefSet : kWrefBad;
+    return kWrefNotMine;
+}
+
+// `dupkey 1` appends a copy of the map's first entry, so one key is held twice
+// (FL-22). A region's map is a sorted entry array inside the region, so the
+// copy goes on the end of a LARGER region: the region is copied whole (every
+// slot is self-relative, so the copy keeps every reference), the map's entries
+// move to its tail with the copy after them, and the map's slot is re-aimed
+// there. A ships entry is a key and a by-value ShipConfig, relocatable as it
+// stands. `dupkey 0` leaves the map as loaded. Answers 0 or the child's exit.
+static int write_refusal_dupkey( const std::string & root, std::vector<uint8_t> & region, const void *& root_value,
+                                 const std::string & path, const std::string & text )
+{
+    if ( root != "Fleet" || path != "ships" ) return kNoSetterExit;
+    if ( text == "0" ) return 0;
+    if ( text != "1" ) return kNoSetterExit;
+    const mapdemo::Fleet * old_root = (const mapdemo::Fleet *) root_value;
+    const int32_t count = old_root->ships.count;
+    const mapdemo::FleetShipsEntry * entries = old_root->ships.Entries();
+    if ( count < 1 || entries == NULL ) return kNoSetterExit;
+    const size_t root_at = (size_t) ( (const uint8_t *) root_value - region.data() );
+    const size_t tail = ( region.size() + 63 ) & ~(size_t) 63;
+    std::vector<uint8_t> grown( tail + sizeof( mapdemo::FleetShipsEntry ) * (size_t) ( count + 1 ), 0 );
+    memcpy( grown.data(), region.data(), region.size() );
+    mapdemo::Fleet * new_root = (mapdemo::Fleet *) (void *) ( grown.data() + root_at );
+    mapdemo::FleetShipsEntry * moved = (mapdemo::FleetShipsEntry *) (void *) ( grown.data() + tail );
+    for ( int32_t i = 0; i < count; i++ ) moved[i] = entries[i];
+    moved[count] = entries[0];
+    new_root->ships.entries.value = (int64_t) ( (uint8_t *) moved - (uint8_t *) &new_root->ships.entries );
+    new_root->ships.count = count + 1;
+    region.swap( grown );
+    root_value = new_root;
+    return 0;
+}
+
+// THE COOK WRITER over the row's value (docs/SPEC-TABLES.md §7.6): CookMeasure,
+// then Cook in little-endian order; `wrote` when both complete.
+static int write_refusal_cook( int64_t ( *measure )( const void * ), bool ( *cook )( const void *, void *, uint64_t, int ),
+                               const void * value )
+{
+    const int64_t need = measure( value );
+    if ( need < 0 ) return kRefusedExit;
+    std::vector<uint8_t> file( (size_t) ( need > 0 ? need : 1 ) );
+    return cook( value, file.data(), (uint64_t) need, 0 ) ? kWroteExit : kRefusedExit;
+}
+
+// THE BLOCK BUILDER over the row's value (docs/SPEC-TABLES.md §19.1): the
+// storage is created, Begin is handed the value's counts and settles the
+// layout, the projection's fields are the producer's to write and are written
+// from the value, and BlockBytes closes it. `wrote` when the block is built.
+// The C++ builder takes the counts of out-of-line arrays and nothing else: a
+// used length or a range is not an argument of Begin, so nothing in the
+// builder sees one.
+static int write_refusal_block( const std::string & root, const void * value )
+{
+    if ( root == "StorePurchase" )
+    {
+        const backenddemo::StorePurchase & v = *(const backenddemo::StorePurchase *) value;
+        backenddemo::StorePurchaseBlockStorage storage;
+        if ( !storage.Create( backenddemo::TableBlockDefaultAllocator() ) ) return kRowWireExit;
+        backenddemo::StorePurchaseBlock block;
+        backenddemo::StorePurchaseCounts counts; // StorePurchase declares no out-of-line array
+        backenddemo::TableBlockRefusal refusal;
+        const bool begun = backenddemo::StorePurchaseBlockBegin( block, storage, counts, &refusal );
+        if ( begun )
+        {
+            block.projection->player_id = v.player_id;
+            memcpy( block.projection->sku, v.sku, sizeof( block.projection->sku ) );
+            block.projection->sku_length = v.sku_length;
+            block.projection->quantity = v.quantity;
+            block.projection->price_minor = v.price_minor;
+            block.projection->currency = v.currency;
+            (void) backenddemo::StorePurchaseBlockBytes( block );
+        }
+        storage.Destroy();
+        return begun ? kWroteExit : kRefusedExit;
+    }
+    if ( root == "MatchResult" )
+    {
+        const backenddemo::MatchResult & v = *(const backenddemo::MatchResult *) value;
+        backenddemo::MatchResultBlockStorage storage;
+        if ( !storage.Create( backenddemo::TableBlockDefaultAllocator() ) ) return kRowWireExit;
+        backenddemo::MatchResultBlock block;
+        backenddemo::MatchResultCounts counts; // players is a [10] array held in the projection
+        backenddemo::TableBlockRefusal refusal;
+        const bool begun = backenddemo::MatchResultBlockBegin( block, storage, counts, &refusal );
+        if ( begun )
+        {
+            block.projection->match_id = v.match_id;
+            for ( size_t i = 0; i < sizeof( v.players ) / sizeof( v.players[0] ); i++ ) block.projection->players[i] = v.players[i];
+            (void) backenddemo::MatchResultBlockBytes( block );
+        }
+        storage.Destroy();
+        return begun ? kWroteExit : kRefusedExit;
+    }
+    return kNoSetterExit;
+}
+
 // The writer a surface names, over the one value the row set. Answers the
 // child's exit code.
 static int write_refusal_write( const std::string & surface, const std::string & unit, const std::string & root,
                                 const std::string & path, const Codec * codec, const void * value,
                                 const std::vector<uint8_t> & announcement )
 {
+    if ( surface == "write-refusal-block" ) return write_refusal_block( root, value );
+    if ( surface == "write-refusal-cook" ) return write_refusal_cook( codec->cook_measure, codec->cook, value );
     scratch.assign( (size_t) 1 << 20, 0 );
     const int64_t capacity = (int64_t) scratch.size();
     int64_t wrote = -1;
@@ -2280,6 +2542,24 @@ static int write_refusal_write( const std::string & surface, const std::string &
     }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
+
+// sets the one field a row names: the 2026-11-22 kinds first, then the older
+// setter; answers 0 or the child's exit code
+static int write_refusal_set_any( const std::string & root, void * value, const std::string & path,
+                                  const std::string & kind, const std::string & text )
+{
+    const WrefSet set = write_refusal_set_1122( root, value, path, kind, text );
+    if ( set == kWrefSet ) return 0;
+    if ( set == kWrefUnrep ) return kUnrepresentableExit;
+    if ( set == kWrefBad ) return kNoSetterExit;
+    return write_refusal_set( root, value, path, kind, text ) ? 0 : kNoSetterExit;
+}
+
+// A row whose <wire> is `-` starts from the root's FRESH value (SF-05, SF-06:
+// a fixed table past the 65536-byte ceiling has no file form to load). Every
+// case runs in a child, which sets an alarm: a writer that walks a cycle
+// forever ends the case by SIGALRM, which is named and answers nothing.
+static const unsigned kWrefChildSeconds = 30;
 
 static int surface_write_refusal( const std::string & surface, const std::string & out )
 {
@@ -2306,22 +2586,27 @@ static int surface_write_refusal( const std::string & surface, const std::string
         const Codec * codec = find_codec( unit, f[3] );
         const VarCodec * var_codec = codec == NULL ? find_var_codec( unit, f[3] ) : NULL;
         if ( codec == NULL && var_codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
+        const bool fresh = f[4] == "-";
+        if ( fresh && var_codec != NULL ) { fprintf( stderr, "driver: %s %s: a variable root has no fresh value here\n", surface.c_str(), f[1].c_str() ); return 1; }
         std::vector<uint8_t> wire;
-        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        if ( !fresh && !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         fflush( stdout );
         fflush( stderr );
         const pid_t child = fork();
         if ( child < 0 ) { fprintf( stderr, "driver: fork failed\n" ); return 1; }
         if ( child == 0 )
         {
+            alarm( kWrefChildSeconds );
             if ( var_codec != NULL )
             {
                 std::vector<uint8_t> region;
                 Report report;
                 const void * cval = var_codec->load( region, wire.data(), (int64_t) wire.size(), &report );
-                if ( cval == NULL ) _exit( 2 );
-                void * mval = const_cast<void *>( cval );
-                if ( !write_refusal_set( f[3], mval, f[5], f[6], f[7] ) ) _exit( kNoSetterExit );
+                if ( cval == NULL ) _exit( kRowWireExit );
+                const int set = f[6] == "dupkey" ? write_refusal_dupkey( f[3], region, cval, f[5], f[7] )
+                                                 : write_refusal_set_any( f[3], const_cast<void *>( cval ), f[5], f[6], f[7] );
+                if ( set != 0 ) _exit( set );
+                const void * mval = cval;
                 const int quiet = open( "/dev/null", O_WRONLY );
                 if ( quiet >= 0 ) dup2( quiet, 2 );
                 if ( surface == "write-refusal" )
@@ -2337,13 +2622,18 @@ static int surface_write_refusal( const std::string & surface, const std::string
                     std::vector<char> jtxt;
                     _exit( var_codec->to_json( mval, jtxt ) ? kWroteExit : kRefusedExit );
                 }
+                if ( surface == "write-refusal-cook" ) _exit( write_refusal_cook( var_codec->cook_measure, var_codec->cook, mval ) );
                 _exit( kNoSetterExit );
             }
             void * value = codec->make();
             codec->reset( value );
-            Report report;
-            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) _exit( 2 );
-            if ( !write_refusal_set( f[3], value, f[5], f[6], f[7] ) ) _exit( kNoSetterExit );
+            if ( !fresh )
+            {
+                Report report;
+                if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) _exit( kRowWireExit );
+            }
+            const int set = write_refusal_set_any( f[3], value, f[5], f[6], f[7] );
+            if ( set != 0 ) _exit( set );
             const int quiet = open( "/dev/null", O_WRONLY );
             if ( quiet >= 0 ) dup2( quiet, 2 );
             _exit( write_refusal_write( surface, unit, f[3], f[5], codec, value, announcement ) );
@@ -2354,10 +2644,25 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT ) verdict = "refused\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRefusedExit ) verdict = "refused\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit ) verdict = "wrote\n";
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kUnrepresentableExit ) verdict = "unrepresentable\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kNoSetterExit )
         {
             fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface.c_str(), f[1].c_str(), f[3].c_str(), f[5].c_str(), f[6].c_str() );
             return 1;
+        }
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRowWireExit )
+        {
+            fprintf( stderr, "driver: %s %s: the row's wire %s did not load\n", surface.c_str(), f[1].c_str(), f[4].c_str() );
+            return 1;
+        }
+        else if ( WIFSIGNALED( status ) )
+        {
+            // THE RUNTIME DIED ANOTHER WAY (a fault, or the alarm on a writer
+            // that never returned): the case is unanswered and says why, and
+            // the rows after it are still asked
+            fprintf( stderr, "driver: %s %s: the writer's child died by signal %d%s; no answer\n", surface.c_str(), f[1].c_str(),
+                     WTERMSIG( status ), WTERMSIG( status ) == SIGALRM ? " (it ran past the alarm)" : "" );
+            continue;
         }
         else
         {
@@ -2366,6 +2671,332 @@ static int surface_write_refusal( const std::string & surface, const std::string
         }
         if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
     }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// THE ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3; test/conformance/README.md,
+// `announce`): a unit's announcement writer, and its reader with the strict
+// flag set or left at its default
+// ---------------------------------------------------------------------------
+struct AnnounceUnit
+{
+    const char * unit;
+    int64_t ( *measure )();
+    int64_t ( *write )( uint8_t *, int64_t );
+    bool ( *read )( const uint8_t *, int64_t, bool );
+};
+
+// A fresh vocabulary with room for the widest announcement the corpus sends,
+// as the `message` surface makes it; `strict` is the flag the first
+// AnnounceRead reads.
+#define ANNOUNCEUNIT( unit_key, ns )                                                                    \
+    {                                                                                                   \
+        unit_key, []() { return ns::AnnounceMeasure(); },                                               \
+        []( uint8_t * b, int64_t n ) { return ns::Announce( b, n ); },                                  \
+        []( const uint8_t * a, int64_t an, bool strict ) {                                              \
+            const int64_t cap = ns::kTableMessageEntriesHere > 4096 ? ns::kTableMessageEntriesHere : 4096; \
+            std::vector<ns::TableMessageEntry> entries( (size_t) cap );                                 \
+            ns::TableVocabulary vocabulary( entries.data(), cap );                                      \
+            vocabulary.strict = strict;                                                                 \
+            ns::TableReport report;                                                                     \
+            return ns::AnnounceRead( vocabulary, a, an, &report );                                      \
+        }                                                                                               \
+    }
+
+static const AnnounceUnit announce_units[] = {
+    ANNOUNCEUNIT( "tblann4096", announce4096 ),
+    ANNOUNCEUNIT( "tblann4097", announce4097 ),
+    ANNOUNCEUNIT( "messagedemo", messagedemo ),
+    ANNOUNCEUNIT( "tblsurf", surfaces ),
+    ANNOUNCEUNIT( "backenddemo", backenddemo ),
+};
+
+static const AnnounceUnit * find_announce_unit( const std::string & unit )
+{
+    for ( size_t i = 0; i < sizeof( announce_units ) / sizeof( announce_units[0] ); i++ )
+    {
+        if ( unit == announce_units[i].unit ) return &announce_units[i];
+    }
+    return NULL;
+}
+
+// announce <case> <unit> <root> <mode> <input>
+static int surface_announce( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "announce" ) continue;
+        if ( f.size() < 6 ) { fprintf( stderr, "driver: short announce line\n" ); return 1; }
+        const std::string & mode = f[4];
+        std::vector<uint8_t> answer;
+        const char * verdict = NULL;
+        if ( mode == "write" || mode == "strict" || mode == "lenient" )
+        {
+            const AnnounceUnit * au = find_announce_unit( f[2] );
+            if ( au == NULL ) { fprintf( stderr, "driver: announce %s: no announcement for unit %s\n", f[1].c_str(), f[2].c_str() ); return 1; }
+            if ( mode == "write" )
+            {
+                const int64_t size = au->measure();
+                if ( size < 0 ) verdict = "refused\n";
+                else
+                {
+                    answer.assign( (size_t) size, 0 );
+                    const int64_t wrote = au->write( answer.data(), size );
+                    if ( wrote < 0 ) verdict = "refused\n";
+                    else answer.resize( (size_t) wrote );
+                }
+            }
+            else
+            {
+                std::vector<uint8_t> input;
+                if ( !slurp( f[5].c_str(), input ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
+                verdict = au->read( input.data(), (int64_t) input.size(), mode == "strict" ) ? "read\n" : "refused\n";
+            }
+        }
+        else if ( mode == "send" )
+        {
+            // SaveMessages as a batch of one, with NO announcement read or
+            // written on this connection: the writer's own vocabulary (FL-18)
+            const Codec * codec = find_codec( f[2], f[3] );
+            const MsgCodec * msg = find_msg_codec( f[2], f[3] );
+            if ( codec == NULL || msg == NULL ) { fprintf( stderr, "driver: announce %s: no message codec for %s.%s\n", f[1].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
+            void * value = codec->make();
+            codec->reset( value );
+            if ( f[5] != "-" )
+            {
+                std::vector<uint8_t> wire;
+                Report report;
+                if ( !slurp( f[5].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
+                if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: announce %s: the row's wire did not load\n", f[1].c_str() ); return 1; }
+            }
+            if ( !msg->send( value, answer ) ) verdict = "refused\n";
+        }
+        else
+        {
+            fprintf( stderr, "driver: announce %s: no mode %s\n", f[1].c_str(), mode.c_str() );
+            return 1;
+        }
+        if ( verdict != NULL ) { if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1; }
+        else if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// READ INTO THE CALLER'S VALUES (docs/SPEC-TABLES.md §6.5, §3.4; README,
+// `read-into`): ONE report and ONE set of values through a lawful read, a
+// refused read and the lawful read again, the text of every value written
+// after the refused one
+// ---------------------------------------------------------------------------
+template <typename R>
+static bool read_into_refused( const R & r )
+{
+    return r.refused || r.damaged || (int) r.refuse_reason != 0;
+}
+
+static const char * read_into_line( bool ok, bool refused )
+{
+    return ok && !refused ? "read\n" : "refused\n";
+}
+
+struct ReadIntoCodec
+{
+    const char * unit;
+    const char * root;
+    // 0 answered, 1 no such form here, 2 the runtime gave no value to answer
+    // with (named on stderr)
+    int ( *run )( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                  int64_t count, const std::vector<uint8_t> & announcement, std::string & answer );
+};
+
+// A VARIABLE root's caller value is its BUILDER: LoadBuilder reads the
+// variable form into it and FromJson the text, each with the one report.
+#define READINTO_VAR( unit_key, ns, type )                                                                          \
+    {                                                                                                               \
+        unit_key, #type,                                                                                            \
+        []( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,    \
+            int64_t count, const std::vector<uint8_t> &, std::string & answer ) -> int {                            \
+            if ( ( form != "variable" && form != "json" ) || count != 1 ) return 1;                                 \
+            ns::type##Builder builder;                                                                              \
+            ns::TableReport report;                                                                                 \
+            auto read = [&]( const std::vector<uint8_t> & in ) {                                                    \
+                try                                                                                                 \
+                {                                                                                                   \
+                    const bool ok = form == "variable"                                                              \
+                                        ? ns::type##LoadBuilder( builder, in.data(), (int64_t) in.size(), &report ) \
+                                        : ns::type##FromJson( builder, (const char *) in.data(), (int64_t) in.size(), &report ); \
+                    answer += read_into_line( ok, read_into_refused( report ) );                                    \
+                }                                                                                                   \
+                catch ( ... )                                                                                       \
+                {                                                                                                   \
+                    answer += "threw\n";                                                                            \
+                }                                                                                                   \
+            };                                                                                                      \
+            read( lawful );                                                                                         \
+            read( damaged );                                                                                        \
+            const ns::type * root = builder.GetRoot();                                                              \
+            if ( root == NULL ) { fprintf( stderr, "driver: read-into: the builder holds no root after the refused read\n" ); return 2; } \
+            const int64_t size = ns::type##ToJsonMeasure( root );                                                   \
+            if ( size < 0 ) { fprintf( stderr, "driver: read-into: ToJsonMeasure refused the value the read left\n" ); return 2; } \
+            std::vector<char> text( (size_t) size + 1 );                                                            \
+            if ( ns::type##ToJson( root, text.data(), size ) != size ) { fprintf( stderr, "driver: read-into: ToJson refused the value the read left\n" ); return 2; } \
+            answer.append( text.data(), (size_t) size );                                                            \
+            read( lawful );                                                                                         \
+            return 0;                                                                                               \
+        }                                                                                                           \
+    }
+
+// A FIXED root's caller values are an array of `count`: FixedLoad with that
+// capacity, or LoadMessages after the connection's announcement is read.
+#define READINTO_FIXED( unit_key, ns, type )                                                                        \
+    {                                                                                                               \
+        unit_key, #type,                                                                                            \
+        []( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,    \
+            int64_t count, const std::vector<uint8_t> & announcement, std::string & answer ) -> int {               \
+            if ( form != "fixed" && form != "message" ) return 1;                                                   \
+            std::vector<ns::type> values( (size_t) count );                                                         \
+            for ( size_t i = 0; i < values.size(); i++ ) ns::type##Reset( values[i] );                             \
+            ns::TableReport report;                                                                                 \
+            std::vector<ns::TableFixedEntry> plan( (size_t) kFixedPlanCapacity );                                   \
+            const int64_t cap = ns::kTableMessageEntriesHere > 4096 ? ns::kTableMessageEntriesHere : 4096;          \
+            std::vector<ns::TableMessageEntry> entries( (size_t) cap );                                             \
+            ns::TableVocabulary vocabulary( entries.data(), cap );                                                  \
+            if ( form == "message" )                                                                                \
+            {                                                                                                       \
+                ns::TableReport announced;                                                                          \
+                if ( !ns::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &announced ) ) \
+                {                                                                                                   \
+                    fprintf( stderr, "driver: read-into: the connection's announcement did not read\n" );           \
+                    return 2;                                                                                       \
+                }                                                                                                   \
+            }                                                                                                       \
+            auto read = [&]( const std::vector<uint8_t> & in ) {                                                    \
+                try                                                                                                 \
+                {                                                                                                   \
+                    bool ok = false;                                                                                \
+                    if ( form == "fixed" )                                                                          \
+                        ok = ns::type##FixedLoad( values.data(), count, in.data(), (int64_t) in.size(), plan.data(), \
+                                                  kFixedPlanCapacity, NULL, &report ) >= 0;                         \
+                    else                                                                                            \
+                    {                                                                                               \
+                        int64_t loaded = count;                                                                     \
+                        ok = ns::type##LoadMessages( values.data(), &loaded, vocabulary, in.data(), (int64_t) in.size(), &report ); \
+                    }                                                                                               \
+                    answer += read_into_line( ok, read_into_refused( report ) );                                    \
+                }                                                                                                   \
+                catch ( ... )                                                                                       \
+                {                                                                                                   \
+                    answer += "threw\n";                                                                            \
+                }                                                                                                   \
+            };                                                                                                      \
+            read( lawful );                                                                                         \
+            read( damaged );                                                                                        \
+            for ( size_t i = 0; i < values.size(); i++ )                                                            \
+            {                                                                                                       \
+                const int64_t size = ns::type##ToJsonMeasure( values[i] );                                          \
+                if ( size < 0 ) { fprintf( stderr, "driver: read-into: ToJsonMeasure refused value %zu\n", i ); return 2; } \
+                std::vector<char> text( (size_t) size + 1 );                                                        \
+                if ( ns::type##ToJson( values[i], text.data(), size ) != size ) { fprintf( stderr, "driver: read-into: ToJson refused value %zu\n", i ); return 2; } \
+                answer.append( text.data(), (size_t) size );                                                        \
+            }                                                                                                       \
+            read( lawful );                                                                                         \
+            return 0;                                                                                               \
+        }                                                                                                           \
+    }
+
+static const ReadIntoCodec read_into_codecs[] = {
+    READINTO_VAR( "tblsurf", surfaces, Counted ),
+    READINTO_FIXED( "tblsurf", surfaces, Narrow ),
+    READINTO_FIXED( "backenddemo", backenddemo, StorePurchase ),
+};
+
+// read-into <case> <unit> <root> <form> <lawful> <damaged> <count or -> <announcement or ->
+static int surface_read_into( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "read-into" ) continue;
+        if ( f.size() < 9 ) { fprintf( stderr, "driver: short read-into line\n" ); return 1; }
+        if ( f[4] == "fixed-nocap" )
+        {
+            // NO CALL TO HOLD (FL-17): C++'s FixedLoad takes its capacity as a
+            // parameter with no default and no overload without it, so no
+            // omitted capacity can be asked of it
+            const char * none = "unrepresentable\n";
+            if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
+            continue;
+        }
+        const ReadIntoCodec * rc = NULL;
+        for ( size_t j = 0; j < sizeof( read_into_codecs ) / sizeof( read_into_codecs[0] ); j++ )
+        {
+            if ( f[2] == read_into_codecs[j].unit && f[3] == read_into_codecs[j].root ) rc = &read_into_codecs[j];
+        }
+        if ( rc == NULL ) { fprintf( stderr, "driver: read-into %s: no codec for %s.%s\n", f[1].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> lawful, damaged, announcement;
+        if ( !slurp( f[5].c_str(), lawful ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
+        if ( !slurp( f[6].c_str(), damaged ) ) { fprintf( stderr, "driver: cannot read %s\n", f[6].c_str() ); return 1; }
+        if ( f[8] != "-" && !slurp( f[8].c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", f[8].c_str() ); return 1; }
+        char * end = NULL;
+        const long long count = strtoll( f[7].c_str(), &end, 10 );
+        if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f[1].c_str(), f[7].c_str() ); return 1; }
+        std::string answer;
+        const int ran = rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
+        if ( ran == 1 ) { fprintf( stderr, "driver: read-into %s: no %s form for %s.%s\n", f[1].c_str(), f[4].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
+        if ( ran == 2 ) { fprintf( stderr, "driver: read-into %s: unanswered\n", f[1].c_str() ); continue; }
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// THE TEXT WRITER IN A COMMA-DECIMAL LOCALE, INTO A CALLER BUFFER (FL-14,
+// FL-15; README, `json-write-into`)
+// ---------------------------------------------------------------------------
+// json-write-into <case> <unit> <root> <wire>
+static int surface_json_write_into( const std::string & out )
+{
+    const char * name = getenv( "SCHEMA_COMMA_LOCALE" );
+    if ( name == NULL || name[0] == 0 ) { fprintf( stderr, "driver: json-write-into: SCHEMA_COMMA_LOCALE is not set\n" ); return 1; }
+    if ( setlocale( LC_ALL, name ) == NULL ) { fprintf( stderr, "driver: json-write-into: setlocale( LC_ALL, %s ) was refused\n", name ); return 1; }
+    const struct lconv * conv = localeconv();
+    if ( conv == NULL || conv->decimal_point == NULL || strcmp( conv->decimal_point, "," ) != 0 )
+    {
+        // a locale rule checked under a dot locale checks nothing
+        fprintf( stderr, "driver: json-write-into: %s is set but its decimal point is not a comma\n", name );
+        return 1;
+    }
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "json-write-into" ) continue;
+        if ( f.size() < 5 ) { fprintf( stderr, "driver: short json-write-into line\n" ); return 1; }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: json-write-into %s: no codec for %s.%s\n", f[1].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> wire;
+        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        void * value = codec->make();
+        codec->reset( value );
+        Report report;
+        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: json-write-into %s: the wire did not load\n", f[1].c_str() ); return 1; }
+        const int64_t size = codec->to_json_measure( value );
+        if ( size < 0 ) { fprintf( stderr, "driver: json-write-into %s: ToJsonMeasure refused; no answer\n", f[1].c_str() ); continue; }
+        const int64_t capacity = size + 64;
+        std::vector<char> buffer( (size_t) capacity, (char) 0xA5 );
+        const int64_t wrote = codec->to_json( value, buffer.data(), capacity );
+        if ( wrote < 0 || wrote > capacity ) { fprintf( stderr, "driver: json-write-into %s: ToJson answered %lld; no answer\n", f[1].c_str(), (long long) wrote ); continue; }
+        bool tail = false;
+        for ( int64_t k = wrote; k < capacity; k++ ) tail = tail || (uint8_t) buffer[(size_t) k] != 0xA5;
+        if ( tail )
+        {
+            const char * written = "tail-written\n";
+            if ( !spill( out, f[1], written, strlen( written ) ) ) return 1;
+        }
+        else if ( !spill( out, f[1], buffer.data(), (size_t) wrote ) ) return 1;
+    }
+    setlocale( LC_ALL, "C" );
     return 0;
 }
 
@@ -2385,7 +3016,8 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
+        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+                "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -2412,9 +3044,12 @@ int main( int argc, char ** argv )
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
     if ( surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" ||
-         surface == "write-refusal-json" )
+         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" )
     {
         return surface_write_refusal( surface, out );
     }
+    if ( surface == "announce" ) return surface_announce( out );
+    if ( surface == "read-into" ) return surface_read_into( out );
+    if ( surface == "json-write-into" ) return surface_json_write_into( out );
     return 2;
 }
