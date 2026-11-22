@@ -5621,7 +5621,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune & 0xF]);
     } else {
       if (rune >= 0xD800 && rune <= 0xDFFF) {
-        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+        assert(false, 'invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
       }
       b.write(String.fromCharCode(rune));
     }
@@ -8004,7 +8004,6 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
     tableEntityFromJsonFields(v, root, r, _Share());
   }
   } on FormatException catch (e) {
-    if (r.missingFields.isNotEmpty) rethrow;
     r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
@@ -8041,7 +8040,6 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
     tableStatFromJsonFields(v, root, r, _Share());
   }
   } on FormatException catch (e) {
-    if (r.missingFields.isNotEmpty) rethrow;
     r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
@@ -8078,7 +8076,6 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
     tableMixedFromJsonFields(v, root, r, _Share());
   }
   } on FormatException catch (e) {
-    if (r.missingFields.isNotEmpty) rethrow;
     r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
