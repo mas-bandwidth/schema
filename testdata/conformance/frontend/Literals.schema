@@ -18,7 +18,7 @@ union Pick
 
 table Literals | was = "Été"
 {
-    tie32   float32 = 1.00000005960464477550 | min = 1.00000005960464477550, max = 2.0
+    tie32   float32 = 1.00000005960464477550 | min = 1.00000005960464477550, max = 2.0, resolution = 0.25
     tie64   float64 = 1.00000005960464477550
     sum32   float32 = 0.1 + 0.2
     renamed int32 | was = "naïve"
