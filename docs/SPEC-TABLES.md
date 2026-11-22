@@ -6843,6 +6843,18 @@ message, fixed, variable and text forms:
   `invalid_value`, as it refuses any value off its declared range, and a read
   that meets one where the form carries the float whole refuses it
   `out_of_range`, naming the field.
+- **THE RANGE IS HELD AT FLOAT32.** A compressed float is a float32 (SPEC.md
+  §4.3), and every runtime evaluates its triple at float32 (SPEC.md §4.6), so
+  its ends are `float32(min)` and `float32(max)`, each the float32 nearest the
+  declared bound (round to nearest, ties to even). A value is first narrowed
+  to float32 the same way, and the narrowed value is in range when
+  `float32(min) <= v <= float32(max)`. Every writer, every reader and every
+  form holds this one test: under `max = 0.1` the stored `0.1f`
+  (`0x3dcccccd`, 0.10000000149…) is in range, so a value a port has just
+  read back always saves again to the same bytes, and the float32 one step
+  past it (`0x3dccccce`) is refused. A test against the declared bounds as
+  float64 refuses a port's own `0.1f`; that is the wrong test. The corpus is
+  `testdata/conformance/feature-witnesses/compressed-f32-ends`.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the

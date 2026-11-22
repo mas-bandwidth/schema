@@ -2028,7 +2028,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g does not fit finite float32 storage", f.Name, v)
 			return
 		}
-		if out.HasFloatRange && (v < out.FMin || v > out.FMax) {
+		if out.HasFloatRange && !ir.CompressedFloatInRange(out.FMin, out.FMax, v) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g is outside its range [%s, %s]", f.Name, v, formatFloat(out.FMin), formatFloat(out.FMax))
 			return
 		}
