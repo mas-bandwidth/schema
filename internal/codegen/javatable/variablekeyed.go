@@ -222,9 +222,9 @@ func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	one := variableElement(f)
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<java.lang.String> skipped=null;while(in.peek()!='}'){java.lang.String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}if((%s)+1>TableJson.In.MAX_JSON_DEPTH){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<java.lang.String> skipped=null;while(in.peek()!='}'){java.lang.String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", depth, f.ArrayBound, m, variableDefault(one), f.ArrayBound)
 	for i, name := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
 	}
-	fmt.Fprintf(b, "                if(slot<0){if(skipped==null)skipped=new java.util.HashSet<>();if(!skipped.add(slotName))in.rep.refuse(\"text_damaged\");in.rep.unknown++;in.skipValue();}else{if(seen[slot])in.rep.refuse(\"text_damaged\");seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value,%s);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", m, m, m, m, m, depth+" + 1", m, m)
+	fmt.Fprintf(b, "                if(slot<0){if(skipped==null)skipped=new java.util.HashSet<>();if(!skipped.add(slotName))in.rep.refuse(\"text_damaged\");in.rep.unknown++;in.skipValue((%s)+2);}else{if(seen[slot])in.rep.refuse(\"text_damaged\");seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value,%s);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", depth, m, m, m, m, m, depth+" + 1", m, m)
 }
