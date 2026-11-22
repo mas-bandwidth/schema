@@ -1,0 +1,10 @@
+package sample
+union First {
+ keep int32
+ value int32
+}
+union Second { elsewhere int32 }
+table Root {
+ first First
+ second Second
+}

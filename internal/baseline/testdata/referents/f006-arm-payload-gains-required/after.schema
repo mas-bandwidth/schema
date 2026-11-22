@@ -1,0 +1,23 @@
+package referents
+
+table First
+{
+    n int32
+}
+
+table Second
+{
+    n    int32
+    owed int32 | required
+}
+
+union Pick
+{
+    item Second
+}
+
+table Root
+{
+    pick   Pick
+    anchor Second
+}

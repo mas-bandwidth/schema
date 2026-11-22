@@ -7,7 +7,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
-| `gotestreport/` | nightly go test -json row report | `go test ./tools/gotestreport` | `go run ./tools/gotestreport build/go-test-json` |
+| `gotestreport/` | go test -json row report and skip ledger | `go test ./tools/gotestreport` | `go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json` |
 | `gotestrows/` | ci-fast go-test matrix rows | `go test ./tools/gotestrows` | `go run ./tools/gotestrows ./...` |
 | `hostilecorpus/` | shared hostile-input corpus generator | `make schema-shared-hostile-corpus` | `make schema-shared-hostile-corpus-generate` |
 | `hostilecorpusexec/` | native-port hostile-corpus driver | `make schema-c-runs-hostile-corpus` | `make schema-c-runs-hostile-corpus` |
@@ -19,8 +19,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
+| `releasetargets/` | certify release-gates planner from make's database | `go test ./tools/releasetargets` | `go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
 | `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `slowgatescan/` | SCHEMA_SLOW recipe scan | `make slow-gate-scan` | `make slow-gate-scan` |
+| `tlcrun/` | TLC runner held to tla/RUNS.tsv | `go test ./tools/tlcrun` | `bash tla/run-tlc.sh` |
 | `treelock/` | generated-tree lock | `go test ./tools/treelock` | `go test ./tools/treelock` |
 | `vuln/` | govulncheck wrapper | `make vuln-selftest` | `make vuln-selftest` |

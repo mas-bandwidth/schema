@@ -33,7 +33,7 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 
 -- every surface test/conformance/README.md names, in its table's order
 local SURFACE_ORDER = {
-  "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
+  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
   "block-reason", "write-refusal", "write-refusal-fixed",
@@ -97,6 +97,13 @@ local function absent(outdir, name, reason)
 end
 
 local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
+
+-- A CODEC THAT IS NOT THERE is an EMPTY `<case>.absent` (README.md, "Exit
+-- codes"): a reason beside it would read as the leg's refusal, which on a row
+-- that owes an answer fails (review F-091).
+local function noCodec(outdir, name)
+  writeBytes(outdir .. "/" .. name .. ".absent", "")
+end
 
 ---------------------------------------------------------------------------
 -- the units
@@ -253,7 +260,7 @@ local function surfaceReport(all, outdir)
   for _, f in ipairs(kind(all, "report")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v = strictRead(u, f[4], mustRead(f[5]))
       answerRead(outdir, f[2], u, f[4], v, true)
@@ -267,7 +274,7 @@ local function surfaceFraming(all, outdir)
   for _, f in ipairs(kind(all, "framing")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v = loadVariable(u, f[4], mustRead(f[5]))
       answerRead(outdir, f[2], u, f[4], v, f[6] ~= "no-value")
@@ -286,7 +293,7 @@ local function surfaceWire(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
@@ -322,7 +329,7 @@ local function surfaceJsonRead(all, outdir)
     if not noText(f) then
       local u = unit(f[3])
       if not u then
-        absent(outdir, f[2], NOT_GENERATED)
+        noCodec(outdir, f[2])
       else
         local text = mustRead("testdata/conformance/tables/json/" .. f[2] .. ".json")
         local v = u.json.FromJson(u.T, f[4], text, newReport())
@@ -363,7 +370,7 @@ local function surfaceJsonWrite(all, outdir)
     if not noText(f) then
       local u = unit(f[3])
       if not u then
-        absent(outdir, f[2] .. ".json", NOT_GENERATED)
+        noCodec(outdir, f[2] .. ".json")
       else
         local v, why = strictRead(u, f[4], mustRead(f[5]))
         if v == nil then
@@ -385,7 +392,7 @@ local function surfaceJsonWrite(all, outdir)
   for _, f in ipairs(kind(all, "json-write-refusal")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2] .. ".json", NOT_GENERATED)
+      noCodec(outdir, f[2] .. ".json")
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
@@ -406,7 +413,7 @@ local function surfaceJsonHostile(all, outdir)
   for _, f in ipairs(kind(all, "json-hostile")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local text = mustRead(f[5] .. "/" .. f[4] .. ".json")
       local v = u.json.FromJson(u.T, f[4], text, newReport())
@@ -418,8 +425,8 @@ end
 -- the message form (docs/SPEC-TABLES.md §3.3)
 ---------------------------------------------------------------------------
 
-local function connectionNamed(all, key)
-  for _, c in ipairs(kind(all, "connection")) do
+local function connectionNamed(all, key, keyword)
+  for _, c in ipairs(kind(all, keyword or "connection")) do
     if c[2] == key then return c end
   end
   fail("no connection " .. key)
@@ -444,11 +451,12 @@ local function surfaceMessage(all, outdir)
     -- message <name> <connection> <root> <file-form wire> <message-form wire>
     local conn = connectionNamed(all, f[3])
     local u = unit(conn[3])
-    if f[6] == "-" then
+    if not u then
+      -- no codec at all comes first, whatever the row owes (review F-086)
+      noCodec(outdir, f[2])
+    elseif f[6] == "-" then
       -- a named refusal row: the root is a variable table (§3.3)
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
-    elseif not u then
-      absent(outdir, f[2], NOT_GENERATED)
     elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
     else
@@ -459,6 +467,34 @@ local function surfaceMessage(all, outdir)
       local saved = u.T.SaveMessages(f[4], vocab, values)
       if saved == nil then fail(f[2] .. ": message save refused") end
       writeBytes(outdir .. "/" .. f[2], saved)
+    end
+  end
+end
+
+-- `message-prior` (testdata/conformance/tables/FORMAT.md) is the same read of
+-- a prior writer's batch, handed on its own keywords. A row may owe a
+-- refusal, so the answer is what the public read returned: the batch re-saved,
+-- or `<case>.refused` holding this leg's own reason, which the harness never
+-- compares (docs/rulings.json `refusal-verdict-only`).
+local function surfaceMessagePrior(all, outdir)
+  for _, f in ipairs(kind(all, "prior-message")) do
+    local conn = connectionNamed(all, f[3], "prior-connection")
+    local u = unit(conn[3])
+    if not u then
+      absent(outdir, f[2], NOT_GENERATED)
+    elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
+      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+    else
+      local vocab = vocabulary(u, conn, f[2])
+      local r = newReport()
+      local values = u.T.LoadMessages(f[4], vocab, mustRead(f[6]), r)
+      if values == nil or #values < 1 then
+        writeBytes(outdir .. "/" .. f[2] .. ".refused", tostring(r.reason))
+      else
+        local saved = u.T.SaveMessages(f[4], vocab, values)
+        if saved == nil then fail(f[2] .. ": message save refused") end
+        writeBytes(outdir .. "/" .. f[2], saved)
+      end
     end
   end
 end
@@ -528,9 +564,9 @@ end
 local function surfaceRetain(all, outdir, saves)
   for _, f in ipairs(all) do
     if f[1] == "retain" then
-      local answer, why = retainRow(f)
+      local answer = retainRow(f)
       if answer == nil then
-        absent(outdir, f[2], why)
+        noCodec(outdir, f[2]) -- retainRow answers nil only for a unit not generated
       elseif answer.refused then
         if not saves then writeBytes(outdir .. "/" .. f[2], "refused\n") end
       elseif saves then
@@ -877,7 +913,7 @@ local function surfaceCookWrite(all, outdir)
     if inst == nil then fail("cook-write " .. f[2] .. " names no instance") end
     local u = unit(inst[3])
     if not u then
-      for _, o in ipairs(ORDERS) do absent(outdir, f[2] .. o[2], NOT_GENERATED) end
+      for _, o in ipairs(ORDERS) do noCodec(outdir, f[2] .. o[2]) end
     else
       -- THE RECIPE'S VALUE (FORMAT.md): the JSON input, or `-` for the
       -- no-text instance's wire; then the optional shared blob.
@@ -988,9 +1024,16 @@ local function wrefWalk(u, root, v, path)
     if fd.shape == "map" and index ~= nil and i == #segments - 1 then
       return child, { shape = "map_entry", which = segments[#segments], index = index }, nil
     end
-    if fd.shape == "union" and index == nil and i == #segments - 1 then
-      local un = u.T.Unions[fd.target]
-      if un == nil then fail("no union " .. tostring(fd.target)) end
+    -- a union's arm, held by the field itself or by one element of an array
+    -- of unions (bounded_steps[3].label): the element IS the union value
+    local unionTarget = nil
+    if fd.shape == "union" and index == nil then unionTarget = fd.target end
+    if fd.shape == "array" and index ~= nil and fd.elem ~= nil and fd.elem.shape == "union" then unionTarget = fd.elem.target end
+    if unionTarget ~= nil and i == #segments - 1 then
+      if index ~= nil then child = child[index] end
+      if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no union") end
+      local un = u.T.Unions[unionTarget]
+      if un == nil then fail("no union " .. tostring(unionTarget)) end
       local armName = segments[#segments]
       for _, arm in ipairs(un.arms) do
         if arm.name == armName then
@@ -999,7 +1042,7 @@ local function wrefWalk(u, root, v, path)
           return child, synthetic, nil
         end
       end
-      fail("no arm " .. armName .. " in union " .. tostring(fd.target))
+      fail("no arm " .. armName .. " in union " .. tostring(unionTarget))
     end
     if index ~= nil then child = child[index] end
     if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no table") end
@@ -1007,8 +1050,42 @@ local function wrefWalk(u, root, v, path)
   end
 end
 
--- set the one field: every value a row names is one this leg's storage holds,
--- so no row answers `unrepresentable`
+-- THE ONE CHECKED CONVERSION: every integer a row names reaches storage
+-- through here. Lua holds an integer field as a 64-bit integer, and an
+-- unsigned 64-bit field as that integer's two's-complement wrap, so a token is
+-- UNREPRESENTABLE when the integer cannot hold it distinctly: past int64, or
+-- for an unsigned 64-bit field below 0 or past 2^64 - 1. math.tointeger would
+-- hand back nil there, and the setter stored nil: the field went to its
+-- default, the writer wrote it, and the row answered `wrote` for a value that
+-- was never written. Answers the integer, or nil when it is unrepresentable.
+local function wrefInteger(text, unsigned64)
+  local n = tonumber(text)
+  if math.type(n) == "integer" then
+    if unsigned64 and n < 0 then return nil end
+    return n
+  end
+  if not (unsigned64 and text:match("^%d+$")) then return nil end
+  local acc = 0
+  for c in text:gmatch("%d") do
+    -- acc * 10 + digit within 64 unsigned bits, compared unsigned
+    if math.ult(0x1999999999999999, acc) then return nil end
+    local t = acc * 10
+    local s = t + (c:byte() - 48)
+    if math.ult(s, t) then return nil end
+    acc = s
+  end
+  return acc
+end
+
+-- the one field's declared storage: an unsigned 64-bit integer
+local function wrefUnsigned64(d)
+  return d ~= nil and d.shape == "int" and d.signed == false and d.width == 8
+end
+
+local UNREPRESENTABLE = "unrepresentable\n"
+
+-- set the one field; answers UNREPRESENTABLE, and sets nothing, when the
+-- value is one this leg's storage cannot hold
 local function wrefSet(u, root, v, path, what, text)
   local owner, fd, index = wrefWalk(u, root, v, path)
   if fd.shape == "map_entry" then
@@ -1020,8 +1097,13 @@ local function wrefSet(u, root, v, path, what, text)
     local newVal
     if what == "float" then newVal = wrefFloat(text)
     elseif what == "bytes" then newVal = hexBytes(text)
-    elseif what == "length" then newVal = string.rep("a", math.tointeger(tonumber(text)))
-    elseif what == "int" then newVal = math.tointeger(tonumber(text))
+    elseif what == "length" then
+      local n = wrefInteger(text, false)
+      if n == nil then return UNREPRESENTABLE end
+      newVal = string.rep("a", n)
+    elseif what == "int" then
+      newVal = wrefInteger(text, false)
+      if newVal == nil then return UNREPRESENTABLE end
     else fail("unsupported map_entry kind " .. what) end
     if fd.which == "key" then
       owner[oldK] = nil
@@ -1046,17 +1128,22 @@ local function wrefSet(u, root, v, path, what, text)
   local d = fd
   if index ~= nil and fd.shape == "array" then d = fd.elem end
   if what == "int" then
-    holder[key] = math.tointeger(tonumber(text))
-  elseif what == "float" then
+    local n = wrefInteger(text, wrefUnsigned64(d))
+    if n == nil then return UNREPRESENTABLE end
+    holder[key] = n
+  elseif what == "float" or what == "real" then
     holder[key] = wrefFloat(text)
   elseif what == "count" then
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local arr = holder[key] or {}
-    local n = math.tointeger(tonumber(text))
     for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
     for i = #arr, n + 1, -1 do arr[i] = nil end
     holder[key] = arr
   elseif what == "length" then
-    holder[key] = string.rep("a", math.tointeger(tonumber(text)))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
+    holder[key] = string.rep("a", n)
   elseif what == "bytes" then
     holder[key] = hexBytes(text)
   elseif what == "units" then
@@ -1065,7 +1152,8 @@ local function wrefSet(u, root, v, path, what, text)
     for i = 1, #b, 2 do units[#units + 1] = b:byte(i) * 256 + b:byte(i + 1) end
     holder[key] = units
   elseif what == "ordinal" then
-    local n = math.tointeger(tonumber(text))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local var = n ~= 0 and d.variants[n] or nil
     if var ~= nil then
       holder[key] = var[1]
@@ -1073,7 +1161,8 @@ local function wrefSet(u, root, v, path, what, text)
       holder[key] = n
     end
   elseif what == "tag" then
-    local n = math.tointeger(tonumber(text))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local un = u.T.Unions[d.target]
     local arm = un.arms[n]
     local x = { tag = n }
@@ -1116,13 +1205,14 @@ local function surfaceWriteRefusal(all, outdir, surface)
     end
     local u = unit(key)
     if not u then
-      absent(outdir, name, NOT_GENERATED)
+      noCodec(outdir, name)
     else
       local v, why = strictRead(u, root, mustRead(wire))
       if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
-      wrefSet(u, root, v, path, what, text)
-      local answer
-      if surface == "write-refusal" then
+      local answer = wrefSet(u, root, v, path, what, text)
+      if answer == UNREPRESENTABLE then
+        -- the type system refused it first: nothing was set or written
+      elseif surface == "write-refusal" then
         if isFixed(u, root) then
           answer = wrefFixedSave(u, root, v)
         else
@@ -1180,6 +1270,7 @@ elseif surface == "json-read" then surfaceJsonRead(all, outdir)
 elseif surface == "json-write" then surfaceJsonWrite(all, outdir)
 elseif surface == "json-hostile" then surfaceJsonHostile(all, outdir)
 elseif surface == "message" then surfaceMessage(all, outdir)
+elseif surface == "message-prior" then surfaceMessagePrior(all, outdir)
 elseif surface == "retain" then surfaceRetain(all, outdir, false)
 elseif surface == "retain-save" then surfaceRetain(all, outdir, true)
 elseif surface == "cook" then surfaceCook(all, outdir)

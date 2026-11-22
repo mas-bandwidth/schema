@@ -29,10 +29,6 @@
 
 package realworld;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-
 // RealWorld carries every generated declaration of RealWorld.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -41,8 +37,9 @@ public final class RealWorld {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -121,7 +118,7 @@ public final class RealWorld {
 
     // enumNamePacketMode: debug/log/tooling name for any PacketMode storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNamePacketMode(long value) {
+    public static java.lang.String enumNamePacketMode(long value) {
         if (value == PacketMode.NONE) {
             return "None";
         }
@@ -156,7 +153,7 @@ public final class RealWorld {
 
     // flagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
     // out-of-range bits name as "???"
-    public static String flagNamePacketFlags(int bit) {
+    public static java.lang.String flagNamePacketFlags(int bit) {
         switch (bit) {
             case 0:
                 return "Shielded";
@@ -175,8 +172,8 @@ public final class RealWorld {
 
     // flagNamesPacketFlags renders the set bits of value as "A|B" — "0" for the
     // empty set, bits past the declared variants as hex
-    public static String flagNamesPacketFlags(long value) {
-        StringBuilder names = new StringBuilder();
+    public static java.lang.String flagNamesPacketFlags(long value) {
+        java.lang.StringBuilder names = new java.lang.StringBuilder();
         if ((value & (1L << 0)) != 0) {
             if (names.length() > 0) {
                 names.append('|');
@@ -212,7 +209,7 @@ public final class RealWorld {
                 names.append('|');
             }
             // Long.toHexString renders the bit pattern, not a sign
-            names.append("0x").append(Long.toHexString((value >>> 5) << 5));
+            names.append("0x").append(java.lang.Long.toHexString((value >>> 5) << 5));
         }
         return names.length() == 0 ? "0" : names.toString();
     }
@@ -789,7 +786,7 @@ public final class RealWorld {
         scratch = putBits(data, pos, scratch, (value.f001Int + 805495) & 0x1fffffL, 21);
         pos += 21;
         {
-            final long b = Double.doubleToRawLongBits(value.f002F64);
+            final long b = java.lang.Double.doubleToRawLongBits(value.f002F64);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -806,7 +803,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 20000.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 20000.0f + 0.5f);
             if (v > 20000L) v = 20000L;
         }
         scratch = putBits(data, pos, scratch, v, 15);
@@ -820,7 +817,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f007F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f007F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, value.f008U64 & 0xffffffffL, 32);
@@ -834,7 +831,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f010F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f010F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, value.f011Bits & 0x3ffL, 10);
@@ -847,7 +844,7 @@ public final class RealWorld {
                             data,
                             pos,
                             scratch,
-                            Float.floatToRawIntBits(value.f013F32) & 0xffffffffL,
+                            java.lang.Float.floatToRawIntBits(value.f013F32) & 0xffffffffL,
                             32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (value.f014Uint) & 0x3ffL, 10);
@@ -862,7 +859,7 @@ public final class RealWorld {
         scratch = putBits(data, pos, scratch, (value.f018Int + 834) & 0x7ffL, 11);
         pos += 11;
         {
-            final long b = Double.doubleToRawLongBits(value.f019F64);
+            final long b = java.lang.Double.doubleToRawLongBits(value.f019F64);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -873,7 +870,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f020F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f020F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, (value.f021Ufixed) & 0x7ffffffL, 27);
@@ -883,7 +880,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f022F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f022F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, value.f023Bits & 0x1ffffffL, 25);
@@ -893,7 +890,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f024F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f024F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, (value.f025Fixed + 30464) & 0xffffL, 16);
@@ -909,7 +906,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 16.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 16.0f + 0.5f);
             if (v > 16L) v = 16L;
         }
         scratch = putBits(data, pos, scratch, v, 5);
@@ -925,7 +922,7 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f030F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f030F32) & 0xffffffffL,
                         32);
         pos += 32;
         scratch = putBits(data, pos, scratch, value.f031Bits & 0x1L, 1);
@@ -960,7 +957,7 @@ public final class RealWorld {
                             data,
                             pos,
                             scratch,
-                            Float.floatToRawIntBits(value.f044F32) & 0xffffffffL,
+                            java.lang.Float.floatToRawIntBits(value.f044F32) & 0xffffffffL,
                             32);
             pos += 32;
             scratch = putBits(data, pos, scratch, value.f045Bits & 0xfffL, 12);
@@ -971,7 +968,7 @@ public final class RealWorld {
             pos += 20;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.f048F64);
+            final long b = java.lang.Double.doubleToRawLongBits(value.f048F64);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -991,7 +988,7 @@ public final class RealWorld {
                             data,
                             pos,
                             scratch,
-                            Float.floatToRawIntBits(value.f053F32) & 0xffffffffL,
+                            java.lang.Float.floatToRawIntBits(value.f053F32) & 0xffffffffL,
                             32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (value.f054Int + 35) & 0x7fL, 7);
@@ -1008,11 +1005,11 @@ public final class RealWorld {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.f058F32) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.f058F32) & 0xffffffffL,
                         32);
         pos += 32;
         {
-            final long b = Double.doubleToRawLongBits(value.f059F64);
+            final long b = java.lang.Double.doubleToRawLongBits(value.f059F64);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -1029,7 +1026,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 360.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 360.0f + 0.5f);
             if (v > 360L) v = 360L;
         }
         scratch = putBits(data, pos, scratch, v, 9);
@@ -1051,7 +1048,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 60.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 60.0f + 0.5f);
             if (v > 60L) v = 60L;
         }
         scratch = putBits(data, pos, scratch, v, 6);
@@ -1067,7 +1064,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 800.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 800.0f + 0.5f);
             if (v > 800L) v = 800L;
         }
         scratch = putBits(data, pos, scratch, v, 10);
@@ -1081,7 +1078,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 2000.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 2000.0f + 0.5f);
             if (v > 2000L) v = 2000L;
         }
         scratch = putBits(data, pos, scratch, v, 11);
@@ -1099,7 +1096,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 500.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 500.0f + 0.5f);
             if (v > 500L) v = 500L;
         }
         scratch = putBits(data, pos, scratch, v, 9);
@@ -1113,7 +1110,7 @@ public final class RealWorld {
             }
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
-            v = (long) Math.floor(n * 10000.0f + 0.5f);
+            v = (long) java.lang.Math.floor(n * 10000.0f + 0.5f);
             if (v > 10000L) v = 10000L;
         }
         scratch = putBits(data, pos, scratch, v, 14);
@@ -1151,7 +1148,7 @@ public final class RealWorld {
         scratch = putBits(data, pos, scratch, (value.f086Uint) & 0x1ffL, 9);
         pos += 9;
         {
-            final long b = Double.doubleToRawLongBits(value.f087F64);
+            final long b = java.lang.Double.doubleToRawLongBits(value.f087F64);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -1205,7 +1202,7 @@ public final class RealWorld {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1228,7 +1225,7 @@ public final class RealWorld {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f002F64 = Double.longBitsToDouble(lo);
+        value.f002F64 = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
         bitsRead += 21;
         if (v > 1671794) {
@@ -1258,7 +1255,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f007F32 = Float.intBitsToFloat((int) v);
+        value.f007F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -1277,7 +1274,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f010F32 = Float.intBitsToFloat((int) v);
+        value.f010F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
         bitsRead += 10;
         value.f011Bits = v;
@@ -1293,7 +1290,7 @@ public final class RealWorld {
             if ((v & 0x7f800000L) == 0x7f800000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.f013F32 = Float.intBitsToFloat((int) v);
+            value.f013F32 = java.lang.Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
             bitsRead += 10;
             if (v > 775) {
@@ -1343,13 +1340,13 @@ public final class RealWorld {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f019F64 = Double.longBitsToDouble(lo);
+        value.f019F64 = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f020F32 = Float.intBitsToFloat((int) v);
+        value.f020F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffffL;
         bitsRead += 27;
         if (v > 102977536) {
@@ -1361,7 +1358,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f022F32 = Float.intBitsToFloat((int) v);
+        value.f022F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
         bitsRead += 25;
         value.f023Bits = v;
@@ -1370,7 +1367,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f024F32 = Float.intBitsToFloat((int) v);
+        value.f024F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 60928) {
@@ -1401,7 +1398,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f030F32 = Float.intBitsToFloat((int) v);
+        value.f030F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f031Bits = v;
@@ -1468,7 +1465,7 @@ public final class RealWorld {
             if ((v & 0x7f800000L) == 0x7f800000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.f044F32 = Float.intBitsToFloat((int) v);
+            value.f044F32 = java.lang.Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
             bitsRead += 12;
             value.f045Bits = v;
@@ -1502,7 +1499,7 @@ public final class RealWorld {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f048F64 = Double.longBitsToDouble(lo);
+        value.f048F64 = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 49152) {
@@ -1530,7 +1527,7 @@ public final class RealWorld {
             if ((v & 0x7f800000L) == 0x7f800000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.f053F32 = Float.intBitsToFloat((int) v);
+            value.f053F32 = java.lang.Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
             bitsRead += 7;
             if (v > 70) {
@@ -1566,7 +1563,7 @@ public final class RealWorld {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f058F32 = Float.intBitsToFloat((int) v);
+        value.f058F32 = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -1576,7 +1573,7 @@ public final class RealWorld {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f059F64 = Double.longBitsToDouble(lo);
+        value.f059F64 = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
         value.f060Bits = v;
@@ -1740,7 +1737,7 @@ public final class RealWorld {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.f087F64 = Double.longBitsToDouble(lo);
+        value.f087F64 = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;
         if (v > 1388) {

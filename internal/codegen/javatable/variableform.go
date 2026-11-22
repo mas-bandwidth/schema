@@ -40,7 +40,7 @@ public final class TableVariable {
     // infinity in a float's raw bits refuses as non_finite_float, the
     // strict load, naming the first such field, and lands nothing.
     // Every finite float32 widens exactly through the ordinary conversion.
-    public static void nonFiniteFloat(Report report, String field) {
+    public static void nonFiniteFloat(Report report, java.lang.String field) {
         if (report.reason == null) {
             report.reason = "non_finite_float: " + field;
         }
@@ -53,7 +53,7 @@ public final class TableVariable {
     // the value at an end float32 cannot spell exactly (max = 0.1) is the
     // float32 nearest it and in range. Its -0 IS +0: it lands as +0, uncounted
     // (ruling fixed-compressed-negzero). The variable and JSON reads share it.
-    public static float compressedF32(float v, float lo, float hi, Report report, String field) {
+    public static float compressedF32(float v, float lo, float hi, Report report, java.lang.String field) {
         if (v < lo) {
             report.refuse("out_of_range", field);
             return lo;
@@ -67,8 +67,8 @@ public final class TableVariable {
 
     // a retained unknown float is named by the table that holds it and the
     // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
-    public static String retainedFloatName(String owner, long id) {
-        String hex = Long.toHexString(id);
+    public static java.lang.String retainedFloatName(java.lang.String owner, long id) {
+        java.lang.String hex = java.lang.Long.toHexString(id);
         return owner + ".0x" + "0000000000000000".substring(hex.length()) + hex;
     }
 
@@ -89,7 +89,7 @@ public final class TableVariable {
         public int widened;
         public int missingRequired;
         public boolean refused;
-        public String reason;
+        public java.lang.String reason;
         public int retained;
         public int retainLost;
         // THE NUMBERING this load reads against, set when the node table is
@@ -119,14 +119,14 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
-        public void refuse(String why) {
+        public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;
                 reason = why;
             }
         }
 
-        public void refuse(String why, String field) {
+        public void refuse(java.lang.String why, java.lang.String field) {
             if (!refused) {
                 refused = true;
                 reason = (field != null && !field.isEmpty()) ? (why + ": " + field) : why;
@@ -470,7 +470,7 @@ public final class TableVariable {
                     overflow = true;
                     return 0;
                 }
-                entries = java.util.Arrays.copyOf(entries, Math.min(65536, entries.length * 2));
+                entries = java.util.Arrays.copyOf(entries, java.lang.Math.min(65536, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -506,8 +506,8 @@ public final class TableVariable {
                 overflow = true;
                 return false;
             }
-            long want = Math.max((long) buf.length * 2, (long) off + n);
-            if (want > Integer.MAX_VALUE - 8) {
+            long want = java.lang.Math.max((long) buf.length * 2, (long) off + n);
+            if (want > java.lang.Integer.MAX_VALUE - 8) {
                 overflow = true;
                 return false;
             }
@@ -545,7 +545,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start, buf, start + k, len);
             putLebAt(start, len);
             off += k;
         }
@@ -558,7 +558,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start, buf, start + k, len);
             int at = putLebAt(start, ref);
             buf[at++] = (byte) kind;
             putLebAt(at, len);
@@ -573,7 +573,7 @@ public final class TableVariable {
             if (k > drop && !room(k - drop)) {
                 return;
             }
-            System.arraycopy(buf, start + drop, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start + drop, buf, start + k, len);
             putLebAt(start, len);
             off = start + k + len;
         }
@@ -586,7 +586,7 @@ public final class TableVariable {
             if (k > drop && !room(k - drop)) {
                 return;
             }
-            System.arraycopy(buf, start + drop, buf, start + k, len);
+            java.lang.System.arraycopy(buf, start + drop, buf, start + k, len);
             int at = putLebAt(start, key);
             putLebAt(at, len);
             off = start + k + len;
@@ -600,7 +600,7 @@ public final class TableVariable {
             if (!room(k)) {
                 return;
             }
-            System.arraycopy(buf, start, buf, start + k, entries);
+            java.lang.System.arraycopy(buf, start, buf, start + k, entries);
             int at = putLebAt(start, length);
             buf[at++] = (byte) kind;
             putLebAt(at, count);
@@ -610,7 +610,7 @@ public final class TableVariable {
         // putUtf8 writes one string as L then its UTF-8 bytes, byte for byte
         // what String.getBytes(UTF_8) spells (a lone surrogate is '?'), with no
         // byte[] of its own.
-        public void putUtf8(String s) {
+        public void putUtf8(java.lang.String s) {
             int n = s.length();
             long len = 0;
             for (int i = 0; i < n; i++) {
@@ -619,12 +619,12 @@ public final class TableVariable {
                     len += 1;
                 } else if (c < 0x800) {
                     len += 2;
-                } else if (Character.isHighSurrogate(c)
+                } else if (java.lang.Character.isHighSurrogate(c)
                         && i + 1 < n
-                        && Character.isLowSurrogate(s.charAt(i + 1))) {
+                        && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                     len += 4;
                     i++;
-                } else if (Character.isSurrogate(c)) {
+                } else if (java.lang.Character.isSurrogate(c)) {
                     len += 1;
                 } else {
                     len += 3;
@@ -638,15 +638,15 @@ public final class TableVariable {
                 } else if (c < 0x800) {
                     put8(0xc0 | (c >> 6));
                     put8(0x80 | (c & 0x3f));
-                } else if (Character.isHighSurrogate(c)
+                } else if (java.lang.Character.isHighSurrogate(c)
                         && i + 1 < n
-                        && Character.isLowSurrogate(s.charAt(i + 1))) {
-                    int cp = Character.toCodePoint(c, s.charAt(++i));
+                        && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
+                    int cp = java.lang.Character.toCodePoint(c, s.charAt(++i));
                     put8(0xf0 | (cp >> 18));
                     put8(0x80 | ((cp >> 12) & 0x3f));
                     put8(0x80 | ((cp >> 6) & 0x3f));
                     put8(0x80 | (cp & 0x3f));
-                } else if (Character.isSurrogate(c)) {
+                } else if (java.lang.Character.isSurrogate(c)) {
                     put8('?');
                 } else {
                     put8(0xe0 | (c >> 12));
@@ -692,7 +692,7 @@ public final class TableVariable {
         // exact, and refuse a NaN or an infinity for the whole save
         // (docs/SPEC-TABLES.md §3.3): no table writer emits one.
         public void putF32(float v) {
-            int bits = Float.floatToRawIntBits(v);
+            int bits = java.lang.Float.floatToRawIntBits(v);
             if ((bits & 0x7f800000) == 0x7f800000) {
                 ids.nonFinite = true;
             }
@@ -700,7 +700,7 @@ public final class TableVariable {
         }
 
         public void putF64(double v) {
-            long bits = Double.doubleToRawLongBits(v);
+            long bits = java.lang.Double.doubleToRawLongBits(v);
             if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 ids.nonFinite = true;
             }
@@ -898,8 +898,8 @@ public final class TableVariable {
     // reaches, and one blob record named from two slots. tla/ReadOrder.tla
     // models the split (WireDamage, Unreachable, Cycle, BlobShared); the walk
     // covers every slot, known or not.
-    private static final ThreadLocal<WireCheck> WIRE_CHECK =
-            ThreadLocal.withInitial(WireCheck::new);
+    private static final java.lang.ThreadLocal<WireCheck> WIRE_CHECK =
+            java.lang.ThreadLocal.withInitial(WireCheck::new);
 
     static final class WireCheck {
         static final int OK = 0;
@@ -949,9 +949,9 @@ public final class TableVariable {
             this.buf = buf;
             this.ids = ids;
             if (stamp.length <= ids.length) {
-                stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
+                stamp = new int[java.lang.Math.max(ids.length + 1, stamp.length * 2)];
                 gen = 0;
-            } else if (gen < 0 || gen > Integer.MAX_VALUE - buf.length) {
+            } else if (gen < 0 || gen > java.lang.Integer.MAX_VALUE - buf.length) {
                 // A body and a keyed array each spend at least one byte, so
                 // this file stamps at most buf.length generations. Clear the
                 // stamps before the walk whenever those generations would
@@ -1016,7 +1016,7 @@ public final class TableVariable {
                         return -1;
                     }
                     at = off;
-                    return v < 0 ? Long.MAX_VALUE : v;
+                    return v < 0 ? java.lang.Long.MAX_VALUE : v;
                 }
                 shift += 7;
             }
@@ -1125,7 +1125,7 @@ public final class TableVariable {
                 return DAMAGED;
             }
             if (edgeStart.length < n + 2) {
-                edgeStart = new int[Math.max(n + 2, edgeStart.length * 2)];
+                edgeStart = new int[java.lang.Math.max(n + 2, edgeStart.length * 2)];
             }
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
@@ -1146,7 +1146,7 @@ public final class TableVariable {
         // unreachable; and a blob record named from two slots is blob_shared.
         boolean graph(int[] edgeStart, int n, boolean[] blob) {
             if (names.length < n) {
-                int cap = Math.max(n, names.length * 2);
+                int cap = java.lang.Math.max(n, names.length * 2);
                 names = new int[cap];
                 mark = new byte[cap];
                 stack = new int[cap];
@@ -1336,7 +1336,7 @@ public final class TableVariable {
                             return -1;
                         }
                         if (edgeCount == edges.length) {
-                            edges = java.util.Arrays.copyOf(edges, Math.max(8, edgeCount * 2));
+                            edges = java.util.Arrays.copyOf(edges, java.lang.Math.max(8, edgeCount * 2));
                         }
                         edges[edgeCount++] = index;
                         return at;
@@ -1591,7 +1591,7 @@ public final class TableVariable {
     // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
     // twice the 4096-entry bound so it is never more than half full (§3): the
     // walk allocates nothing per call and every slot compares the stored id.
-    private static final ThreadLocal<IdProbe> ID_PROBE = ThreadLocal.withInitial(IdProbe::new);
+    private static final java.lang.ThreadLocal<IdProbe> ID_PROBE = java.lang.ThreadLocal.withInitial(IdProbe::new);
 
     static final class IdProbe {
         final long[] seen = new long[8192];
@@ -1903,7 +1903,7 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
-    public static long utf8Len(String s) {
+    public static long utf8Len(java.lang.String s) {
         if (s == null) {
             return 0;
         }
@@ -1915,12 +1915,12 @@ public final class TableVariable {
                 len += 1;
             } else if (c < 0x800) {
                 len += 2;
-            } else if (Character.isHighSurrogate(c)
+            } else if (java.lang.Character.isHighSurrogate(c)
                     && i + 1 < n
-                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                    && java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                 len += 4;
                 i++;
-            } else if (Character.isSurrogate(c)) {
+            } else if (java.lang.Character.isSurrogate(c)) {
                 len += 1;
             } else {
                 len += 3;
@@ -1932,7 +1932,7 @@ public final class TableVariable {
     // textWritable is the write contract on text (docs/SPEC.md §5.1 rows 4
     // and 8): no lone surrogate, no zero, and a UTF-8 length inside max (a
     // negative max is unbounded). A writer's checkWrite asserts it: debug only.
-    public static boolean textWritable(String s, long max) {
+    public static boolean textWritable(java.lang.String s, long max) {
         if (s == null) {
             return true;
         }
@@ -1946,13 +1946,13 @@ public final class TableVariable {
                 len += 1;
             } else if (c < 0x800) {
                 len += 2;
-            } else if (Character.isHighSurrogate(c)) {
-                if (i + 1 >= n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+            } else if (java.lang.Character.isHighSurrogate(c)) {
+                if (i + 1 >= n || !java.lang.Character.isLowSurrogate(s.charAt(i + 1))) {
                     return false;
                 }
                 len += 4;
                 i++;
-            } else if (Character.isLowSurrogate(c)) {
+            } else if (java.lang.Character.isLowSurrogate(c)) {
                 return false;
             } else {
                 len += 3;
@@ -1967,16 +1967,16 @@ public final class TableVariable {
     // a recursion, so a long chain cannot run out of stack. Debug only: a
     // writer's checkWrite makes one under an assert.
     public static final class WriteCheck {
-        private final java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
-        private final java.util.ArrayDeque<Object> pending = new java.util.ArrayDeque<>();
+        private final java.util.IdentityHashMap<java.lang.Object, java.lang.Boolean> seen = new java.util.IdentityHashMap<>();
+        private final java.util.ArrayDeque<java.lang.Object> pending = new java.util.ArrayDeque<>();
 
-        public void point(Object target) {
-            if (target != null && seen.put(target, Boolean.TRUE) == null) {
+        public void point(java.lang.Object target) {
+            if (target != null && seen.put(target, java.lang.Boolean.TRUE) == null) {
                 pending.add(target);
             }
         }
 
-        public Object next() {
+        public java.lang.Object next() {
             return pending.poll();
         }
     }
@@ -1985,7 +1985,7 @@ public final class TableVariable {
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
     // text is not text at whatever length the reader would have kept.
-    public static String utf8FromFixed(byte[] b, int len) {
+    public static java.lang.String utf8FromFixed(byte[] b, int len) {
         assert len >= 0 && len <= b.length;
         try {
             return java.nio.charset.StandardCharsets.UTF_8
@@ -1995,7 +1995,7 @@ public final class TableVariable {
                     .decode(java.nio.ByteBuffer.wrap(b, 0, len))
                     .toString();
         } catch (java.nio.charset.CharacterCodingException bad) {
-            throw new AssertionError("ill-formed UTF-8 in fixed text");
+            throw new java.lang.AssertionError("ill-formed UTF-8 in fixed text");
         }
     }
 
@@ -2060,9 +2060,9 @@ public final class TableVariable {
     public static final class NodeRecord {
         public long typeId;
         public final byte[] body;
-        public String value;
+        public java.lang.String value;
         public byte[] bytes;
-        public Object table;
+        public java.lang.Object table;
         public boolean textMalformed;
         public boolean named;
         public boolean judged;
@@ -2116,7 +2116,7 @@ public final class TableVariable {
                 return null;
             }
             byte[] body = new byte[(int) size];
-            System.arraycopy(r.buf, r.off, body, 0, (int) size);
+            java.lang.System.arraycopy(r.buf, r.off, body, 0, (int) size);
             r.off += (int) size;
             list.add(new NodeRecord(typeId, body));
         }
@@ -2137,7 +2137,7 @@ public final class TableVariable {
                     rec.typeId = 0;
                     rec.textMalformed = true;
                 } else {
-                    rec.value = new String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
+                    rec.value = new java.lang.String(rec.body, java.nio.charset.StandardCharsets.UTF_8);
                 }
             } else if (rec.typeId == BYTES_ID) {
                 rec.bytes = rec.body;
@@ -2448,7 +2448,7 @@ public final class TableVariable {
             return;
         }
         NodeRecord[] recs = report.nodeRecs;
-        if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
+        if (java.lang.Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
             report.damaged = true; // a reference above the entry count is damage
             return;
         }
@@ -2497,7 +2497,7 @@ public final class TableVariable {
         return false;
     }
 
-    public static String resolveString(NodeRecord[] recs, long index, Report report) {
+    public static java.lang.String resolveString(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -2599,18 +2599,18 @@ public final class TableVariable {
             NodeTable nt,
             long index,
             long targetTypeId,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             Report report) {
         return resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
     }
 
-    @SuppressWarnings("unchecked")
+    @java.lang.SuppressWarnings("unchecked")
     public static <T> T resolveTable(
             NodeRecord[] recs,
             long index,
             long targetTypeId,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             Report report) {
         if (index == 0) {
@@ -2646,25 +2646,25 @@ public final class TableVariable {
     // reset() empties it for the next save while keeping its arrays, so a
     // reused Saver numbers a graph with nothing allocated per node.
     public static final class NodeGraph {
-        private Object[] keys = new Object[16];
+        private java.lang.Object[] keys = new java.lang.Object[16];
         private long[] keyIndex = new long[16];
         private int[] keyUses = new int[16];
         private boolean[] keyOpen = new boolean[16];
         private int keyCount;
-        private Object[] nodeValue = new Object[8];
+        private java.lang.Object[] nodeValue = new java.lang.Object[8];
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
         // The graph walk's work list: one frame per field to visit, plus the
         // close marker that ends a descended node. It is grow-only and reused
         // like the arrays above, so numbering a graph recurses nowhere.
-        private Object[] workValue = new Object[16];
+        private java.lang.Object[] workValue = new java.lang.Object[16];
         private int[] workKind = new int[16];
         private int[] workField = new int[16];
         private int[] workIndex = new int[16];
-        private Object[] workClose = new Object[16];
+        private java.lang.Object[] workClose = new java.lang.Object[16];
         private int workSize;
-        public final java.util.IdentityHashMap<Object, Long> labels =
+        public final java.util.IdentityHashMap<java.lang.Object, java.lang.Long> labels =
                 new java.util.IdentityHashMap<>();
 
         public void reset() {
@@ -2686,7 +2686,7 @@ public final class TableVariable {
             }
         }
 
-        public void push(Object value, int kind, int field, int index, Object close) {
+        public void push(java.lang.Object value, int kind, int field, int index, java.lang.Object close) {
             if (workSize == workValue.length) {
                 int cap = workSize * 2;
                 workValue = java.util.Arrays.copyOf(workValue, cap);
@@ -2704,11 +2704,11 @@ public final class TableVariable {
         }
 
         public int workCount() { return workSize; }
-        public Object workValue(int i) { return workValue[i]; }
+        public java.lang.Object workValue(int i) { return workValue[i]; }
         public int workKind(int i) { return workKind[i]; }
         public int workField(int i) { return workField[i]; }
         public int workIndex(int i) { return workIndex[i]; }
-        public Object workClose(int i) { return workClose[i]; }
+        public java.lang.Object workClose(int i) { return workClose[i]; }
 
         public void pop() {
             workSize--;
@@ -2716,9 +2716,9 @@ public final class TableVariable {
             workClose[workSize] = null;
         }
 
-        private int slot(Object obj) {
+        private int slot(java.lang.Object obj) {
             int mask = keys.length - 1;
-            int h = System.identityHashCode(obj);
+            int h = java.lang.System.identityHashCode(obj);
             int i = (h ^ (h >>> 16)) & mask;
             while (keys[i] != null && keys[i] != obj) {
                 i = (i + 1) & mask;
@@ -2726,23 +2726,23 @@ public final class TableVariable {
             return i;
         }
 
-        private int find(Object obj) {
+        private int find(java.lang.Object obj) {
             int i = slot(obj);
             return keys[i] == obj ? i : -1;
         }
 
-        private int insert(Object obj) {
+        private int insert(java.lang.Object obj) {
             int i = slot(obj);
             if (keys[i] == obj) {
                 return i;
             }
             if ((keyCount + 1) * 2 > keys.length) {
-                Object[] ok = keys;
+                java.lang.Object[] ok = keys;
                 long[] oi = keyIndex;
                 int[] ou = keyUses;
                 boolean[] oo = keyOpen;
                 int cap = keys.length * 2;
-                keys = new Object[cap];
+                keys = new java.lang.Object[cap];
                 keyIndex = new long[cap];
                 keyUses = new int[cap];
                 keyOpen = new boolean[cap];
@@ -2765,17 +2765,17 @@ public final class TableVariable {
             return i;
         }
 
-        public long index(Object obj) {
+        public long index(java.lang.Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyIndex[i];
         }
 
-        public boolean indexed(Object obj) {
+        public boolean indexed(java.lang.Object obj) {
             return index(obj) != 0;
         }
 
-        public int useCount(Object obj) {
+        public int useCount(java.lang.Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyUses[i];
@@ -2783,12 +2783,12 @@ public final class TableVariable {
 
         // setOpen marks a target whose body is being numbered: a pointer that
         // reaches it before it is indexed is a cycle the walk refuses.
-        public void setOpen(Object obj, boolean open) {
+        public void setOpen(java.lang.Object obj, boolean open) {
             if (obj == null) return;
             keyOpen[insert(obj)] = open;
         }
 
-        public boolean recordPointer(Object target, long typeId, boolean isBlob) {
+        public boolean recordPointer(java.lang.Object target, long typeId, boolean isBlob) {
             if (target == null) return true;
             int i = insert(target);
             if (keyOpen[i]) {
@@ -2817,7 +2817,7 @@ public final class TableVariable {
             return true;
         }
 
-        public long recordBlob(Object target, long typeId) {
+        public long recordBlob(java.lang.Object target, long typeId) {
             if (target == null) return 0;
             if (nodeCount == nodeValue.length) {
                 int cap = nodeCount * 2;
@@ -2837,7 +2837,7 @@ public final class TableVariable {
             return nodeCount;
         }
 
-        public Object nodeValue(int i) {
+        public java.lang.Object nodeValue(int i) {
             return nodeValue[i];
         }
 
@@ -2867,7 +2867,7 @@ public final class TableVariable {
 
         public Saver(int capacity) {
             ids.growable = true;
-            writer = new Writer(new byte[Math.max(capacity, 16)], ids);
+            writer = new Writer(new byte[java.lang.Math.max(capacity, 16)], ids);
             writer.growable = true;
         }
 
@@ -2899,28 +2899,28 @@ public final class TableVariable {
         }
 
         private final java.util.ArrayList<Entry> entries = new java.util.ArrayList<>();
-        private final java.util.IdentityHashMap<String, Long> seen =
+        private final java.util.IdentityHashMap<java.lang.String, java.lang.Long> seen =
                 new java.util.IdentityHashMap<>();
-        private final java.util.IdentityHashMap<byte[], Long> seenBytes =
+        private final java.util.IdentityHashMap<byte[], java.lang.Long> seenBytes =
                 new java.util.IdentityHashMap<>();
         private int next = 2;
 
-        public long ref(String s) {
-            Long have = seen.get(s);
+        public long ref(java.lang.String s) {
+            java.lang.Long have = seen.get(s);
             if (have != null) {
                 return have.longValue();
             }
-            seen.put(s, Long.valueOf(next));
+            seen.put(s, java.lang.Long.valueOf(next));
             entries.add(new Entry(STRING_ID, s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return next++;
         }
 
         public long refBytes(byte[] b) {
-            Long have = seenBytes.get(b);
+            java.lang.Long have = seenBytes.get(b);
             if (have != null) {
                 return have.longValue();
             }
-            seenBytes.put(b, Long.valueOf(next));
+            seenBytes.put(b, java.lang.Long.valueOf(next));
             entries.add(new Entry(BYTES_ID, b));
             return next++;
         }
@@ -2956,7 +2956,7 @@ const tableJsonRuntime = `// The TEXT FORM's runtime (docs/SPEC-TABLES.md §16):
 public final class TableJson {
     private TableJson() {}
 
-    static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+    static void writeFlags(java.lang.StringBuilder b, long bits, java.lang.String[] names, int depth) {
         assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
@@ -2971,7 +2971,7 @@ public final class TableJson {
         b.append(']');
     }
 
-    static Long readFlags(In in, String[] names) {
+    static java.lang.Long readFlags(In in, java.lang.String[] names) {
         if (in.peek() != '[') {
             in.skipValue();
             in.rep.refuse("kind_mismatch");
@@ -2988,7 +2988,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanVariantName();
+                java.lang.String name = in.scanVariantName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -3033,11 +3033,11 @@ public final class TableJson {
         return new long[]{y, m, d};
     }
 
-    public static void writeTimestamp(StringBuilder b, long nanos) {
-        long sec = Math.floorDiv(nanos, 1_000_000_000L);
-        long sub = Math.floorMod(nanos, 1_000_000_000L);
-        long days = Math.floorDiv(sec, 86400L);
-        long sod = Math.floorMod(sec, 86400L);
+    public static void writeTimestamp(java.lang.StringBuilder b, long nanos) {
+        long sec = java.lang.Math.floorDiv(nanos, 1_000_000_000L);
+        long sub = java.lang.Math.floorMod(nanos, 1_000_000_000L);
+        long days = java.lang.Math.floorDiv(sec, 86400L);
+        long sod = java.lang.Math.floorMod(sec, 86400L);
         long[] ymd = civilFromDays(days);
         int hour = (int) (sod / 3600L);
         int minute = (int) ((sod % 3600L) / 60L);
@@ -3101,17 +3101,17 @@ public final class TableJson {
         return era * 146097L + doe - 719468L;
     }
 
-    static int timestampDigit(String s, int i) {
+    static int timestampDigit(java.lang.String s, int i) {
         char c = s.charAt(i);
         return (c >= '0' && c <= '9') ? (c - '0') : -1;
     }
 
-    public static long readTimestamp(In in, String field) {
-        String s = in.scanString();
+    public static long readTimestamp(In in, java.lang.String field) {
+        java.lang.String s = in.scanString();
         if (in.bad || s == null) {
             return 0L;
         }
-        Long parsed = parseRfc3339(s);
+        java.lang.Long parsed = parseRfc3339(s);
         if (parsed == null) {
             in.bad = true;
             if (in.rep != null && in.rep.reason == null) {
@@ -3122,7 +3122,7 @@ public final class TableJson {
         return parsed;
     }
 
-    static Long parseRfc3339(String s) {
+    static java.lang.Long parseRfc3339(java.lang.String s) {
         int n = s.length();
         if (n < 20) return null;
         int y0 = timestampDigit(s, 0),
@@ -3201,13 +3201,13 @@ public final class TableJson {
         if (sec == -9223372037L && sub < 145_224_192L) return null;
         if (sec == 9223372036L && sub > 854_775_807L) return null;
         if (sec == -9223372037L) {
-            return Long.MIN_VALUE + (sub - 145_224_192L);
+            return java.lang.Long.MIN_VALUE + (sub - 145_224_192L);
         }
         return sec * 1_000_000_000L + sub;
     }
 
     // indent starts a new line at the given depth: two spaces per level.
-    public static void indent(StringBuilder b, int depth) {
+    public static void indent(java.lang.StringBuilder b, int depth) {
         b.append('\n');
         for (int i = 0; i < depth; i++) {
             b.append("  ");
@@ -3218,7 +3218,7 @@ public final class TableJson {
     // requires and passing every other code point through raw (§16.2). A
     // control character becomes an escape; a lone surrogate is not text and
     // refuses the write (invalid_value, §16.3, §16.14 W0), nothing replaced.
-    public static void esc(StringBuilder b, String s) {
+    public static void esc(java.lang.StringBuilder b, java.lang.String s) {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -3269,10 +3269,10 @@ public final class TableJson {
     // REFUSED is how the walk refuses a value it cannot name (§16.3): a
     // non-finite float has no JSON spelling, and toJson answers null rather
     // than write text that does not say what the instance holds.
-    public static final class Refused extends RuntimeException {
+    public static final class Refused extends java.lang.RuntimeException {
         private static final long serialVersionUID = 1L;
 
-        public Refused(String why) {
+        public Refused(java.lang.String why) {
             super(why, null, false, false);
         }
     }
@@ -3286,8 +3286,8 @@ public final class TableJson {
     // Float.parseFloat for a float32, never a double narrowed. It is NOT
     // Float.toString or Double.toString, whose shortest spelling is Java's own
     // ("1.0E10", "0.0") and whose digits can differ from C's on a tie.
-    public static void writeFloat(StringBuilder b, double value, boolean single) {
-        if (!Double.isFinite(value)) {
+    public static void writeFloat(java.lang.StringBuilder b, double value, boolean single) {
+        if (!java.lang.Double.isFinite(value)) {
             throw new Refused("a non-finite float has no JSON spelling");
         }
         int low = 15;
@@ -3297,15 +3297,15 @@ public final class TableJson {
             high = 9;
         }
         for (int digits = low; ; digits++) {
-            String text = formatG(value, digits);
+            java.lang.String text = formatG(value, digits);
             if (digits >= high) {
                 b.append(text);
                 return;
             }
             boolean same =
                     single
-                            ? (double) Float.parseFloat(text) == value
-                            : Double.parseDouble(text) == value;
+                            ? (double) java.lang.Float.parseFloat(text) == value
+                            : java.lang.Double.parseDouble(text) == value;
             if (same) {
                 b.append(text);
                 return;
@@ -3320,19 +3320,19 @@ public final class TableJson {
     // decimal exponent is below -4 or at least prec, the plain form otherwise,
     // trailing zeros and a trailing point removed, an exponent of at least two
     // digits, and a negative zero's sign kept.
-    static String formatG(double value, int prec) {
+    static java.lang.String formatG(double value, int prec) {
         if (prec < 1) {
             prec = 1;
         }
-        String digits = "0";
+        java.lang.String digits = "0";
         int exp = 0;
         if (value != 0.0) {
             java.math.BigDecimal r =
-                    new java.math.BigDecimal(Math.abs(value))
+                    new java.math.BigDecimal(java.lang.Math.abs(value))
                             .round(
                                     new java.math.MathContext(
                                             prec, java.math.RoundingMode.HALF_EVEN));
-            String u = r.unscaledValue().toString();
+            java.lang.String u = r.unscaledValue().toString();
             exp = u.length() - 1 - r.scale();
             int end = u.length();
             while (end > 1 && u.charAt(end - 1) == '0') {
@@ -3340,8 +3340,8 @@ public final class TableJson {
             }
             digits = u.substring(0, end);
         }
-        StringBuilder s = new StringBuilder();
-        if (Double.doubleToRawLongBits(value) < 0) {
+        java.lang.StringBuilder s = new java.lang.StringBuilder();
+        if (java.lang.Double.doubleToRawLongBits(value) < 0) {
             s.append('-');
         }
         if (exp < -4 || exp >= prec) {
@@ -3350,7 +3350,7 @@ public final class TableJson {
                 s.append('.').append(digits, 1, digits.length());
             }
             s.append('e').append(exp < 0 ? '-' : '+');
-            int a = Math.abs(exp);
+            int a = java.lang.Math.abs(exp);
             if (a < 10) {
                 s.append('0');
             }
@@ -3375,11 +3375,11 @@ public final class TableJson {
     // THE READER: a cursor over the byte[] the caller owns, one report shared
     // with the wire (§4). Nothing allocates beyond the strings it reads.
     public static final class LabelEntry {
-        public final Object value;
+        public final java.lang.Object value;
         public final long typeId;
         public boolean open;
 
-        public LabelEntry(Object value, long typeId, boolean open) {
+        public LabelEntry(java.lang.Object value, long typeId, boolean open) {
             this.value = value;
             this.typeId = typeId;
             this.open = open;
@@ -3391,7 +3391,7 @@ public final class TableJson {
         // uses (internal/tabletext maxJsonDepth), so a tree past it is
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
-        public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
+        public final java.util.Map<java.lang.Long, LabelEntry> labels = new java.util.HashMap<>();
         // graph: the root is variable, so its text carries labels (§16.7) and
         // a skipped object's & key is held to the label rules; a fixed root's
         // reader skips such a value whole (internal/tabletext Read).
@@ -3479,7 +3479,7 @@ public final class TableJson {
             while (p < t.length && t[p] >= '0' && t[p] <= '9') {
                 int digit = t[p] - '0';
                 p++;
-                if (label > (Long.MAX_VALUE - digit) / 10) {
+                if (label > (java.lang.Long.MAX_VALUE - digit) / 10) {
                     bad = true;
                     return -1;
                 }
@@ -3491,21 +3491,21 @@ public final class TableJson {
         public double number() {
             rejected = false;
             boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
+            java.lang.String tok = scanNumber(integral);
             if (bad || tok == null) {
                 return 0.0;
             }
             double value;
             try {
-                value = Double.parseDouble(tok);
-            } catch (NumberFormatException e) {
+                value = java.lang.Double.parseDouble(tok);
+            } catch (java.lang.NumberFormatException e) {
                 bad = true;
                 return 0.0;
             }
             // §16.2, §16.3: a magnitude the format cannot hold is the wrong
             // shape for the kind, never stored as an infinity the writer
             // would refuse.
-            if (!Double.isFinite(value)) {
+            if (!java.lang.Double.isFinite(value)) {
                 rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0;
@@ -3521,21 +3521,21 @@ public final class TableJson {
         public float number32() {
             rejected = false;
             boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
+            java.lang.String tok = scanNumber(integral);
             if (bad || tok == null) {
                 return 0.0f;
             }
             float value;
             try {
-                value = Float.parseFloat(tok);
-            } catch (NumberFormatException e) {
+                value = java.lang.Float.parseFloat(tok);
+            } catch (java.lang.NumberFormatException e) {
                 bad = true;
                 return 0.0f;
             }
             // §16.2: the conversion at the field's own width turns a decimal
             // at or past the float32 overflow midpoint into an infinity; that
             // is the wrong shape for the kind (§16.3).
-            if (!Float.isFinite(value)) {
+            if (!java.lang.Float.isFinite(value)) {
                 rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0f;
@@ -3548,7 +3548,7 @@ public final class TableJson {
             return p < t.length ? (t[p] & 0xff) : 0;
         }
 
-        boolean lit(String w) {
+        boolean lit(java.lang.String w) {
             space();
             if (p + w.length() > t.length) {
                 bad = true;
@@ -3596,14 +3596,14 @@ public final class TableJson {
         // raw control character in the body, an invalid escape, or a lone or
         // out-of-order surrogate escape is damaged and refuses the whole read
         // (§16.2, §16.3; docs/plans/strict-only.md decision 9): no U+FFFD.
-        public String scanString() {
+        public java.lang.String scanString() {
             space();
             if (p >= t.length || t[p] != '"') {
                 bad = true;
                 return null;
             }
             p++;
-            StringBuilder b = new StringBuilder();
+            java.lang.StringBuilder b = new java.lang.StringBuilder();
             while (true) {
                 if (p >= t.length) {
                     bad = true;
@@ -3704,8 +3704,8 @@ public final class TableJson {
         // §16.2's 255-byte cap after decoding. A longer one refuses the read,
         // and one that decodes to U+0000 refuses too; a map key and a string
         // value are data and go through scanStored, never this.
-        public String scanName() {
-            String s = scanStored();
+        public java.lang.String scanName() {
+            java.lang.String s = scanStored();
             if (s == null) {
                 return null;
             }
@@ -3719,8 +3719,8 @@ public final class TableJson {
             return s;
         }
 
-        public String scanVariantName() {
-            String s = scanString();
+        public java.lang.String scanVariantName() {
+            java.lang.String s = scanString();
             if (s == null) {
                 return null;
             }
@@ -3736,7 +3736,7 @@ public final class TableJson {
 
         // loneSurrogate refuses a string whose u-escape is a surrogate half
         // with no partner after it, as damage (strict-only decision 9).
-        String loneSurrogate() {
+        java.lang.String loneSurrogate() {
             bad = true;
             if (rep.reason == null) {
                 rep.reason = "string_lone_surrogate: <root>";
@@ -3786,7 +3786,7 @@ public final class TableJson {
         // scanNumber reads one JSON number token (RFC 8259 §6) and reports
         // whether it is an integral spelling: no fraction, no exponent (§16.2).
         // A token that is not a JSON number is damaged.
-        public String scanNumber(boolean[] integral) {
+        public java.lang.String scanNumber(boolean[] integral) {
             space();
             int start = p;
             if (p < t.length && t[p] == '-') {
@@ -3832,7 +3832,7 @@ public final class TableJson {
                 }
                 integral[0] = false;
             }
-            return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
+            return new java.lang.String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
         }
 
         // integer reads one integer token into a long. A wide kind (storage
@@ -3842,7 +3842,7 @@ public final class TableJson {
         // double. A value past the declared range refuses (§16.2).
         public long integer(boolean signed, boolean wide, long min, long max) {
             rejected = false;
-            String tok;
+            java.lang.String tok;
             if (wide && peek() == '"') {
                 tok = scanString();
                 if (bad || tok == null) {
@@ -3869,8 +3869,8 @@ public final class TableJson {
             long v;
             if (signed) {
                 try {
-                    v = Long.parseLong(tok);
-                } catch (NumberFormatException e) {
+                    v = java.lang.Long.parseLong(tok);
+                } catch (java.lang.NumberFormatException e) {
                     rep.refuse("out_of_range");
                     return tok.charAt(0) == '-' ? min : max;
                 }
@@ -3879,8 +3879,8 @@ public final class TableJson {
                 return min;
             } else {
                 try {
-                    v = Long.parseUnsignedLong(tok);
-                } catch (NumberFormatException e) {
+                    v = java.lang.Long.parseUnsignedLong(tok);
+                } catch (java.lang.NumberFormatException e) {
                     rep.refuse("out_of_range"); // past what sixty-four bits hold
                     // the largest unsigned magnitude; the range checks below add
                     // a second clamp when the bound is narrower than uint64
@@ -3897,11 +3897,11 @@ public final class TableJson {
                     return max;
                 }
             } else {
-                if (Long.compareUnsigned(v, min) < 0) {
+                if (java.lang.Long.compareUnsigned(v, min) < 0) {
                     rep.refuse("out_of_range");
                     return min;
                 }
-                if (Long.compareUnsigned(v, max) > 0) {
+                if (java.lang.Long.compareUnsigned(v, max) > 0) {
                     rep.refuse("out_of_range");
                     return max;
                 }
@@ -3913,8 +3913,8 @@ public final class TableJson {
         // or *string value, a text-list element, a map key). A stored string that
         // decodes to U+0000 refuses the read (§16.3): no wire carries a zero in
         // text. A string only compared or skipped goes through scanString.
-        public String scanStored() {
-            String s = scanString();
+        public java.lang.String scanStored() {
+            java.lang.String s = scanString();
             if (s != null && s.indexOf('\0') >= 0) {
                 bad = true;
                 if (rep.reason == null) {
@@ -3928,15 +3928,15 @@ public final class TableJson {
         // readString reads one string and clamps it at the bound, counting the
         // clamp (§16.2). The cut lands at a code point boundary, never through
         // a multi-byte character.
-        public String readString(int bound) {
-            String s = scanStored();
+        public java.lang.String readString(int bound) {
+            java.lang.String s = scanStored();
             if (s == null) {
                 return "";
             }
             return clamp(s, bound);
         }
 
-        String clamp(String s, int bound) {
+        java.lang.String clamp(java.lang.String s, int bound) {
             byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             if (b.length <= bound) {
                 return s;
@@ -3947,7 +3947,7 @@ public final class TableJson {
             while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
                 keep--;
             }
-            return new String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
+            return new java.lang.String(b, 0, keep, java.nio.charset.StandardCharsets.UTF_8);
         }
 
         // skipValue steps over one value of any shape, so an unknown key's
@@ -3996,7 +3996,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
-            java.util.Set<String> seenKey = null;
+            java.util.Set<java.lang.String> seenKey = null;
             // the label a definition in this skipped object opened: it stays
             // open until the object closes (§16.7)
             boolean first = true;
@@ -4015,7 +4015,7 @@ public final class TableJson {
                 if (closing == '}') {
                     // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
                     // (§16.3): one that decodes to U+0000 refuses.
-                    String key = scanName();
+                    java.lang.String key = scanName();
                     if (bad) {
                         return;
                     }
@@ -4220,37 +4220,37 @@ func variableListElemType(f *ir.Field) string {
 		typ := variableWideType(f)
 		switch typ {
 		case "int":
-			return "Integer"
+			return "java.lang.Integer"
 		case "long":
-			return "Long"
+			return "java.lang.Long"
 		}
 		return typ
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		return "Boolean"
+		return "java.lang.Boolean"
 	case ir.TInt, ir.TBits:
 		if f.Type.Width <= 32 {
-			return "Integer"
+			return "java.lang.Integer"
 		}
-		return "Long"
+		return "java.lang.Long"
 	case ir.TFloat32:
-		return "Float"
+		return "java.lang.Float"
 	case ir.TFloat64:
-		return "Double"
+		return "java.lang.Double"
 	case ir.TString:
-		return "String"
+		return "java.lang.String"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
-			return "Integer"
+			return "java.lang.Integer"
 		case *ir.Union:
 			return f.Type.Name + "Variable.Value"
 		case *ir.Flags:
-			return "Long"
+			return "java.lang.Long"
 		}
 	}
-	return "Object"
+	return "java.lang.Object"
 }
 
 func variableValueType(f *ir.Field) string {
@@ -4259,14 +4259,14 @@ func variableValueType(f *ir.Field) string {
 		return typ
 	}
 	if isPointerArray(f) || isStructArray(f) {
-		return "List<" + f.Type.Name + "Variable.Value>"
+		return "java.util.List<" + f.Type.Name + "Variable.Value>"
 	}
 	if isScalarArray(f) {
-		return "List<" + variableListElemType(f) + ">"
+		return "java.util.List<" + variableListElemType(f) + ">"
 	}
 	if f.Type.Pointer {
 		if f.Type.Kind == ir.TString {
-			return "String"
+			return "java.lang.String"
 		}
 		if f.Type.Kind == ir.TBytes {
 			return "byte[]"
@@ -4286,7 +4286,7 @@ func variableValueType(f *ir.Field) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TString:
-		return "String"
+		return "java.lang.String"
 	case ir.TBytes:
 		return "byte[]"
 	case ir.TNamed:
@@ -4299,12 +4299,12 @@ func variableValueType(f *ir.Field) string {
 			return f.Type.Name + "Variable.Value"
 		}
 	}
-	return "Object"
+	return "java.lang.Object"
 }
 
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
-		return "new ArrayList<>()"
+		return "new java.util.ArrayList<>()"
 	}
 	if variableWide(f) {
 		return variableWideDefault(f)
@@ -4400,9 +4400,6 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	tables := cardVariableTables(u)
 	graphTypes, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
-	b.WriteString("import java.nio.charset.StandardCharsets;\n")
-	b.WriteString("import java.util.ArrayList;\n")
-	b.WriteString("import java.util.List;\n\n")
 	fmt.Fprintf(&b, "public final class %sVariable {\n", st.Name)
 	b.WriteString("    private " + st.Name + "Variable() {}\n\n")
 
@@ -4419,7 +4416,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		if f.Type.Blob() || (f.Type.Pointer && isStruct(f) && f.Array == ir.ArrayNone) {
 			fmt.Fprintf(&b, "        public long %sIdx;\n", varMember(f))
 		} else if isPointerArray(f) {
-			fmt.Fprintf(&b, "        public List<Long> %sIdx = new ArrayList<>();\n", varMember(f))
+			fmt.Fprintf(&b, "        public java.util.List<java.lang.Long> %sIdx = new java.util.ArrayList<>();\n", varMember(f))
 		}
 	}
 	b.WriteString("\n        public Value() {\n")
@@ -4450,25 +4447,25 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	b.WriteString("\n")
 
 	// Dispatch helpers
-	b.WriteString("    static Object createNode(long typeId) {\n")
+	b.WriteString("    static java.lang.Object createNode(long typeId) {\n")
 	for _, t := range tables {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { return new %sVariable.Value(); }\n", t.Name, t.Name)
 	}
 	b.WriteString("        return null;\n    }\n\n")
 
-	b.WriteString("    static void decodeNodeBody(TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {\n")
+	b.WriteString("    static void decodeNodeBody(TableVariable.Reader r, java.lang.Object val, long typeId, TableVariable.Report report) {\n")
 	for _, t := range tables {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sVariable.readFields(r, (%sVariable.Value) val, null, report); return; }\n", t.Name, t.Name, t.Name)
 	}
 	b.WriteString("    }\n\n")
 
-	b.WriteString("    static void writeNodeBody(TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {\n")
+	b.WriteString("    static void writeNodeBody(TableVariable.Writer w, TableVariable.NodeGraph graph, java.lang.Object val, long typeId) {\n")
 	for _, t := range tables {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sVariable.writeFields(w, graph, (%sVariable.Value) val); return; }\n", t.Name, t.Name, t.Name)
 	}
 	b.WriteString("    }\n\n")
 
-	b.WriteString("    static void resolveNodePointers(Object val, long typeId, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {\n")
+	b.WriteString("    static void resolveNodePointers(java.lang.Object val, long typeId, TableVariable.NodeTable nt, java.lang.Object root, long rootTypeId, TableVariable.Report report) {\n")
 	for _, t := range tables {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sVariable.resolveNodes((%sVariable.Value) val, nt, root, rootTypeId, report); return; }\n", t.Name, t.Name, t.Name)
 	}
@@ -4491,7 +4488,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	b.WriteString("            if (r.fail) { return false; }\n")
 	if hasReq {
 		b.WriteString("            if (ref == 0) {\n")
-		b.WriteString("                StringBuilder missing = new StringBuilder();\n")
+		b.WriteString("                java.lang.StringBuilder missing = new java.lang.StringBuilder();\n")
 		for i, f := range st.Fields {
 			if !f.Required {
 				continue
@@ -4556,7 +4553,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
 	fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n    }\n\n")
 
-	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeTable nt, Object root, long rootTypeId, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "    public static void resolveNodes(Value v, TableVariable.NodeTable nt, java.lang.Object root, long rootTypeId, TableVariable.Report report) {\n")
 	b.WriteString("        if (nt.bad) { return; }\n")
 	for _, f := range st.Fields {
 		writeVariableResolveField(&b, f)
@@ -4623,12 +4620,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	fmt.Fprintf(&b, "            int table = w.off;\n")
 	fmt.Fprintf(&b, "            w.putLeb(nodes);\n")
 	fmt.Fprintf(&b, "            for (int i = 0; i < nodes; i++) {\n")
-	fmt.Fprintf(&b, "                Object value = graph.nodeValue(i);\n")
+	fmt.Fprintf(&b, "                java.lang.Object value = graph.nodeValue(i);\n")
 	fmt.Fprintf(&b, "                long typeId = graph.nodeType(i);\n")
 	fmt.Fprintf(&b, "                w.putLeb(w.ref(typeId));\n")
 	fmt.Fprintf(&b, "                if (graph.nodeBlob(i)) {\n")
-	fmt.Fprintf(&b, "                    if (value instanceof String) {\n")
-	fmt.Fprintf(&b, "                        w.putUtf8((String) value);\n")
+	fmt.Fprintf(&b, "                    if (value instanceof java.lang.String) {\n")
+	fmt.Fprintf(&b, "                        w.putUtf8((java.lang.String) value);\n")
 	fmt.Fprintf(&b, "                    } else {\n")
 	fmt.Fprintf(&b, "                        byte[] bytes = (byte[]) value;\n")
 	fmt.Fprintf(&b, "                        w.putLeb(bytes.length);\n")
@@ -4698,7 +4695,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "                        report.damaged = true;\n")
 		fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
 		fmt.Fprintf(&b, "                    } else {\n")
-		fmt.Fprintf(&b, "                        rec.value = new String(rec.body, StandardCharsets.UTF_8);\n")
+		fmt.Fprintf(&b, "                        rec.value = new java.lang.String(rec.body, java.nio.charset.StandardCharsets.UTF_8);\n")
 		if !strBlob {
 			writeBlobOutsideClosure(&b, "                        ", "report.unknown++;")
 		}
@@ -5094,7 +5091,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 	}
 	if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
 		rAlign := ir.TableRegionAlign(u)
-		b.WriteString("        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
+		b.WriteString("        for (long i = 0; java.lang.Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
 		b.WriteString("            int end = r.bodyEnd();\n")
 		b.WriteString("            if (end < 0) { return at; }\n")
 		b.WriteString("            long n = (long) (end - r.off);\n")
@@ -5110,7 +5107,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 		b.WriteString("    }\n\n")
 		return
 	}
-	b.WriteString("        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
+	b.WriteString("        for (long i = 0; java.lang.Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
 	if f.KeyEnum != "" {
 		b.WriteString("            r.leb();\n")
 		b.WriteString("            if (r.fail) { return at; }\n")
@@ -5214,10 +5211,10 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        graph.setOpen(v, true);\n")
 		fmt.Fprintf(b, "        if (!buildGraph(graph, v)) { return null; }\n")
 		fmt.Fprintf(b, "        graph.setOpen(v, false);\n")
-		fmt.Fprintf(b, "        StringBuilder b = new StringBuilder();\n")
+		fmt.Fprintf(b, "        java.lang.StringBuilder b = new java.lang.StringBuilder();\n")
 		fmt.Fprintf(b, "        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }\n")
 		fmt.Fprintf(b, "        b.append('\\n');\n")
-		fmt.Fprintf(b, "        return b.toString().getBytes(StandardCharsets.UTF_8);\n")
+		fmt.Fprintf(b, "        return b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);\n")
 		fmt.Fprintf(b, "    }\n\n")
 
 		fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
@@ -5241,7 +5238,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    }\n\n")
 	}
 
-	fmt.Fprintf(b, "    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
+	fmt.Fprintf(b, "    static void jsonFields(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
 	if st.JsonArray && len(st.Fields) == 1 {
 		writeJsonFieldValue(b, u, st, st.Fields[0])
 		b.WriteString("    }\n\n")
@@ -5253,7 +5250,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("    }\n\n")
 	}
 
-	fmt.Fprintf(b, "    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
+	fmt.Fprintf(b, "    static boolean jsonFieldsBody(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
 	for _, f := range st.Fields {
 		guarded := openGuard(b, st, f)
 		if f.Type.Optional {
@@ -5273,7 +5270,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        return first;\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    public static void writeJsonPointer(StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {\n")
+	fmt.Fprintf(b, "    public static void writeJsonPointer(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {\n")
 	b.WriteString("        if (child == null) { b.append(\"null\"); return; }\n")
 	b.WriteString("        // a null nests nothing: the cap counts table values (docs/SPEC-TABLES.md §16.14 W2)\n")
 	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { throw new TableJson.Refused(\"a table value past the depth cap\"); }\n")
@@ -5281,7 +5278,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            jsonFields(b, graph, child, depth);\n")
 	b.WriteString("            return;\n")
 	b.WriteString("        }\n")
-	b.WriteString("        Long label = graph.labels.get(child);\n")
+	b.WriteString("        java.lang.Long label = graph.labels.get(child);\n")
 	b.WriteString("        if (label == null) {\n")
 	b.WriteString("            label = (long) (graph.labels.size() + 1);\n")
 	b.WriteString("            graph.labels.put(child, label);\n")
@@ -5308,7 +5305,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
 	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
-	b.WriteString("        String key = in.scanName();\n")
+	b.WriteString("        java.lang.String key = in.scanName();\n")
 	b.WriteString("        if (in.bad || key == null) return null;\n")
 	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        if (in.peek() != ':') { in.bad = true; return null; }\n")
@@ -5364,12 +5361,12 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	// last occurrence wins whole, and the repeat is counted BEFORE the value's
 	// shape is judged, so a repeat the walk then refuses is still a repeat.
 	fmt.Fprintf(b, "        boolean[] seenField = new boolean[%d];\n", len(st.Fields))
-	b.WriteString("        java.util.Set<String> seenKey = new java.util.HashSet<>();\n")
+	b.WriteString("        java.util.Set<java.lang.String> seenKey = new java.util.HashSet<>();\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
-	b.WriteString("            String key = in.scanName();\n")
+	b.WriteString("            java.lang.String key = in.scanName();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
 	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
 	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")
@@ -5433,7 +5430,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 	if hasReq {
 		b.WriteString("        if (!in.bad) {\n")
-		b.WriteString("            StringBuilder missing = new StringBuilder();\n")
+		b.WriteString("            java.lang.StringBuilder missing = new java.lang.StringBuilder();\n")
 		for i, f := range st.Fields {
 			if !f.Required {
 				continue
@@ -5460,9 +5457,9 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 		case 16:
 			min, max = "-32768L", "32767L"
 		case 32:
-			min, max = "Integer.MIN_VALUE", "Integer.MAX_VALUE"
+			min, max = "java.lang.Integer.MIN_VALUE", "java.lang.Integer.MAX_VALUE"
 		default:
-			min, max = "Long.MIN_VALUE", "Long.MAX_VALUE"
+			min, max = "java.lang.Long.MIN_VALUE", "java.lang.Long.MAX_VALUE"
 		}
 		if f.HasIntRange {
 			min = f.IntMin.String()
@@ -5523,9 +5520,9 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				case f.Type.Signed:
 					fmt.Fprintf(b, "                if ((long) v.%s.get(i) < %s || (long) v.%s.get(i) > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 				case f.Type.Width <= 32:
-					fmt.Fprintf(b, "                if (Long.compareUnsigned(Integer.toUnsignedLong(v.%s.get(i)), %s) < 0 || Long.compareUnsigned(Integer.toUnsignedLong(v.%s.get(i)), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+					fmt.Fprintf(b, "                if (java.lang.Long.compareUnsigned(java.lang.Integer.toUnsignedLong(v.%s.get(i)), %s) < 0 || java.lang.Long.compareUnsigned(java.lang.Integer.toUnsignedLong(v.%s.get(i)), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 				default:
-					fmt.Fprintf(b, "                if (Long.compareUnsigned(v.%s.get(i), %s) < 0 || Long.compareUnsigned(v.%s.get(i), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+					fmt.Fprintf(b, "                if (java.lang.Long.compareUnsigned(v.%s.get(i), %s) < 0 || java.lang.Long.compareUnsigned(v.%s.get(i), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 				}
 			}
 			switch {
@@ -5533,25 +5530,25 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				fmt.Fprintf(b, "                TableJson.writeTimestamp(b, v.%s.get(i));\n", m)
 			case f.Type.Signed:
 				if f.Type.Width <= 32 {
-					fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
+					fmt.Fprintf(b, "                b.append(java.lang.Integer.toString(v.%s.get(i)));\n", m)
 				} else {
-					fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toString(v.%s.get(i))); b.append('\"');\n", m)
+					fmt.Fprintf(b, "                b.append('\"'); b.append(java.lang.Long.toString(v.%s.get(i))); b.append('\"');\n", m)
 				}
 			default:
 				if f.Type.Width <= 32 {
-					fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
+					fmt.Fprintf(b, "                b.append(java.lang.Integer.toUnsignedString(v.%s.get(i)));\n", m)
 				} else {
-					fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
+					fmt.Fprintf(b, "                b.append('\"'); b.append(java.lang.Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
 				}
 			}
 		case ir.TBits:
 			if f.Type.Width < 64 {
-				fmt.Fprintf(b, "                if (Long.compareUnsigned((long) v.%s.get(i), 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+				fmt.Fprintf(b, "                if (java.lang.Long.compareUnsigned((long) v.%s.get(i), 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
 			}
 			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
+				fmt.Fprintf(b, "                b.append(java.lang.Integer.toUnsignedString(v.%s.get(i)));\n", m)
 			} else {
-				fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
+				fmt.Fprintf(b, "                b.append('\"'); b.append(java.lang.Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
 			}
 		case ir.TFloat32:
 			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
@@ -5664,7 +5661,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanVariantName();\n")
+				b.WriteString("                            java.lang.String s = in.scanVariantName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
@@ -5673,7 +5670,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
 				b.WriteString("                        } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			case *ir.Flags:
-				fmt.Fprintf(b, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
+				fmt.Fprintf(b, "                        {java.lang.Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
 			}
 		}
 	}
@@ -5718,17 +5715,17 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		elem := variableValueType(&one)
 		switch elem {
 		case "int":
-			elem = "Integer"
+			elem = "java.lang.Integer"
 		case "long":
-			elem = "Long"
+			elem = "java.lang.Long"
 		case "float":
-			elem = "Float"
+			elem = "java.lang.Float"
 		case "double":
-			elem = "Double"
+			elem = "java.lang.Double"
 		case "boolean":
-			elem = "Boolean"
+			elem = "java.lang.Boolean"
 		}
-		fmt.Fprintf(b, "        { List<%s> padded=new ArrayList<>();for(int j=0;j<%d;j++)padded.add(j<v.%s.size()?v.%s.get(j):%s);\n", elem, f.ArrayBound, varMember(f), varMember(f), variableDefault(&one))
+		fmt.Fprintf(b, "        { java.util.List<%s> padded=new java.util.ArrayList<>();for(int j=0;j<%d;j++)padded.add(j<v.%s.size()?v.%s.get(j):%s);\n", elem, f.ArrayBound, varMember(f), varMember(f), variableDefault(&one))
 		one = *f
 		one.Array = ir.ArrayList
 		var body strings.Builder
@@ -5870,38 +5867,38 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, false);\n", m)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		if f.Type.Kind == ir.TBits {
-			fmt.Fprintf(b, "        if (Long.compareUnsigned((long) v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+			fmt.Fprintf(b, "        if (java.lang.Long.compareUnsigned((long) v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
 		} else if f.HasIntRange {
 			min, max := jsonIntRange(f)
 			if f.Type.Signed {
 				fmt.Fprintf(b, "        if ((long) v.%s < %s || (long) v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 			} else {
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(Integer.toUnsignedLong(v.%s), %s) < 0 || Long.compareUnsigned(Integer.toUnsignedLong(v.%s), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+				fmt.Fprintf(b, "        if (java.lang.Long.compareUnsigned(java.lang.Integer.toUnsignedLong(v.%s), %s) < 0 || java.lang.Long.compareUnsigned(java.lang.Integer.toUnsignedLong(v.%s), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 			}
 		}
 		if f.Type.Signed && f.Type.Kind == ir.TInt {
-			fmt.Fprintf(b, "        b.append(Integer.toString(v.%s));\n", m)
+			fmt.Fprintf(b, "        b.append(java.lang.Integer.toString(v.%s));\n", m)
 		} else {
-			fmt.Fprintf(b, "        b.append(Integer.toUnsignedString(v.%s));\n", m)
+			fmt.Fprintf(b, "        b.append(java.lang.Integer.toUnsignedString(v.%s));\n", m)
 		}
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits):
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+			fmt.Fprintf(b, "        if (java.lang.Long.compareUnsigned(v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
 		} else if f.Type.Kind == ir.TInt && f.HasIntRange {
 			min, max := jsonIntRange(f)
 			if f.Type.Signed {
 				fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 			} else {
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+				fmt.Fprintf(b, "        if (java.lang.Long.compareUnsigned(v.%s, %s) < 0 || java.lang.Long.compareUnsigned(v.%s, %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
 			}
 		}
 		switch {
 		case f.Type.Timestamp:
 			fmt.Fprintf(b, "        TableJson.writeTimestamp(b, v.%s);\n", m)
 		case f.Type.Signed && f.Type.Kind == ir.TInt:
-			fmt.Fprintf(b, "        b.append('\"'); b.append(Long.toString(v.%s)); b.append('\"');\n", m)
+			fmt.Fprintf(b, "        b.append('\"'); b.append(java.lang.Long.toString(v.%s)); b.append('\"');\n", m)
 		default:
-			fmt.Fprintf(b, "        b.append('\"'); b.append(Long.toUnsignedString(v.%s)); b.append('\"');\n", m)
+			fmt.Fprintf(b, "        b.append('\"'); b.append(java.lang.Long.toUnsignedString(v.%s)); b.append('\"');\n", m)
 		}
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -5911,7 +5908,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			}
 			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
-			fmt.Fprintf(b, "        b.append(Long.toString(v.%s));\n", m)
+			fmt.Fprintf(b, "        b.append(java.lang.Long.toString(v.%s));\n", m)
 		}
 	}
 }
@@ -5925,7 +5922,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	if flags, ok := f.Type.Ref.(*ir.Flags); ok && f.Array == ir.ArrayNone && !f.Type.Optional {
-		fmt.Fprintf(b, "                {Long bits=TableJson.readFlags(in,%s);if(bits!=null)v.%s=bits;}\n", variableFlagNames(flags), varMember(f))
+		fmt.Fprintf(b, "                {java.lang.Long bits=TableJson.readFlags(in,%s);if(bits!=null)v.%s=bits;}\n", variableFlagNames(flags), varMember(f))
 		return
 	}
 	if un := variableUnion(f); un != nil && f.Array == ir.ArrayNone && !f.Type.Optional {
@@ -6012,10 +6009,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                        } else if (ec != '\"') {\n                            in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); placed++;\n", m, target.Name)
 		b.WriteString("                        } else {\n")
 		if valueF.Type.TextUnbounded() {
-			b.WriteString("                            String s = in.scanStored();\n")
+			b.WriteString("                            java.lang.String s = in.scanStored();\n")
 			b.WriteString("                            if (!in.bad && s != null) {\n")
 		} else {
-			fmt.Fprintf(b, "                            String s = in.readString(%d);\n", valueF.Type.Size)
+			fmt.Fprintf(b, "                            java.lang.String s = in.readString(%d);\n", valueF.Type.Size)
 			b.WriteString("                            if (!in.bad) {\n")
 		}
 		fmt.Fprintf(b, "                                %sVariable.Value e = new %sVariable.Value();\n", target.Name, target.Name)
@@ -6095,7 +6092,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		// §16.2: a string that is not base64 is the wrong shape for *bytes —
 		// counted kind_mismatch and left null, never a broken read.
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { byte[] decoded = java.util.Base64.getDecoder().decode(s); if (!java.util.Base64.getEncoder().encodeToString(decoded).equals(s)) { in.rep.refuse(\"base64_not_canonical\"); v.%s = null; } else { v.%s = decoded; } } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m, m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { java.lang.String s = in.scanString(); if (s != null) { try { byte[] decoded = java.util.Base64.getDecoder().decode(s); if (!java.util.Base64.getEncoder().encodeToString(decoded).equals(s)) { in.rep.refuse(\"base64_not_canonical\"); v.%s = null; } else { v.%s = decoded; } } catch (java.lang.IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m, m)
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -6110,10 +6107,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s, %s);\n", target.Name, m, depth+" + 1")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);if(!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)){in.rep.refuse(\"base64_not_canonical\");}else{int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){java.lang.String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);if(!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)){in.rep.refuse(\"base64_not_canonical\");}else{int keep=java.lang.Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}}catch(java.lang.IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
-			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
+			fmt.Fprintf(b, "                if (in.peek() == '\"') { java.lang.String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
 		} else {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
 		}
@@ -6150,7 +6147,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
-			b.WriteString("                    String s = in.scanVariantName();\n")
+			b.WriteString("                    java.lang.String s = in.scanVariantName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
@@ -6159,7 +6156,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "{ v.%s = 0; in.rep.unknown++; }\n", m)
 			b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
-			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(true, false, Long.MIN_VALUE, Long.MAX_VALUE); }\n", m)
+			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(true, false, java.lang.Long.MIN_VALUE, java.lang.Long.MAX_VALUE); }\n", m)
 			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
@@ -6330,7 +6327,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 				fmt.Fprintf(b, "                                    spent += (long) keep;\n")
 			}
 			fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
-			fmt.Fprintf(b, "                                    elem.value = new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8);\n")
+			fmt.Fprintf(b, "                                    elem.value = new java.lang.String(ar.buf, ar.off, keep, java.nio.charset.StandardCharsets.UTF_8);\n")
 			fmt.Fprintf(b, "                                    ar.off += len;\n")
 			fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
 		} else {
@@ -6407,12 +6404,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(java.lang.Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
-			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), m)
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { v.%s = new java.lang.String(r.buf, r.off, n, java.nio.charset.StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), m)
 		} else {
-			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } v.%s = new java.lang.String(r.buf, r.off, keep, java.nio.charset.StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		}
 		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBool:
@@ -6425,11 +6422,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (kind 10 into a float64) is the ordinary conversion, exact for every
 	// finite float32.
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = %s; } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m, variableCompressedRead(f, "Float.intBitsToFloat(fbits)", "report", floatOwnerName(st, f)))
+		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = %s; } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m, variableCompressedRead(f, "java.lang.Float.intBitsToFloat(fbits)", "report", floatOwnerName(st, f)))
 		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { long fbits = r.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Double.longBitsToDouble(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
-		fmt.Fprintf(b, "                else if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = (double) Float.intBitsToFloat(fbits); } report.widened++; } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { long fbits = r.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = java.lang.Double.longBitsToDouble(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                else if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = (double) java.lang.Float.intBitsToFloat(fbits); } report.widened++; } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		writeIntFieldRead(b, f, m)
@@ -6514,11 +6511,11 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	// scalar's does (docs/SPEC-TABLES.md §3.3); the walk goes on, landing the
 	// element's place with zero so the count the body carries is kept
 	case ir.TFloat32:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place(variableCompressedRead(f, "Float.intBitsToFloat(fbits)", "report", owner)))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place(variableCompressedRead(f, "java.lang.Float.intBitsToFloat(fbits)", "report", owner)))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } else { if (ar.has(8)) { long fbits = ar.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); fbits = 0L; } %s; } else { report.damaged = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), owner, place("(double) Float.intBitsToFloat(fbits)"), owner, place("Double.longBitsToDouble(fbits)"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } else { if (ar.has(8)) { long fbits = ar.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); fbits = 0L; } %s; } else { report.damaged = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), owner, place("(double) java.lang.Float.intBitsToFloat(fbits)"), owner, place("java.lang.Double.longBitsToDouble(fbits)"))
 	case ir.TString:
-		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.damaged = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.damaged = true; %s; } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } %s; } ar.off += len; }", place(`""`), f.Type.Size, f.Type.Size, place("new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)"))
+		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.damaged = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.damaged = true; %s; } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.refuse(\"out_of_range\"); } %s; } ar.off += len; }", place(`""`), f.Type.Size, f.Type.Size, place("new java.lang.String(ar.buf, ar.off, keep, java.nio.charset.StandardCharsets.UTF_8)"))
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -6621,7 +6618,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				if f.IntMax.Cmp(big.NewInt(math.MaxInt64)) > 0 {
 					max = fmt.Sprintf("0x%xL", f.IntMax)
 				}
-				fmt.Fprintf(b, "                    if (!r.fail && (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0)) { if (Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.refuse(\"out_of_range\"); }\n", m, min, m, max, m, min, m, min, m, max)
+				fmt.Fprintf(b, "                    if (!r.fail && (java.lang.Long.compareUnsigned(v.%s, %s) < 0 || java.lang.Long.compareUnsigned(v.%s, %s) > 0)) { if (java.lang.Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.refuse(\"out_of_range\"); }\n", m, min, m, max, m, min, m, min, m, max)
 			}
 		}
 	} else if f.Type.Kind == ir.TBits && width < 64 {
@@ -6629,7 +6626,7 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 		if width <= 32 {
 			fmt.Fprintf(b, "                    if (!r.fail && ((long) v.%s & 0xffffffffL) > %dL) { v.%s = (int) %dL; report.refuse(\"out_of_range\"); }\n", m, maxBits, m, maxBits)
 		} else {
-			fmt.Fprintf(b, "                    if (!r.fail && Long.compareUnsigned(v.%s, 0x%xL) > 0) { v.%s = 0x%xL; report.refuse(\"out_of_range\"); }\n", m, maxBits, m, maxBits)
+			fmt.Fprintf(b, "                    if (!r.fail && java.lang.Long.compareUnsigned(v.%s, 0x%xL) > 0) { v.%s = 0x%xL; report.refuse(\"out_of_range\"); }\n", m, maxBits, m, maxBits)
 		}
 	}
 	b.WriteString("                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
@@ -6666,45 +6663,45 @@ func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Boolean e = v.%s.get(i); w.put8(e ? 1 : 0); }\n", m, m)
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Boolean e = v.%s.get(i); w.put8(e ? 1 : 0); }\n", m, m)
 	case ir.TInt:
 		switch {
 		case f.Type.Width <= 8:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put8(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put8(e); }\n", m, m)
 		case f.Type.Width <= 16:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put16(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put16(e); }\n", m, m)
 		case f.Type.Width <= 32:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put32(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put32(e); }\n", m, m)
 		default:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Long e = v.%s.get(i); w.put64(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Long e = v.%s.get(i); w.put64(e); }\n", m, m)
 		}
 	case ir.TBits:
 		switch {
 		case f.Type.Width <= 8:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put8(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put8(e); }\n", m, m)
 		case f.Type.Width <= 16:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put16(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put16(e); }\n", m, m)
 		case f.Type.Width <= 32:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); w.put32(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); w.put32(e); }\n", m, m)
 		default:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Long e = v.%s.get(i); w.put64(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Long e = v.%s.get(i); w.put64(e); }\n", m, m)
 		}
 	case ir.TFloat32:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Float e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Float e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Double e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Double e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
 	case ir.TString:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { String e = v.%s.get(i); w.putUtf8(e); }\n", m, m)
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.String e = v.%s.get(i); w.putUtf8(e); }\n", m, m)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Integer e = v.%s.get(i); switch (e) {\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Integer e = v.%s.get(i); switch (e) {\n", m, m)
 			for i := range ref.Variants {
 				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(ref.VariantWireName(i)))
 			}
 			b.WriteString("                default: w.putLeb(0); break;\n            } }\n")
 		case *ir.Flags:
-			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Long e = v.%s.get(i); w.put64(e); }\n", m, m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { java.lang.Long e = v.%s.get(i); w.put64(e); }\n", m, m)
 		}
 	}
 }
@@ -6775,7 +6772,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 			fmt.Fprintf(b, "            w.put8(12); w.putLeb(v.%s.size());\n", m)
 			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
 			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
-			fmt.Fprintf(b, "                String s = (e == null || e.value == null) ? \"\" : e.value;\n")
+			fmt.Fprintf(b, "                java.lang.String s = (e == null || e.value == null) ? \"\" : e.value;\n")
 			fmt.Fprintf(b, "                w.putUtf8(s);\n")
 			fmt.Fprintf(b, "            }\n")
 		} else {
@@ -6830,9 +6827,9 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); %s }\n", m, variableDefault(f), m, variableWireKind(f), variableFloatPut(f, "w", "v."+m))
 	case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
-		bits := "Float.floatToRawIntBits"
+		bits := "java.lang.Float.floatToRawIntBits"
 		if f.Type.Kind == ir.TFloat64 {
-			bits = "Double.doubleToRawLongBits"
+			bits = "java.lang.Double.doubleToRawLongBits"
 		}
 		fmt.Fprintf(b, "        if (%s(v.%s) != %s(%s)) { w.putLeb(w.ref(F_%s)); w.put8(%d); %s }\n", bits, m, bits, variableDefault(f), m, variableWireKind(f), variableFloatPut(f, "w", "v."+m))
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
@@ -6910,11 +6907,11 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 	b.WriteString("        g.push(v, GRAPH_KIND, -2, 0, null);\n")
 	b.WriteString("        while (g.workCount() > 0) {\n")
 	b.WriteString("            int at = g.workCount() - 1;\n")
-	b.WriteString("            Object value = g.workValue(at);\n")
+	b.WriteString("            java.lang.Object value = g.workValue(at);\n")
 	b.WriteString("            int kind = g.workKind(at);\n")
 	b.WriteString("            int field = g.workField(at);\n")
 	b.WriteString("            int index = g.workIndex(at);\n")
-	b.WriteString("            Object close = g.workClose(at);\n")
+	b.WriteString("            java.lang.Object close = g.workClose(at);\n")
 	b.WriteString("            g.pop();\n")
 	b.WriteString("            if (field == -1) { g.setOpen(value, false); continue; }\n")
 	b.WriteString("            if (field == -2) {\n")
@@ -6947,7 +6944,7 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {\n")
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, java.lang.Object v, int kind) {\n")
 	b.WriteString("        switch (kind) {\n")
 	for i, gt := range graphTypes {
 		fmt.Fprintf(b, "            case %d: return %sVariable.graphEnter(g, (%sVariable.Value) v);\n", i, gt.name, gt.name)
@@ -6955,7 +6952,7 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 	b.WriteString("            default: return false;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
-	b.WriteString("    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {\n")
+	b.WriteString("    static boolean graphStep(TableVariable.NodeGraph g, java.lang.Object v, int kind, int field, int index) {\n")
 	b.WriteString("        switch (kind) {\n")
 	for i, gt := range graphTypes {
 		fmt.Fprintf(b, "            case %d: return %sVariable.graphField(g, (%sVariable.Value) v, field, index);\n", i, gt.name, gt.name)
@@ -7140,7 +7137,7 @@ func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)
 		fmt.Fprintf(b, "            v.%s.clear();\n", m)
-		fmt.Fprintf(b, "            for (Long idx : v.%sIdx) {\n", m)
+		fmt.Fprintf(b, "            for (java.lang.Long idx : v.%sIdx) {\n", m)
 		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, TableVariable.QUIET));\n", m, target.Name, target.Name)
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
@@ -7161,7 +7158,7 @@ func variableFlagNames(flags *ir.Flags) string {
 	for _, name := range flags.Variants {
 		names = append(names, fmt.Sprintf("%q", name))
 	}
-	return "new String[]{" + strings.Join(names, ",") + "}"
+	return "new java.lang.String[]{" + strings.Join(names, ",") + "}"
 }
 
 // shiftLines moves every non-empty line of s by n columns (n < 0 moves it

@@ -26,7 +26,8 @@ const MaxBodyBytes = 64 << 10
 const MaxListEntries = 512
 
 // Report is the generated TableReport (docs/SPEC-TABLES.md §16), not a second
-// reporting system. A read reports its tolerant events in this one type.
+// reporting system. An accepted read reports its evolution events (unknown,
+// widened, retained) in this one type; every damage refuses the load.
 type Report = TableReport
 
 // Record owns a private defensive copy of the wire and the measured, aligned
@@ -46,7 +47,7 @@ type Record struct {
 
 // Load reads wire into a Record using the generated measured/aligned temporary
 // region load (docs/SPEC-TABLES.md §6.2). Failures and malformed wire are
-// errors; tolerant events ride in the returned Report. The ORIGINAL wire is
+// errors; evolution events (unknown, widened) ride in the returned Report. The ORIGINAL wire is
 // copied, never rewritten, so an old input is preserved byte for byte.
 func Load(wire []byte) (*Record, Report, error) {
 	var report TableReport

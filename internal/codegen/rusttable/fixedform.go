@@ -1244,8 +1244,9 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 // emitFixedScatterUnion lands one union's image in the value: the TAG, held
 // to this build's own arm count, and then the arm the tag selects.
 //
-// A TAG BEYOND THE ARM COUNT LANDS AS NONE AND COUNTS ONE CLAMPED. It is the
-// same rule a count gets and for the same reason — the image is a stranger's
+// A TAG BEYOND THE ARM COUNT REFUSES out_of_range: it counts one `held`, and
+// LOAD refuses the whole batch when `held` is non-zero. It is the same rule a
+// count gets and for the same reason — the image is a stranger's
 // bytes on the identity path, where the tag rides verbatim, and an ordinal past
 // the set is out of range exactly as a count past the bound is. On the compiled
 // path the runtime has already written MY ordinal under THEIR tag's guard, so

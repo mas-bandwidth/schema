@@ -66,7 +66,7 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    compiled out may write an off-declaration value; the reader on the other end
    refuses it. **No target panics on a write and none throws.**
 5. **The read side is untouched by that doctrine.** A read faces untrusted data
-   and keeps every mandated check, in every build; the tolerant read IS the
+   and keeps every mandated check, in every build; the one read IS the
    verifier, and the wire fuzzer is the gate on that claim.
 6. **`make` is the one entry** for build, generate, test and bench. A leg is
    added as a target, never as a script somebody remembers to run.
@@ -252,6 +252,19 @@ Nothing was dropped. `internal/slowtest` gates the toolchain half:
 A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
 therefore never reads whether a toolchain is present; absence still fails
 wherever `SCHEMA_REQUIRE_CORPUS` says it must.
+
+A skip names a reason, and CI counts skips. Every reason a test may skip for
+is a line of [`.github/skip-ledger.txt`](../.github/skip-ledger.txt), with the
+class of lane that is meant to satisfy it. `go test ./internal/ci` reads every
+`t.Skip` in the tree against that file: a skip with no reason, or a reason no
+line names, fails at the pull request that writes it. The same test refuses a
+`TestMain` that leaves before `m.Run`, and a `_test.go` file whose build
+constraint no lane compiles under. In `ci-fast.yml`, the `ci-policy`,
+`go-test-touched` and `verify-leg` jobs record their `go test -json` events
+and end with `tools/gotestreport -skips`, which lists the job's skips by
+reason and fails on a skip the job provides for: a missing toolchain in the
+lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
+`SCHEMA_SLOW=1`.
 
 The per-leg make gates, measured on an M-series Studio:
 

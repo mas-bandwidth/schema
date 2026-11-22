@@ -196,10 +196,7 @@ func TestCanonicalJSONWriterCodegenStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		return
-	}
+	nodeBin := slowtest.Tool(t, "node")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`), 0o600); err != nil {
 		t.Fatal(err)

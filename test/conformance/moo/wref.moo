@@ -61,15 +61,23 @@ return function(ctx: any): { [string]: Surface }
 				return owner, fd, idx
 			end
 			local child = owner[fd.slot]
-			if fd.s == "union" and idx == nil and i == #segments - 1 then
-				local ud = St.lookup(fd.t)
+			-- a union's arm, held by the field itself or by one element of an
+			-- array of unions (bounded_steps[3].label): the element IS the union
+			-- value, never a table to look up by the union's name
+			local unionType: string? = nil
+			if fd.s == "union" and idx == nil then unionType = fd.t end
+			if fd.s == "arr" and idx ~= nil and fd.e ~= nil and fd.e.s == "union" then unionType = fd.e.t end
+			if unionType ~= nil and i == #segments - 1 then
+				if idx ~= nil then child = child[idx] end
+				if child == nil then error("driver: " .. path .. ": " .. seg .. " holds no union", 0) end
+				local ud = St.lookup(unionType)
 				local armName = segments[#segments]
 				for _, arm in ud.arms do
 					if arm.name == armName then
 						return child, arm, nil
 					end
 				end
-				error("driver: no arm " .. armName .. " in union " .. fd.t, 0)
+				error("driver: no arm " .. armName .. " in union " .. unionType, 0)
 			end
 			if idx ~= nil then
 				child = child[idx]
@@ -80,6 +88,18 @@ return function(ctx: any): { [string]: Surface }
 		error("driver: empty path", 0)
 	end
 
+		-- THE ONE CHECKED CONVERSION for an ordinal, a tag, a count and a length:
+		-- every number here is a double, which holds an integer exactly only to
+		-- 2^53. tonumber rounds a token past that (18446744073709551616 to 2^64),
+		-- and the writer then narrowed the rounded tag into a lawful one and the
+		-- row answered `wrote`. A token the double does not hold exactly is
+		-- unrepresentable: wrefSet answers true and sets nothing.
+		local function wrefWhole(text: string): number?
+			local n = tonumber(text)
+			if n == nil or n ~= math.floor(n) or math.abs(n) > 2 ^ 53 then return nil end
+			return n
+		end
+
 	local function wrefSet(unitKey: string, St: any, root: string, v: any, path: string, what: string, text: string)
 		local owner, fd, idx = wrefWalk(St, root, v, path)
 		local holder: any = owner
@@ -89,7 +109,11 @@ return function(ctx: any): { [string]: Surface }
 			key = idx
 		end
 		local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
-		if what == "int" or what == "ordinal" then
+		if what == "ordinal" then
+			local n = wrefWhole(text)
+			if n == nil then return true end
+			holder[key] = n
+		elseif what == "int" then
 			local num = tonumber(text) :: number
 			holder[key] = if d.cls == "fx" then num / 65536 else num
 		elseif what == "float" then
@@ -116,7 +140,8 @@ return function(ctx: any): { [string]: Surface }
 				end
 			end
 		elseif what == "count" then
-			local n = tonumber(text) :: number
+			local n = wrefWhole(text)
+			if n == nil then return true end
 			local arr = holder[key]
 			if owner[fd.slot .. "Count"] ~= nil then
 				owner[fd.slot .. "Count"] = n
@@ -132,7 +157,9 @@ return function(ctx: any): { [string]: Surface }
 				end
 			end
 		elseif what == "length" or what == "bytes" then
-			local raw = if what == "length" then string.rep("a", tonumber(text) :: number) else hexBytes(text)
+			local len = if what == "length" then wrefWhole(text) else 0
+			if len == nil then return true end
+			local raw = if what == "length" then string.rep("a", len) else hexBytes(text)
 			if idx == nil and owner[fd.slot .. "Length"] ~= nil then
 				owner[fd.slot] = buffer.fromstring(raw)
 				owner[fd.slot .. "Length"] = #raw
@@ -142,7 +169,8 @@ return function(ctx: any): { [string]: Surface }
 				holder[key] = raw
 			end
 		elseif what == "tag" then
-			local n = tonumber(text) :: number
+			local n = wrefWhole(text)
+			if n == nil then return true end
 			local ud = St.lookup(d.t)
 			local x = ud.new()
 			x.Type = n
@@ -180,7 +208,10 @@ return function(ctx: any): { [string]: Surface }
 			if v == nil then
 				error("driver: " .. name .. ": load refused " .. wire, 0)
 			end
-			wrefSet(key, St, root, v, path, what, text)
+			if wrefSet(key, St, root, v, path, what, text) then
+				ctx.say(name, "unrepresentable\n")
+				continue
+			end
 			local answer = "refused\n"
 			if kindName == "write-refusal" or kindName == "write-refusal-fixed" then
 				if kindName == "write-refusal-fixed" and not d.fixed then

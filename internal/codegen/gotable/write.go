@@ -710,20 +710,11 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.pf("%sif %s { %s.Put8(1) } else { %s.Put8(0) }\n", ind, expr, writer, writer)
 	case tkF32, tkF64:
 		g.needsMath = true
-		bits := 32
-		if kind == tkF64 {
-			bits = 64
+		bits, zero := 32<<(kind-tkF32), "" // tkF64 is tkF32+1: 32 or 64 bits
+		if f.HasFloatRange {
+			zero = " + 0" // a compressed float's -0 is stored as +0, and -0 + 0 is +0 (SPEC-TABLES §3.3, fixed-compressed-negzero)
 		}
-		if kind == tkF32 && f.HasFloatRange {
-			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
-			// §3.3): the writer stores the +0 bits for it, so a -0 that rides
-			// (under a non-zero default, or in an array) is never 0x80000000.
-			// A plain float's -0 is stored bit-exact below.
-			g.pf("%sif %s == 0 {\n%s\t%s.Put32(0)\n%s} else {\n%s\t%s.Put32(math.Float32bits(%s))\n%s}\n",
-				ind, expr, ind, writer, ind, ind, writer, expr, ind)
-			return
-		}
-		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
+		g.pf("%s%s.Put%d(math.Float%dbits(%s%s))\n", ind, writer, bits, bits, expr, zero)
 	default:
 		width := ir.TableKindWidth(kind) * 8
 		switch {

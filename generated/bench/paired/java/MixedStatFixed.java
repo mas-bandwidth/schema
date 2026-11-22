@@ -75,12 +75,12 @@ public final class MixedStatFixed {
     static void scatter(
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.statId = TableFixed.get32(b, at + 0);
-        if (Integer.compareUnsigned(v.statId, 255) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.statId, 255) > 0) {
             v.statId = (int) (255L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(8) clamps to 2^N - 1
+        } // bits(8) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -512L) {

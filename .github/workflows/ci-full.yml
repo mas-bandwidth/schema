@@ -105,9 +105,10 @@ name: CI full
 # `go test` records its event stream line by line, and a last step that runs
 # whatever happened (tools/gotestreport) names every failed test, every test
 # that never reported (the row cut short at the backstop), the slowest tests,
-# and goes red when a package's test binary ran past the -timeout its command
-# named (go test's 10m default when it named none), which is what caught a
-# hang or a blow-up before: now only AFTER every test has reported. The streams are kept as each row's go-test-json artifact. The
+# and names (never fails) a package whose test binary ran past the -timeout its
+# command named (go test's 10m default when it named none): a nightly has no
+# time limit (the owner, 2026-11-16 and 2026-11-21). A hang is still red, as a
+# test that never reported. The streams are kept as each row's go-test-json artifact. The
 # `verdict` job at the end fails when any job's result is not success, so a
 # cancelled or skipped row can never read green.
 
@@ -142,11 +143,11 @@ env:
   # the nightly rule in the header: no go test -timeout under tools/pgroup
   PGROUP_GO_TEST_TIMEOUT: '0'
   PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
-  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_TAG: v2.1.6
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
   SERIALIZE_RS_TAG: v5.0.0
-  SERIALIZE_CS_TAG: v2.1.1
+  SERIALIZE_CS_TAG: v2.2.1
   SERIALIZE_JS_TAG: v2.1.2
 
 jobs:
@@ -1175,6 +1176,35 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test ./bench/tools ./test/conformance/harness ./test/conformance/packet
 
+      # THE PAGES' COMPILE GATE (internal/docgate TestExamplesCompile, review
+      # finding F-173) holds every parse-only example to node, python3, ruby
+      # and luac, and fails by name, never skips, when one does not resolve. A
+      # fleet runner's PATH carries node, luac and python3 but no bare `ruby`:
+      # the fleet SDK's env.sh exports RUBY, the pinned interpreter
+      # (make/ruby-toolchain.mk's current version), and this step hands it to
+      # the test step. A tool that resolves nowhere stops the row here, by
+      # name, before a single example runs.
+      - name: the doc gate's toolchains (node, python3, ruby, luac)
+        if: matrix.group == 'unit-rest-check'
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          missing=""
+          for tool in "${NODE:-node}" "${PYTHON:-python3}" "${RUBY:-ruby}" "${LUAC:-luac}"; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [ -n "$missing" ]; then
+            echo "TOOL-MISSING:$missing (internal/docgate TestExamplesCompile needs node, python3, ruby and luac; NODE, PYTHON, RUBY and LUAC name them)"
+            exit 1
+          fi
+          for name in NODE PYTHON RUBY LUAC; do
+            if [ -n "${!name:-}" ]; then
+              echo "$name=${!name}" >> "$GITHUB_ENV"
+            fi
+          done
+
       - name: go test the checker, the doc gate, the lockfile, the text form and the baseline
         if: matrix.group == 'unit-rest-check'
         env:
@@ -1478,6 +1508,10 @@ jobs:
         if: matrix.group == 'versioning-conformance-b'
         run: make conformance-go-rows-b
 
+      - name: the Go conformance driver's own unit tests (F-100, F-101)
+        if: matrix.group == 'versioning-conformance-b'
+        run: make conformance-go-driver-unit
+
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
       # reference's byte oracle out of build/fixedform-corpus and SKIPS itself
@@ -1659,10 +1693,10 @@ jobs:
       # cancellation, the backstop). It reads the -json streams the row's
       # outermost go test recorded and names every failed test, every test
       # that started and never reported, and the slowest; it is red for a
-      # test or package that never reported, and for a package whose test
-      # binary ran past the -timeout its go test named (go test's 10m default
-      # when it named none): the detection the lifted limits gave, applied
-      # only after every test has reported. A test failure stays the test
+      # test or package that never reported. A package whose test binary ran
+      # past the -timeout its go test named (go test's 10m default when it
+      # named none) is named OVER BUDGET and is not a failure: a nightly has
+      # no time limit (the owner, 2026-11-16 and 2026-11-21). A test failure stays the test
       # step's verdict.
       - name: report every test this row ran, and each package's named budget
         if: always()
@@ -3343,6 +3377,11 @@ jobs:
 
       - run: go vet ./...
       - run: go build ./...
+      # THE WINDOWS-ONLY TESTS RUN HERE OR NOWHERE. tools/treelock's
+      # treelock_windows_test.go is `//go:build windows`: go vet compiled it
+      # and no lane ran it (internal/ci,
+      # TestEveryConstrainedTestFileCompilesInSomeLane).
+      - run: go test ./tools/treelock/
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds

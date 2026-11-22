@@ -373,8 +373,9 @@ static void MessageCases( const std::string & dir, const std::string & only )
             if ( ones == 64 )
             {
                 // §3.3: held to the announced kind's domain, refused
-                // out_of_range without clamping, as the Go engine refuses it
-                expect( !r.ok && r.report.refused && !r.report.damaged && r.report.refuse_reason == out_of_range, "ranged-past-domain", detail );
+                // without clamping, as the Go engine refuses it: the verdict
+                // alone, the reason is diagnostic (rulings refusal-verdict-only)
+                expect( !r.ok && r.report.refused, "ranged-past-domain", detail );
             }
             else
             {

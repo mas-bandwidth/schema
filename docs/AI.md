@@ -374,10 +374,11 @@ table ShipConfig
 ```
 
 A plain `table` is the **variable** class: self-describing, fields identified
-by the hash of their names, so any build reads any other build's file.
-Unknown fields are skipped and counted, absent fields read as their defaults,
-and a narrower integer widens on read. Every such event is counted in a read
-report; damaged framing refuses the whole load.
+by the hash of their names, so a build reads another build's file across every
+lawful edit. Unknown fields are skipped and counted, absent fields read as
+their defaults, and a narrower integer widens on read and is counted. A read is
+one read: a changed kind, a value past its bound or damaged framing refuses the
+whole load by name, and nothing is clamped.
 
 ```schema
 fixed table Physics
@@ -547,6 +548,7 @@ assertion helpers.
 **C++** ([test/main.cpp](../test/main.cpp)), against the
 [serialize](https://github.com/mas-bandwidth/serialize) runtime:
 
+<!-- example: fragment -->
 ```cpp
 serialize::WriteStream ws( buffer, sizeof( buffer ) );
 check( WriteShipCreate( ws, in ) );          // a debug build asserts on a bad value
@@ -559,6 +561,7 @@ check( ReadShipCreate( rs, out ) );          // false: refused, drop it
 **C** ([test/c/main.c](../test/c/main.c)), against serialize.c; names are
 prefixed with the package:
 
+<!-- example: fragment -->
 ```c
 serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
 check( example_write_ship_create( &w, &in ), "write ShipCreate" );
@@ -571,6 +574,7 @@ check( example_read_ship_create( &r, &out ), "read ShipCreate" );
 **C# (unity)** ([test/unity/src/Program.cs](../test/unity/src/Program.cs)),
 against serialize.cs; types are structs passed by `ref`:
 
+<!-- example: fragment -->
 ```csharp
 WriteStream ws = new WriteStream(new byte[2048]);
 Check(WriteShipCreate(ws, ref input), "write ShipCreate");
@@ -583,6 +587,7 @@ Check(ReadShipCreate(new ReadStream(wire), ref output), "read ShipCreate");
 **Go** ([test/go/main.go](../test/go/main.go)), against serialize.go; write and
 read return an `error`:
 
+<!-- example: fragment -->
 ```go
 ws := serialize.NewWriteStream(buffer)
 checkErr(example.WriteShipCreate(ws, &in), "write ShipCreate")
@@ -595,6 +600,7 @@ checkErr(example.ReadShipCreate(rs, &out), "read ShipCreate")
 **Rust** ([test/rust/src/main.rs](../test/rust/src/main.rs)), against
 serialize.rs; write and read return a `Result`:
 
+<!-- example: fragment -->
 ```rust
 let mut ws = WriteStream::new(&mut buffer);
 check_err(write_ship_create(&mut ws, &input), "write ShipCreate");
@@ -608,6 +614,7 @@ check_err(read_ship_create(&mut rs, &mut out), "read ShipCreate");
 against serialize.js; the flat tier (`<Base>Flat.js`, no dependency) is in
 [USAGE.md](USAGE.md#per-language-notes):
 
+<!-- example: compile -->
 ```js
 const ws = new WriteStream(new Uint8Array(2048));
 check(ex.WriteShipCreate(ws, inp), "write ShipCreate");
@@ -620,6 +627,7 @@ check(ex.ReadShipCreate(rs, out), "read ShipCreate");   // false: refused
 **Java** ([test/java/Main.java](../test/java/Main.java)), self-contained;
 size the buffer with `<name>MaxBytes`:
 
+<!-- example: fragment -->
 ```java
 final int n = Types.writeShipCreate(inp, writeBuf);   // asserts under -ea
 final byte[] wire = java.util.Arrays.copyOf(writeBuf, n);
@@ -629,6 +637,7 @@ check(Types.readShipCreate(out, wire, n * 8), "read ShipCreate no-flags");
 **Dart** ([test/dart/main.dart](../test/dart/main.dart)), self-contained, on
 `ByteData` views:
 
+<!-- example: fragment -->
 ```dart
 final n = writeShipCreate(inp, writeView);            // asserts in debug
 final wire = Uint8List.fromList(written(n));
@@ -640,6 +649,7 @@ self-contained. `write_<name>!/1` returns the binary or raises
 `ArgumentError`; `write_<name>/1` returns `{:ok, binary}` or
 `{:error, message}`; a read returns `{:ok, value}` or `:error`:
 
+<!-- example: fragment -->
 ```elixir
 wire = Example.Types.write_ship_create!(inp2)
 {:ok, out2} = Example.Types.read_ship_create(wire, byte_size(wire) * 8)
@@ -649,6 +659,7 @@ wire = Example.Types.write_ship_create!(inp2)
 `make tables-python-usage`): a read raises `Refused`, a write raises
 `InvalidValue`:
 
+<!-- example: compile -->
 ```python
 data = ship.write()                          # the packed bits, as bytes
 back = ShipCreate.read(data)                 # the whole value, or raises Refused
@@ -662,6 +673,7 @@ except Refused as refusal:
 `make tables-ruby-usage`): the same shape, `Example::Refused` and
 `Example::InvalidValue`:
 
+<!-- example: compile -->
 ```ruby
 data = ship.write                              # the packed bits, as an ASCII-8BIT String
 back = Example::ShipCreate.read(data)          # the whole value, or raises Refused
@@ -672,6 +684,7 @@ back = Example::ShipCreate.read(data)          # the whole value, or raises Refu
 shape with `require("./Types")` and a `buffer`
 ([internal/codegen/luau/write_test.go](../internal/codegen/luau/write_test.go)):
 
+<!-- example: compile -->
 ```lua
 local inst = Types.NewShipCreate()
 local stream = serialize.WriteStream.new(2048)
@@ -684,6 +697,7 @@ local ok = Types.ReadShipCreate(serialize.ReadStream.new(stream:data()), got)   
 **Squirrel** ([internal/codegen/squirrel/squirrel_test.go](../internal/codegen/squirrel/squirrel_test.go)),
 over a two-file unit whose type is `B`:
 
+<!-- example: fragment -->
 ```squirrel
 local ws = serialize.WriteStream(blob(64));
 if (!O.WriteB(ws, v)) throw "write: " + ws.error();
@@ -697,6 +711,7 @@ if (!O.ReadB(rs, r)) throw "read: " + rs.error();
 a refusal code (`SERIALIZE_ERROR_NONE` on success, named by
 `serialize_refusal_name`), a read returns a `bool`:
 
+<!-- example: fragment -->
 ```goose
 var v = example::ShipCreate { .. };
 var w = serialize_write_stream_init(wbuf);
@@ -711,6 +726,7 @@ check(example::ReadShipCreate(r, out), "read ShipCreate");
 a package name that collides with a runtime binding (`p`, for one) is refused
 by name, so rename the package:
 
+<!-- example: fragment -->
 ```lobster
 let v = example.NewShipCreate()
 let w = serialize_write_stream(ensure_size("", 2048, 0))
@@ -723,6 +739,7 @@ load, a read report, the JSON text form, and the cook and block forms. In Go
 ([USAGE.md](USAGE.md#per-language-notes), run by `make tables-go-usage`
 against the `tables/pointers` unit):
 
+<!-- example: fragment -->
 ```go
 size, err := graphdemo.SceneMeasureReason(source.GetRoot(), &source.Arena)
 if err != nil { panic(err) }

@@ -3,7 +3,7 @@
 def self.run(manifest, outdir)
   connections = {}
   RubyConformance.entries(manifest, 'connection').each { |row| connections[row[1]] = row }
-  RubyConformance.entries(manifest, 'write-refusal-message').each do |row|
+  RubyConformance.cases(manifest, 'write-refusal-message') do |row|
     case_name, connection, root, wire, path, kind, token = row[1, 7]
     unit = connections[connection][2]
     pkg = RubyConformance.unit_package(unit)

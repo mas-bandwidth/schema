@@ -36,8 +36,8 @@ class LoadReport:
     // §2.3): one per body that ends without a required field, named in reason.
     missing_required:int = 0
     // non_finite_float names the first float whose raw bits were a NaN or an
-    // infinity, <Owner>.<field> (docs/SPEC-TABLES.md §3.3): every read, the
-    // tolerant one too, refuses the wire and lands nothing.
+    // infinity, <Owner>.<field> (docs/SPEC-TABLES.md §3.3): the read
+    // refuses the wire and lands nothing.
     non_finite_float:string = ""
     // RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the fields whose bytes a
     // retaining load kept, and every unknown the load could not keep.
@@ -110,7 +110,7 @@ class Value:
     node:Record? = nil
     // blob: a *bytes / *string referent, nil for null (§2.5)
     blob:string? = nil
-    // blob_node: the ONE node a tolerant read decoded the blob from. Two
+    // blob_node: the ONE node the read decoded the blob from. Two
     // slots naming one blob name one node (§2.5), so the save meets the
     // second naming and refuses the graph by name, never writing a copy
     // per slot. nil for a blob the caller set.

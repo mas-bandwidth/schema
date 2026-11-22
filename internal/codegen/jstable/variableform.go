@@ -273,9 +273,10 @@ export class TableVariableReport {
   // A form byte the read does not carry is unknown_form whichever
   // form-specific name the reason holds; then integrity_mismatch, a
   // non-finite float, any damage as wire_damaged, a missing required field, a
-  // storage cap by its own name, a blob named from two slots, out_of_range, and
-  // kind_mismatch, in that order. unknown, widened, retained and repeated
-  // alone never refuse. No string is built: the answer is a frozen member.
+  // storage cap by its own name, a blob named from two slots, out_of_range,
+  // kind_mismatch, and a repeated JSON key (damage, as every other malformed
+  // text is: wire_damaged), in that order. unknown, widened and retained alone
+  // never refuse. No string is built: the answer is a frozen member.
   err() {
     const reason = this.reason;
     if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
@@ -289,6 +290,9 @@ export class TableVariableReport {
     if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
     if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
     if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    // A REPEATED KEY REFUSES (docs/SPEC-TABLES.md §16.2; docs/plans/strict-only.md
+    // decision 5): the read hands back null, and err() must say why.
+    if (this.repeated > 0) { return TableRefuseReason.WireDamaged; }
     return null;
   }
 }
@@ -702,6 +706,9 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 
 // elemDefaultExpr is one keyed or fixed-array slot's declared default: the
 // field's own default, which every slot holds until a value is placed (§2.4).
+// A slot is never ABSENT: an optional array's presence is the whole array's,
+// so a slot of `?[N]T` holds the element's default, the value a read pads a
+// grown bound with (§21.1, "a grown bound"), and never null.
 func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
 	if !f.Type.Pointer && tableOf(f) != nil {
 		return "new " + tableOf(f).Name + "()"
@@ -709,6 +716,7 @@ func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
 	plain := *f
 	plain.KeyEnum, plain.KeyEnumRef = "", nil
 	plain.Array, plain.ArrayBound = ir.ArrayNone, 0
+	plain.Type.Optional = false
 	return g.defaultExpr(&plain)
 }
 

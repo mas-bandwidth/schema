@@ -1,0 +1,6 @@
+package claims
+
+table Cargo
+{
+    holds [..8]int32
+}

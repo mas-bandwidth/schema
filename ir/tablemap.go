@@ -151,6 +151,10 @@ func MapEntryProjectionName(u *Unit, st *Struct) string {
 		if holder.MapEntryOf != "" {
 			return MapEntryProjectionName(u, holder) + fmt.Sprintf(".%016x", id)
 		}
+		// the holder's WIRE name (§5), never its declared one: MapEntryOf
+		// carries the declared spelling, and a holder renamed under `was`
+		// keeps its type id, so it must keep its entries' keys too (F-005)
+		owner = holder.WireName()
 	}
 	return fmt.Sprintf("%016x.%016x", TableWireId(owner), id)
 }
@@ -181,6 +185,53 @@ func ProjectionMemberName(u *Unit, name string) string {
 		return st.WireName()
 	}
 	return name
+}
+
+// ProjectionReferentName is the name a field's `type=` token carries for a
+// table referent in the two projections: the WIRE name of a declared table,
+// and [GeneratedWireName] for a record the compiler generated.
+func ProjectionReferentName(u *Unit, st *Struct) string {
+	if st.MapEntryOf != "" {
+		return GeneratedWireName(u, st)
+	}
+	return st.WireName()
+}
+
+// GeneratedWireName is a GENERATED record's name — a text list's element
+// record (§2.13) or a map's entry (§2.8) — spelled from the WIRE names of its
+// holder and its field rather than their source spellings. The generated
+// name is `<Holder><Field>Text` (or `Entry`) of the source spellings, and no
+// byte carries it, so a `was` rename of the holder or of the field would
+// otherwise move a projection line and invalidate a cook no byte moved under
+// (F-004). With nothing renamed it is the generated name itself, so a unit
+// that has not moved projects exactly as it did.
+func GeneratedWireName(u *Unit, st *Struct) string {
+	owner, field := splitMapEntryOf(st.MapEntryOf)
+	holder := memberStruct(u, owner)
+	if holder == nil {
+		holder = declaredTable(u, owner)
+	}
+	if holder == nil {
+		return st.DeclaredName()
+	}
+	holderWire := holder.WireName()
+	if holder.MapEntryOf != "" {
+		holderWire = GeneratedWireName(u, holder)
+	}
+	fieldWire := field
+	for _, f := range holder.Fields {
+		if f.Name == field {
+			fieldWire = TableFieldWireName(f)
+			break
+		}
+	}
+	if holderWire == owner && fieldWire == field {
+		return st.DeclaredName()
+	}
+	if st.TextElem {
+		return TextListElemName(holderWire, fieldWire)
+	}
+	return MapEntryName(holderWire, fieldWire)
 }
 
 // splitMapEntryOf splits `Fleet.ships` into its holder and its field. A field

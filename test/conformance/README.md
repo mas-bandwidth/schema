@@ -98,7 +98,14 @@ An expected semantic refusal scores PASS. A historical `.absent` file that
 names a reason may transport that refusal (the reason's text is not compared).
 An EMPTY `.absent` is the per-case absence below, a leg with no codec for the
 root: on a row that expects a refusal it counts absent, never PASS, so a leg
-that cannot read a root cannot pass the must-refuse rows on it.
+that cannot read a root cannot pass the must-refuse rows on it. The other way
+round holds too: a `.absent` that names a reason is a refusal wherever it
+stands, so on a row that owes an answer (bytes, a golden, a verdict) it FAILS
+and never counts absent. A driver therefore tells a case's three endings
+apart by mechanism: no codec is the empty `.absent`; a present codec's public
+refusal is the refusal answer; anything else is a driver error, which names
+its case on stderr, lets the remaining cases run, and exits the surface
+non-zero.
 
 **A refusal row and its accepted twin are one claim** (`harness/twins.go`).
 Per leg and per surface, when one half of a pair passes and the leg did not
@@ -179,6 +186,7 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection, LoadMessages the entire batch, then SaveMessages of every accepted body; an explicit refusal for a row whose message wire is `-` | the complete message golden, or refusal |
+| `message-prior` | `message-prior` | AnnounceRead the prior writer's `prior-connection`, LoadMessages its `prior-message` batch, then SaveMessages; a read the public API refuses is answered `<case>.refused`, its contents never compared | the re-saved batch, or refusal |
 | `report` | `report` | `read\n` and the complete ToJson value in `<case>`, plus the canonical write-back wire in `<case>.wire`, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` and `save-wire/<case>.bin` for accepted reads |
 | `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |

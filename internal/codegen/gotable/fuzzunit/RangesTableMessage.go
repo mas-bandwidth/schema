@@ -1216,6 +1216,10 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RangedSigned.edges")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -2522,6 +2526,10 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RangedUnsigned.counts")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {

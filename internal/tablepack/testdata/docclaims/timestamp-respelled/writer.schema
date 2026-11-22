@@ -1,0 +1,7 @@
+package claims
+
+table Event
+{
+    name string(16)
+    at   int64
+}

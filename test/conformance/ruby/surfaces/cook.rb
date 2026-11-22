@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'cook').each do |row|
+  RubyConformance.cases(manifest, 'cook') do |row|
     name, unit, root, path = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
