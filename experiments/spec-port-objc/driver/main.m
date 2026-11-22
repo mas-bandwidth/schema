@@ -293,7 +293,7 @@ static int runSurface(NSString *surface) {
             } @catch (NSException *e) {
                 if (!isRefusal(e)) { bug(e); continue; }
                 if (!refusedLine) fprintf(stderr, "%s: refused: %s\n", name.UTF8String, e.reason.UTF8String);
-                putText(outName, @"refused\n");
+                putText(outName, @"refused"); // SPEC-GAP 3: the spelling of a wire-surface refusal
             }
         }
         if ([surface isEqualToString:@"json-write"]) {
