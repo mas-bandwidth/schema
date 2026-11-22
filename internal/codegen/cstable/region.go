@@ -270,12 +270,13 @@ const tableRegionSource = `
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : keyField.Kind == 12 ? last.Text.SequenceCompareTo(key.Text) : keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((long)last.Raw).CompareTo(unchecked((long)key.Raw)) : last.Raw.CompareTo(key.Raw);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
             if (state.Refused || report.Refused) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); } else { last = key; landed++; }
+            last = key; landed++;
         }
         value.SetCount(f, landed);
         // bytes left inside the map's L after its entries are damage
@@ -287,7 +288,7 @@ const tableRegionSource = `
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -302,6 +303,8 @@ const tableRegionSource = `
             if (reference != 0 && variant == 0) { report.Unknown++; }
             else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -437,7 +440,7 @@ const tableRegionSource = `
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
@@ -509,7 +512,7 @@ const tableRegionSource = `
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)

@@ -532,7 +532,7 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
         long max = 0;
         foreach (object v in System.Enum.GetValuesAsUnderlyingType(typeof(E)))
         {
-            max = Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
+            max = global::System.Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
         }
         return (int)max;
     }
@@ -712,6 +712,15 @@ public sealed class TableReport
     // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
     // #7), the operator's other answer. Zero on every other path.
     public ulong LayoutHash;
+    // Zero clears every counter and verdict, so a read into a REUSED report
+    // answers for that read alone (docs/SPEC-TABLES.md §16.2), as the Go
+    // runtime resets the whole struct.
+    internal void Zero()
+    {
+        Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
+        NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
+        KindChanged = 0; LayoutHash = 0;
+    }
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -773,6 +782,10 @@ public sealed class TableFieldInfo
     // a named variant may have any 64-bit id. null for every other kind.
     // Walk [1, EnumMax] to enumerate named vocabulary entries.
     public Func<ulong, ulong> VariantId;
+    // enums: whether a value names a variant marked as deprecated (docs/SPEC-TABLES.md
+    // §2.15): a read lands the field's declared default, never an unknown; null when
+    // the enum has none
+    public Func<ulong, bool> EnumDeprecated = null;
 
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
     // per variant of KeyTypeName, indexed by the variant's value, and its

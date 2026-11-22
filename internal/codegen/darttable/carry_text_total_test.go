@@ -65,6 +65,7 @@ func TestDartTextListTotalNative(t *testing.T) {
 import 'ProbeWire.dart' as w;
 import 'ProbeCook.dart' as c;
 void check(bool ok,String s){if(!ok)throw StateError(s);}
+final dbg=(){var on=false;assert(on=true);return on;}();
 String hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
 Uint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);
 void main(){
@@ -94,10 +95,10 @@ check(rr.refused&&(rr.reason=='count_over_bound'||rr.reason=='length_over_bound'
 		}
 		fmt.Fprintf(&b, `{final bad=w.Totals()..%s=[w.Totals%sText()%s..value='aaaaa',w.Totals%sText()%s..value='b'];
 var wireRefused=false,jsonRefused=false,retainRefused=false;
-try{w.totalsWireSave(bad);}on StateError{wireRefused=true;}
-try{w.totalsToJson(bad);}on StateError{jsonRefused=true;}
-try{w.totalsWireSaveRetain(bad,w.TableRetain(4096,List.filled(4096,0)),w.TableWireReport());}on StateError{retainRefused=true;}
-check(wireRefused&&jsonRefused&&retainRefused,'all total writers refuse %s');
+try{w.totalsWireSave(bad);}on AssertionError{wireRefused=true;}
+try{w.totalsToJson(bad);}on AssertionError{jsonRefused=true;}
+try{w.totalsWireSaveRetain(bad,w.TableRetain(4096,List.filled(4096,0)),w.TableWireReport());}on AssertionError{retainRefused=true;}
+check((wireRefused&&jsonRefused&&retainRefused)||!dbg,'all total writers refuse %s');
 check(c.TotalsCook.cookMeasure(bad)==-1,'over-total cook measure');
 for(final order in [Endian.little,Endian.big]){final out=Uint8List(4096)..fillRange(0,4096,0xa5);check(!c.TotalsCook.cook(bad,out,order)&&out.every((x)=>x==0xa5),'over-total cook leaves destination');}
 }

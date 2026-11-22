@@ -1283,15 +1283,15 @@ internal static partial class TableWire
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             if (body.Retain != null) { body.Path = a.Path.Step(f.Ordinal, slot); }
             ReadBody(ref body, entry, f.Table, report, true);
             if (CountRefused(report)) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); }
-            else { last = KeyOf(entry, keyField); landed++; }
+            last = KeyOf(entry, keyField); landed++;
         }
         f.SetCount(value, landed);
         // bytes left inside the map's L after its entries are damage
@@ -2045,8 +2045,8 @@ internal static partial class TableWire
             // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
             // §3.3), outranking damage met after it: no body is delivered.
             if (NonFiniteRefused(report))
-            { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-            if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } report.Touched = count + 1; count = 0; return Finish(report, Verdict.Refused); }
+            if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } report.Touched = count + 1; count = 0; return Finish(report, Verdict.Refused); }
             if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
         }
         if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
@@ -2059,6 +2059,7 @@ internal static partial class TableWire
     static Verdict DiscardBatch(object[] values, TableTypeInfo type, _R report, ref int count, int last)
     {
         for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
+        report.Touched = Math.Min(last + 1, values.Length);
         count = 0;
         return Finish(report, Verdict.Damaged);
     }

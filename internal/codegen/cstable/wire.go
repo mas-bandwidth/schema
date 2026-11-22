@@ -129,21 +129,6 @@ func leafFiniteCondition(f *ir.Field) string {
 	return ""
 }
 
-// enumVariantDeprecated reports whether variant idx carries the deprecated tag.
-func enumVariantDeprecated(en *ir.Enum, idx int) bool {
-	if idx < len(en.VariantDeprecated) && en.VariantDeprecated[idx] {
-		return true
-	}
-	if idx < len(en.VariantTags) {
-		for _, t := range en.VariantTags[idx] {
-			if t == "deprecated" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	name := st.Name
 	g.pf("public static bool %sCollectTyped(%s v, ref TableWire.Ids ids)\n{\n", name, name)
@@ -224,7 +209,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			}
 			g.pf("        scoped Span<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long nChild_%d = 0;\n", i)
@@ -243,7 +228,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 				g.pf("    scoped Span<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, elemCache_%d, out long payload_%d);\n", i, i, i)
@@ -291,7 +276,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -316,7 +301,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 				g.pf("    scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -902,7 +887,7 @@ public static partial class TableWire
             // is A default elements, and that is what the writer elides
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -952,7 +937,7 @@ public static partial class TableWire
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -1057,7 +1042,7 @@ public static partial class TableWire
                 if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                 {
                     int c = Count(value, f);
-                    int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -1101,7 +1086,7 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+            w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
     }
@@ -1156,7 +1141,7 @@ public static partial class TableWire
             if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
             {
                 int c = Count(value, f);
-                int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -1361,7 +1346,7 @@ public static partial class TableWire
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -1376,6 +1361,8 @@ public static partial class TableWire
             if (reference != 0 && variant == 0) { report.Unknown++; }
             else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -1544,7 +1531,7 @@ public static partial class TableWire
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -1628,7 +1615,7 @@ public static partial class TableWire
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
@@ -1782,7 +1769,7 @@ public static partial class TableWire
     {
         if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Zero();
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (bytes[0] != 1)
         {

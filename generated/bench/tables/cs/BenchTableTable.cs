@@ -60,6 +60,15 @@ namespace Benchtable
         // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
         // #7), the operator's other answer. Zero on every other path.
         public ulong LayoutHash;
+        // Zero clears every counter and verdict, so a read into a REUSED report
+        // answers for that read alone (docs/SPEC-TABLES.md §16.2), as the Go
+        // runtime resets the whole struct.
+        internal void Zero()
+        {
+            Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
+            NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
+            KindChanged = 0; LayoutHash = 0;
+        }
     }
 
     // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -121,6 +130,10 @@ namespace Benchtable
         // a named variant may have any 64-bit id. null for every other kind.
         // Walk [1, EnumMax] to enumerate named vocabulary entries.
         public Func<ulong, ulong> VariantId;
+        // enums: whether a value names a variant marked as deprecated (docs/SPEC-TABLES.md
+        // §2.15): a read lands the field's declared default, never an unknown; null when
+        // the enum has none
+        public Func<ulong, bool> EnumDeprecated = null;
 
         // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
         // per variant of KeyTypeName, indexed by the variant's value, and its
@@ -305,7 +318,7 @@ namespace Benchtable
         internal bool Attempted;
         internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
         public int Count { get { return Entries.Length; } }
-        public int RefBits { get { return Math.Max(1, System.Numerics.BitOperations.Log2((uint)Math.Max(1, Count)) + 1); } }
+        public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
     }
     internal sealed class TableMessageShape
     {
@@ -855,7 +868,7 @@ namespace Benchtable
                     byte[] fractionDigits = new byte[token.Length + 48];
                     int fn = 0;
                     for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
-                    for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
+                    for (int k = global::System.Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
                     UInt128 fraction = 0;
                     for (int bit = 0; bit < f.FracBits; bit++)
                     {
@@ -1468,6 +1481,8 @@ namespace Benchtable
                 if (IsEnum(f))
                 {
                     ulong value = f.GetRaw(owner, index);
+                    // A WRITE OF A DEPRECATED VARIANT IS REFUSED (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+                    System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated enum variant is written");
                     // a value no variant names has no text spelling, exactly as it has
                     // no wire identity: the writer REFUSES rather than writing None
                     // over it, the rule measure and save already apply (§5)
@@ -1849,7 +1864,8 @@ namespace Benchtable
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
                 string mapField = input.TextField;
-                Span<byte> spelling = stackalloc byte[MaxKey];
+                // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
+                Span<byte> spelling = key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? new byte[key.ArrayBound] : stackalloc byte[MaxKey];
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2147,7 +2163,7 @@ namespace Benchtable
                 // changed kind, an out-of-range value, a count or length past its
                 // bound, or text that cannot be stored refuses the load. The rest of
                 // the walk's failures are damage.
-                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
                 {
                     input.Report.Refused = true;
                 }
@@ -2719,14 +2735,11 @@ namespace Benchtable
                     {
                         if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                         {
-                            // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and
-                            // as None inside an array; it is never counted unknown
-                            // (docs/SPEC-TABLES.md §2.15).
+                            // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                            // ELEMENT default inside an array) and is never counted unknown
+                            // (docs/SPEC-TABLES.md §2.15)
                             if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
-                            {
-                                f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw);
-                                return true;
-                            }
+                            { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                             f.SetRaw(owner, index, (ulong)v);
                             return true;
                         }
@@ -3280,7 +3293,7 @@ namespace Benchtable
                 // a caller with no report is off the read path this section prices: it
                 // gets one rather than a branch on every counter
                 input.Report = report != null ? report : new TableReport();
-                input.Report.Reason = null; input.Report.Refused = false;
+                input.Report.Zero();
                 input.Bad = false;
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
@@ -4145,7 +4158,7 @@ namespace Benchtable
             static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
             {
                 if (f == null) { return; }
-                int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
+                int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13) { object child = f.GetChild(value, i); if (child != null) { CycleSlots(child, f.Table, index, targets); } }
@@ -4570,14 +4583,14 @@ namespace Benchtable
                     if (!keyOk) { Damage(report); break; }
                     if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
                     int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-                    if (order > 0) { Damage(report); break; }
-                    int slot = order == 0 ? landed - 1 : landed;
+                    // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+                    if (order >= 0) { Damage(report); break; }
+                    int slot = landed;
                     f.EnsureCount(value, slot + 1);
                     object entry = f.Table.Create(); f.SetChild(value, slot, entry);
                     ReadBody(ref body, entry, f.Table, report, true);
                     if (CountRefused(report)) { return false; }
-                    if (order == 0) { return Fail(report, "duplicate"); }
-                    else { last = KeyOf(entry, keyField); landed++; }
+                    last = KeyOf(entry, keyField); landed++;
                 }
                 f.SetCount(value, landed);
                 // bytes left inside the map's L after its entries are damage
@@ -4631,8 +4644,8 @@ namespace Benchtable
                         shape.Delta = shape.QMax - shape.QMin;
                         float steps = shape.Delta / shape.QRes;
                         if (!float.IsFinite(shape.Delta) || !float.IsFinite(steps)) { return false; }
-                        steps = Math.Clamp(steps, 1f, 4294967040f);
-                        shape.Steps = (uint)Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
+                        steps = global::System.Math.Clamp(steps, 1f, 4294967040f);
+                        shape.Steps = (uint)global::System.Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
                     }
                     else if (shape.Packing != 0) { return false; }
                 }
@@ -4815,7 +4828,7 @@ namespace Benchtable
                     float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
                     if (!(normalized >= 0)) { normalized = 0; } else if (!(normalized <= 1)) { normalized = 1; }
                     float scaled = normalized * shape.Steps;
-                    bits = Math.Min((uint)Math.Floor((double)(scaled + 0.5f)), shape.Steps);
+                    bits = global::System.Math.Min((uint)global::System.Math.Floor((double)(scaled + 0.5f)), shape.Steps);
                 }
                 else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
                 w.Put(bits, ValueBits(f.Kind, shape));
@@ -5176,7 +5189,9 @@ namespace Benchtable
                     int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
                     ulong raw = (ulong)variant;
                     if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-                    else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
+                    ulong raw = (ulong)variant;
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+                    if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                     if (keep) { f.SetRaw(value, index, raw); }
                     return true;
                 }
@@ -5405,10 +5420,10 @@ namespace Benchtable
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
-            { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
+            { return NativeExtent(type) ? Align(type.StorageSize, global::System.Math.Max(8, type.StorageAlign)) : type.StorageSize; }
             static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
             {
-                alignment = Math.Max(8, type.StorageAlign);
+                alignment = global::System.Math.Max(8, type.StorageAlign);
                 NativeWriter probe = new NativeWriter(default, true, false, graph);
                 long extent = 0, rootBytes = NativeRecordBytes(type);
                 // Placement precedes validation of references: later nodes have no
@@ -5420,7 +5435,7 @@ namespace Benchtable
                     foreach (Node node in graph.Nodes)
                     {
                         int align = node.BlobKind != 0 ? 8 : node.Type.StorageAlign;
-                        alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+                        alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
                         if (node.BlobKind != 0) { at += 8 + ((TableBlob)node.Value).Data.Length + (node.BlobKind == 12 ? 1 : 0); }
                         else
                         {
@@ -5569,7 +5584,7 @@ namespace Benchtable
                     // is A default elements, and that is what the writer elides
                     if (f.ArrayMin > 0)
                     {
-                        if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                        if (n != f.ArrayMin) { return true; }
                         for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                         return false;
                     }
@@ -5619,7 +5634,7 @@ namespace Benchtable
                 {
                     ulong v = f.GetRaw(value, i);
                     if (v == 0) { return true; }
-                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
                     return ids.Add(f.VariantId(v));
                 }
                 return true;
@@ -5724,7 +5739,7 @@ namespace Benchtable
                         if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                         {
                             int c = Count(value, f);
-                            int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                            int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                             elemCache = rootElemSizes.Slice(elemOffset, take);
                             elemOffset += take;
                         }
@@ -5768,7 +5783,7 @@ namespace Benchtable
                 else if (f.GetWide != null)
                 {
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-                    w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+                    w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
             }
@@ -5823,7 +5838,7 @@ namespace Benchtable
                     if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                     {
                         int c = Count(value, f);
-                        int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                         elemCache = rootElemSizes.Slice(elemOffset, take);
                         elemOffset += take;
                     }
@@ -6028,7 +6043,7 @@ namespace Benchtable
                 {
                     int width = Width(kind);
                     if (!r.Has(width)) { return Damage(report); }
-                    UInt128 wide = r.Fixed(Math.Min(width, 8));
+                    UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
                     if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
                     else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
                     { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -6043,6 +6058,8 @@ namespace Benchtable
                     if (reference != 0 && variant == 0) { report.Unknown++; }
                     else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                     raw = (ulong)variant;
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+                    if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                 }
                 else
                 {
@@ -6211,7 +6228,7 @@ namespace Benchtable
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
-                    int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                    int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                     if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
@@ -6295,7 +6312,7 @@ namespace Benchtable
                     }
                     else
                     {
-                        int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                        int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                         if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
@@ -6449,7 +6466,7 @@ namespace Benchtable
             {
                 if (report == null) { report = IgnoredReport(); }
                 type.Reset(value);
-                report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+                report.Zero();
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (bytes[0] != 1)
                 {
@@ -6546,7 +6563,7 @@ namespace Benchtable
             public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
             {
                 int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
-                int n = Math.Min(src.Length / width, dst.Length);
+                int n = global::System.Math.Min(src.Length / width, dst.Length);
                 MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
                 if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
             }
@@ -6759,7 +6776,7 @@ namespace Benchtable
                             {
                                 if (te.Size < 4 || me.Size < 4) { return null; }
                                 int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                                uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                                uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                                 return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                             }
@@ -6769,7 +6786,7 @@ namespace Benchtable
                             if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
                             uint their_n = (te.Size - head) / tel.Size;
                             uint my_n = (me.Size - head) / mel.Size;
-                            uint n = Math.Min(their_n, my_n);
+                            uint n = global::System.Math.Min(their_n, my_n);
                             if (d.Counted != 0)
                             {
                                 int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
@@ -6809,7 +6826,7 @@ namespace Benchtable
                         {
                             if (te.Size < 4 || me.Size < 4) { return null; }
                             int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                            uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                            uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                             return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                         }
@@ -7238,7 +7255,7 @@ namespace Benchtable
                         {
                             if (d.Arg == TextBytes)
                             {
-                                uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                                uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 TableFixedEntry e = new TableFixedEntry(
                                     their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
                                 c.Push(e);
@@ -7259,10 +7276,10 @@ namespace Benchtable
                                 // because this reader grew to 8. their_n held to this reader's
                                 // storage is their_n itself on every legal widening, which is
                                 // what go spells 'n' and rust spells 'their_n.min(my_n)'.
-                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
+                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, global::System.Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                                 c.Push(e);
                             }
-                            uint n = Math.Min(their_n, my_n);
+                            uint n = global::System.Math.Min(their_n, my_n);
                             if (d.Stride == 0)
                             {
                                 if (tel.Kind == mel.Kind && tel.Size == mel.Size)
@@ -7420,7 +7437,7 @@ namespace Benchtable
                         }
                     case 12:
                         {
-                            uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                            uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
                                 their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
                             c.Push(e);
@@ -8605,7 +8622,7 @@ namespace Benchtable
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_10 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -8617,7 +8634,7 @@ namespace Benchtable
                 scoped Span<long> elemCache_11 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_11, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_11 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -8711,7 +8728,7 @@ namespace Benchtable
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_10 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -8724,7 +8741,7 @@ namespace Benchtable
                 scoped ReadOnlySpan<long> elemCache_11 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_11, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_11 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -9681,7 +9698,7 @@ namespace Benchtable
                     default: break;
                 }
             }
-            if (value.Loadout != null) { value.Loadout.AsSpan(0, Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1124)); }
+            if (value.Loadout != null) { value.Loadout.AsSpan(0, global::System.Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1124)); }
             int len_player_name = value.PlayerName != null ? value.PlayerNameLength : 0;
             System.Diagnostics.Debug.Assert(len_player_name <= 15);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1128), len_player_name);
@@ -11761,11 +11778,11 @@ namespace Benchtable
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Speaker = unchecked((uint)v), reset: (t) => { t.GameEvent.Chat.Speaker = 0; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.ItemId = unchecked((uint)v), reset: (t) => { t.GameEvent.Pickup.ItemId = 0; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.Amount = unchecked((int)v), reset: (t) => { t.GameEvent.Pickup.Amount = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); }, reset: (t) => { if (t.Loadout != null) Array.Clear(t.Loadout, 0, t.Loadout.Length); }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) b.Slice(0, global::System.Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); }, reset: (t) => { if (t.Loadout != null) Array.Clear(t.Loadout, 0, t.Loadout.Length); }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PlayerNameLength = (int)v, reset: (t) => { t.PlayerNameLength = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); }, reset: (t) => { if (t.PlayerName != null) { Array.Clear(t.PlayerName, 0, t.PlayerName.Length); } }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) b.Slice(0, global::System.Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); }, reset: (t) => { if (t.PlayerName != null) { Array.Clear(t.PlayerName, 0, t.PlayerName.Length); } }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PayloadLength = (int)v, reset: (t) => { t.PayloadLength = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) b.Slice(0, Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); }, reset: (t) => { if (t.Payload != null) { Array.Clear(t.Payload, 0, t.Payload.Length); } }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) b.Slice(0, global::System.Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); }, reset: (t) => { if (t.Payload != null) { Array.Clear(t.Payload, 0, t.Payload.Length); } }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimX = (float)d, reset: (t) => { t.AimX = 0.0f; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimY = (float)d, reset: (t) => { t.AimY = 0.0f; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimZ = (float)d, reset: (t) => { t.AimZ = 0.0f; }),
@@ -12122,9 +12139,9 @@ namespace Benchtable
         {
             switch (slot)
             {
-                case 293: { if (t.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); } break;
-                case 295: { if (t.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); } break;
-                case 297: { if (t.Payload != null) b.Slice(0, Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); } break;
+                case 293: { if (t.Loadout != null) b.Slice(0, global::System.Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); } break;
+                case 295: { if (t.PlayerName != null) b.Slice(0, global::System.Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); } break;
+                case 297: { if (t.Payload != null) b.Slice(0, global::System.Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); } break;
                 default: break;
             }
         }

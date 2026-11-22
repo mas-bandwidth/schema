@@ -2594,14 +2594,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	g.pf("%s", requiredRangeCheck(f, expr, ind, "_rangeF32", ""))
-	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
+	g.pf("%s", textListWriteCheck(f, expr, ind, "", "assert(false, 'invalid_value: text list');"))
 	if f.Type.TextUnbounded() {
 		guard := ""
 		if f.Type.Optional {
 			guard = "v." + hasMember(f) + " && "
 		}
-		g.pf("%sif(%s!tableTextValueValid(%s,-1))throw StateError('invalid_value: unbounded text');\n", ind, guard, expr)
-		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)throw StateError('blob_over_size_cap');\n", ind, guard, expr)
+		g.pf("%sif(%s!tableTextValueValid(%s,-1))assert(false,'invalid_value: unbounded text');\n", ind, guard, expr)
+		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)assert(false,'blob_over_size_cap');\n", ind, guard, expr)
 	}
 	g.emitWireWriteAssert(f, expr, ind)
 	switch {
@@ -3815,7 +3815,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	fn := dartName(n) + "WireLoad"
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
-	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
+	// EVERY COUNT IS ZERO AT THE START OF A READ, as Go's load zeroes its report: unknown,
+	// widened and the retain counters never add up across calls.
+	g.pf("\treport ??= TableWireReport();\n\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)

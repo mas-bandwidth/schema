@@ -101,6 +101,14 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
+        // settleDamage names framing damage on the report, as Go does: a
+        // damaged read answers reason wire_damaged unless a refusal named one.
+        public void settleDamage() {
+            if (damaged && reason == null) {
+                reason = "wire_damaged";
+            }
+        }
+
         public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;

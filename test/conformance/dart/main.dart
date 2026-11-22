@@ -4539,6 +4539,9 @@ int surfaceJsonWrite(String outDir) {
       }
     } on StateError {
       outText = 'refused\n';
+    } on AssertionError {
+      // an assert leg's write check: a debug assert, the driver runs under --enable-asserts
+      outText = 'refused\n';
     }
     if (outText == null) {
       spillAbsent(outDir, '${f[1]}.json');

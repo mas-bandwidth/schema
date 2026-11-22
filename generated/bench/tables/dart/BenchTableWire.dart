@@ -4918,6 +4918,10 @@ Uint8List tableEntityWireSave(TableEntity v) {
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableEntity();
   report ??= TableWireReport();
+  report.unknown = 0;
+  report.widened = 0;
+  report.retained = 0;
+  report.retainLost = 0;
   if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
@@ -5086,6 +5090,10 @@ Uint8List tableStatWireSave(TableStat v) {
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableStat();
   report ??= TableWireReport();
+  report.unknown = 0;
+  report.widened = 0;
+  report.retained = 0;
+  report.retainLost = 0;
   if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
@@ -5242,6 +5250,10 @@ Uint8List tableMixedWireSave(TableMixed v) {
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableMixed();
   report ??= TableWireReport();
+  report.unknown = 0;
+  report.widened = 0;
+  report.retained = 0;
+  report.retainLost = 0;
   if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
@@ -5545,6 +5557,26 @@ final class TableTextReport {
   }
 }
 
+// _jsonFormatReason names a text refusal the reader's helpers raise as a
+// FormatException: the text rules keep their own names (docs/SPEC-TABLES.md
+// §16.3), a wrong root shape is kind_mismatch, and everything else — bad
+// grammar, a repeated key, nesting past the depth cap, a reserved '&' key, a
+// zero in a comment — is text_damaged, this leg's name for it, as a repeated
+// unknown key already is (§16.2, the report paragraph).
+String _jsonFormatReason(String m) {
+  for (final name in const [
+    'string_lone_surrogate',
+    'text_holds_zero',
+    'kind_mismatch',
+    'base64_not_canonical',
+    'timestamp_not_rfc3339',
+  ]) {
+    if (m.startsWith(name)) return name;
+  }
+  if (m.startsWith('json_root_not_')) return 'kind_mismatch';
+  return 'text_damaged';
+}
+
 // _JOut is the writer's sink (§16.1): raw text and the two-space indent.
 final class _JOut {
   final StringBuffer b = StringBuffer();
@@ -5594,7 +5626,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune & 0xF]);
     } else {
       if (rune >= 0xD800 && rune <= 0xDFFF) {
-        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+        assert(false, 'invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
       }
       b.write(String.fromCharCode(rune));
     }
@@ -5623,8 +5655,8 @@ String _jsonText(String s) {
   // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC
   // §16.3): the parser refuses one spelled as an escape, and this refuses one
   // a caller's String carries raw
-  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
+  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   return s;
 }
 
@@ -7973,13 +8005,21 @@ String tableEntityToJson(TableEntity v) {
 
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.unknown = 0;
+  r.refused = false;
+  r.refusal = '';
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableEntity();
+  try {
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
+  }
+  } on FormatException catch (e) {
+    r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
     if (report == null) throw FormatException(r.reason);
@@ -8001,13 +8041,21 @@ String tableStatToJson(TableStat v) {
 
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.unknown = 0;
+  r.refused = false;
+  r.refusal = '';
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableStat();
+  try {
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
+  }
+  } on FormatException catch (e) {
+    r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
     if (report == null) throw FormatException(r.reason);
@@ -8029,13 +8077,21 @@ String tableMixedToJson(TableMixed v) {
 
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.unknown = 0;
+  r.refused = false;
+  r.refusal = '';
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableMixed();
+  try {
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
+  }
+  } on FormatException catch (e) {
+    r.refuse(_jsonFormatReason(e.message));
   }
   if (r.refused) {
     if (report == null) throw FormatException(r.reason);
