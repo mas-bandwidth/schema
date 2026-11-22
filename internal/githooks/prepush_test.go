@@ -1,6 +1,7 @@
 package githooks
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,7 +62,8 @@ func runHook(t *testing.T, dir, remote, line string) (int, string) {
 	if err == nil {
 		return 0, stderr.String()
 	}
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		return ee.ExitCode(), stderr.String()
 	}
 	t.Fatal(err)
