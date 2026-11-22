@@ -8,7 +8,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -69,13 +69,13 @@ function validText(bytes, length) {
 // must hold W13MaxBytes.
 export function WriteW13Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
     }
     v = (((value.items[i0]) & 0x1fff)) >>> 0;
@@ -170,13 +170,13 @@ export function ReadW13FlatBits(view, numBits, value) {
 // must hold W17MaxBytes.
 export function WriteW17Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 131071) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 131071) {
       return -1;
     }
     v = (((value.items[i0]) & 0x1ffff)) >>> 0;
@@ -271,13 +271,13 @@ export function ReadW17FlatBits(view, numBits, value) {
 // must hold W26MaxBytes.
 export function WriteW26Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0x7));
   sb = 3;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 67108863) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 67108863) {
       return -1;
     }
     v = (((value.items[i0]) & 0x3ffffff)) >>> 0;
@@ -372,13 +372,13 @@ export function ReadW26FlatBits(view, numBits, value) {
 // must hold W1MaxBytes.
 export function WriteW1Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0x1f));
   sb = 5;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 1) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 1) {
       return -1;
     }
     v = (((value.items[i0]) & 0x1)) >>> 0;
@@ -473,7 +473,7 @@ export function ReadW1FlatBits(view, numBits, value) {
 // must hold W52MaxBytes.
 export function WriteW52Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0x3));
@@ -600,7 +600,7 @@ export function ReadW52FlatBits(view, numBits, value) {
 // must hold W50MaxBytes.
 export function WriteW50Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0x3));
@@ -728,7 +728,7 @@ export function ReadW50FlatBits(view, numBits, value) {
 export function WriteF13Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 7; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
     }
     v = (((value.items[i0]) & 0x1fff)) >>> 0;
@@ -803,10 +803,10 @@ export function ReadF13FlatBits(view, numBits, value) {
 // must hold Tri3MaxBytes.
 export function WriteTri3Flat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1) {
     return -1;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 3) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 3) {
     return -1;
   }
   lo = ((value.a & 0x1) | ((value.b & 0x3) << 1));
@@ -859,17 +859,17 @@ export function ReadTri3FlatBits(view, numBits, value) {
 // must hold ArrTri3MaxBytes.
 export function WriteArrTri3Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
-    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
+    if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
       return -1;
     }
-    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
+    if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
       return -1;
     }
     v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
@@ -970,10 +970,10 @@ export function ReadArrTri3FlatBits(view, numBits, value) {
 // must hold ElevenMaxBytes.
 export function WriteElevenFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 7) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 7) {
     return -1;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 255) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 255) {
     return -1;
   }
   lo = ((value.a & 0x7) | ((value.b & 0xff) << 3));
@@ -1028,10 +1028,10 @@ export function WriteArrElevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
-    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+    if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
       return -1;
     }
-    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+    if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
       return -1;
     }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
@@ -1162,7 +1162,7 @@ export function ReadEmptyBFlatBits() {
 // must hold EmptyUnionMaxBytes.
 export function WriteEmptyUnionFlat(view, value) {
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.type & 0x3));
@@ -1247,10 +1247,10 @@ export function ReadEmptyUnionFlatBits(view, numBits, value) {
 // must hold HoldsEmptyUnionMaxBytes.
 export function WriteHoldsEmptyUnionFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.lead & 0x1f) | ((value.u.type & 0x3) << 5));
@@ -1263,7 +1263,7 @@ export function WriteHoldsEmptyUnionFlat(view, value) {
       break;
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
     return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
@@ -1381,10 +1381,10 @@ export function ReadHoldsEmptyUnionFlatBits(view, numBits, value) {
 // must hold StrsMaxBytes.
 export function WriteStrsFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   if (!validText(value.s, value.sLength)) {
@@ -1417,7 +1417,7 @@ export function WriteStrsFlat(view, value) {
       }
     }
   }
-  if (!Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   v = (((value.bLength) & 0xf)) >>> 0;
@@ -1461,7 +1461,7 @@ export function WriteStrsFlat(view, value) {
       }
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
     return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
@@ -1679,20 +1679,20 @@ export function ReadStrsFlatBits(view, numBits, value) {
 // must hold ArrNestedMaxBytes.
 export function WriteArrNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x7) << 5));
   sb = 8;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
-    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+    if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
       return -1;
     }
-    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+    if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
       return -1;
     }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
@@ -1705,7 +1705,7 @@ export function WriteArrNestedFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
     return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
@@ -1839,7 +1839,7 @@ export function ReadArrNestedFlatBits(view, numBits, value) {
 // must hold SoleMaxBytes.
 export function WriteSoleFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.only) || value.only < 0 || value.only > 8191) {
+  if (!globalThis.Number.isInteger(value.only) || value.only < 0 || value.only > 8191) {
     return -1;
   }
   lo = ((value.only & 0x1fff));

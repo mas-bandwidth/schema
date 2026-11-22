@@ -405,7 +405,19 @@ func (e *msgEmit) slotRides(ind int, el *ir.Field, expr, def string) string {
 	case e.isUnion(el):
 		return expr + ".Type != 0"
 	}
-	return e.differs(el, expr, def)
+	return e.writeDiffers(el, expr, def)
+}
+
+// writeDiffers is the WRITER's "not the declared default": differs, except
+// that a compressed float compares by value, because a writer stores a
+// compressed float's -0 as +0 (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+// fixed-compressed-negzero), so its -0 against a +0 default does not ride,
+// as its +0 twin does not. A plain float's -0 still rides.
+func (e *msgEmit) writeDiffers(f *ir.Field, expr, def string) string {
+	if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+		return fmt.Sprintf("%s != %s", expr, def)
+	}
+	return e.differs(f, expr, def)
 }
 
 // differs is "not the declared default", value against value: a float by its
@@ -551,7 +563,7 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 1)
 		e.p(ind, "}")
 	default:
-		e.p(ind, "if %s {", e.differs(f, pl.val, def.val))
+		e.p(ind, "if %s {", e.writeDiffers(f, pl.val, def.val))
 		header(ind + 1)
 		e.p(ind, "}")
 	}
