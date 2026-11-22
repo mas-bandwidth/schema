@@ -1598,7 +1598,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 	case f.Array == ir.ArrayFixed:
 		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, walked, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, walked, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayMin, f.ArrayBound, rep, walked, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834). The slots past
@@ -1615,7 +1615,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, walked, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "lengthOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, 0, f.Type.Size, rep, walked, "lengthOverBound", indent)
 		// Bytes past the used length are dead. THE CONTENT RULES APPLY TO THE
 		// USED UNITS (§4.5 fix 11): UTF-8 validity over the stated length,
 		// never over N, and a violation refuses by name with nothing decoded
@@ -1634,7 +1634,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TBytes:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, 0, f.Type.Size, rep, walked, "countOverBound", indent)
 		if !f.Deprecated {
 			g.pf("%sif (%s && checkDead) {\n", ind, walked)
 			g.emitDeadSpan(buf, at,
@@ -1656,12 +1656,15 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 // The plan's own count op has already done it for a compiled plan; this is
 // what holds the IDENTITY path to the same rule, because a record under this
 // reader's own hash can still carry a count this build does not admit.
-func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep, walked, why string, indent int) {
+func (g *fixedGen) emitScatterCount(dst, buf, at string, off, min, bound int64, rep, walked, why string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, off)
-	g.pf("%s    if (n < 0) { n = 0; %s } else if (n > %d) { n = %d; %s }\n",
-		ind, scatterRefuse(rep, walked, why), bound, bound, scatterRefuse(rep, walked, why))
+	// A COUNT BELOW A COUNTED ARRAY'S MINIMUM IS REFUSED as one past its
+	// bound is (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.4), landing
+	// the minimum; a minimum of 0 is the sign test alone.
+	g.pf("%s    if (n < %d) { n = %d; %s } else if (n > %d) { n = %d; %s }\n",
+		ind, min, min, scatterRefuse(rep, walked, why), bound, bound, scatterRefuse(rep, walked, why))
 	g.pf("%s    %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }

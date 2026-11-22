@@ -12,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE RETAINING WALK'S LENGTH BOUNDS (docs/SPEC-TABLES.md §5, §6.6): every
@@ -194,7 +196,7 @@ func buildRetainWalkProbe(t *testing.T, schemaPath string, debug bool) string {
 		args = append(args, "-O")
 	}
 	args = append(args, "-o", bin, "main.rs")
-	cmd := exec.Command("rustc", args...)
+	cmd := testproc.Command(t, "rustc", args...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -211,7 +213,7 @@ func runRetainWalkProbe(t *testing.T, bin, mode, path, savePath string) string {
 	if savePath != "" {
 		args = append(args, savePath)
 	}
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := testproc.CommandContext(t, ctx, bin, args...)
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		t.Fatalf("%s probe did not finish within the test bound: %v\n%s", mode, ctx.Err(), out)

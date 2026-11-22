@@ -402,7 +402,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -442,7 +442,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -482,7 +482,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -522,7 +522,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -562,7 +562,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -602,7 +602,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -644,7 +644,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -686,7 +686,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -726,7 +726,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -766,7 +766,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -785,6 +785,9 @@ public final class BenchMixedMessage {
                 }
                 long keep19 = Math.min(n18, 8L);
                 if (keep19 < n18) {
+                    r.report.refuse("count_over_bound");
+                }
+                if (n18 < 1L) {
                     r.report.refuse("count_over_bound");
                 }
                 long run20 = TableMessage.elementRunBits(14, entry.element);
@@ -833,7 +836,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -900,7 +903,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1041,7 +1044,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1125,7 +1128,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1179,7 +1182,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1228,7 +1231,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1276,7 +1279,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1324,7 +1327,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1372,7 +1375,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1414,7 +1417,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1457,7 +1460,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1498,7 +1501,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1551,7 +1554,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1591,7 +1594,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1631,7 +1634,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1671,7 +1674,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1711,7 +1714,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1744,7 +1747,7 @@ public final class BenchMixedMessage {
                     return false;
                 }
                 r.report.unknown++;
-                if (!TableMessage.skip(r, entry)) {
+                if (!TableMessage.skipField(r, entry)) {
                     r.report.damaged = true;
                     return false;
                 }

@@ -21,12 +21,13 @@ package rusttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func rustWireFuzzVerdictMakefileCheck(mk string) error {
@@ -96,7 +97,7 @@ func rustWireFuzzLeg(t *testing.T, repo string, modules map[string][]byte, overr
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "wire-fuzz")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated card codec did not build: %v\n%s", err, out)
@@ -107,7 +108,7 @@ func rustWireFuzzLeg(t *testing.T, repo string, modules map[string][]byte, overr
 func rustWireFuzzHarness(t *testing.T, repo string) string {
 	t.Helper()
 	harness := filepath.Join(t.TempDir(), "conformance-harness")
-	cmd := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	cmd := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	cmd.Dir = repo
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build conformance-harness: %v\n%s", err, out)
@@ -130,7 +131,7 @@ func runRustWireFuzzVerdictPipe(t *testing.T, repo, harness, leg string, retain 
 	if retain {
 		args = append(args, "--retain")
 	}
-	cmd := exec.Command(harness, args...)
+	cmd := testproc.Command(t, harness, args...)
 	cmd.Dir = repo
 	out, err := cmd.CombinedOutput()
 	return string(out), err

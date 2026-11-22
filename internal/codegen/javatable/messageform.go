@@ -1117,10 +1117,23 @@ public final class TableMessage {
     }
 
     public static boolean skip(Reader r, TableVocabulary.Entry e) {
-        return skipAt(r, e.shape, e.element, 0);
+        return skipAt(r, e.shape, e.element, 0, false);
+    }
+
+    // skipField skips a body FIELD: an unknown field, a kind mismatch, a field
+    // of a skipped body. A conforming writer elides an empty union field, so
+    // arm reference 0 there is damage on the skip path as on the reference
+    // read (§3.3, §4); an array element and an arm payload keep their
+    // positional None.
+    public static boolean skipField(Reader r, TableVocabulary.Entry e) {
+        return skipAt(r, e.shape, e.element, 0, true);
     }
 
     public static boolean skipAt(Reader r, TableVocabulary.Shape s, TableVocabulary.Shape elem, int depth) {
+        return skipAt(r, s, elem, depth, false);
+    }
+
+    public static boolean skipAt(Reader r, TableVocabulary.Shape s, TableVocabulary.Shape elem, int depth, boolean atField) {
         if (depth > 128 || s == null) { r.err = true; return false; }
         switch (s.kind) {
             case 0: case 32:
@@ -1157,7 +1170,10 @@ public final class TableMessage {
             case 15: {
                 long ref = r.get(r.vocab.refBits);
                 if (r.err) { return false; }
-                if (ref == 0L) { return true; }
+                if (ref == 0L) {
+                    if (atField) { r.err = true; return false; }
+                    return true;
+                }
                 if (ref < 0L || ref > (long) r.vocab.count) { r.err = true; return false; }
                 TableVocabulary.Entry arm = r.vocab.entries[(int) ref - 1];
                 if (reservedId(arm.id) || arm.kind == 0) { r.err = true; return false; }
@@ -1242,7 +1258,7 @@ public final class TableMessage {
             // take their own region, as a read of it would.
             if (reservedId(e.id)) { r.err = true; return false; }
             if (!r.seenAdd(seenFieldMark, e.id)) { r.err = true; return false; }
-            if (!skipAt(r, e.shape, e.element, depth)) { return false; }
+            if (!skipAt(r, e.shape, e.element, depth, true)) { return false; }
         }
     }
 
@@ -1275,11 +1291,28 @@ public final class TableMessage {
         w.put(index, bits);
     }
 
+    // A RANGED VALUE READ BY NAME IS HELD TO THE ANNOUNCED KIND FIRST (§3.3,
+    // "A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW"): base plus
+    // offset is taken exactly, never wrapped, and a sum the announced kind
+    // cannot store refuses out_of_range before this reader's own range and
+    // domain, by the test the skip path takes (skipRanged), so a body gets one
+    // refusal whether this reader names the field or not. Inside the announced
+    // kind the sum fits that kind's own sixty-four bits, so the long sum below
+    // is exact.
+    static boolean rangedHolds(TableVocabulary.Shape s, long offLo, long offHi) {
+        long baseHi = s.kind >= 18 ? s.baseHi : (kindSigned(s.kind) && s.baseLo < 0L ? -1L : 0L);
+        return kindHolds(s.kind, offLo, offHi, s.baseLo, baseHi);
+    }
+
     public static long readSigned(Reader r, TableVocabulary.Shape s, long min, long max, boolean hasRange) {
         long raw = r.get((int) s.bits);
         if (r.err) { return 0L; }
         long v;
         if (s.packing == 1) {
+            if (!rangedHolds(s, raw, 0L)) {
+                r.report.refuse("out_of_range");
+                return hasRange ? min : 0L;
+            }
             v = raw + s.baseLo;
         } else if (s.bits > 0 && s.bits < 64) {
             int shift = 64 - (int) s.bits;
@@ -1297,6 +1330,10 @@ public final class TableMessage {
     public static long readUnsigned(Reader r, TableVocabulary.Shape s, long min, long max, boolean hasRange, int bitsWidth) {
         long raw = r.get((int) s.bits);
         if (r.err) { return 0L; }
+        if (s.packing == 1 && !rangedHolds(s, raw, 0L)) {
+            r.report.refuse("out_of_range");
+            return hasRange ? min : 0L;
+        }
         long v = (s.packing == 1) ? (raw + s.baseLo) : raw;
         if (hasRange) {
             if (Long.compareUnsigned(v, min) < 0) { v = min; r.report.refuse("out_of_range"); }
@@ -1319,6 +1356,10 @@ public final class TableMessage {
             lo = r.get((int) Math.min(s.bits, 64L));
             hi = s.bits > 64L ? r.get((int) (s.bits - 64L)) : 0L;
             if (r.err) { return new long[]{0L, 0L}; }
+            if (s.packing == 1 && !rangedHolds(s, lo, hi)) {
+                r.report.refuse("out_of_range");
+                return new long[]{0L, 0L};
+            }
             if (s.packing == 1) {
                 long sum = lo + s.baseLo;
                 long carry = Long.compareUnsigned(sum, lo) < 0 ? 1L : 0L;
@@ -1328,6 +1369,10 @@ public final class TableMessage {
         } else {
             long raw = r.get((int) s.bits);
             if (r.err) { return new long[]{0L, 0L}; }
+            if (s.packing == 1 && !rangedHolds(s, raw, 0L)) {
+                r.report.refuse("out_of_range");
+                return new long[]{0L, 0L};
+            }
             if (s.packing == 1) {
                 lo = raw + s.baseLo;
             } else if (signed && s.bits > 0 && s.bits < 64) {
@@ -2359,7 +2404,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	if len(st.Fields) == 0 {
 		g.pf("            if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("            r.report.unknown++;\n")
-		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
+		g.pf("            if (!TableMessage.skipField(r, entry)) { r.report.damaged = true; return false; }\n")
 	} else {
 		g.pf("            int idHi = (int) (entry.id >>> 32);\n")
 		g.pf("            int idLo = (int) entry.id;\n")
@@ -2379,7 +2424,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 		g.pf("            } else {\n")
 		g.pf("                if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("                r.report.unknown++;\n")
-		g.pf("                if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
+		g.pf("                if (!TableMessage.skipField(r, entry)) { r.report.damaged = true; return false; }\n")
 		g.pf("            }\n")
 	}
 	g.pf("        }\n")
@@ -2398,7 +2443,7 @@ func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry
 	g.pf("%s        widened = true;\n", ind)
 	g.pf("%s    } else {\n", ind)
 	g.pf("%s        r.report.refuse(\"kind_mismatch\");\n", ind)
-	g.pf("%s        if (!TableMessage.skip(r, %s)) { r.report.damaged = true; return false; }\n", ind, entryVar)
+	g.pf("%s        if (!TableMessage.skipField(r, %s)) { r.report.damaged = true; return false; }\n", ind, entryVar)
 	g.pf("%s        continue;\n", ind)
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
@@ -2527,6 +2572,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.damaged = true; return false; }\n", ind, entryVar)
 		g.pf("%slong %s = Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
 		g.pf("%sif (%s < %s) { r.report.refuse(\"count_over_bound\"); }\n", ind, keepVar, nVar)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below the reader's own minimum is refused as one past
+			// its bound is (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.3)
+			g.pf("%sif (%s < %dL) { r.report.refuse(\"count_over_bound\"); }\n", ind, nVar, f.ArrayMin)
+		}
 		g.pf("%slong %s = TableMessage.elementRunBits(14, %s.element);\n", ind, runVar, entryVar)
 		g.pf("%slong %s = (%s >= 0L && %s > %s) ? %s : %s;\n", ind, walkVar, runVar, nVar, keepVar, keepVar, nVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, walkVar, idxVar)

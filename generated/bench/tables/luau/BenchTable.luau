@@ -322,6 +322,7 @@ _M.TableHitEventMaxBytes = 8
 -- WriteTableHitEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTableHitEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.TargetId) ~= "number" or v.TargetId % 1 ~= 0 or v.TargetId < 0 or v.TargetId > 4095 then return false end
   BITS.value = v.TargetId
   if not stream:serializeBits(BITS, 12) then return false end -- the declared bit width
@@ -345,6 +346,7 @@ _M.TableChatEventMaxBytes = 8
 -- WriteTableChatEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTableChatEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Channel) ~= "number" or v.Channel % 1 ~= 0 or v.Channel < 0 or v.Channel > 3 then return false end
   BITS.value = v.Channel
   if not stream:serializeBits(BITS, 2) then return false end -- the offset from min (SPEC §4.3)
@@ -362,6 +364,7 @@ _M.TablePickupEventMaxBytes = 8
 -- WriteTablePickupEvent writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTablePickupEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemId) ~= "number" or v.ItemId % 1 ~= 0 or v.ItemId < 0 or v.ItemId > 1023 then return false end
   BITS.value = v.ItemId
   if not stream:serializeBits(BITS, 10) then return false end -- the declared bit width
@@ -378,16 +381,20 @@ _M.TableEventMaxBytes = 8
 
 -- WriteTableEvent writes union TableEvent (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteTableEvent(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 3 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.Hit) ~= "table" then return false end
     if not _M.WriteTableHitEvent(stream, v.Hit) then return false end
   end
   if v.Type == 2 then
+    if type(v.Chat) ~= "table" then return false end
     if not _M.WriteTableChatEvent(stream, v.Chat) then return false end
   end
   if v.Type == 3 then
+    if type(v.Pickup) ~= "table" then return false end
     if not _M.WriteTablePickupEvent(stream, v.Pickup) then return false end
   end
   return true

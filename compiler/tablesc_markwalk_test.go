@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The C reachability walk runs before the validating read and must cost time
@@ -154,7 +156,7 @@ func compileCTableMarkWalkProbe(t *testing.T, u *ir.Unit, source string) string 
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	return filepath.Join(dir, "probe")
@@ -164,7 +166,7 @@ func runCTableMarkWalkProbe(t *testing.T, binary, name string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, binary, name).CombinedOutput()
+	output, err := testproc.CommandContext(t, ctx, binary, name).CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		t.Fatalf("the C probe for %s did not finish within 20s\n%s", name, output)
 	}

@@ -1,12 +1,13 @@
 package javatable
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCookWriteUnionsJavaReversed holds the four things the Java cook writer
@@ -73,7 +74,7 @@ func TestCookWriteUnionsJavaReversed(t *testing.T) {
 				map[string]string{class: cookDriverSource(class, pl.pkg, pl.root)})
 			repo := filepath.Join("..", "..", "..")
 			inst, cook := m.instance[pl.row], m.cook[pl.row]
-			cmd := exec.Command(javaBin, "-ea", "-cp", dir, class,
+			cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, class,
 				filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
 				filepath.Join(repo, "testdata", "conformance", "tables", "json", pl.row+".json"))
 			out, err := cmd.CombinedOutput()
@@ -99,7 +100,7 @@ func TestCookWriteUnionTagRefusedJava(t *testing.T) {
 	dir := compileCookUnit(t, javac, cookUnitFiles(t, "../../../test/tables/V1.schema"), "tblv1",
 		map[string]string{"CookUnionTagDriver": cookUnionTagDriver})
 	m := readCookManifest(t)
-	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookUnionTagDriver",
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CookUnionTagDriver",
 		filepath.Join("..", "..", "..", m.instance["v1_cfg"][2]),
 		filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "json", "v1_cfg.json"))
 	out, err := cmd.CombinedOutput()

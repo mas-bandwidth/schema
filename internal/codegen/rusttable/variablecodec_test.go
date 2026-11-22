@@ -11,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cardsUnit loads the real cards corpus (tables/cards/Card.schema) through the
@@ -84,13 +86,13 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 
 	bin := filepath.Join(root, "probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the card codec did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin, filepath.Join(repo, "tables", "cards", "fuzz", "card-populated.wire"))
+	run := testproc.Command(t, bin, filepath.Join(repo, "tables", "cards", "fuzz", "card-populated.wire"))
 	run.Dir = root
 	out, err := run.CombinedOutput()
 	if err != nil {

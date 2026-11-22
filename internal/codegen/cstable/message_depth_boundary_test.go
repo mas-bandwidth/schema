@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -295,7 +296,7 @@ static class Program
 	}
 	args = append(args, sources...)
 	args = append(args, probePath)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	if compileOut, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc compile failed: %v\n%s", err, compileOut)
@@ -304,7 +305,7 @@ static class Program
 	if err := os.WriteFile(filepath.Join(dir, "depthprobe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	out, err := run.CombinedOutput()
 	return string(out), err
