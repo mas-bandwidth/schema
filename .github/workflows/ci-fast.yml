@@ -223,6 +223,7 @@ jobs:
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
       newleg: ${{ steps.pick.outputs.newleg }}
+      input_rows: ${{ steps.pick.outputs.input_rows }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,6 +241,8 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
           BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           # a push diffs against the tip it replaced; a new ref (all-zero
@@ -279,6 +282,17 @@ jobs:
           # `| grep ... >/dev/null` is the same defect. TestNoWorkflowDecidesOnEchoIntoGrep.
           broad=no
           if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+            broad=yes
+          fi
+          # EVERY PUSH TO MAIN RUNS EVERY LEG (the owner, 2026-11-22). A main
+          # tip diffed against its predecessor selected by path, so main showed
+          # green while the Luau, C-bench and Dart reds sat on it unseen. A
+          # push to main has no path filter: every leg's verify rows, every
+          # clean gate and lint, and every input family's every reader leg,
+          # each its own parallel job under the two-minute cap.
+          all=no
+          if [ "${EVENT:-}" = push ] && [ "${REF:-}" = refs/heads/main ]; then
+            all=yes
             broad=yes
           fi
 
@@ -527,7 +541,7 @@ jobs:
           # selected above for examples/ and examples128/) and no fixed-form
           # leg, so they are not the broad rule.
           corpus=no
-          if grep -qE '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' <<<"$files"; then
             corpus=yes
           fi
           lints=""
@@ -551,17 +565,25 @@ jobs:
           # Runs conformance, bench, and fuzz (< 2m each) for the languages the
           # diff touches (including C++ and ccommon optimizations, which set
           # broad=yes for leg-gate's oracle rule), while keeping shared root
-          # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
-          # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
+          # edits (ir/, compiler/, tables/, Makefile, ci-fast.yml) and a push to
+          # main get all eighteen legs. NO CAP (2026-11-22): a cap once dropped
+          # a shared edit or a sweep of more than four legs to NO verify row,
+          # and the verdict called the skip green because the plan had selected
+          # nothing. A skip is green only when no leg reads the change. The
+          # rows run in parallel, each inside its own two minutes.
           shared_broad=no
-          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
           fi
-          verify_count=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | wc -l | tr -d ' ')
-          if [ "$shared_broad" = yes ] || [ "$verify_count" -gt 4 ]; then
+          if [ "$shared_broad" = yes ]; then
+            verify_set="cpp c go rust js cs unity java dart elixir lua luau moo squirrel goose lobster python ruby"
+          else
+            verify_set=$touched_legs
+          fi
+          if [ -z "$verify_set" ]; then
             verify_legs_json='[]'
           else
-            verify_legs_json=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+            verify_legs_json=$(printf '%s' "$verify_set" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
             [ -n "$verify_legs_json" ] || verify_legs_json='[]'
           fi
 
@@ -569,7 +591,7 @@ jobs:
           # diff touches codegen, IR, compiler, tables, any .schema file, or
           # generated/ itself.
           codegen_touched=no
-          if grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$' <<<"$files"; then
             codegen_touched=yes
           fi
 
@@ -602,13 +624,42 @@ jobs:
           [ -n "$clean_legs_json" ] || clean_legs_json='[]'
 
           echo "broad=$broad"               >> "$GITHUB_OUTPUT"
-          echo "packages=$packages"         >> "$GITHUB_OUTPUT"
           echo "src_packages=$src_packages" >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
+
+          # THE INPUT FAMILIES (tools/inputfamilies, 2026-11-22). A change to a
+          # shared test input (a pins directory, the conformance corpus, a
+          # packet case file) selects EVERY leg that reads it, and the readers
+          # are derived from the tree, never typed: a leg reads a family when
+          # its make target for the family is defined. One input-family row per
+          # reader leg runs that target under tools/inputaccount. f2e1c41 added
+          # two .bits pins under testdata/wire/packet-defaults; no path rule
+          # here matched them, the plan selected nothing, and the verdict
+          # called every skipped reader green. The Go packages whose source
+          # names a changed input join the go test selection the same way (a
+          # root testdata/ directory is invisible to the go tool). On a push to
+          # main every family's every reader runs.
+          if [ "$all" = yes ]; then
+            go run ./tools/inputfamilies select -pr -all -changed "$RUNNER_TEMP/diff-files.txt" > "$RUNNER_TEMP/input-families.txt"
+          else
+            go run ./tools/inputfamilies select -pr -changed "$RUNNER_TEMP/diff-files.txt" > "$RUNNER_TEMP/input-families.txt"
+          fi
+          cat "$RUNNER_TEMP/input-families.txt"
+          input_rows=$(sed -n 's/^input_rows=//p' "$RUNNER_TEMP/input-families.txt")
+          if [ -z "$input_rows" ]; then
+            echo "::error::tools/inputfamilies printed no input_rows line"
+            exit 1
+          fi
+          for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do
+            case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+          done
+          packages=$(echo "$packages" | xargs)
+          echo "packages=$packages"         >> "$GITHUB_OUTPUT"
+          echo "input_rows=$input_rows"     >> "$GITHUB_OUTPUT"
 
           # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541). `schema new-leg`
           # lays down a package that imports the compiler's own packages, the
@@ -650,6 +701,8 @@ jobs:
             echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
             echo "* new-leg scaffold: **$newleg**"
+            echo "* input-family rows: \`$input_rows\`"
+            echo "* every leg (push to main): **$all**"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
@@ -1274,6 +1327,154 @@ jobs:
             elixir) make "verify-${{ matrix.leg }}-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" ;;
             *)      make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ;;
           esac
+
+      # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. The row has its
+      # leg's toolchain (the steps above install it, and the make target
+      # refuses without it), so a test that skips because that toolchain is
+      # missing is red here: "no Elixir" in the Elixir row. A row whose
+      # target runs no go test has no record and says so.
+      - name: the skip ledger — every skip this row's go test recorded, by reason
+        if: always()
+        env:
+          LEG: ${{ matrix.leg }}
+        run: |
+          set -euo pipefail
+          provides="platform tool:make tool:git tool:sh"
+          case "$LEG" in
+            cpp)      provides="$provides tool:c++" ;;
+            c)        provides="$provides tool:cc" ;;
+            cs|unity) provides="$provides tool:dotnet" ;;
+            rust)     provides="$provides tool:rust" ;;
+            js)       provides="$provides tool:node" ;;
+            java)     provides="$provides tool:java" ;;
+            dart)     provides="$provides tool:dart" ;;
+            elixir)   provides="$provides tool:elixir" ;;
+          esac
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "$provides" "$PGROUP_GO_TEST_JSON"
+
+  # THE INPUT FAMILIES (tools/inputfamilies, tools/inputaccount; 2026-11-22).
+  # One row per reader leg of each input family the diff touches (every
+  # family on a push to main). The row runs the leg's make target for the
+  # family under tools/inputaccount, which enumerates the family's inputs from
+  # disk, holds every other reader as made, and fails naming each input the
+  # leg never opened: the one place a driver cannot opt out of. Then the two
+  # canaries, the standing proof that the accounting works: an extra input
+  # planted beside the others, and one input with a wrong answer. Each must
+  # turn the run red, or the row is red.
+  input-family:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.input_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: input-family (${{ matrix.family }}, ${{ matrix.leg }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.input_rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt). With
+      # PGROUP_GO_TEST_JSON set, tools/pgroup records the `go test -json`
+      # event stream of every go test this job's steps run, at the -timeout
+      # each one named: nothing is lifted. The job's last step reads the
+      # record. It costs the job no second run.
+      - name: where this job records its go test events
+        run: |
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "${{ matrix.leg }}" in
+            go)       git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+            c)        git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust)     git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs|unity) git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+            js)       git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
+          esac
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs' || matrix.leg == 'unity'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: (matrix.leg == 'cs' || matrix.leg == 'unity') && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      - name: hosted GL dependencies for Lobster
+        if: matrix.leg == 'lobster' && runner.environment == 'github-hosted'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+      - uses: ./.github/actions/dist-pins
+        if: matrix.leg == 'lua' || matrix.leg == 'luau' || matrix.leg == 'goose' || matrix.leg == 'lobster'
+        with:
+          pins: ${{ matrix.leg }}
+      - uses: ./.github/actions/python
+        if: matrix.leg == 'python'
+      - uses: ./.github/actions/ruby
+        if: matrix.leg == 'ruby'
+      - uses: ./.github/actions/moo
+        if: matrix.leg == 'moo'
+
+      - name: every input of the family read by this leg, and both canaries red
+        env:
+          FAMILY: ${{ matrix.family }}
+          LEG: ${{ matrix.leg }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
+          vars=()
+          case "$LEG" in
+            rust)   vars=("RUSTUP_BIN=$(dirname "$(command -v cargo)")") ;;
+            dart)   vars=(DART=dart) ;;
+            java)   vars=(JAVA=java JAVAC=javac) ;;
+            js)     vars=(NODE=node) ;;
+            elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
+          esac
+          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
+          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
+          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"
 
       # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. The row has its
       # leg's toolchain (the steps above install it, and the make target
@@ -2147,7 +2348,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, input-family, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2175,6 +2376,7 @@ jobs:
               lang-clean) [ "$(out clean_legs)" = '[]' ] ;;
               lang-lint) [ "$(out lints)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
+              input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
               newleg-scaffold) [ "$(out newleg)" = no ] ;;

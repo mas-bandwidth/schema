@@ -34,7 +34,8 @@
     "SPEC-CONFORMANCE.md",
     "SPEC-TABLES.md",
     "UNITY.md",
-    "VERSIONING.md"
+    "VERSIONING.md",
+    "test-input-accounting.md"
   ],
   "excludeFolders": [
     "docs/LAYERS",

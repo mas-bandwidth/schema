@@ -233,9 +233,11 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		{"lobster", "internal/codegen/lobstertable/load.go", `["lobster"]`},
 		{"python", "internal/codegen/pythontable/emit.go", `["python"]`},
 		{"ruby", "internal/codegen/rubytable/emit.go", `["ruby"]`},
-		{"shared compiler", "compiler/compiler.go", `[]`},
-		{"shared Makefile", "Makefile", `[]`},
-		{"wide sweep capped", "generated/c/x\ngenerated/cs/x\ngenerated/go/x\ngenerated/js/x\ngenerated/lua/x", `[]`},
+		// a shared edit gets every leg and a wide sweep every leg it
+		// touches: no cap (2026-11-22), a skip is green only with no reader
+		{"shared compiler", "compiler/compiler.go", `["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","lua","luau","moo","python","ruby","rust","squirrel","unity"]`},
+		{"shared Makefile", "Makefile", `["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","lua","luau","moo","python","ruby","rust","squirrel","unity"]`},
+		{"wide sweep uncapped", "generated/c/x\ngenerated/cs/x\ngenerated/go/x\ngenerated/js/x\ngenerated/lua/x", `["c","cs","go","js","lua"]`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
