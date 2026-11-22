@@ -1822,3 +1822,31 @@ write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata
 write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
 write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
 write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused
+
+# A FIXED BOUND GROWN SINCE THE WRITER (docs/SPEC-TABLES.md §21.1, "a grown
+# bound"): `[N]T` written by a build whose bound was smaller reads as the
+# writer's elements followed by ONE DEFAULT ELEMENT PER NEW SLOT — an empty
+# union, a record at its declared defaults, a null pointer, a zero scalar —
+# never the field's own default in a slot and never nothing. Each wire is the
+# engine's bytes for a corpus unit whose named bounds are narrowed to 1
+# (test/conformance/harness/widenbound_vectors_test.go builds and holds them),
+# and the corpus unit, unchanged, is the reader: an array of unions, an
+# optional array of scalars and one of records inside a union arm; an array of
+# scalars that is itself an arm; an array of pointers; and arrays of scalars
+# and of records whose declared defaults are not zero.
+report  widenbound_envelope       messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope.bin
+report  widenbound_envelope_spans messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope_spans.bin
+report  widenbound_feed           streamdemo  Feed         testdata/conformance/tables/wire/widenbound_feed.bin
+report  widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/tables/wire/widenbound_evodoc.bin
+rewrite widenbound_envelope       messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope.bin
+rewrite widenbound_envelope_spans messagedemo ToolEnvelope testdata/conformance/tables/wire/widenbound_envelope_spans.bin
+rewrite widenbound_feed           streamdemo  Feed         testdata/conformance/tables/wire/widenbound_feed.bin
+rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/tables/wire/widenbound_evodoc.bin
+# The same grown bounds in the MESSAGE FORM at a fixed root (§3.3), and an
+# optional array of enums beside them: the peer is the narrower build, a unit
+# of its own (test/tables/widenbound/WidenBoundPeer.schema, messagedemo with
+# those bounds narrowed and nothing else), its announcement is the connection,
+# and the reader's own file of the value the batch lands is the pair.
+unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
+connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
+message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin

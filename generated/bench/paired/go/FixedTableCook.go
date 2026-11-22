@@ -52,11 +52,50 @@ const TableCookMagic uint64 = 0x4b4f4f434d484353
 var TableCookByteOrder = tableCookNativeOrder()
 
 func tableCookNativeOrder() uint64 {
-	probe := uint16(1)
-	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
+	if binary.NativeEndian.Uint16([]byte{1, 0}) == 1 {
 		return 1 // little
 	}
 	return 2 // big
+}
+
+// tableCookOpenRegion is every <Name>Cook.Open's SPEC §7 header match, once per package (dataLength > 1<<63-1 restates for int64(dataLength) the cap bytes-dataOffset sets).
+func tableCookOpenRegion(base unsafe.Pointer, length int64, nodeAlign, rootSize uint64) (unsafe.Pointer, int64, error) {
+	if base == nil {
+		return nil, 0, TableRefuseUnalignedBase
+	}
+	if length < 64 {
+		return nil, 0, TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 64)
+	if magic := binary.NativeEndian.Uint64(header); magic == 0x5343484d434f4f4b {
+		return nil, 0, TableRefuseForeignOrder
+	} else if magic != TableCookMagic {
+		return nil, 0, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return nil, 0, TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return nil, 0, TableRefuseWrongBuildVersion
+	}
+	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return nil, 0, TableRefuseReservedNotZero
+	}
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%nodeAlign != 0 {
+		return nil, 0, TableRefuseBadAlignment
+	}
+	bytes := uint64(length)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	dataLength := binary.NativeEndian.Uint64(header[24:])
+	attribution := binary.NativeEndian.Uint64(header[32:])
+	if dataOffset > bytes || dataLength > bytes-dataOffset || dataLength > 1<<63-1 || attribution != bytes-dataOffset-dataLength || dataLength < rootSize {
+		return nil, 0, TableRefuseTruncated
+	}
+	if uint64(uintptr(base))%alignment != 0 {
+		return nil, 0, TableRefuseUnalignedBase
+	}
+	return unsafe.Add(base, uintptr(dataOffset)), int64(dataLength), nil
 }
 
 // TableCookHeaderBytes is §7.1's header: 64 bytes of u64 words. The DATA part
@@ -367,46 +406,9 @@ func FixedTableOpen(cook *FixedTableCook, base unsafe.Pointer, length int64) boo
 // established. A successful match points at the region and allocates nothing.
 func (cook *FixedTableCook) Open(base unsafe.Pointer, length int64) error {
 	*cook = FixedTableCook{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if length < 64 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 64)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableCookMagic {
-		if magic == 0x5343484d434f4f4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
-		return TableRefuseReservedNotZero
-	}
-	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%16 != 0 {
-		return TableRefuseBadAlignment
-	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-	dataLength := binary.NativeEndian.Uint64(header[24:])
-	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1376 {
-		return TableRefuseTruncated
-	}
-	if uint64(uintptr(base))%alignment != 0 {
-		return TableRefuseUnalignedBase
-	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
-	return nil
+	var err error
+	cook.Region, cook.RegionLength, err = tableCookOpenRegion(base, length, 16, 1376)
+	return err
 }
 
 // FixedTableAt dereferences a reference, and it is the same call in a locked region

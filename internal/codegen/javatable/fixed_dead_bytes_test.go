@@ -4,13 +4,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/FIXED-FORM-ALGORITHM.md
@@ -172,7 +173,7 @@ func buildDeadBytesReader(t *testing.T, javac string) (classes, pkg, root string
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, filepath.Join(src, "DeadProbe.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes, pkg, root
@@ -226,7 +227,7 @@ func buildDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, filepath.Join(srcDir, "DeadProbe.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac lineage reader: %v\n%s", err, out)
 	}
 	return classes, pkg, root
@@ -304,7 +305,7 @@ fixed table Root
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, filepath.Join(srcDir, "DeadProbe.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac nested lineage reader: %v\n%s", err, out)
 	}
 	return classes, pkg, root, writer
@@ -335,7 +336,7 @@ type deadProbeRun struct {
 
 func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) deadProbeRun {
 	t.Helper()
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "DeadProbe", file)
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "DeadProbe", file)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", filepath.Base(file), err, out)

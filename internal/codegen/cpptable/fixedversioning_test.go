@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,6 +28,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the harness ------------------------------------------------------------
@@ -200,11 +201,11 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // ---- the rows ---------------------------------------------------------------

@@ -1,0 +1,6 @@
+package game
+
+table Fleet
+{
+    save_retain uint32
+}

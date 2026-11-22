@@ -1,0 +1,12 @@
+package game
+
+type Player
+{
+    measure uint32
+    measure_retain uint32
+    save_retain uint32
+    save_text uint32
+    to_json uint32
+    cook uint32
+    cook_measure uint32
+}

@@ -17,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cCountRefusalSchema = `package countcheck
@@ -227,7 +229,7 @@ int main(void) {
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -235,12 +237,12 @@ int main(void) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return string(output), fmt.Errorf("compile: %w", err)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe"))
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	output, err := cmd.CombinedOutput()
 	return string(output), err

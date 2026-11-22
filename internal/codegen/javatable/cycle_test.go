@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const javaCycleSchema = `package cyclecheck
@@ -303,7 +304,7 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 				cp[w.file] = []byte(strings.ReplaceAll(src, w.old, w.new))
 			}
 			dir := compileCookUnit(t, javac, cp, "cyclecheck", map[string]string{"CycleDriver": driver})
-			out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CycleDriver").CombinedOutput()
+			out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CycleDriver").CombinedOutput()
 			if w.file == "" {
 				if err != nil {
 					t.Fatalf("intact failed: %v\n%s", err, out)

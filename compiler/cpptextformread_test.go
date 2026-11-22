@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCPPTextFormDocumentVectors drives the C++ hand-editable text form's
@@ -50,13 +52,13 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	compile := func(t *testing.T, main string, bin string) {
 		t.Helper()
 		args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
-		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 			t.Fatalf("compile: %v\n%s", err, out)
 		}
 	}
 	run := func(t *testing.T, bin string) string {
 		t.Helper()
-		out, err := exec.Command(bin).CombinedOutput()
+		out, err := testproc.Command(t, bin).CombinedOutput()
 		if err != nil {
 			t.Fatalf("run: %v\n%s", err, out)
 		}
@@ -194,7 +196,7 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	vcompile := func(t *testing.T, main string, bin string) {
 		t.Helper()
 		args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", vdir, main, filepath.Join(vdir, "ProbeTable.cpp"), "-o", bin}
-		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 			t.Fatalf("compile variable: %v\n%s", err, out)
 		}
 	}
