@@ -1250,9 +1250,9 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.3), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
+  (serialize v2.1.6), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
   JavaScript (serialize.js v2.1.2), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.1.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  (serialize.cs v2.2.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
