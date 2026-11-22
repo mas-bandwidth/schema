@@ -12,7 +12,11 @@ func TestRequiredRefusedForEveryTargetButGo(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package t\ntable Ship\n{\n    name string(32) | required\n}\n")
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		if carries(target, carryRequired) {
 			continue
 		}

@@ -988,18 +988,31 @@ static void test_view(void) {
     if (failures == before) printf("PASS %s\n", name);
 }
 
+/* one counted unit per test function: main prints "ran N, failed M" and
+   build/mustrun holds N to the count the recipe registers */
+static int tests_ran = 0;
+static int tests_failed = 0;
+#define RUN(test)                                   \
+    do {                                            \
+        const int failures_before = failures;       \
+        tests_ran++;                                \
+        test();                                     \
+        if (failures > failures_before) tests_failed++; \
+    } while (0)
+
 int main(void) {
-    test_round_trip();
-    test_bounds();
-    test_parse_render();
-    test_upgrade();
-    test_task_hash();
-    test_edits();
-    test_view();
+    RUN(test_round_trip);
+    RUN(test_bounds);
+    RUN(test_parse_render);
+    RUN(test_upgrade);
+    RUN(test_task_hash);
+    RUN(test_edits);
+    RUN(test_view);
     if (failures != 0) {
         printf("cards_test: %d failure(s)\n", failures);
-        return 1;
+    } else {
+        printf("cards_test: all checks pass\n");
     }
-    printf("cards_test: all checks pass\n");
-    return 0;
+    printf("cards-c-test: ran %d, failed %d\n", tests_ran, tests_failed);
+    return (failures != 0 || tests_ran == 0) ? 1 : 0;
 }

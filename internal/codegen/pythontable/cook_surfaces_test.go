@@ -52,7 +52,11 @@ func TestPythonCookForeignAndForgerySurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for pin, run := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for pin, run := range allCookPins {
 		for _, surface := range []string{"cook", "cook-foreign", "cook-forgery", "cook-write"} {
 			outdir := filepath.Join(dir, pin+surface)
 			if err := os.Mkdir(outdir, 0700); err != nil {
@@ -94,7 +98,11 @@ func TestPythonCookForeignAndForgerySurfaces(t *testing.T) {
 		{"cook", "cook.py", "write_bytes(outdir, name, cook.dump_cook(handle).encode(\"utf-8\"))", "write_bytes(outdir, name, b\"\")", "example", "node 0 Root @0\n"},
 		{"cook-write", "cook-write.py", "write_bytes(outdir, name + suffix, result)", "write_bytes(outdir, name + suffix, result[:-1])", "value", string(oracle.cooks["full"][0])},
 	} {
-		for pin, run := range cookPins() {
+		allCookPinss := cookPins()
+		if len(allCookPinss) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for pin, run := range allCookPinss {
 			name := control.surface + "-" + pin
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()

@@ -54,6 +54,9 @@ func TestRowP2(t *testing.T) {
 
 	// W1: the first write.
 	need := tblp3.ChainFixedMeasure(int64(len(values)))
+	if need <= 0 {
+		t.Fatalf("P2: the measure of three records is %d: every byte comparison below would compare nothing", need)
+	}
 	w1 := make([]byte, need)
 	if n := tblp3.ChainFixedSave(values, w1); n != need {
 		t.Fatalf("P2: the first write refused or short-wrote its own measure: n=%d need=%d", n, need)

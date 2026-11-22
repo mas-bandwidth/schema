@@ -219,7 +219,11 @@ func TestZeroStrideAndEdgeShapesAllTargets(t *testing.T) {
 func driveUnitAll18Targets(t *testing.T, label string, u *ir.Unit, parseGo bool) {
 	t.Helper()
 	c := compiler.New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -249,7 +253,12 @@ func driveUnitAll18Targets(t *testing.T, label string, u *ir.Unit, parseGo bool)
 				t.Errorf("%s: target moo panicked: %v", label, r)
 			}
 		}()
-		_, _ = moo.Generate(u)
-		_, _ = mootable.Generate(u)
+		// a fuzzed unit may be refused; a refusal that says nothing is the defect
+		if _, err := moo.Generate(u); err != nil && err.Error() == "" {
+			t.Errorf("%s: target moo returned empty error", label)
+		}
+		if _, err := mootable.Generate(u); err != nil && err.Error() == "" {
+			t.Errorf("%s: target moo (tables) returned empty error", label)
+		}
 	}()
 }

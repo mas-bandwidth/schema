@@ -68,6 +68,9 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == "carries.go" {
@@ -116,7 +119,11 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		{carryOptionalMap, "package probe\ntable M\n{\n    tags ?map[string(8)]int32\n}\n", "optional map on field M.tags"},
 	}
 	c := New()
-	for _, tc := range carriesTable(cases) {
+	allCarriesTable := carriesTable(cases)
+	if len(allCarriesTable) == 0 {
+		t.Fatal("carriesTable(cases) is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCarriesTable {
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
 			// THE QUERY THE CONFORMANCE HARNESS CLAIMS BY names the same
@@ -144,7 +151,11 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 		})
 	}
 	seen := map[carriesRow]bool{}
-	for _, tc := range carriesTable(cases) {
+	allCarriesTables := carriesTable(cases)
+	if len(allCarriesTables) == 0 {
+		t.Fatal("carriesTable(cases) is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCarriesTables {
 		if seen[tc] {
 			t.Errorf("carries row %q is registered twice", tc.construct)
 		}

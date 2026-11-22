@@ -26,7 +26,7 @@ packet-write-bareint-elixir-negative-control: packet-write-bareint-elixir
 	@grep -Fq 'FAILED: packet-write-bareint int8-above-max refused' build/packet-write-bareint/elixir-negative/log && \
 		grep -Fq 'FAILED: packet-write-bareint uint64-negative refused' build/packet-write-bareint/elixir-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: packet-write-bareint-elixir went red, but not on the out-of-width cases'; cat build/packet-write-bareint/elixir-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-bareint/elixir-negative/log | grep -Fq 'reads back'; then cat build/packet-write-bareint/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a boundary case went red with the write check removed'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-write-bareint/elixir-negative/log | grep -F 'reads back' >/dev/null; then cat build/packet-write-bareint/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a boundary case went red with the write check removed'; exit 1; fi
 	@echo 'packet-write-bareint-elixir negative control: removing the bare-integer write check reds packet-write-bareint-elixir on the out-of-width cases'
 
 test-elixir: packet-write-bareint-elixir packet-write-bareint-elixir-negative-control

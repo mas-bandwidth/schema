@@ -33,7 +33,7 @@ packet-write-bareint-dart-negative-control: packet-write-bareint-dart
 		{ echo 'NEGATIVE CONTROL FAILED: int32-above-max was not the failure'; cat build/packet-write-bareint/dart-negative/log; exit 1; }
 	@grep -Fq 'FAILED: packet-write-bareint uint32-negative: out-of-width value was written' build/packet-write-bareint/dart-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: uint32-negative was not the failure'; cat build/packet-write-bareint/dart-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-bareint/dart-negative/log | grep -Fvq ': out-of-width value was written'; then \
+	@if grep -F 'FAILED: ' build/packet-write-bareint/dart-negative/log | grep -Fv ': out-of-width value was written' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a case other than an out-of-width value went red'; \
 		cat build/packet-write-bareint/dart-negative/log; exit 1; fi
 	@grep -m1 'FAILED: packet-write-bareint int8-above-max: out-of-width value was written' build/packet-write-bareint/dart-negative/log

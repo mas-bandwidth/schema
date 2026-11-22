@@ -64,6 +64,9 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 			if r.n != 1 || r.refused || r.damaged {
 				t.Fatalf("the file reads one record: %+v", r)
 			}
+			if len(order) == 0 {
+				t.Fatal("order is empty: the loop below would check nothing")
+			}
 			for _, field := range order {
 				if got := r.value[field]; got != expect[field] {
 					t.Errorf("%s landed %s, want %s", field, got, expect[field])

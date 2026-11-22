@@ -199,6 +199,9 @@ func TestGooseFixedRootOverCeilingRefusesFormOne(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if g := strings.Join(got[name], " "); g != want[name] {
 			t.Errorf("%s: Goose answered %q, want %q", name, g, want[name])

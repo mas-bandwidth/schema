@@ -5683,7 +5683,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         else { out += integer; }
         return true;
     }
-    double d = TableJsonStrtod( n.text.c_str() );
+    // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
+    // token is narrowed to float32 before its ends are tested, the value
+    // the JSON read lands, so a text this test passes reads back.
+    double d = f->kind == 10 ? (double) TableJsonStrtof( n.text.c_str() ) : TableJsonStrtod( n.text.c_str() );
     if ( f->has_range )
     {
         if ( d < f->range_min || d > f->range_max )

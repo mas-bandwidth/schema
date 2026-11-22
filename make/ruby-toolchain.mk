@@ -105,7 +105,7 @@ endif
 # .gem file held to its sha256 before gem install sees it. No index is
 # consulted and nothing is resolved: the lock names every gem.
 dist/ruby-%/GEMS: dist/ruby-%/PIN $(RUBY_GEMS_LOCK) | ruby-gems-lock-controls
-	@if echo " $(RUBY_SDK_STAGED) " | grep -q " $* "; then \
+	@if echo " $(RUBY_SDK_STAGED) " | grep " $* " >/dev/null; then \
 		for a in rubocop steep rbs; do \
 			dist/ruby-$*/bin/$$a --version >/dev/null 2>&1 || { \
 				echo "dist-ruby REFUSES: the fleet SDK's $(NOVA_SDK)/ruby-$*/bin/$$a does not answer --version"; exit 1; }; \

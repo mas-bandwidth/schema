@@ -1,12 +1,14 @@
-// A REFUSED FIXED LOAD LEAVES THE CALLER'S VALUES AS THEY WERE
-// (docs/FIXED-FORM-ALGORITHM.md §5.3 and §7 item 3, docs/SPEC-TABLES.md §6.5).
+// A REFUSED FIXED LOAD LEAVES EVERY ROW AT ITS DECLARED DEFAULTS
+// (docs/FIXED-FORM-ALGORITHM.md §5.3 and §7 item 3, docs/SPEC-TABLES.md §6.5;
+// ruling R4, 2026-11-22).
 //
-// Every refusal of a fixed load, out_of_range included, leaves the caller's
-// values exactly as they were before the load. The bounds checks run in the
-// check pass, before any record lands, and step 12 lands values already known
-// good. The page states the same end state in three places, and this pin holds
-// each of them to the strict read: §5.3's LOAD, §7 item 3's negative controls,
-// and §6.5's FixedLoad clause.
+// Every refusal of a fixed load, out_of_range included, lands no byte read
+// from the file and leaves every row the call was handed at its declared
+// defaults: no partly landed row survives. The bounds checks run in the check
+// pass, before any record lands, and step 12 lands values already known good.
+// The page states the same end state in three places, and this pin holds each
+// of them: §5.3's LOAD, §7 item 3's negative controls, and §6.5's rule for
+// every read.
 package compiler
 
 import (
@@ -32,11 +34,11 @@ func TestSpecFixedRefusalLeavesValues(t *testing.T) {
 			row:  "§5.3 LOAD: the bounds checks run in the check pass",
 			text: load,
 			wants: []string{
-				"Every refusal, `out_of_range` included, writes not one destination byte",
+				"`out_of_range` included, lands not one byte read from the file, and then sets every row handed in to its declared defaults",
 				"the bounds checks run in the check pass, before any record lands",
 				"step 12 lands values already known good and refuses nothing",
-				"never reset to its declared defaults",
-				"which is the state SPEC-TABLES §6.5 states for `FixedLoad`",
+				"every row the call was handed holds its declared defaults",
+				"which is the state SPEC-TABLES §6.5 states for every read",
 				"A TAG is checked in the check pass, before any record lands",
 				"Only then does it land the records, values already known good",
 			},
@@ -45,22 +47,29 @@ func TestSpecFixedRefusalLeavesValues(t *testing.T) {
 				"A refusal the bounds pass meets after a record has landed",
 				"A TAG is checked in the bounds pass, not in the check loop",
 				"Only then does it land the records and run the bounds pass",
+				"never reset to its declared defaults",
 			},
 		},
 		{
-			row:   "§6.5: FixedLoad leaves every value as it was",
-			text:  fixedLoad,
-			wants: []string{"`FixedLoad` leaves every value as it was"},
+			row:  "§6.5: every row handed in holds its declared defaults",
+			text: fixedLoad,
+			wants: []string{
+				"THE CALLER'S VALUES AFTER A REFUSAL: every instance the call was handed holds its declared defaults",
+				"a fixed batch read resets EVERY row it was handed",
+			},
 			stales: []string{
-				"`FixedLoad` resets every value it had written",
+				"`FixedLoad` leaves every value as it was",
 			},
 		},
 		{
-			row:  "§7 item 3: a refusal leaves the destination as it was",
+			row:  "§7 item 3: a refusal leaves every row at its declared defaults",
 			text: proofs,
 			wants: []string{
-				"nothing decoded, no counter moved, and every byte of the caller's destination as it was before the load",
-				"never clamped, never zero-filled, never prefilled",
+				"nothing decoded, no counter moved, and every row the caller handed in at its declared defaults",
+				"never clamped, never partly landed",
+			},
+			stales: []string{
+				"every byte of the caller's destination as it was before the load",
 			},
 		},
 	}

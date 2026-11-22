@@ -257,7 +257,11 @@ fn main() {
 // delivered, the refusal by name, the damage flag and §4's counters.
 func TestGooseMessageFormHostileBatches(t *testing.T) {
 	t.Parallel()
-	for _, row := range gooseMsgRows(t) {
+	allGooseMsgRows := gooseMsgRows(t)
+	if len(allGooseMsgRows) == 0 {
+		t.Fatal("gooseMsgRows(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allGooseMsgRows {
 		u := gooseMsgUnitDir(t, row.unitDir)
 		if !isFixedRoot(u, row.root) {
 			continue

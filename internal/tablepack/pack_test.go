@@ -603,6 +603,9 @@ func compareTrees(t *testing.T, want, got string) {
 	t.Helper()
 	wantFiles := treeFiles(t, want)
 	gotFiles := treeFiles(t, got)
+	if len(wantFiles) == 0 {
+		t.Fatal("wantFiles is empty: the loop below would check nothing")
+	}
 	for rel, text := range wantFiles {
 		other, ok := gotFiles[rel]
 		if !ok {

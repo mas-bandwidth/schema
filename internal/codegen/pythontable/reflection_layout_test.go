@@ -87,6 +87,11 @@ func reflectionLayoutWant(u *ir.Unit) string {
 	}
 	slices.SortFunc(entries, cmp)
 	records = append(records, entries...)
+	if len(records) == 0 {
+		// an empty want equals an empty probe output: the comparison would
+		// pass having compared no layout at all
+		panic("reflectionLayoutWant: the unit has no records to derive a layout for")
+	}
 	var b strings.Builder
 	for _, st := range records {
 		layout := ir.RecordLayout(u, st)
@@ -264,7 +269,11 @@ func reflectionLayoutRun(t *testing.T, u *ir.Unit, files map[string][]byte, floo
 func TestPythonReflectionLayout(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
-	for _, row := range reflectionUnits(t) {
+	allReflectionUnits := reflectionUnits(t)
+	if len(allReflectionUnits) == 0 {
+		t.Fatal("reflectionUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allReflectionUnits {
 		t.Run(row.name, func(t *testing.T) {
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)

@@ -173,7 +173,11 @@ func graphs() []graph {
 func TestWireCookWireIsByteIdentical(t *testing.T) {
 	u := unit(t, "../../tables/pointers")
 	m := tabletext.NewModel(u)
-	for _, g := range graphs() {
+	allGraphs := graphs()
+	if len(allGraphs) == 0 {
+		t.Fatal("graphs() is empty: the loop below would check nothing")
+	}
+	for _, g := range allGraphs {
 		for _, big := range []bool{false, true} {
 			name := g.name + "/little"
 			if big {

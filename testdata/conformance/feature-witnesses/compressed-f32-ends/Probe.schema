@@ -1,0 +1,22 @@
+// Probe.schema — A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32
+// (docs/SPEC-TABLES.md §3.3). An end float32 cannot spell exactly (max = 0.1,
+// min = -0.3) is the float32 nearest it, so the value at that end saves, reads
+// back and saves again to the same bytes in every port, and one float32 step
+// past it is refused by every reader and every writer. cases.tsv beside it
+// names the rows.
+//
+// `r` is a compressed leaf and `xs` a compressed array; V is the variable form
+// and F the fixed form, the same fields in each.
+package f32ends
+
+table V
+{
+    r  float32 | min = -0.3, max = 0.1, resolution = 0.01
+    xs [2]float32 | min = -0.3, max = 0.1, resolution = 0.01
+}
+
+fixed table F
+{
+    r  float32 | min = -0.3, max = 0.1, resolution = 0.01
+    xs [2]float32 | min = -0.3, max = 0.1, resolution = 0.01
+}

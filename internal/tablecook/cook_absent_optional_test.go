@@ -44,7 +44,11 @@ func TestCookAbsentOptionalPayloadZero(t *testing.T) {
 		}
 		// the record's only field is the absent optional, so the whole data
 		// part must be zero — the presence byte and every byte of the payload
-		for i, b := range h.Data(cooked) {
+		allData := h.Data(cooked)
+		if len(allData) == 0 {
+			t.Fatal("h.Data(cooked) is empty: the loop below would check nothing")
+		}
+		for i, b := range allData {
 			if b != 0 {
 				t.Fatalf("big=%v: an absent optional's payload holds 0x%02x at data offset %d, want zero", big, b, i)
 			}

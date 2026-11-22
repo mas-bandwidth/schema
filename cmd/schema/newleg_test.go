@@ -138,7 +138,10 @@ func TestNewLegZigWritesSkeletonAndFixturePasses(t *testing.T) {
 
 func TestHelpListsNewLeg(t *testing.T) {
 	bin := buildCLI(t)
-	out, _ := exec.Command(bin, "help").CombinedOutput()
+	out, err := exec.Command(bin, "help").CombinedOutput()
+	if err != nil {
+		t.Fatalf("schema help: %v\n%s", err, out)
+	}
 	if !strings.Contains(string(out), "schema new-leg") {
 		t.Fatalf("help does not list new-leg:\n%s", out)
 	}
@@ -376,6 +379,9 @@ func TestScaffoldWritesTheLegFilesInForm(t *testing.T) {
 	root := schemaTree(t)
 	if err := writeNewLeg(root, files, false); err != nil {
 		t.Fatalf("new-leg zig: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
 	}
 	for rel, want := range files {
 		at := filepath.Join(root, filepath.FromSlash(rel))

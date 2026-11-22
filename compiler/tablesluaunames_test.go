@@ -186,7 +186,11 @@ func TestLuauTableRuntimeNamesAreClaimed(t *testing.T) {
 	for _, name := range tablenames.LuauModuleKeys() {
 		known[name] = true
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Luau) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Luau)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Luau) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !known[name] {
 			t.Errorf("the registry says the Luau backend defines %s, and it is not a module key LuauModuleKeys lists", name)
 		}

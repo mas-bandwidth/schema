@@ -9,10 +9,8 @@ build/packet-write-cfloat/squirrel/.stamp: build/schema-squirrel test/packet-wri
 SQUIRREL_CFLOAT_DIR ?= build/packet-write-cfloat/squirrel
 
 .PHONY: packet-write-cfloat-squirrel packet-write-cfloat-squirrel-negative-control
-packet-write-cfloat-squirrel: build/packet-write-cfloat/squirrel/.stamp toolchain-squirrel
-	@"$(SQ)" test/packet-write-cfloat/squirrel/main.nut test/packet-write-cfloat/cases.txt $(SQUIRREL_CFLOAT_DIR) > build/packet-write-cfloat/squirrel/stdout 2> build/packet-write-cfloat/squirrel/stderr; status=$$?; \
-	cat build/packet-write-cfloat/squirrel/stdout; \
-	if [ $$status -ne 0 ] || [ -s build/packet-write-cfloat/squirrel/stderr ] || ! grep -Fxq 'packet-write-cfloat-squirrel: shared cases passed' build/packet-write-cfloat/squirrel/stdout; then cat build/packet-write-cfloat/squirrel/stderr >&2; exit 1; fi
+packet-write-cfloat-squirrel: build/packet-write-cfloat/squirrel/.stamp toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name packet-write-cfloat-squirrel -count 10 -- "$(SQ)" test/packet-write-cfloat/squirrel/main.nut test/packet-write-cfloat/cases.txt $(SQUIRREL_CFLOAT_DIR)
 
 packet-write-cfloat-squirrel-negative-control: packet-write-cfloat-squirrel
 	@rm -rf build/packet-write-cfloat/squirrel-negative

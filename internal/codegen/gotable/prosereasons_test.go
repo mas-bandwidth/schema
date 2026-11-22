@@ -28,12 +28,19 @@ fixed table Root {
 }
 `
 	runGenerated(t, fixedSchema, fixedLoadNamesProbe)
+	literals := 0
 	for _, schema := range []string{variableSchema, fixedSchema} {
-		for name, data := range generate(t, schema) {
+		allGenerate := generate(t, schema)
+		if len(allGenerate) == 0 {
+			t.Fatal("generate(t, schema) is empty: the loop below would check nothing")
+		}
+		for name, data := range allGenerate {
 			if !strings.HasSuffix(name, ".go") {
 				continue
 			}
-			for _, literal := range variableReasonLiterals(string(data)) {
+			allVariableReasonLiterals := variableReasonLiterals(string(data))
+			literals += len(allVariableReasonLiterals)
+			for _, literal := range allVariableReasonLiterals {
 				if literal == "" || !strings.Contains(literal, " ") {
 					continue
 				}
@@ -42,6 +49,9 @@ fixed table Root {
 				}
 			}
 		}
+	}
+	if literals == 0 {
+		t.Fatal("no emitted Go file carries a Reason literal: the prose check above checked nothing")
 	}
 }
 

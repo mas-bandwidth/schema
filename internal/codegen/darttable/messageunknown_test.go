@@ -82,7 +82,12 @@ func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unk
 		t.Fatalf("%s is not a fixed root of %s", root, row.path)
 	}
 	var rep tabletext.Report
-	_, _, _ = tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep)
+	// The report is the answer; the error and the report must tell the same
+	// story, or the reference is not one.
+	_, ok, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep)
+	if ok != (derr == nil) || rep.Refused != (derr != nil) {
+		t.Fatalf("%s: the Go reference disagrees with itself: ok=%v err=%v report=%+v", root, ok, derr, rep)
+	}
 	return rep.Unknown, rep.Refused
 }
 

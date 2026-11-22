@@ -16,9 +16,12 @@ local C = require("./Carriers")
 local inputs = require("./inputs") :: any
 
 local failed = false
+local ran, failures = 0, 0
 local function check(ok: boolean, what: string)
+	ran += 1
 	if not ok then
 		failed = true
+		failures += 1
 		print("FAILED: " .. what)
 	end
 end
@@ -171,7 +174,9 @@ carrier("arm-int8-min", "Arm", armSmall(-128), "written")
 carrier("arm-int8-above-max", "Arm", armSmall(128), "refused")
 carrier("arm-element-int8-above-max", "Arm", armElements(128), "refused")
 
-if failed then
+-- The count tools/mustrun reads: the checks run and the ones that failed.
+print(string.format("packet-write-bareint moo: ran %d, failed %d", ran, failures))
+if failed or ran == 0 then
 	error("packet-write-bareint moo: FAILED")
 end
 print("packet-write-bareint moo: " .. n .. " cases, each out-of-width and non-integer value refused, each boundary written and read back, the carriers held")
