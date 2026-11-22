@@ -397,7 +397,7 @@ fn setLeaf(a: Allocator, slot: *Value, ty: *const schema.Type, kind: []const u8,
             else => return error.NoPath,
         };
         const old = slot.arr;
-        var xs = try a.alloc(Value, @intCast(n));
+        const xs = try a.alloc(Value, @intCast(n));
         for (xs, 0..) |*x, i| {
             x.* = if (i < old.len) old[i] else if (old.len > 0) old[0] else try value.elemDefault(a, &at);
         }

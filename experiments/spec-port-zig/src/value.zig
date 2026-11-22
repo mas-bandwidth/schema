@@ -103,7 +103,7 @@ pub fn fieldDefault(a: Allocator, u: ?*const schema.Unit, f: *const schema.Field
     return specValue(a, u.?, f.ty, spec) catch return error.BadDefault;
 }
 
-fn specValue(a: Allocator, u: *const schema.Unit, ty: *const Type, spec: schema.DefaultSpec) !Value {
+fn specValue(_: Allocator, u: *const schema.Unit, ty: *const Type, spec: schema.DefaultSpec) !Value {
     switch (ty.*) {
         .boolean => {
             const e = spec.expr;

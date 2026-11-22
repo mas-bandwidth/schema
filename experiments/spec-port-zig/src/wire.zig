@@ -15,7 +15,7 @@ const Int = schema.Int;
 const Value = value.Value;
 const Allocator = std.mem.Allocator;
 
-pub const Error = error{ Refused, OutOfMemory };
+pub const Error = error{ Refused, OutOfMemory, BadDefault };
 
 pub const max_ids: u64 = 4096; // SPEC-TABLES.md §3: the id-table maximum
 pub const max_depth: u32 = 128; // §4: ONE NESTING BOUND
@@ -238,10 +238,10 @@ const Scan = struct {
                 if (!is_root) return refuse("wire_damaged: node table in a nested body");
                 if (kind != 12) return refuse("wire_damaged: node table kind");
                 const l = try r.leb();
-                const payload = try r.take(l);
+                const nt_bytes = try r.take(l);
                 // the node-table field is the root body's last field
                 if (r.left() != 1 or r.b[r.p] != 0) return refuse("non_canonical: node table not last");
-                try s.nodeTable(payload);
+                try s.nodeTable(nt_bytes);
                 continue;
             }
             if (id == schema.build_version_id or id == schema.vocabulary_id)
@@ -250,8 +250,8 @@ const Scan = struct {
         }
     }
 
-    fn nodeTable(s: *Scan, payload: []const u8) Error!void {
-        var r: Rd = .{ .b = payload };
+    fn nodeTable(s: *Scan, nt_bytes: []const u8) Error!void {
+        var r: Rd = .{ .b = nt_bytes };
         const count = try r.leb();
         if (count == 0) return refuse("non_canonical: empty node table");
         var n: u64 = 0;
@@ -944,7 +944,18 @@ pub fn unwrapStruct(s: *value.Struct) void {
     for (s.decl.fields, 0..) |*f, i| unwrapPointers(&s.fields[i], f.ty, f.optional);
 }
 
-const Crc32c = std.hash.crc.Crc32Iscsi;
+// CRC-32C, reflected polynomial 0x82F63B78 (SPEC-TABLES.md, integrity trailer)
+const Crc32c = struct {
+    fn hash(b: []const u8) u32 {
+        var c: u32 = 0xffffffff;
+        for (b) |x| {
+            c ^= x;
+            var k: u32 = 0;
+            while (k < 8) : (k += 1) c = if (c & 1 != 0) (c >> 1) ^ 0x82F63B78 else c >> 1;
+        }
+        return c ^ 0xffffffff;
+    }
+};
 
 /// Load: the whole value or a refusal (§6.5).
 pub fn load(a: Allocator, unit: *const schema.Unit, root: *schema.StructDecl, input: []const u8, report: *Report) Error!*value.Struct {
