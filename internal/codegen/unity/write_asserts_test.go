@@ -23,8 +23,11 @@ type Probe
 }
 `)
 	write := text
-	if i := strings.Index(text, "Write("); i >= 0 {
+	if i := strings.Index(text, "bool WriteProbe("); i >= 0 {
 		write = text[i:]
+		if j := strings.Index(write, "bool ReadProbe("); j >= 0 {
+			write = write[:j]
+		}
 	} else {
 		t.Fatalf("no Write in the generated text:\n%s", text)
 	}
