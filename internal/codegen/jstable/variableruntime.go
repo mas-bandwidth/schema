@@ -2558,9 +2558,10 @@ class TableVariableTextIn {
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
     const keys = close === "}" ? new globalThis.Set() : null;
+    let definition = null; // the label entry this object defines, open until it closes
     for (;;) {
       let ch = this.peek();
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { this.p++; if (definition !== null) { definition.open = false; } return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
         const key = this.name();
@@ -2574,20 +2575,41 @@ class TableVariableTextIn {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
           if (label === null) { return false; }
-          if (!graph.has(label)) { graph.set(label, { node: null, c: null, open: false }); }
+          // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+          // must name a definition already closed; fields after one must follow
+          // a label not yet defined, and the definition is open until this
+          // object closes. What the reader does not place is the value.
           first = false;
+          if (graph === null) {
+            // a unit with no pointer has no label table: the prefix is still
+            // held to its grammar, and the value is skipped whole
+            ch = this.peek();
+            if (ch === ",") { this.p++; continue; }
+            if (ch === close) { this.p++; return true; }
+            this.bad = true;
+            return false;
+          }
+          const entry = graph.get(label);
           ch = this.peek();
-          if (ch === ",") { this.p++; continue; }
-          if (ch === close) { this.p++; return true; }
-          this.bad = true;
-          return false;
+          if (ch === ",") { this.p++; ch = this.peek(); }
+          else if (ch !== close) { this.bad = true; return false; }
+          const bare = ch === close;
+          if (bare !== (entry !== undefined)) { this.bad = true; return false; }
+          if (bare) {
+            if (entry.open) { this.bad = true; return false; }
+            this.p++;
+            return true;
+          }
+          definition = { node: null, c: null, open: true };
+          graph.set(label, definition);
+          continue;
         }
       }
       first = false;
       if (!this.skip(depth + 1, graph, report)) { return false; }
       ch = this.peek();
       if (ch === ",") { this.p++; continue; }
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { this.p++; if (definition !== null) { definition.open = false; } return true; }
       this.bad = true;
       return false;
     }
@@ -2625,7 +2647,7 @@ function TableVariableFromJson(c, text, report) {
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
-  const ok = TableVariableReadTable(c, inp, v, 0, new globalThis.Map(), report);
+  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new globalThis.Map() : null, report);
   if (ok) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }

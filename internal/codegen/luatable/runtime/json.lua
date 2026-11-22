@@ -524,10 +524,12 @@ local function skip_container(inp, close, depth, graph)
   inp.p = inp.p + 1
   local first = true
   local seen = close == "}" and {} or nil
+  local definition = nil -- the label entry this object defines, open until it closes
   while true do
     local c = peek(inp)
     if c == close then
       inp.p = inp.p + 1
+      if definition ~= nil then definition.open = false end
       return true
     end
     if c == nil then
@@ -554,25 +556,51 @@ local function skip_container(inp, close, depth, graph)
         return false
       end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then
           inp.bad = true
           return false
         end
+        -- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        -- must name a definition already closed; fields after one must follow
+        -- a label not yet defined, and the definition is open until this
+        -- object closes. What the reader does not place is the value.
         local label = scan_label(inp)
         if label == nil then return false end
-        if graph[label] == nil then graph[label] = { node = nil, st = nil, open = false } end
         first = false
         c = peek(inp)
+        if c ~= close and c ~= "," then
+          inp.bad = true
+          return false
+        end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
+          inp.p = inp.p + 1
+          if c == close then return true end
+          goto continue
+        end
         if c == "," then
           inp.p = inp.p + 1
-          goto continue
-        elseif c == close then
+          c = peek(inp)
+        end
+        local entry = graph[label]
+        local bare = c == close
+        if bare ~= (entry ~= nil) then
+          inp.bad = true
+          return false
+        end
+        if bare then
+          if entry.open then
+            inp.bad = true
+            return false
+          end
           inp.p = inp.p + 1
           return true
         end
-        inp.bad = true
-        return false
+        definition = { node = nil, st = nil, open = true }
+        graph[label] = definition
+        goto continue
       end
     end
     first = false
@@ -582,6 +610,7 @@ local function skip_container(inp, close, depth, graph)
       inp.p = inp.p + 1
     elseif c == close then
       inp.p = inp.p + 1
+      if definition ~= nil then definition.open = false end
       return true
     else
       inp.bad = true

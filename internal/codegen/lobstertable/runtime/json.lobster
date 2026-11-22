@@ -1389,7 +1389,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             r.pos++
             if not j_key_new(r, keys, key):
                 return false
-            if length(key) > 0 and key[0] == '&' and r.graph:
+            if length(key) > 0 and key[0] == '&':
                 if not first or not j_skipped_ampersand(r, key):
                     r.bad = true
                     return false
@@ -1397,7 +1397,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 keyed = true
                 c = j_peek(r)
                 if c == ',':
-                    definition = r.labels[length(r.labels) - 1]
+                    if r.graph:
+                        definition = r.labels[length(r.labels) - 1]
                     r.pos++
                     continue
                 if c == close:
@@ -1432,11 +1433,15 @@ def j_find_label(r:JsonReader, label:int) -> JsonLabel?:
 // j_skipped_ampersand takes the label of a definition inside a value the walk
 // is skipping, so the numbering survives the drop (§16.7).
 def j_skipped_ampersand(r:JsonReader, key:string) -> bool:
-    if not r.graph or key != "&node":
+    if key != "&node":
         return false
     let label, ok = j_scan_label(r)
     if not ok:
         return false
+    if not r.graph:
+        // a unit with no pointer has no label table: the prefix is still held to
+        // its grammar, and the value is skipped whole
+        return true
     let prior = j_find_label(r, label)
     if j_peek(r) == '}':
         if prior and not prior.open:

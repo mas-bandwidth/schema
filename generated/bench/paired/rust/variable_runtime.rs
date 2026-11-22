@@ -2389,13 +2389,16 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
+    /// the root is a VARIABLE table, whose text carries the label construct
+    /// (§16.7); a pointer-free root holds the prefix to its grammar and skips whole
+    pub graph: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new(), graph: false }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -2972,6 +2975,8 @@ impl<'a> Jr<'a> {
                  self.p += 1;
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
+                 let mut first = true;
+                 let mut defining: Option<u64> = None;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -2982,6 +2987,10 @@ impl<'a> Jr<'a> {
                      if self.b[self.p] == b'}' {
                          self.p += 1;
                          self.depth -= 1;
+                         // a definition closes here: the label stays, with no node
+                         if let Some(label) = defining {
+                             self.labels.insert(label, JsonLabel::Dropped);
+                         }
                          return;
                      }
                      let key = self.read_name();
@@ -3005,18 +3014,43 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
-                    // label followed by a field keeps its label as Dropped, so a
-                    // reference to it reads null; an &node alone is a reference
-                    // and defines nothing.
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a
+                    // definition (the label first, fields after it) takes a label
+                    // not yet defined, keeps it as Dropped once its object closes
+                    // so a reference reads null, and is Open until then; a label
+                    // alone must name a definition already closed. An & key
+                    // anywhere else is the reserved prefix out of place.
+                    let was_first = first;
+                    first = false;
                     let mut labelled = false;
-                    if key.as_deref() == Some("&node")
-                        && let Some(label) = self.read_label()
+                    if let Some(k) = &key
+                        && k.starts_with('&')
                     {
+                        if !was_first || k != "&node" {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        }
+                        let Some(label) = self.read_label() else {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        };
                         labelled = true;
                         self.space();
-                        if self.p < self.b.len() && self.b[self.p] == b',' {
-                            self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                        if self.graph {
+                            let bare = self.p < self.b.len() && self.b[self.p] == b'}';
+                            let defined = self.labels.contains_key(&label);
+                            let closed = matches!(self.labels.get(&label), Some(JsonLabel::Dropped | JsonLabel::Node(_)));
+                            if bare != defined || (bare && !closed) {
+                                self.damaged = true;
+                                self.depth -= 1;
+                                return;
+                            }
+                            if !bare {
+                                self.labels.insert(label, JsonLabel::Open);
+                                defining = Some(label);
+                            }
                         }
                     }
                     if !labelled {
