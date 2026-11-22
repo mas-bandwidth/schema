@@ -1168,12 +1168,19 @@ holder stays fixed-size. PRESENCE decides whether the field rides: an
 absent optional array is not written; a present one ALWAYS rides as the
 array framing (§3) — a counted array with its live count, **zero
 included**, and a fixed array whole — where a plain counted array elides at
-count zero and a plain fixed array elides at all-default. That is what the
+its BIRTH VALUE (count zero for `[..N]T`; for `[Min..N]T`, `Min` elements
+each at its default, §22.2) and a plain fixed array elides at all-default
+unless its element is a `type` or a `table` by value, which always rides
+because position is identity (§22.2). **The birth elision is the plain
+array's alone**: a present `?[Min..N]T` holding its `Min` default elements
+rides like any present optional, and presence is the presence bit, never
+the count. That is what the
 presence bit buys: "present and empty" and "absent" are two values, which
 no count alone can spell. The framing is exactly the plain array's — kind
 `14` with the element's own kind — so `[..N]T` ⇄ `?[..N]T` is §2.3's one
 framing with two spellings: for any array that rides under both (a counted
-array with a live element; a fixed array not at all-default), no byte
+array not at its birth value; a fixed array not at all-default, or one of
+`type` or `table` elements), no byte
 moves in either direction. At the empty end the bytes differ — a present
 empty counted array writes the two-byte array body (`element kind`,
 `N = 0`) and a present all-default fixed array writes all its elements —
@@ -5266,9 +5273,14 @@ twenty unnameable entries counts nothing at all if no body references them.
   knows the writer's record order under the same announced shape and build
   version, and enforces it there (§3.3(b)).
 - **Writers elide what readers default**: a field holding its default, an
-  empty string or array, an all-default FIXED array, an empty union and an
-  all-default nested table are not written at all (fixed arrays of tables
-  keep their elements, because position is identity there, and an ENUM-KEYED
+  empty string or array, a plain counted array at its birth value (`Min`
+  elements each at its default, SPEC.md §4.2; §22.2), an all-default FIXED
+  array, an empty union and an
+  all-default nested table are not written at all (fixed arrays of a `type`
+  or a `table` by value
+  keep their elements, because position is identity there, while a fixed
+  array of scalars, enums, text, unions or pointers elides at all-default;
+  and an ENUM-KEYED
   array elides per slot instead, because identity there is the key, §3.2).
   Elision is why old readers and new writers meet cleanly, and why measure
   and save agree byte for byte (§7). **An elided field costs nothing in the
@@ -6270,6 +6282,16 @@ union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
   sender default this reader cannot know — one it meets under a different build
   version — is read as today: an absent field takes this reader's declared
   default, which is lawful version evolution.
+  **A QUANTIZED (COMPRESSED) FLOAT IS NOT JUDGED BY THIS RULE**, and neither
+  is an array or an enum-keyed slot whose element is one: the writer elides it
+  by its HELD value compared `==` with the declared default BEFORE
+  quantization (§22.6), so a held value that is not the default but
+  quantizes to the default's index rides, and the reader, which sees only
+  the index, cannot tell that body from one stored at the default. The
+  reader therefore compares neither the decoded grid point nor the index
+  with the declared default, and reads such a field (Go:
+  `internal/tablewire/messagedecode.go`, the `quantized` gate and the
+  keyed-slot gate). Every other field kind is judged as above.
 - **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.**
   Under the same announced shape and build version, the reader checks a body's
   field references against the record's declaration order, because field order
@@ -6686,7 +6708,9 @@ plain float's NaN or infinity.
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
 lineage version would produce is refused: fields out of the writer's order and a
-field stored at its declared default under the same announced shape and build;
+field stored at its declared default under the same announced shape and build
+(a quantized float excepted: §3.3(a) compares its held value, which the
+batch does not carry);
 and a union written with arm reference `0` at a message field. Absent fields, unknown fields from a newer writer and widened fields stay
 lawful and read as today (§4).
 
@@ -8913,7 +8937,8 @@ diagnostic name, which is not normative and is never compared:
   are an id-table entry that is unused, or out of first-use order; and
   an empty node table, or one out of its place. On the message form, fields out
   of the writer's order and a field stored at its declared default refuse
-  under the same announced shape and build version (§3.3); a union written
+  under the same announced shape and build version (§3.3; a quantized float,
+  whose held value the batch does not carry, is not judged, §3.3(a)); a union written
   with arm reference `0` at a message field also refuses, since message
   closures prohibit Required and optional unions (§2.3).
   **Variable files cannot establish the writer's elision policy.** Removing
@@ -10036,6 +10061,17 @@ reason a read names when an input carries several conditions. What IS
 normative is everything that decides refuse against accept: what damage is,
 what is out of range or past a bound, what a kind mismatch is, and what
 evolution a read accepts (§4).
+**Two legs may name one refusal differently, and both conform** (the JSON
+readers do today, §16.2): conformance compares the verdict only
+(`docs/rulings.json` `refusal-verdict-only`).
+**THE REFUSAL TAKES THE LANGUAGE'S OWN SHAPE, AND EVERY SHAPE IS THE ONE
+VERDICT**: a `false`, `-1`, `null`/`nil` or `{:error, ...}` return beside a
+report, or an exception where the language's read raises one — Python's
+`Refused`, and Dart's `FormatException` from `FromJson` for a text that is
+not JSON (USAGE.md, Per-language notes). **What a refused read leaves in the
+caller's value is stated per call** (§6.5, the plain names below): a read
+into a value and a text read (`FromJson`) leave that value at its declared
+defaults.
 
 **TWO KINDS OF CONDITION, AND WHERE EACH APPLIES.**
 
@@ -10218,7 +10254,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `wire_damaged` | DAMAGE on a binary wire, framing or body: every condition §4 lists as damage, on every read of every binary form. The one name for all of it (§4, §6.5) |
   | `malformed` | DAMAGE on the JSON read: a text that is not well-formed JSON in this form's dialect, a repeated key, the depth cap (§16.2). Not a binary-wire reason |
   | `out_of_range` | a value outside a range the read holds it to: the reader's declared `[min, max]` on every read; the WRITER's range where the read knows it — the fixed form's lineage plan and the message form's announcement; a `bits(N)` value past `2^N − 1`; and on the fixed read an enum ordinal or union tag outside the writer's set (§4, §3.3, §3.4). Same ordinal as the retired spelling `clamped`, renamed in place, because no read clamps |
-  | `kind_mismatch` | a wire field, arm, element or map key whose kind is not the reader's declared kind and is not a widening, or a JSON value of the wrong type or shape (§4, §16.2). The reason is `kind_mismatch: <Table>.<field>` |
+  | `kind_mismatch` | a wire field, arm, element or map key whose kind is not the reader's declared kind and is not a widening, or a JSON value of the wrong type or shape (§4, §16.2). The reference's diagnostic text is `kind_mismatch: <Table>.<field>`; the generated Go answers a bare `kind_mismatch`; the text is diagnostic and never compared (§6.5) |
   | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
   | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
   | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
@@ -15955,6 +15991,13 @@ table runtime — rather than once per translation unit behind a guard; there
 is no second file to compile and no build decision to make, and a consumer
 that never calls the form pays the assembly's share of one walker.
 
+**A FIXED root's text read lands the FIXED class's own value**, the value
+`FixedSave` and `SaveMessages` take with no conversion: a counted array with
+its count companion beside it, an enum as its ordinal, and an absent counted
+array at its birth value (SPEC.md §4.2). A text read of a fixed root followed
+by the fixed or message writer writes the bytes the Go reference writes for
+that text.
+
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
 
@@ -16106,7 +16149,7 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number, or a string of digits | a kind of 32 bits and under — `int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number; a kind WIDER than 32 bits — `int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. See **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold refuses `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold, one past float32's own range, refuses `out_of_range` (the recommended name; `kind_mismatch` conforms too, below), never clamped and never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS, or a string of digits | a fixed kind whose storage is 32 bits or under is a number; one whose storage is wider than 32 bits — 64- or 128-bit — is written as a string of digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. The spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. A fixed kind of 32 bits and under is written as the shortest EXACT decimal with at least one fractional digit and read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as that STRING only; a bare number token there refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
@@ -16132,6 +16175,17 @@ Per kind:
 | text list `[..N]?string(M)`, `[]?string(M)` | array of strings and `null` | `["a",null,"b"]`: a present element is its string, `""` included, and an absent element is `null`; any other JSON type refuses `kind_mismatch`; the bounds as above |
 | a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no count is refused (§2.9); `[]` is an empty list and `null` refuses `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
+
+**Every refusal name in this table is the RECOMMENDED name, and only the
+verdict is the contract** (§6.5, `docs/rulings.json` `refusal-verdict-only`):
+a row that says a value "refuses `length_over_bound`", `count_over_bound`,
+`kind_mismatch` or `malformed` fixes that the read refuses, not the name it
+reports. The legs differ today and conform: the generated Go reader names an
+over-bound string, `bytes`, array count or map string key `out_of_range` and
+a bad integer map key `kind_mismatch`; a `float32` value past float32's own
+range is `out_of_range` in the reference and JavaScript and `kind_mismatch`
+in Dart, Java and the generated Go. Every leg refuses each, and none clamps
+it or stores an infinity.
 
 **A `bytes(N)` body's base64 grammar is §16.8's canonical base64, and both Go
 readers enforce exactly it**: the standard alphabet, padded, pad bits zero, and
@@ -16167,7 +16221,8 @@ table and type values only (W2), so the two caps share a number and not a unit.
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
 union arm key and an `&node` name, in every object and inside a skipped value:
-a longer one refuses the read, and an unknown enum name over 255 bytes refuses
+the 255 counts the name's DECODED bytes, after its escapes are resolved, and
+a longer one refuses the read (the generated Go: `out_of_range`, §6.5), and an unknown enum name over 255 bytes refuses
 and never reads `None`. The cap never reaches a map key or a string value —
 those are data a conforming writer emits — and the `map[string]V` row's "no
 key is refused for its length" stands (§2.13.1).
@@ -16382,7 +16437,10 @@ written as something else.
 
 `-1` therefore has two meanings on `ToJson` — a buffer too small, and a
 value that cannot be written — and a caller that distinguishes them calls
-`ToJsonMeasure` first, which fails only for the second reason.
+`ToJsonMeasure` first, which fails only for the second reason. **After a
+`-1` the buffer's contents are unspecified**: a writer may have written part of
+the text before it refused (the C++ `ToJson` does), so a caller uses no byte
+of it, as SPEC.md §5.1 states for every writer.
 
 **The writer always emits valid JSON and valid UTF-8, and this rule is about
 STORAGE A PROGRAM BUILT and about nothing else.** No wire puts ill-formed text
@@ -20325,7 +20383,7 @@ fixed form writes it as held too, and §22.6 says so.
 |---|---|---|
 | a bare integer, `bool`, `bits(N)`, an enum, a `flags` mask, a fixed-point value, a 128-bit integer, a `timestamp` | it equals its declared default (zero when none is declared) | the kind of §3's mapping, the payload at its width |
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
-| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the value's bit pattern, except that a `-0` is stored as `+0`, the bits `+0` stores (§3.3; ruled 2026-11-10, docs/rulings.json fixed-compressed-negzero) |
+| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the value's bit pattern, except that a `-0` is stored as `+0`, the bits `+0` stores, in every build of every leg, an assert leg's release build included, because it is a normalization of the value and not a write check (§3.3; ruled 2026-11-10, docs/rulings.json fixed-compressed-negzero) |
 | `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |
