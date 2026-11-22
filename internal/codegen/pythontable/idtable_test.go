@@ -406,6 +406,9 @@ func TestPythonVtIdtable(t *testing.T) {
 	for _, r := range idtableRefusals {
 		want = append(want, "load "+r.name+" refused "+r.reason)
 	}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for _, line := range want {
 		if !strings.Contains(got, line+"\n") {
 			t.Errorf("the probe output lacks %q:\n%s", line, got)

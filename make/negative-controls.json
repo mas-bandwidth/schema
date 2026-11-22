@@ -1142,7 +1142,8 @@
       "targets": [
         "tables-moo-retain-negative-control",
         "tables-moo-retain-refusal-negative-control",
-        "tables-moo-damage-discard-negative-control"
+        "tables-moo-damage-discard-negative-control",
+        "schema-moo-runs-hostile-corpus-negative-control"
       ],
       "moo": "pin"
     },

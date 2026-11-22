@@ -126,6 +126,11 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 				if r.loadN >= 0 || r.loadReason != reason {
 					t.Fatalf("the Go reference refused %s (n=%d ok=%v err=%v); Goose answered n=%d %s:\n%s", reason, got, ok, err, r.loadN, r.loadReason, r.raw)
 				}
+				// a refused row ran and moved no counter: record it, so the
+				// cleanup's every-row-ran test still holds the battery
+				mu.Lock()
+				moved[c.name] = 0
+				mu.Unlock()
 				return
 			}
 			var values [][]string

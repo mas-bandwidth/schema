@@ -146,7 +146,13 @@ func TestOptionalVariableClosureJavaScript(t *testing.T) {
 		}
 		cmd := testproc.Command(t, node, script, specPath, filepath.Join(dir, home))
 		cmd.Dir = dir
-		out, _ := cmd.CombinedOutput()
+		// The driver catches each case's throw and prints it, so it exits 0
+		// whatever the module answers; a non-zero exit is a driver that never
+		// ran its cases (the module failed to load).
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: the probe exited %v:\n%s", dir, err, out)
+		}
 		return string(out)
 	}
 

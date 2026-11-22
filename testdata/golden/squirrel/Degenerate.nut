@@ -369,13 +369,13 @@ _M.ReadTrio <- function(stream, value) {
 
 // WriteTrio writes value in declared order; false on a refused value.
 _M.WriteTrio <- function(stream, value) {
-  if (typeof value.A != "integer") return false;
+  if (typeof value.A != "integer" || (value.A >>> 20) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 20)) return false;
-  if (typeof value.B != "integer") return false;
+  if (typeof value.B != "integer" || (value.B >>> 20) != 0) return false;
   _h.value = value.B;
   if (!stream.serializeBits(_h, 20)) return false;
-  if (typeof value.C != "integer") return false;
+  if (typeof value.C != "integer" || (value.C >>> 24) != 0) return false;
   _h.value = value.C;
   if (!stream.serializeBits(_h, 24)) return false;
   return true;
@@ -475,7 +475,7 @@ _M.ReadTrioFirst <- function(stream, value) {
 // WriteTrioFirst writes value in declared order; false on a refused value.
 _M.WriteTrioFirst <- function(stream, value) {
   if (!_M.WriteTrio(stream, value.Inner)) return false;
-  if (typeof value.Trailer != "integer") return false;
+  if (typeof value.Trailer != "integer" || (value.Trailer >>> 16) != 0) return false;
   _h.value = value.Trailer;
   if (!stream.serializeBits(_h, 16)) return false;
   return true;
@@ -547,7 +547,7 @@ _M.WriteTrioStraddle <- function(stream, value) {
   if (typeof value.Pad4 != "integer") return false;
   _h.value = value.Pad4;
   if (!stream.serializeBits64(_h, 64)) return false;
-  if (typeof value.Pad5 != "integer") return false;
+  if (typeof value.Pad5 != "integer" || (value.Pad5 >>> 24) != 0) return false;
   _h.value = value.Pad5;
   if (!stream.serializeBits(_h, 24)) return false;
   if (!_M.WriteTrio(stream, value.Inner)) return false;

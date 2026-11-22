@@ -136,6 +136,9 @@ func TestLobsterCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if len(spans) == 0 {
+				t.Fatal("spans is empty: the loop below would check nothing")
+			}
 			for _, s := range spans {
 				if s.to > int64(len(fix)) || !bytes.Equal(fix[s.from:s.to], make([]byte, s.to-s.from)) {
 					t.Fatalf("%s %s: the fixture's %s at [%d,%d) is not zero: the span walk is wrong", r.name, order.name, s.what, s.from, s.to)

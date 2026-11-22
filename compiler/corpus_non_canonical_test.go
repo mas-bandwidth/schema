@@ -79,6 +79,9 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		if e.IsDir() || e.Name() == "MANIFEST.tsv" {
 			continue
@@ -205,6 +208,7 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generator: %v\n%s", err, b)
 		}
+		checked := 0
 		if err := filepath.WalkDir(vector, func(path string, e os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -212,6 +216,7 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			if e.IsDir() {
 				return nil
 			}
+			checked++
 			name, err := filepath.Rel(vector, path)
 			if err != nil {
 				return err
@@ -231,6 +236,9 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			return nil
 		}); err != nil {
 			t.Fatal(err)
+		}
+		if checked == 0 {
+			t.Fatalf("walked %s and checked nothing", vector)
 		}
 	})
 }

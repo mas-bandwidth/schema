@@ -77,8 +77,14 @@ func TestGooseDieWithParent(t *testing.T) {
 		// in the failure if the driver is somehow still running.
 		t.Logf("kill the parent helper: %v (helper output follows if it exited early)", err)
 	}
-	_ = cmd.Wait()
+	waitErr := cmd.Wait()
 	helperDone = true
+	// The helper must have died by the test's kill. A helper that exited on
+	// its own did so because its driver died first, and a driver that dies
+	// on its own says nothing about dying with its parent.
+	if cmd.ProcessState == nil || cmd.ProcessState.ExitCode() != -1 {
+		t.Fatalf("the parent helper was not killed by the test (wait: %v); helper output:\n%s", waitErr, output.String())
+	}
 
 	timeout := time.NewTimer(10 * time.Second)
 	defer timeout.Stop()

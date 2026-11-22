@@ -92,6 +92,9 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// whose root is a variable table is refused rather than decoded, so the
 	// round trip below covers the fixed roots only.
 	t.Run("round_trip", func(t *testing.T) {
+		if len(rows) == 0 {
+			t.Fatal("rows is empty: the loop below would check nothing")
+		}
 		for _, row := range rows {
 			conn := connections[row.connection]
 			u := messageLoadUnit(t, root, units[conn.unit])

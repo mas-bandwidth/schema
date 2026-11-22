@@ -579,7 +579,11 @@ func luauSplitValues(s string) []string {
 func luauManifestChecks(t *testing.T, corpus, file string, root *ir.Struct) string {
 	t.Helper()
 	var b strings.Builder
-	for _, kv := range luauManifestValues(t, corpus, file) {
+	allLuauManifestValues := luauManifestValues(t, corpus, file)
+	if len(allLuauManifestValues) == 0 {
+		t.Fatal("luauManifestValues(t, corpus, file) is empty: the loop below would check nothing")
+	}
+	for _, kv := range allLuauManifestValues {
 		path, value := kv[0], kv[1]
 		rec, rest, ok := strings.Cut(path, ".")
 		if !ok || !strings.HasPrefix(rec, "r") {

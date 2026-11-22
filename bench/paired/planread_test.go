@@ -97,7 +97,14 @@ func TestGateVerdictIsFasterOrFail(t *testing.T) {
 		{stat(1, 140), stat(41, 200), "INVALID"},
 	}
 	for _, c := range cases {
-		if got := gateVerdict(c.lane, c.packet); got != c.want {
+		got := gateVerdict(c.lane, c.packet)
+		// The FAIL and INVALID rows are the gate's refusals: a PASS there is
+		// the gate accepting a lane it must not.
+		if c.want != "PASS" && got == "PASS" {
+			t.Errorf("gate(%v, %v) = PASS, want the refusal %s", c.lane, c.packet, c.want)
+			continue
+		}
+		if got != c.want {
 			t.Errorf("gate(%v, %v) = %s, want %s", c.lane, c.packet, got, c.want)
 		}
 	}
