@@ -223,7 +223,7 @@ func TestCppTableSaveMeasureCacheBytes(t *testing.T) {
 	// the header the emitter grew for THIS schema has to carry the cache at
 	// all, or the comparison below would pass by measuring nothing. Not while
 	// PINNING: the pin is taken from the emitter that had no cache.
-	if os.Getenv("SCHEMA_UPDATE_SAVECACHE_GOLDEN") != "1" {
+	if !slowtest.Rewriting(t, "SCHEMA_UPDATE_SAVECACHE_GOLDEN") {
 		header := string(files["ProbeTable.h"])
 		for _, want := range []string{"int64_t elem_cache[64]", "int64_t elem_cache[4]", "elem_cache[elem_i]"} {
 			if !strings.Contains(header, want) {
@@ -250,7 +250,7 @@ func TestCppTableSaveMeasureCacheBytes(t *testing.T) {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 	golden := filepath.Join("testdata", "savecache", "golden.txt")
-	if os.Getenv("SCHEMA_UPDATE_SAVECACHE_GOLDEN") == "1" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_SAVECACHE_GOLDEN") {
 		if err := os.MkdirAll(filepath.Dir(golden), 0755); err != nil {
 			t.Fatal(err)
 		}

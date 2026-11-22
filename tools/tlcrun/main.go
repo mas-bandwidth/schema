@@ -82,7 +82,7 @@ func (r realTLC) check(tlaDir, config, module string) (int, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	defer func() { _ = os.RemoveAll(work) }()
+	defer func() { _ = os.RemoveAll(work) }() // errdiscard: TLC's scratch directory; the verdict is read from its output, never from here
 	cmd := exec.Command(r.java, "-Djava.io.tmpdir="+work, "-Xmx4g", "-cp", r.jar, "tlc2.TLC",
 		"-workers", "4", "-config", config, "-metadir", filepath.Join(work, "meta"), module)
 	cmd.Dir = tlaDir
@@ -176,7 +176,7 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	defer func() { _ = os.RemoveAll(dir) }() // errdiscard: a scratch copy of the models; the verdict never reads it
 	donor, err := os.ReadFile(filepath.Join(dir, controlWitnessDonor))
 	if err != nil {
 		return err
@@ -292,6 +292,6 @@ func copyDir(src string) (string, error) {
 
 // say writes one line of the report. The report goes to the step's log; a
 // write that fails there has nowhere better to be reported.
-func say(out io.Writer, format string, args ...any) {
-	_, _ = fmt.Fprintf(out, format, args...)
+func say(stdout io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(stdout, format, args...)
 }

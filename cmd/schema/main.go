@@ -1022,8 +1022,13 @@ func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
 			fatalf("%v", err)
 		}
 		var head [ir.FileHeadBytes]byte
-		n, _ := io.ReadFull(f, head[:]) // a short file is classified by what it holds
+		// a short file is classified by what it holds; a read that failed is
+		// not a short file, and classifying its first bytes would name it wrong
+		n, err := io.ReadFull(f, head[:])
 		_ = f.Close()
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			fatalf("%s: %v", a, err)
+		}
 		wires = append(wires, wireFile{path: a, head: head[:n]})
 	}
 	return schemas, wires
@@ -1187,11 +1192,15 @@ func writeNewLegConfined(root string, names []string, files map[string][]byte, v
 		if err == nil {
 			return
 		}
+		// a file the rollback could not remove is a half-written leg left in
+		// the tree: the refusal names it
 		for _, w := range slices.Backward(written) {
-			_ = r.Remove(filepath.FromSlash(w))
+			if rerr := r.Remove(filepath.FromSlash(w)); rerr != nil {
+				err = errors.Join(err, fmt.Errorf("the rollback left %s: %w", w, rerr))
+			}
 		}
 		for _, d := range slices.Backward(made) {
-			_ = r.Remove(filepath.FromSlash(d)) // fails, harmlessly, on one not empty
+			_ = r.Remove(filepath.FromSlash(d)) // errdiscard: fails, harmlessly, on a directory not empty; the files above are the leg
 		}
 	}()
 	for _, name := range names {

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -134,7 +135,7 @@ func TestCSharpHashOfPinsTheGoOracle(t *testing.T) {
 	}
 	b.WriteString("    };\n}\n")
 
-	if os.Getenv("SCHEMA_UPDATE_HASH_ORACLE") == "1" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_HASH_ORACLE") {
 		if err := os.WriteFile(hashOracleFile, b.Bytes(), 0o644); err != nil {
 			t.Fatal(err)
 		}

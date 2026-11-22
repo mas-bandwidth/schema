@@ -266,6 +266,25 @@ reason and fails on a skip the job provides for: a missing toolchain in the
 lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
 `SCHEMA_SLOW=1`.
 
+Nothing fails silently, in the tests or in the tools that run them:
+
+- **A golden rewrite is never a pass in CI.** A test that rewrites its
+  golden when a variable is set reads it with `slowtest.Rewriting(t, name)`,
+  which fails under CI and on any value but `1`, and logs that a local
+  rewrite compared nothing. `go test ./internal/ci` refuses a test that reads
+  a `*_UPDATE*` or `*_WRITE*` variable any other way.
+- **A test knob that is not a number is refused by name.** Read an integer
+  knob with `slowtest.EnvInt`, and the random-table seed range with
+  `slowtest.EnvSeedRange`, which also refuses a range that holds no seed: read
+  as 0 or as the default, a typo runs zero cases and passes.
+- **No program under `cmd/` or `tools/` drops an error.** `make errdiscard`
+  (`go run ./tools/errdiscard`, about a second, in `ci-fast.yml`'s
+  `lint-fast`) type-checks them and refuses an error assigned to `_`, or a
+  call whose error nobody reads, unless its line names why in an
+  `// errdiscard: <reason>` comment. Writes into memory, to the process's own
+  stdout and stderr, `Parse` on an `ExitOnError` flag set and `Close` on a
+  read-only `os.Open` handle need no reason; `-all` lists the kept ones.
+
 The per-leg make gates, measured on an M-series Studio:
 
 | gate | time |

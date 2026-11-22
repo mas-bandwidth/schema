@@ -119,6 +119,7 @@ skip platform ^platform has no kernel address-space ceiling$
 # root: the test proves nothing as root. Provided by a lane that does not run
 # as root.
 skip root ^root writes (through|into) a read-only (directory|file)
+skip root ^root reads through a directory it may not search
 
 # volume:aliases: the test needs a volume that takes two spellings of a name
 # (a case fold, a Unicode normalization) for one entry, as APFS on macOS
@@ -144,6 +145,7 @@ skip inapplicable ^no fixed/ufixed root field over seeds
 skip inapplicable ^docs/SPEC-TABLES\.md §3\.4 does not list
 skip inapplicable ^a sibling C\+\+ serialize checkout at .* resolves SERIALIZE
 skip inapplicable records with no capacity \(schema-fixedproof-x1's row\)
+skip inapplicable ^FirstV3ModuleTag is unset: 
 
 # retired, unported: THE TEST RUNS IN NO LANE. Each names the document that
 # owes it. Provided by no lane: these lines are the count of what is owed,

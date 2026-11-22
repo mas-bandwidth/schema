@@ -218,7 +218,7 @@ func RunJudgeCorpus(dir, work string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(run) }()
+	defer func() { _ = os.RemoveAll(run) }() // errdiscard: a scratch directory under the run's work dir; the verdict never reads it
 	var lines, bad []string
 	for _, c := range cases {
 		if err := RunJudgeCase(dir, c, filepath.Join(run, c.ID)); err != nil {

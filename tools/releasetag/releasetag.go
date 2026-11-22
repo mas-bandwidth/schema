@@ -208,7 +208,7 @@ func resolve(g Git, rev string) (string, error) {
 
 // Promote tags rev with its promotion tag, unless it already carries one. It
 // writes nothing unless push is set.
-func Promote(g Git, rev string, push bool, out io.Writer) error {
+func Promote(g Git, rev string, push bool, stdout io.Writer) error {
 	sha, err := resolve(g, rev)
 	if err != nil {
 		return err
@@ -222,11 +222,11 @@ func Promote(g Git, rev string, push bool, out io.Writer) error {
 		return err
 	}
 	if skip {
-		_, _ = fmt.Fprintf(out, "promotion-tag: %s already carries a promotion tag; skipped, not retagged\n", sha)
+		_, _ = fmt.Fprintf(stdout, "promotion-tag: %s already carries a promotion tag; skipped, not retagged\n", sha)
 		return nil
 	}
 	if !push {
-		_, _ = fmt.Fprintf(out, "promotion-tag: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
+		_, _ = fmt.Fprintf(stdout, "promotion-tag: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
 		return nil
 	}
 	if _, err := g.Run("tag", tag, sha); err != nil {
@@ -235,20 +235,20 @@ func Promote(g Git, rev string, push bool, out io.Writer) error {
 	if _, err := g.Run("push", "origin", "refs/tags/"+tag); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(out, "promotion-tag: tagged and pushed %s %s\n", tag, sha)
+	_, _ = fmt.Fprintf(stdout, "promotion-tag: tagged and pushed %s %s\n", tag, sha)
 	return nil
 }
 
 // Release checks and makes release version on rev. mainRef is the ref whose
 // ancestry is main. It writes nothing unless push is set, and nothing on a
 // refusal.
-func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) error {
-	return release(g, version, rev, mainRef, push, out, modulemove.FirstV3ModuleTag)
+func Release(g Git, version, rev, mainRef string, push bool, stdout io.Writer) error {
+	return release(g, version, rev, mainRef, push, stdout, modulemove.FirstV3ModuleTag)
 }
 
 // release is Release with pin's boundary passed in, so the tests drive the
 // module gate on both sides of the /v3 module move.
-func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boundary string) error {
+func release(g Git, version, rev, mainRef string, push bool, stdout io.Writer, boundary string) error {
 	if _, err := ParseVersion(version); err != nil {
 		return err // before any git call: the cheapest refusal first
 	}
@@ -300,7 +300,10 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 		return err
 	}
 	if newest, ok := NewestRelease(fields(tags)); ok {
-		next, _ := ParseVersion(tag)
+		next, err := ParseVersion(tag)
+		if err != nil {
+			return err
+		}
 		forms := [2]int{}
 		for i, rev := range []string{newest.String(), sha} {
 			src, err := g.Run("show", rev+":"+FormSource)
@@ -316,7 +319,7 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 		}
 	}
 	if !push {
-		_, _ = fmt.Fprintf(out, "release: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
+		_, _ = fmt.Fprintf(stdout, "release: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
 		return nil
 	}
 	if _, err := g.Run("tag", "-a", tag, "-m", "schema "+tag, sha); err != nil {
@@ -325,7 +328,7 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 	if _, err := g.Run("push", "origin", "refs/tags/"+tag); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(out, "release: tagged and pushed %s %s\n", tag, sha)
+	_, _ = fmt.Fprintf(stdout, "release: tagged and pushed %s %s\n", tag, sha)
 	return nil
 }
 

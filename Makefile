@@ -7818,6 +7818,18 @@ slow-gate-scan:
 
 test: slow-gate-scan
 
+# NOTHING FAILS SILENTLY (2026-11-22). No Go program under cmd/ or tools/
+# drops an error (assigned to _, or a call whose error nobody reads) unless
+# its line names why in an `// errdiscard: <reason>` comment. It type-checks
+# from the build cache, so it costs about a second; the lint-fast job of
+# ci-fast.yml runs it after modernize. `go run ./tools/errdiscard -all` lists
+# the kept ones.
+.PHONY: errdiscard
+errdiscard:
+	go run ./tools/errdiscard
+
+test: errdiscard
+
 # AND THE ACCOUNTING, test by test rather than target by target: a plain
 # `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
 # point) is read back and every test that skipped at the gate is placed in one

@@ -227,7 +227,7 @@ func namedTimeout(args []string) string {
 // budgetLine is the first line of a record: the -timeout the invocation
 // named, which tools/gotestreport holds each package to once it reported.
 func budgetLine(named string) []byte {
-	b, _ := json.Marshal(struct{ Action, Budget string }{"budget", named})
+	b, _ := json.Marshal(struct{ Action, Budget string }{"budget", named}) // errdiscard: two strings always marshal
 	return append(b, '\n')
 }
 
@@ -269,9 +269,9 @@ func withJSON(args []string) []string {
 }
 
 // renderEvents copies a go test -json stream from r to the record, line by
-// line, and to w: as it came when the caller asked for -json, otherwise as
+// line, and to stdout: as it came when the caller asked for -json, otherwise as
 // the text the events carry (what `go test -v` prints).
-func renderEvents(r io.Reader, record io.Writer, w io.Writer, raw bool) error {
+func renderEvents(r io.Reader, record io.Writer, stdout io.Writer, raw bool) error {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
@@ -282,7 +282,7 @@ func renderEvents(r io.Reader, record io.Writer, w io.Writer, raw bool) error {
 				}
 			}
 			if raw {
-				_, _ = w.Write(line)
+				_, _ = stdout.Write(line)
 			} else {
 				var ev struct {
 					Action string
@@ -291,10 +291,10 @@ func renderEvents(r io.Reader, record io.Writer, w io.Writer, raw bool) error {
 				trimmed := bytes.TrimSpace(line)
 				if json.Unmarshal(trimmed, &ev) == nil && ev.Action != "" {
 					if ev.Output != nil && (ev.Action == "output" || ev.Action == "build-output") {
-						_, _ = io.WriteString(w, *ev.Output)
+						_, _ = io.WriteString(stdout, *ev.Output)
 					}
 				} else {
-					_, _ = w.Write(line)
+					_, _ = stdout.Write(line)
 				}
 			}
 		}
@@ -314,8 +314,16 @@ func realGo() (string, error) {
 	if p := os.Getenv(envRealGo); p != "" {
 		return p, nil
 	}
-	self, _ := os.Executable()
-	selfReal, _ := filepath.EvalSymlinks(self)
+	// without its own path the shim cannot step over itself on PATH, and
+	// would run itself in a loop
+	self, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("the go shim cannot find its own executable: %w", err)
+	}
+	selfReal, err := filepath.EvalSymlinks(self)
+	if err != nil {
+		return "", fmt.Errorf("the go shim cannot resolve its own executable %s: %w", self, err)
+	}
 	name := "go"
 	if runtime.GOOS == "windows" {
 		name = "go.exe"
@@ -370,28 +378,28 @@ func goShim(args []string) int {
 // verdict and its test binary's wall time.
 var summaryLine = regexp.MustCompile(`^(ok|FAIL)\s+(\S+)\s+([0-9]+(?:\.[0-9]+)?)s\b`)
 
-// summarizeLines copies go test's text output from r to w byte for byte and
+// summarizeLines copies go test's text output from r to stdout byte for byte and
 // records, for each package result line, a pass or fail event carrying the
 // package's wall time: what tools/gotestreport needs to hold the package to
 // its named budget. A caller that asked for -json gets its events recorded
 // as they are.
-func summarizeLines(r io.Reader, record io.Writer, w io.Writer, raw bool) error {
+func summarizeLines(r io.Reader, record io.Writer, stdout io.Writer, raw bool) error {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			_, _ = w.Write(line)
+			_, _ = stdout.Write(line)
 			if record != nil {
 				var rec []byte
 				if raw {
 					rec = line
 				} else if m := summaryLine.FindSubmatch(bytes.TrimRight(line, "\r\n")); m != nil {
-					secs, _ := strconv.ParseFloat(string(m[3]), 64)
+					secs, _ := strconv.ParseFloat(string(m[3]), 64) // errdiscard: summaryLine matched a decimal number
 					action := "pass"
 					if string(m[1]) == "FAIL" {
 						action = "fail"
 					}
-					rec, _ = json.Marshal(struct {
+					rec, _ = json.Marshal(struct { // errdiscard: two strings and a finite float always marshal
 						Action, Package string
 						Elapsed         float64
 					}{action, string(m[2]), secs})
@@ -423,17 +431,27 @@ func recordGoTest(real string, args []string, dir, named string, summary bool) i
 	if !summary {
 		args = withJSON(args)
 	}
+	// A RECORD THAT COULD NOT BE WRITTEN WHOLE NEVER STOPS THE RUN, AND NEVER
+	// PASSES: the tests run to the end, and then the shim's status is red
+	// naming the record, because tools/gotestreport would read a record cut
+	// short (a full disk) as every skip and failure there was.
 	var record *os.File
+	lost := lostRecord{path: dir}
 	if err := os.MkdirAll(dir, 0o755); err == nil {
 		name := fmt.Sprintf("%d-%d.jsonl", time.Now().UnixNano(), os.Getpid())
-		record, err = os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		lost.path = filepath.Join(dir, name)
+		record, err = os.OpenFile(lost.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "pgroup go shim: cannot record go test events: %v\n", err)
+			lost.err = err
 		} else {
-			_, _ = record.Write(budgetLine(named))
+			lost.w = record
+			_, _ = lost.Write(budgetLine(named)) // errdiscard: lostRecord keeps the error and reports it below
 		}
 	} else {
-		fmt.Fprintf(os.Stderr, "pgroup go shim: cannot record go test events: %v\n", err)
+		lost.err = err
+	}
+	if lost.err != nil {
+		fmt.Fprintf(os.Stderr, "pgroup go shim: cannot record go test events: %v\n", lost.err)
 	}
 	cmd := exec.Command(real, args...)
 	cmd.Env = append(os.Environ(), envGoTestNested+"=1")
@@ -451,15 +469,50 @@ func recordGoTest(real string, args []string, dir, named string, summary bool) i
 	}
 	var w io.Writer
 	if record != nil {
-		defer func() { _ = record.Close() }()
-		w = record
+		w = &lost
 	}
+	var copyErr error
 	if summary {
-		_ = summarizeLines(out, w, os.Stdout, raw)
+		copyErr = summarizeLines(out, w, os.Stdout, raw)
 	} else {
-		_ = renderEvents(out, w, os.Stdout, raw)
+		copyErr = renderEvents(out, w, os.Stdout, raw)
 	}
-	return shimStatus(cmd, cmd.Wait())
+	status := shimStatus(cmd, cmd.Wait())
+	if record != nil {
+		if err := record.Close(); err != nil && lost.err == nil {
+			lost.err = err
+		}
+	}
+	if copyErr != nil && lost.err == nil {
+		// go test's output stopped being read part-way: the record and the
+		// log both end there
+		lost.err = fmt.Errorf("reading go test's output: %w", copyErr)
+	}
+	if lost.err != nil {
+		fmt.Fprintf(os.Stderr, "pgroup go shim: the go test record %s is not whole, so nothing may be read from it as the run: %v\n", lost.path, lost.err)
+		if status == 0 {
+			return 2
+		}
+	}
+	return status
+}
+
+// lostRecord writes the record until a write fails, then drops the rest and
+// keeps the first error, so a full disk never interrupts the tests and the
+// shim still answers red at the end.
+type lostRecord struct {
+	w    io.Writer
+	path string
+	err  error
+}
+
+func (l *lostRecord) Write(p []byte) (int, error) {
+	if l.err == nil && l.w != nil {
+		if _, err := l.w.Write(p); err != nil {
+			l.err = err
+		}
+	}
+	return len(p), nil
 }
 
 // shimWanted reports whether the step needs the go shim on its PATH: to lift
@@ -508,14 +561,16 @@ func prepareGoShim() (func(), error) {
 		name = "go.exe"
 	}
 	if err := linkOrCopy(self, filepath.Join(dir, name)); err != nil {
-		_ = os.RemoveAll(dir)
-		return func() {}, err
+		return func() {}, errors.Join(err, os.RemoveAll(dir))
 	}
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
-		_ = os.RemoveAll(dir)
-		return func() {}, err
+		return func() {}, errors.Join(err, os.RemoveAll(dir))
 	}
-	return func() { _ = os.RemoveAll(dir) }, nil
+	return func() {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "pgroup: the go shim's directory %s was not removed: %v\n", dir, err)
+		}
+	}, nil
 }
 
 func linkOrCopy(src, dst string) error {

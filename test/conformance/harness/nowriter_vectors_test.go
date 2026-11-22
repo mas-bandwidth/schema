@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -45,7 +46,7 @@ func TestNoWriterFramingVectorsRefused(t *testing.T) {
 			t.Fatalf("%s: %v", v.name, err)
 		}
 		path := filepath.Join(framingDir, v.name+".bin")
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			if err := os.WriteFile(path, want, 0o644); err != nil {
 				t.Fatal(err)
 			}

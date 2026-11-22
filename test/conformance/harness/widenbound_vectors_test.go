@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -243,7 +244,7 @@ func TestWidenBoundVectorsPinned(t *testing.T) {
 		}
 		for name, want := range files {
 			path := filepath.Join(widenBoundWireDir, name)
-			if os.Getenv("WIDENBOUND_WRITE") == "1" {
+			if slowtest.Rewriting(t, "WIDENBOUND_WRITE") {
 				if err := os.WriteFile(path, want, 0o644); err != nil {
 					t.Fatal(err)
 				}

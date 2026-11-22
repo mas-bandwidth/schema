@@ -768,6 +768,12 @@ jobs:
             exit 1
           fi
           modernize ./...
+      # NOTHING FAILS SILENTLY (2026-11-22): no Go program under cmd/ or
+      # tools/ drops an error without naming why (internal/errdiscard; make
+      # errdiscard). It type-checks from the export data modernize just left
+      # in the build cache, so it costs about a second.
+      - name: no dropped errors in cmd/ and tools/
+        run: go run ./tools/errdiscard
 
   # Keep policy checks in a separate two-minute job: on loaded runners the
   # whole-tree modernizer and these checks exceed the combined budget.

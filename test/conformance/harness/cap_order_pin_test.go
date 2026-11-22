@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestCapBeforeNaNPin spells both declared fields in the order of the
@@ -34,7 +36,7 @@ func TestCapBeforeNaNPin(t *testing.T) {
 		if fields[3] != "count_over_extent_cap" || fields[4] != "-" || fields[5] != "count_over_extent_cap" {
 			t.Fatal("refusal expectations changed")
 		}
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			fields[1] = "float_reversed"
 			fields[2] = hex.EncodeToString(wire)
 			lines[i] = strings.Join(fields, "\t")
@@ -45,7 +47,7 @@ func TestCapBeforeNaNPin(t *testing.T) {
 	if seen != 1 {
 		t.Fatalf("found %d over-cap rows, want one", seen)
 	}
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 			t.Fatal(err)
 		}

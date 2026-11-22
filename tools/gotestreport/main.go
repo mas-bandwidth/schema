@@ -27,9 +27,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -298,6 +300,40 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv("GITHUB_STEP_SUMMARY")))
 }
 
+// recordFiles is every *.jsonl file in dir, sorted. A directory that does not
+// exist holds no record, as Glob answered before; one that cannot be read is
+// an error.
+func recordFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+			out = append(out, filepath.Join(dir, e.Name()))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// appendSummary appends text to the step summary file, which must exist.
+func appendSummary(path, text string) error {
+	out, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(out, text); err != nil {
+		_ = out.Close() // errdiscard: the write's error is the one returned
+		return err
+	}
+	return out.Close()
+}
+
 // run is the command: its exit status (0 green, 1 red, 2 a usage or read
 // error) from its arguments, what it prints, and the step summary file it
 // appends the report to ("" for none). The record corpus (records_test.go)
@@ -343,8 +379,14 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 			_, _ = fmt.Fprintln(stderr, "gotestreport: an empty directory was named (is PGROUP_GO_TEST_JSON set?)")
 			return 2
 		}
-		matches, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-		sort.Strings(matches)
+		// the directory is listed, never globbed: Glob reads a "[" in its
+		// name as a pattern, matches another directory or nothing, and
+		// drops the error, and nothing read is "no go test ran"
+		matches, err := recordFiles(dir)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			return 2
+		}
 		for _, m := range matches {
 			f, err := os.Open(m)
 			if err != nil {
@@ -385,9 +427,11 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 	}
 	_, _ = fmt.Fprint(stdout, f.text)
 	if summary != "" {
-		if out, err := os.OpenFile(summary, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-			_, _ = fmt.Fprintf(out, "```\n%s```\n", f.text)
-			_ = out.Close()
+		// a summary the step was told to write and did not is a report
+		// nobody sees: say so, and the step is red
+		if err := appendSummary(summary, "```\n"+f.text+"```\n"); err != nil {
+			_, _ = fmt.Fprintf(stderr, "gotestreport: the step summary %s: %v\n", summary, err)
+			return 2
 		}
 	}
 	if f.red {

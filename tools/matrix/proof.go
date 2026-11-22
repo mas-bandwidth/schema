@@ -266,6 +266,13 @@ func LoadRulings(root string) (Rulings, error) {
 		case x.Source == "":
 			return Rulings{}, fmt.Errorf("%s: ruling %s names no source", rulingsPath, x.ID)
 		}
+		// a case pattern path.Match cannot read matches no case, so the
+		// ruling would apply to nothing and say nothing: refuse it here
+		for _, s := range x.Applies {
+			if _, err := path.Match(s.Case, ""); err != nil {
+				return Rulings{}, fmt.Errorf("%s: ruling %s: the case pattern %q: %w", rulingsPath, x.ID, s.Case, err)
+			}
+		}
 		seen[x.ID] = true
 	}
 	return r, nil
@@ -277,7 +284,7 @@ func (r Rulings) caseRuling(surface, name, lang string) string {
 			if s.Surface == "" || s.Surface != surface || !langIn(s.Langs, lang) {
 				continue
 			}
-			if ok, _ := path.Match(s.Case, name); ok {
+			if ok, _ := path.Match(s.Case, name); ok { // errdiscard: LoadRulings refused every pattern Match cannot read
 				return x.ID
 			}
 		}

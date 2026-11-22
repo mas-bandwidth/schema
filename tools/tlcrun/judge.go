@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -289,9 +290,15 @@ func lastStates(log string) (generated, distinct, queued int, ok bool) {
 		return 0, 0, 0, false
 	}
 	m := all[len(all)-1]
-	generated, _ = strconv.Atoi(m[1])
-	distinct, _ = strconv.Atoi(m[2])
-	queued, _ = strconv.Atoi(m[3])
+	// a count too wide for an int is a line this judge cannot read, never a 0:
+	// a 0 queue would read as a finished search
+	var errs [3]error
+	generated, errs[0] = strconv.Atoi(m[1])
+	distinct, errs[1] = strconv.Atoi(m[2])
+	queued, errs[2] = strconv.Atoi(m[3])
+	if errors.Join(errs[:]...) != nil {
+		return 0, 0, 0, false
+	}
 	return generated, distinct, queued, true
 }
 

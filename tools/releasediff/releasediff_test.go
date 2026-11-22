@@ -385,7 +385,8 @@ func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
 			}
 		})
 	}
-	for prev, want := range map[string]bool{"v2.10.0": false, "v3.0.0": true, "v3.0.2": true, "v10.1.0": true, "clean": true} {
+	// a major too wide for 64 bits saturates: it owes the tables
+	for prev, want := range map[string]bool{"v2.10.0": false, "v3.0.0": true, "v3.0.2": true, "v10.1.0": true, "clean": true, "v99999999999999999999.0.0": true} {
 		if got := TablesOwed(prev); got != want {
 			t.Errorf("TablesOwed(%q) = %v, want %v", prev, got, want)
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -165,7 +166,7 @@ func TestRewriteFieldOrderFixturePinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/rewrite_fields_reversed.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, want, 0o644); err != nil {
 			t.Fatal(err)
 		}

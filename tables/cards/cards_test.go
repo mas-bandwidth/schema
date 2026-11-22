@@ -384,6 +384,9 @@ func TestCardFixtureWrite(t *testing.T) {
 	if os.Getenv("CARDS_UPDATE_FIXTURE") != "1" {
 		t.Skip("fixture update requires CARDS_UPDATE_FIXTURE=1")
 	}
+	if os.Getenv("CI") != "" {
+		t.Fatal("CARDS_UPDATE_FIXTURE=1 under CI: a lane that rewrites the committed evidence compares nothing against it; unset it")
+	}
 	wire, json := fixtureCard(t)
 	dir := filepath.Join("..", "..", "..", "tables", "cards", "fuzz")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -631,7 +631,10 @@ func testAgree(t *testing.T, vals [][]byte) {
 
 func TestProbe(t *testing.T) {
 	dir := os.Getenv("SCHEMA_RAPID_DIR")
-	n, _ := strconv.Atoi(os.Getenv("SCHEMA_RAPID_N"))
+	n, err := strconv.Atoi(os.Getenv("SCHEMA_RAPID_N"))
+	if err != nil || n <= 0 {
+		t.Fatalf("SCHEMA_RAPID_N=%q: the probe needs the count of instances the parent wrote", os.Getenv("SCHEMA_RAPID_N"))
+	}
 	vals := make([][]byte, n)
 	for i := range vals {
 		b, err := os.ReadFile(dir + "/inst-" + strconv.Itoa(i) + ".json")

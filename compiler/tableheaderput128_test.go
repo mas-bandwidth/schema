@@ -450,7 +450,7 @@ func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(runtime, "serialize.h")); err != nil {
 		t.Skip("serialize runtime header not at the sibling path")
 	}
-	pinning := os.Getenv("SCHEMA_UPDATE_HEADER_GOLDEN") == "1"
+	pinning := slowtest.Rewriting(t, "SCHEMA_UPDATE_HEADER_GOLDEN")
 
 	files, err := New().Generate(unitFromSource(t, headerProbeSchema()), "cpp", Options{})
 	if err != nil {

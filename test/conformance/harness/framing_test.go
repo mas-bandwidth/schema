@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -20,7 +21,7 @@ const framingDir = "testdata/wire/tables/framing"
 // files from the scripts, which is how a new vector lands.
 func TestFramingVectorBytesArePinned(t *testing.T) {
 	_, _, u := corpus(t)
-	write := os.Getenv("FRAMING_WRITE") == "1"
+	write := slowtest.Rewriting(t, "FRAMING_WRITE")
 	seen := map[string]bool{}
 	for _, v := range framingVectors {
 		if seen[v.name] {

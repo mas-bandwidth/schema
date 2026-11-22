@@ -79,9 +79,9 @@ func run(argv []string, wall, grace time.Duration, wallLabel string, ciPolicy bo
 		for _, a := range acts {
 			switch a {
 			case actForward:
-				_ = syscall.Kill(-pgid, stopSig)
+				_ = syscall.Kill(-pgid, stopSig) // errdiscard: ESRCH when the group is gone; a group still there is killed after the grace
 			case actTerm:
-				_ = syscall.Kill(-pgid, syscall.SIGTERM)
+				_ = syscall.Kill(-pgid, syscall.SIGTERM) // errdiscard: ESRCH when the group is gone; a group still there is killed after the grace
 			case actStartGrace:
 				graceC = time.After(grace)
 			case actKillGroup:

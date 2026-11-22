@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -74,7 +75,7 @@ func wireBytes(t *testing.T, path string) []byte {
 // those bytes, the same switch the C++ pin writers take (make update-goldens).
 func pinnedWire(t *testing.T, path string, built []byte) []byte {
 	t.Helper()
-	if os.Getenv("SCHEMA_UPDATE_WIRE_GOLDENS") != "" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_WIRE_GOLDENS") {
 		if err := os.WriteFile(path, built, 0o644); err != nil {
 			t.Fatal(err)
 		}
