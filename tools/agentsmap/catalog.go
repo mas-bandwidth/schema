@@ -33,6 +33,7 @@ func page(path, purpose, guard, command string) Entry {
 // immediate child directories must all appear.
 var catalog = []Entry{
 	e(".claude-plugin", "plugin marketplace entry for skills/", "none", "none"),
+	e(".githooks", "git hooks for agent clones (pre-push identity guard)", "go test ./internal/ci -run PrePush", "make setup"),
 	e(".github", "CI workflows", "go test ./internal/ci", "make test"),
 	page("bench", "cross-language serialize bench", "go test ./bench/corpus", "bench/run.sh"),
 	e("cmd", "schema CLI", "go test ./cmd/schema", "go test ./cmd/schema"),
