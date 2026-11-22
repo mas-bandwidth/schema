@@ -674,7 +674,7 @@ module SchemaRuntimeUnit
         end
       when 13, 14, 16
         retain_in_framed(reader, sink, kind, depth)
-      when 12, 31, 32
+      when 12, 32
         len = reader.varint
         sink.varint(len)
         sink.raw(reader.take(len))
@@ -769,7 +769,7 @@ module SchemaRuntimeUnit
         end
       when 13, 14, 16
         retain_out_frame(storage, reader, sink, kind, depth, intern, measure)
-      when 12, 31, 32
+      when 12, 32
         len = reader.varint
         sink.varint(len)
         sink.raw(reader.take(len))

@@ -168,8 +168,10 @@ module SchemaRuntimeUnit
       raise Refused.new('wire_damaged', 'unknown numeric kind')
     end
 
+    # 31 is held by name and never written (R17): an announcement naming it is
+    # malformed, as one naming 33 or 34 is
     def self.msg_known_kind?(kind)
-      kind.between?(0, 32) || kind == 36
+      kind.between?(0, 30) || kind == 32 || kind == 36
     end
 
     def self.msg_parse_shape(reader, kind)
@@ -904,17 +906,6 @@ module SchemaRuntimeUnit
           msg_skip_value(reader, inner, vocab, depth + 1, in_field: false, pending: pending)
           raise Refused.new('wire_damaged', 'message element consumes no bits') if reader.position == start
         end
-        return
-      end
-      if kind == 31
-        reader.align
-        len = reader.get(32)
-        if len > ((reader.data.bytesize * 8) - reader.position) >> 3
-          raise Refused.new('wire_damaged',
-                            'escape exceeds message batch')
-        end
-
-        reader.position += len * 8
         return
       end
       raise Refused.new('wire_damaged', 'invalid message body kind')
