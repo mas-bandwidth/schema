@@ -28,13 +28,13 @@ JAVA_HOSTILE_FINDINGS ?= test/java-hostile/known-findings.tsv
 JAVA_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
-	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes probe:test/java-hostile/probe.schema \
+	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes inner:test/tables/inner probe:test/java-hostile/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
 $(JAVA_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-java-runs-hostile-corpus.mk \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
-			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema \
+			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema test/tables/inner/Inner.schema \
 		test/java-hostile/probe.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@rm -rf $(JAVA_HOSTILE_BUILD)/generated && mkdir -p $(JAVA_HOSTILE_BUILD)/generated
 	@for unit in $(JAVA_HOSTILE_UNITS); do \

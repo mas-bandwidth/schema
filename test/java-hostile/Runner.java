@@ -88,6 +88,7 @@ public final class Runner {
                     Map.entry("tables/maps", "mapdemo"),
                     Map.entry("tables/lists", "listdemo"),
                     Map.entry("test/tables/shapes", "shapes"),
+                    Map.entry("test/tables/inner", "inner"),
                     Map.entry("schemas/probe.schema", "probe"),
                     Map.entry("testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses"));
 
@@ -279,8 +280,9 @@ public final class Runner {
     // read by its generated <Table>Fixed class, which the form byte selects as
     // the conformance driver does (test/conformance/java/src/Driver.java). A
     // file holds one record, so the read is handed room for one. The Java
-    // fixed class carries no text form, so an accepted record is copied field
-    // by field into the variable value of the same table and digested through
+    // fixed class carries no text form, so an accepted record is carried into
+    // the variable value of the same table by the port's own fromFixed (or,
+    // for a table without one, copied field by field) and digested through
     // that table's text writer; a field the copy cannot place is the case's
     // error, never a silent accept.
     private static final class Fixed {
@@ -341,12 +343,15 @@ public final class Runner {
                 return refuse("damaged");
             }
             Object record = java.lang.reflect.Array.get(values, 0);
-            Object value;
-            try {
-                value = bridge(record, variable.valueType);
-            } catch (IllegalArgumentException unplaced) {
-                return "error: " + unplaced.getMessage();
+            Object carried = fromFixed(variable.codec, valueType, record);
+            if (carried == null) {
+                try {
+                    carried = bridge(record, variable.valueType);
+                } catch (IllegalArgumentException unplaced) {
+                    return "error: " + unplaced.getMessage();
+                }
             }
+            final Object value = carried;
             String verdict = variable.digest(value);
             // Measure and Save the decoded record back through the fixed writer.
             return after(verdict, "measure/save/toJson", () -> {
@@ -369,6 +374,23 @@ public final class Runner {
             }
         }
         return b.toString();
+    }
+
+    // The port's own carry of a fixed-class value into the variable value of
+    // the same table (<Type>Variable.fromFixed, docs/SPEC-TABLES.md §16). It
+    // knows each field's sign and storage, which a reflective copy cannot: a
+    // uint8 array is a byte[] on the fixed side and a List<Integer> on the
+    // variable side, and bytes(N) is a buffer and its <name>Length. Null when
+    // the table has none; the caller then copies field by field (bridge).
+    private static Object fromFixed(Class<?> variableCodec, Class<?> fixedValue, Object record)
+            throws ReflectiveOperationException {
+        Method carry;
+        try {
+            carry = variableCodec.getMethod("fromFixed", fixedValue);
+        } catch (NoSuchMethodException none) {
+            return null;
+        }
+        return carry.invoke(null, record);
     }
 
     // A fixed record into the variable value of the same table: a bounded
@@ -515,6 +537,8 @@ public final class Runner {
         // takes the variable value. A body that sets no field decodes to the
         // table's defaults, and fromJson("{}") is where the port states them:
         // the runner compares the decoded record's bytes with a reset value's.
+        // A body that sets a field is carried into the variable value by the
+        // port's own fromFixed, as a fixed-form record is.
         Object got = java.lang.reflect.Array.get(values, 0);
         Object blank = fixedValue.getConstructor().newInstance();
         msg.getMethod("reset", fixedValue).invoke(null, blank);
@@ -525,13 +549,18 @@ public final class Runner {
         byte[] b = new byte[size];
         writeBody.invoke(null, a, 0, got);
         writeBody.invoke(null, b, 0, blank);
-        if (!Arrays.equals(a, b)) {
-            return "unhandled decoded value: the body sets a field";
-        }
         Variable variable = new Variable(pkg, table);
-        Object vr = variable.report();
-        Object defaults = variable.call("fromJson", "{}".getBytes(StandardCharsets.UTF_8), vr);
-        String verdict = variable.digest(defaults);
+        Object decoded;
+        if (!Arrays.equals(a, b)) {
+            decoded = fromFixed(variable.codec, fixedValue, got);
+            if (decoded == null) {
+                return "unhandled decoded value: the body sets a field";
+            }
+        } else {
+            Object vr = variable.report();
+            decoded = variable.call("fromJson", "{}".getBytes(StandardCharsets.UTF_8), vr);
+        }
+        String verdict = variable.digest(decoded);
         // Measure and Save the decoded batch back through the message writer.
         return after(verdict, "measureMessages/saveMessages", () -> {
             Object mr = vocabulary.report();
