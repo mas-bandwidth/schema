@@ -78,9 +78,9 @@ func TestJavaReadHoldsACountMinimumAtAnyDepth(t *testing.T) {
 	t.Parallel()
 	files := generate(t, javaNestedCountMinSchema)
 	for _, c := range []struct{ file, want, why string }{
-		{"ChildFixed.java", "if (v.valsCount < 2) { if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
+		{"ChildFixed.java", "int n = TableFixed.get32(b, at + 0); if (n < 2) { n = 2; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 			"the fixed scatter accepts a child's count under its minimum"},
-		{"TightFixed.java", "if (v.nestCount < 1) { if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
+		{"TightFixed.java", "if (n < 1) { n = 1; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 			"the fixed scatter accepts a parent's count under its minimum"},
 		{"LooseFixed.java", "ChildFixed.scatter(b, at + 4 + i * 8 + 0, v.nest[i], r, live, checkDead);",
 			"the fixed scatter does not walk a loose parent's children"},
