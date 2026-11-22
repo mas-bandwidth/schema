@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_JOINS_H
-#define SCHEMA_EXAMPLE_JOINS_H
+#ifndef SCHEMA_EXAMPLE_Joins_h
+#define SCHEMA_EXAMPLE_Joins_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -225,4 +225,4 @@ typedef struct example_regain_after_align_t
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_JOINS_H */
+#endif /* SCHEMA_EXAMPLE_Joins_h */

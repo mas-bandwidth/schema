@@ -395,7 +395,7 @@ namespace Blockhome
                 scoped Span<long> elemCache_0 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_0, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_0, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_0 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -416,7 +416,7 @@ namespace Blockhome
                 scoped Span<long> elemCache_1 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_1, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_1, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -446,7 +446,7 @@ namespace Blockhome
                 scoped ReadOnlySpan<long> elemCache_0 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_0, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_0, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_0 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -478,7 +478,7 @@ namespace Blockhome
                 scoped ReadOnlySpan<long> elemCache_1 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
-                    int take = System.Math.Min(count_1, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(count_1, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
