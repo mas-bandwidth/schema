@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,7 +22,9 @@ import (
 // `y` set, which needs 4097: the save refuses id_table_over_bound and
 // writes nothing.
 const idCapMain = `import os;
-import .conformance_unit;
+import .all;
+
+fn conformance_unit() -> schema_rt::LoadUnit { return UNITNS::UNITNAME; }
 
 fn probe(file: const u8[:], set_y: bool) {
     let data = input(file);
@@ -80,7 +84,8 @@ func TestGooseWriterRefusesMoreThan4096Ids(t *testing.T) {
 		}
 		files[file] = wire
 	}
-	files["main.goose"] = []byte(idCapMain)
+	main := strings.Replace(idCapMain, "UNITNS::UNITNAME", goose.Namespace(u)+"::"+goosetable.UnitName, 1)
+	files["main.goose"] = []byte(main)
 	got := strings.TrimSpace(string(gooserun.Run(t, t.TempDir(), "main.goose", files)))
 	want := "a.bin y=0 wrote 4095 read\nb.bin y=0 wrote 4096 read\nb.bin y=1 refused id_table_over_bound 0"
 	if got != want {
