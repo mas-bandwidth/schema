@@ -6101,7 +6101,6 @@ namespace Blockdemo
                     if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
                     int variant = reference == 0 ? 0 : FindVariant(f, id, false);
                     if (reference != 0 && variant == 0) { report.Unknown++; }
-                    else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
                     raw = (ulong)variant;
                     // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
                     if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }

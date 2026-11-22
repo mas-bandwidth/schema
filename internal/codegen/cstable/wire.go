@@ -446,21 +446,7 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		owner := g.owner.DeclaredName() + "." + f.Name
 		fmt.Fprintf(&b, ", NonFiniteField = %q, NonFiniteReason = %q", owner, "non_finite_float: "+owner)
 	}
-	if en := enumRef(f); en != nil {
-		var depConds []string
-		for i := range en.Variants {
-			if enumVariantDeprecated(en, i) {
-				depConds = append(depConds, fmt.Sprintf("v == %dUL", i+1))
-			}
-		}
-		if len(depConds) > 0 {
-			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as None
-			// inside an array (docs/SPEC-TABLES.md §2.15).
-			fmt.Fprintf(&b, ", EnumDeprecated = delegate (ulong v) { return %s; }", strings.Join(depConds, " || "))
-		}
-		return b.String()
-	}
-	if kind == tkBool {
+	if kind == tkBool || enumRef(f) != nil {
 		return b.String()
 	}
 	if f.HasIntRange {
@@ -1359,7 +1345,6 @@ public static partial class TableWire
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
-            else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
             raw = (ulong)variant;
             // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
             if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
