@@ -1081,4 +1081,4 @@ if [ "$jobfailed" -ne 0 ]; then
 	echo "driver: a unit job exited non-zero and recorded no failing status" >&2
 	exit 1
 fi
-GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h =~ /^absent(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; print $f (defined $1 ? $1 : ""); close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$out"
+perl test/conformance/answer-lines.pl "$3" "$out"

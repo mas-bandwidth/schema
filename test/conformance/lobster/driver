@@ -16,7 +16,15 @@
 # stdout, one or more lines per case — the case name, a space, the answer's
 # bytes as lowercase hex (continued on further lines under the same name), or
 # the word `absent` — which this script writes as one file per case into
-# <outdir> (`absent` as <case>.absent). Any other line on stdout is refused.
+# <outdir> (`absent` as <case>.absent). Any other line on stdout is refused:
+# test/conformance/answer-lines.pl says `driver printed non-protocol line:
+# <line>` and the surface fails (README.md, "The driver's stdout").
+#
+# lobster itself prints its compiler warnings and errors on STDOUT, the same
+# stream the answers use, and cannot be told otherwise. The program therefore
+# opens its answers with a marker line (main.lobster, answer_marker), and this
+# script sends everything lobster printed BEFORE the marker to stderr, where a
+# diagnostic belongs; a run that never reaches the marker never started.
 #
 # `list` is the program's own surface list; a surface not on it exits 2 and
 # the matrix prints ABSENT.
@@ -29,6 +37,9 @@ main=test/conformance/lobster/main.lobster
 lobster=${LOBSTER:-dist/lobster-v2026.8/bin/lobster}
 units=${LOBSTER_CONFORMANCE_UNITS:-build/conformance-lobster}
 dir=$units/driver
+answers=test/conformance/answer-lines.pl
+# the line main.lobster prints before its first answer
+marker='%%answers-begin%%'
 root=$(pwd)
 case "$1" in
 /*) manifest=$1 ;;
@@ -57,10 +68,20 @@ stage() {
 	} >"$units/$1/conformance_main.lobster"
 }
 
+# split_diagnostics copies what lobster printed in <file> after the marker line
+# to stdout and everything before it (its warnings and errors) to stderr; it
+# fails when the marker never came
+split_diagnostics() {
+	awk -v m="$marker" '$0 == m && !seen { seen = 1; next } !seen { print > "/dev/stderr"; next } { print } END { exit !seen }' "$1"
+}
+
 # run answers one surface over one unit's cases, into $dir/<surface>.<unit>.out
 run() {
 	stage "$2" || return 1
-	"$lobster" "$units/$2/conformance_main.lobster" -- "$root" "$manifest" "$1" "$2" >"$dir/$1.$2.out"
+	"$lobster" "$units/$2/conformance_main.lobster" -- "$root" "$manifest" "$1" "$2" >"$dir/$1.$2.raw"
+	status=$?
+	split_diagnostics "$dir/$1.$2.raw" >"$dir/$1.$2.out" || status=1
+	return $status
 }
 
 # the surface list, from the program; any generated unit compiles it
@@ -74,7 +95,10 @@ surfaces() {
 	done
 	[ -n "$first" ] || { echo "driver: no generated unit under $units; run make $units" >&2; return 1; }
 	stage "$first" || return 1
-	"$lobster" "$units/$first/conformance_main.lobster" -- "$root" "$manifest" list "$first"
+	"$lobster" "$units/$first/conformance_main.lobster" -- "$root" "$manifest" list "$first" >"$dir/list.raw"
+	status=$?
+	split_diagnostics "$dir/list.raw" || status=1
+	return $status
 }
 
 if [ "$2" = list ]; then
@@ -140,18 +164,4 @@ for p in $pids; do
 	wait "$p" || status=1
 done
 [ "$status" -eq 0 ] || exit 1
-cat "$dir/$2".*.out 2>/dev/null | LOBSTER_OUTDIR=$3 perl -ne '
-	chomp;
-	if (/^(\S+) absent(?: (.+))?$/) {
-		# an absence, with its reason when the program names one
-		open(my $f, ">", "$ENV{LOBSTER_OUTDIR}/$1.absent") or die "$1: $!";
-		print $f $2 if defined $2;
-		close $f;
-		next;
-	}
-	my ($c, $h) = /^(\S+) ([0-9a-f]*)$/ or die "driver: not an answer line: $_\n";
-	my $mode = $seen{$c}++ ? ">>:raw" : ">:raw";
-	open(my $f, $mode, "$ENV{LOBSTER_OUTDIR}/$c") or die "$c: $!";
-	print $f pack("H*", $h);
-	close $f;
-'
+cat "$dir/$2".*.out 2>/dev/null | perl "$answers" --continue "$3"

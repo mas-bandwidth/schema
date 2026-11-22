@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1113,6 +1114,47 @@ func absentReference(surface, how string) string {
 			"against a surface nothing pins", surface, how)
 }
 
+// surfaceName is the grammar of one line of a driver's `list`: a surface's name.
+var surfaceName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// nonProtocolLine is the failure for a line a driver printed on stdout that its
+// protocol has no place for. The protocol: `<driver> <manifest> list` prints
+// surface names, one per line; `<driver> <manifest> <surface> <outdir>` prints
+// NOTHING on stdout, its answers are the files in <outdir>. A compiler,
+// interpreter or runtime diagnostic on stdout is therefore a failed driver
+// with the line named, never a wrong answer (test/conformance/README.md, "The
+// driver's stdout"). The diagnostics belong on stderr.
+func nonProtocolLine(line string) error {
+	return fmt.Errorf("driver printed non-protocol line: %s", line)
+}
+
+// parseSurfaceList reads a driver's `list` output strictly: every non-blank
+// line is a surface name, or the whole list is refused naming the line.
+func parseSurfaceList(stdout string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for line := range strings.SplitSeq(stdout, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+		if !surfaceName.MatchString(s) {
+			return nil, nonProtocolLine(s)
+		}
+		out[s] = true
+	}
+	return out, nil
+}
+
+// checkRunStdout refuses any non-blank line on the stdout of a surface run.
+func checkRunStdout(stdout string) error {
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			return nonProtocolLine(s)
+		}
+	}
+	return nil
+}
+
 func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	argv := append(append([]string{}, d.argv...), manifest, "list")
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -1122,11 +1164,9 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("`%s list` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
-	out := map[string]bool{}
-	for line := range strings.SplitSeq(stdout.String(), "\n") {
-		if s := strings.TrimSpace(line); s != "" {
-			out[s] = true
-		}
+	out, err := parseSurfaceList(stdout.String())
+	if err != nil {
+		return nil, fmt.Errorf("`%s list`: %w", strings.Join(argv, " "), err)
 	}
 	return out, nil
 }
@@ -1134,10 +1174,15 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = &stdout
 	err := cmd.Run()
+	if perr := checkRunStdout(stdout.String()); perr != nil {
+		// the driver failed, whatever its exit status said: nothing it wrote
+		// beside the line can be trusted
+		return 1, perr.Error() + "\n" + stderr.String(), nil
+	}
 	if err == nil {
 		return 0, stderr.String(), nil
 	}

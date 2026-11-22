@@ -83,8 +83,32 @@ language" below, where both shapes are stated.
 - **`list`** prints the surfaces this backend implements, one per line, to
   stdout.
 - **A surface run** writes ONE FILE PER CASE into `<outdir>`, named by the case,
-  and prints nothing that matters. The harness holds the expectations and does
-  the comparing.
+  and prints NOTHING on stdout. The harness holds the expectations and does the
+  comparing.
+
+### The driver's stdout
+
+Stdout is protocol and nothing else. `list` prints surface names, one per line
+(`[a-z][a-z0-9-]*`); a surface run prints nothing. **Compiler, interpreter and
+runtime diagnostics (warnings included) go to stderr**, which the harness prints
+when a driver fails. A non-blank stdout line outside that grammar fails the
+driver with `driver printed non-protocol line: <line>`: never a wrong answer,
+and never a surface that fails 0/N with nothing naming why (a Lobster
+`unused variable recs` warning once did exactly that). `harness/run.go`
+(`parseSurfaceList`, `checkRunStdout`) enforces it for every leg, and
+`harness/driverstdout_test.go` holds it.
+
+Four legs have a program that can only answer on stdout (Lobster, Luau, Goose
+and Moo: the interpreter has no file API the driver can rely on), so their
+driver script turns the program's stdout into the files. That script is ONE
+shared parser, `test/conformance/answer-lines.pl`, and its grammar is the whole
+of the protocol: `<case> <lowercase hex, an even number of digits, maybe none>`
+or `<case> absent [<reason>]`, with `<case>` in `[A-Za-z0-9_.-]+`. Any other
+line stops the driver with the message above. Lobster prints its own compiler
+warnings and errors on stdout and cannot be told otherwise, so
+`lobster/main.lobster` opens its output with a marker line and
+`lobster/driver` sends everything before the marker to stderr (no marker means
+the program never started, which is a failure).
 
 ### Exit codes
 
