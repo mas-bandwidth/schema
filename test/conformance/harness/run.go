@@ -734,6 +734,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
 	}
+	sent, err := sentRows(derived)
+	if err != nil {
+		return false, err
+	}
 
 	want := map[string][]expectation{}
 	for _, s := range surfaces {
@@ -884,7 +888,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			// a different corpus (a stale manifest, a renamed case, a typo in
 			// its own case table), and a harness that only reads the files it
 			// expects would never see it.
-			for _, name := range strayAnswers(out, legWant) {
+			for _, name := range strayAnswers(out, sent) {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"%s: the driver answered a row the corpus did not send on the %s surface", name, s))
 			}
@@ -981,31 +985,58 @@ func crashNotAbsence(out, stderr string) string {
 	return ""
 }
 
-// strayAnswers is every top-level file in out that no row of want owns. A row
-// owns its answer file and every `<name>.<suffix>` beside it (`.absent`,
-// `.wire`, and whatever a surface adds); anything else answers a row the
-// corpus never sent. An unreadable directory is itself named.
-func strayAnswers(out string, want []expectation) []string {
+// strayAnswers is every top-level file in out that no row the driver was
+// SENT owns. A row owns its answer file and every `<name>.<suffix>` beside it
+// (`.absent`, `.wire`, and whatever a surface adds). sent is every row name in
+// the derived manifest the driver read, not only the rows this surface
+// scores: a driver cannot tell from the manifest which retain rows save, so it
+// answers them all and the harness scores the ones with a golden. Anything
+// else answers a row the corpus never sent. An unreadable directory is itself
+// named.
+func strayAnswers(out string, sent map[string]bool) []string {
 	entries, err := os.ReadDir(out)
 	if err != nil {
 		return []string{fmt.Sprintf("(output directory unreadable: %v)", err)}
 	}
 	var stray []string
 	for _, ent := range entries {
-		name := ent.Name()
-		owned := false
-		for _, e := range want {
-			if name == e.name || strings.HasPrefix(name, e.name+".") {
-				owned = true
-				break
-			}
-		}
-		if !owned {
-			stray = append(stray, name)
+		if !ownedBy(ent.Name(), sent) {
+			stray = append(stray, ent.Name())
 		}
 	}
 	sort.Strings(stray)
 	return stray
+}
+
+// ownedBy says whether file is a sent row's answer: the row's name itself, or
+// the name followed by a dot and any suffix.
+func ownedBy(file string, sent map[string]bool) bool {
+	if sent[file] {
+		return true
+	}
+	for i := range len(file) {
+		if file[i] == '.' && sent[file[:i]] {
+			return true
+		}
+	}
+	return false
+}
+
+// sentRows is every row name in the derived manifest: the second field of
+// each line that is not blank or a comment.
+func sentRows(derived string) (map[string]bool, error) {
+	data, err := os.ReadFile(derived)
+	if err != nil {
+		return nil, err
+	}
+	sent := map[string]bool{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && !strings.HasPrefix(f[0], "#") {
+			sent[f[1]] = true
+		}
+	}
+	return sent, nil
 }
 
 // answeredNothing is the verdict on a leg that answered NO row on any surface

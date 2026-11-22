@@ -60,6 +60,11 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 		return false, err
 	}
 
+	// every case the driver was sent owns its answers (run.go, strayAnswers)
+	sent := map[string]bool{}
+	for _, c := range cases {
+		sent[c.name] = true
+	}
 	bySurface := map[string][]cardCase{}
 	for _, c := range cases {
 		bySurface[c.surface] = append(bySurface[c.surface], c)
@@ -104,11 +109,7 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 		default:
 			// an answer no case owns is a driver answering another corpus
 			// (run.go, strayAnswers): red, by file name
-			owners := make([]expectation, 0, len(cs))
-			for _, c := range cs {
-				owners = append(owners, expectation{name: c.name})
-			}
-			for _, name := range strayAnswers(outdir, owners) {
+			for _, name := range strayAnswers(outdir, sent) {
 				r.failures = append(r.failures, fmt.Sprintf("%s: the driver answered a case the corpus did not send", name))
 			}
 			for _, c := range cs {

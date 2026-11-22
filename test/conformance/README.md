@@ -400,10 +400,12 @@ success line:
 | answers no row on any surface asked (all absent, all `.absent`, or `--surfaces` selected none it runs) | `FAIL`, `<lang> / (every surface): the leg answered none of the N row(s)` |
 | `--only` names no leg, or `--surfaces` names no surface | refused (exit 1) |
 
-A row the corpus owns is answered by its file `<row>` and anything named
-`<row>.<suffix>` beside it (`.absent`, `.wire`); anything else in the output
-directory is a stray answer. The cards runner holds its output directories to
-the same rule.
+A row is answered by its file `<row>` and anything named `<row>.<suffix>`
+beside it (`.absent`, `.wire`). Every row named in the derived manifest owns its
+answers on any surface — a driver cannot tell from the manifest which `retain`
+rows save, so it answers them all and the harness scores the ones with a golden —
+and anything else in an output directory is a stray answer. The cards runner
+holds its output directories to the same rule over its own manifest.
 
 **A declared absence is still not a pass.** A port's `list` omission, exit 2 or
 `<case>.absent` stays the completion tracker and does not turn the run red (the
