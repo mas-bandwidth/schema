@@ -24,7 +24,7 @@ import (
 // a refusal). It refuses form 3 as layout_record_too_large, refuses the older
 // forms by name as at every fixed root, treats an empty file as damage that
 // resets the destination, and never selects the variable form. A named
-// refusal leaves the caller's values untouched.
+// refusal resets every row handed in too (ruling R4).
 func TestRustWideBlobFixedLoader(t *testing.T) {
 	t.Parallel()
 
@@ -235,29 +235,32 @@ fn main() {
     let mut plan = vec![TableFixedEntry::default(); 64];
     let mut remap = vec![0u16; 64];
 
-    // The older and neighbouring forms are refused by name, and a named
-    // refusal leaves the caller's values untouched.
+    // The older and neighbouring forms are refused by name, and (ruling R4)
+    // every row handed in, both of them, goes back to its declared default.
     for (name, form, reason) in [
         ("previous-form", 1u8, TableFixedReason::PreviousForm),
         ("message-form", 2u8, TableFixedReason::MessageFormAsFile),
         ("newer-form", 6u8, TableFixedReason::NewerForm),
     ] {
-        let mut values = vec![WideBlobRow::default()];
+        let mut values = vec![WideBlobRow::default(); 2];
         values[0].label[0] = 0xAB;
+        values[1].label[0] = 0xAB;
         let mut report = TableFixedReport::default();
         let got = wide_blob_fixed_load(&mut values, &[form], &mut plan, &mut remap, &mut report);
         clause(name, got.is_none() && report.refused && !report.damaged
-            && report.reason == reason && values[0].label[0] == 0xAB);
+            && report.reason == reason && values.iter().all(|v| v.label[0] == 0));
     }
 
-    // Form 3 itself: the record is past the ceiling, refused by that name.
+    // Form 3 itself: the record is past the ceiling, refused by that name, and
+    // every row handed in is reset (R4).
     {
-        let mut values = vec![WideBlobRow::default()];
+        let mut values = vec![WideBlobRow::default(); 2];
         values[0].label[0] = 0xAB;
+        values[1].label[0] = 0xAB;
         let mut report = TableFixedReport::default();
         let got = wide_blob_fixed_load(&mut values, &[3u8], &mut plan, &mut remap, &mut report);
         clause("ceiling-form3", got.is_none() && report.refused && !report.damaged
-            && report.reason == TableFixedReason::LayoutRecordTooLarge && values[0].label[0] == 0xAB);
+            && report.reason == TableFixedReason::LayoutRecordTooLarge && values.iter().all(|v| v.label[0] == 0));
     }
 
     // An empty file is damage, and damage resets every destination row.

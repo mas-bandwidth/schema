@@ -976,7 +976,7 @@ func (m *msgGen) emitBatch(st *ir.Struct) {
 		measureExtra = "4 + "
 		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
 		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
-		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
+		loadPrefix = "    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            return (0, false);\n        };\n        body\n    } else { data };\n"
 	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
@@ -1027,18 +1027,33 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
 /// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
-/// the count is zero, malformed is set, and every body of the batch goes back
-/// to its declared defaults, bytes after the pad included; "M ABOVE THE
-/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", nothing decoded and
-/// a count of 0, as every refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
-/// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+/// the count is zero, malformed is set; "M ABOVE THE CALLER'S CAPACITY ON THE
+/// READ SIDE IS A REFUSAL BY NAME", nothing decoded and a count of 0, as every
+/// refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS
+/// REFUSED BY NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 ///
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
-/// no body of it is delivered, so the count is zero, every body read so far
-/// goes back to its declared defaults, and the reason is non_finite_float.
-/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
-/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
+/// no body of it is delivered, so the count is zero, and the reason is
+/// non_finite_float. A VALUE OUTSIDE ITS DECLARED RANGE, met before any
+/// damage, refuses the batch the same way BY NAME as out_of_range (§3.3), the
+/// field in oor_field.
+///
+/// RULING R4: after ANY refusal, every value handed in (the whole slice, not
+/// only the batch's count) holds its declared default.
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
+    let (count, whole) = %[1]s_load_messages_walk(values, vocabulary, data, report);
+    if !whole {
+        for value in values.iter_mut() {
+            *value = %[1]s_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
+}
+
+/// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
+/// the reset of every value handed in to the caller above (R4).
+fn %[1]s_load_messages_walk(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
     report.oor_field = "";
@@ -1053,13 +1068,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
     for i in 0..count {
         if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
-                for value in values.iter_mut().take(i + 1) {
-                    *value = %[1]s_message_default();
-                }
                 return (0, report.refuse(TableReason::NonFiniteFloat));
-            }
-            for value in values.iter_mut().take(count) {
-                *value = %[1]s_message_default();
             }
             if !report.oor_field.is_empty() {
                 return (0, report.refuse(TableReason::OutOfRange));
@@ -1068,9 +1077,6 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
         }
     }
     if !table_message_batch_close(&mut r, report) {
-        for value in values.iter_mut().take(count) {
-            *value = %[1]s_message_default();
-        }
         return (0, false);
     }
     (count, true)

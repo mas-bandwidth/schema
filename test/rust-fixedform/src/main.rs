@@ -614,15 +614,15 @@ fn the_negative_controls(dir: &str) {
 //   unassigned-form0 form byte 0 with the otherwise valid fixture tail
 //   reserved-byte3  a valid form-3 fixture with reserved byte 3 set nonzero
 // Each probe asserts the report is ONE answer (a named reason XOR `malformed`,
-// never both, no counter moved). A named preflight refusal leaves the poisoned
-// destination untouched; malformed damage discards every caller record to its
-// declared defaults, matching the whole-load contract.
+// never both, no counter moved). Ruling R4: a named preflight refusal and
+// malformed damage alike leave every poisoned row handed in at its declared
+// defaults, matching the whole-load contract.
 
 const PROBE_ROWS: usize = 8;
 
 /// THE DESTINATION, PRE-POISONED. A named preflight refusal is TOTAL (§5.3):
-/// no plan runs and not one destination byte is written. Malformed input instead
-/// discards the caller records to their declared defaults (§4). A generated row is `#[repr(C)]` with no
+/// no plan runs, and (ruling R4) like malformed input (§4) it leaves every
+/// caller record at its declared defaults. A generated row is `#[repr(C)]` with no
 /// niche — every bit pattern is a value of the type — so the poison goes in
 /// through a byte pointer and the read-back is those same bytes.
 fn poisoned_rows() -> [tblfx1::FxRootRow; PROBE_ROWS] {
@@ -635,6 +635,18 @@ fn poisoned_rows() -> [tblfx1::FxRootRow; PROBE_ROWS] {
     };
     bytes.fill(0x5A);
     values
+}
+
+/// Every row at FX1.schema's declared defaults; fields, not padding.
+fn all_declared_defaults(values: &[tblfx1::FxRootRow]) -> bool {
+    values.iter().all(|v| {
+        v.keep == 7 && v.narrow == 3 && v.renamed == 5 && v.gone == 9
+            && v.nested.a == 1 && v.nested.b == 2
+            && v.label_length == 2 && v.label[..2] == *b"fx"
+            && v.label[2..].iter().all(|&b| b == 0)
+            && v.marks_count == 0 && v.marks.iter().all(|&n| n == 0)
+            && v.blob_length == 0 && v.blob.iter().all(|&b| b == 0)
+    })
 }
 
 fn rows_bytes(values: &[tblfx1::FxRootRow]) -> &[u8] {
@@ -656,7 +668,6 @@ enum FormProbe {
 
 fn form_probe(label: &str, file: &[u8], want: FormProbe) {
     let mut values = poisoned_rows();
-    let before = rows_bytes(&values).to_vec();
     let mut plan = [tblfx1::TableFixedEntry::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = tblfx1::TableFixedReport::default();
@@ -669,9 +680,10 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
     );
     match want {
         FormProbe::Named(reason) => {
+            // RULING R4: a named refusal resets every row handed in too.
             check(
-                rows_bytes(&values) == before.as_slice(),
-                &format!("{label}: named refusal leaves destination bytes unchanged"),
+                all_declared_defaults(&values),
+                &format!("{label}: named refusal restores every declared default"),
             );
             check(
                 report.refused && report.reason == reason && !report.damaged,
@@ -679,16 +691,8 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
             );
         }
         FormProbe::Malformed => {
-            // FX1.schema declares these values; check fields, not padding.
             check(
-                values.iter().all(|v| {
-                    v.keep == 7 && v.narrow == 3 && v.renamed == 5 && v.gone == 9
-                        && v.nested.a == 1 && v.nested.b == 2
-                        && v.label_length == 2 && v.label[..2] == *b"fx"
-                        && v.label[2..].iter().all(|&b| b == 0)
-                        && v.marks_count == 0 && v.marks.iter().all(|&n| n == 0)
-                        && v.blob_length == 0 && v.blob.iter().all(|&b| b == 0)
-                }),
+                all_declared_defaults(&values),
                 &format!("{label}: malformed input restores every declared default"),
             );
             check(
@@ -2242,12 +2246,10 @@ fn the_text_content_rule(dir: &str) {
     // AND THE SLACK IS DEAD, AND DEAD BYTES ARE ZERO (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5): the same byte PAST the used length is
     // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD, leaving
-    // the caller's rows as they were. The verdict is the contract, not its
+    // every row at its declared default (R4). The verdict is the contract, not its
     // name: this leg reports a dead byte as damage.
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
-    let before_label = values[0].label;
-    let before_length = values[0].label_length;
     let mut report = tblfx1::TableFixedReport::default();
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
@@ -2256,8 +2258,8 @@ fn the_text_content_rule(dir: &str) {
         "the content rule: a nonzero byte past the USED LENGTH is a dead byte and refuses the whole load",
     );
     check(
-        values[0].label == before_label && values[0].label_length == before_length,
-        "the content rule: and the refused load leaves the caller's row as it was",
+        all_declared_defaults(&values),
+        "the content rule: and the refused load leaves every row at its declared default (R4)",
     );
 
     // AND `bytes(N)` IS BYTES. FX1's `blob` is a `bytes(6)` whose payload starts

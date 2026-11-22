@@ -693,7 +693,7 @@ const messageBatchRefusalsMain = `
     {
         // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
         // ... A refused batch returns a count of 0" (docs/SPEC-TABLES.md
-        // §3.3), and nothing is decoded: the storage is as it was.
+        // §3.3), and nothing is decoded; every value handed in is reset (R4).
         let three = [one, one, one];
         let m = root_measure_messages(&three, &mut TableReport::default());
         let mut buf = vec![0u8; m as usize];
@@ -703,7 +703,7 @@ const messageBatchRefusalsMain = `
         values[1].c = 17;
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &buf, &mut rep);
-        say("batch_too_large_read", !ok && count == 0 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged && values[0].c == 17 && values[1].c == 17,
+        say("batch_too_large_read", !ok && count == 0 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged && values.iter().all(|v| v.c == root_message_default().c),
             format!("count={count} report={rep:?}"));
     }
     {

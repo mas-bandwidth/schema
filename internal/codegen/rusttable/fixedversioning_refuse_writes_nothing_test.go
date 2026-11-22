@@ -30,7 +30,8 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 /// 0's per-record hash — its first eight bytes, bitwise INVERTED — fails the
 /// hash check; the header's hash at file+8 stays untouched. The refusal is
 /// TOTAL: no_block (this leg's spelling of no_layout, §5.9 #25), malformed
-/// false, every counter zero, every poisoned byte still 0x5A.
+/// false, every counter zero, and (ruling R4) every one of the 8 poisoned rows
+/// handed in back at its declared default.
 #[test]
 fn v_refuse_writes_nothing() {
     let mut data = std::fs::read(%q).expect("the reference's old_nested_append.bin");
@@ -63,10 +64,18 @@ fn v_refuse_writes_nothing() {
         report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: no counter moves: {:?}", report
     );
-    // THE BYTE SWEEP: the prefill's 88 is nowhere and neither is a zero — every
-    // byte is still the 0x5A poison, because the hash check ran BEFORE the prefill.
-    for (i, &b) in as_bytes(&values[0]).iter().enumerate() {
-        assert!(b == 0x5A, "REFUSE wrote a destination byte {i} = {b:#04x}");
+    // RULING R4: after the refusal EVERY row handed in (all 8, not only record
+    // 0) holds its declared default — the reader's own defaults image, Vec.w's
+    // 88 included, and not one 0x5A left in a field. The reference row starts
+    // from the same poison and takes the same scatter of the defaults image, so
+    // its padding bytes match too and the byte view compares fields alone.
+    let mut want = values[0];
+    unsafe {
+        core::ptr::write_bytes(&mut want as *mut ROWTYPE as *mut u8, 0x5A, core::mem::size_of::<ROWTYPE>());
+    }
+    SCATTERFN(&DEFAULTSCONST, &mut want, &mut TableFixedReport::default());
+    for (k, row) in values.iter().enumerate() {
+        assert!(as_bytes(row) == as_bytes(&want), "row {k} is not its declared default after the refusal");
     }
 }
 `, filepath.Join(corpus, "old_nested_append.bin"))

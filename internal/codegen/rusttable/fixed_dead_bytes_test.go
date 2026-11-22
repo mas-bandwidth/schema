@@ -20,7 +20,7 @@ import (
 // count, a string(N)'s or bytes(N)'s bytes past its used length, and an
 // inactive union arm. The generated Rust load answers the reference's verdict
 // for every vector in fixedvector.DeadBytes: a changed file refuses the whole
-// load and leaves the caller's destination untouched, and a control reads and
+// load and leaves every row handed in at its declared default (ruling R4), and a control reads and
 // saves back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
@@ -74,7 +74,7 @@ fn %[1]s() {
 fn %[1]s() {
     let data = std::fs::read(%[2]q).expect("the reference's %[3]s");
     let mut values = vec![ROWTYPE::default(); 8];
-    // POISON THE DESTINATION: a load that lands nothing must leave it as it was.
+    // POISON THE DESTINATION: a refused load must reset every row (R4).
     unsafe {
         core::ptr::write_bytes(
             values.as_mut_ptr() as *mut u8,
@@ -87,10 +87,13 @@ fn %[1]s() {
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     assert!(n.is_none(), "%[3]s: a non-zero dead byte refuses the whole load: {:?} {:?}", n, report);
+    // RULING R4: every row handed in holds its declared default. The reference
+    // is the same poison with the defaults image scattered in (padding matches).
+    let mut want = values[0];
+    unsafe { core::ptr::write_bytes(&mut want as *mut ROWTYPE as *mut u8, 0x5A, core::mem::size_of::<ROWTYPE>()); }
+    SCATTERFN(&DEFAULTSCONST, &mut want, &mut TableFixedReport::default());
     for (k, value) in values.iter().enumerate() {
-        for (i, &b) in as_bytes(value).iter().enumerate() {
-            assert!(b == 0x5A, "%[3]s: a refused load wrote destination {k}.{i} = {b:#04x}");
-        }
+        assert!(as_bytes(value) == as_bytes(&want), "%[3]s: row {k} is not its declared default after the refusal");
     }
 }
 `, fn, filepath.Join(corpus, vec.File), vec.File)
@@ -122,7 +125,7 @@ fn %[1]s() {
 	// plan. string_grow's file was written by string(8) and is read by string(16),
 	// so the load compiles a plan. Shortening the length word from 8 to 7 leaves
 	// the last text byte ('h') as one non-zero dead byte of the WRITER's span.
-	// The whole file is refused and the caller's destination stays the sentinel.
+	// The whole file is refused and every row handed in is reset to its default (R4).
 	// The unmodified file still reads, so a check that refuses every old file
 	// cannot pass this row. Verdict only: no reason string.
 	oldFile := filepath.Join(corpus, "old_string_grow.bin")
@@ -157,10 +160,12 @@ fn dead_old_string_tail() {
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     assert!(n.is_none(), "the older writer's dead tail loaded {n:?}");
+    // RULING R4: every row handed in holds its declared default.
+    let mut want = values[0];
+    unsafe { core::ptr::write_bytes(&mut want as *mut ROWTYPE as *mut u8, 0xA5, core::mem::size_of::<ROWTYPE>()); }
+    SCATTERFN(&DEFAULTSCONST, &mut want, &mut TableFixedReport::default());
     for (k, value) in values.iter().enumerate() {
-        for (i, &b) in as_bytes(value).iter().enumerate() {
-            assert!(b == 0xA5, "a refused load wrote destination {k}.{i} = {b:#04x}");
-        }
+        assert!(as_bytes(value) == as_bytes(&want), "row {k} is not its declared default after the refusal");
     }
 }
 `, oldFile)
@@ -222,14 +227,17 @@ fn old_optional_dead_payload() {
         let mut data = clean.clone();
         if bad { data[body + 2] = 1; }
         let mut values = vec![ROWTYPE::default(); 1];
-        let before = as_bytes(&values[0]).to_vec();
+        // RULING R4: a refusal leaves the row at its declared default — the row
+        // as handed in (so its padding matches) with the defaults image scattered in.
+        let mut reset = values[0];
+        SCATTERFN(&DEFAULTSCONST, &mut reset, &mut TableFixedReport::default());
         let mut plan = vec![TableFixedEntry::default(); 4096];
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
         if bad {
             assert!(n.is_none(), "nonzero absent payload loaded {n:?}");
-            assert_eq!(as_bytes(&values[0]), before);
+            assert_eq!(as_bytes(&values[0]), as_bytes(&reset), "the refused row is not its declared default");
         } else {
             assert_eq!(n, Some(1), "clean absent optional reads");
             assert_eq!((values[0].lead, values[0].trail), (17, 23));
