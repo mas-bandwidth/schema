@@ -63,9 +63,10 @@ fn msg_reason_name(code: i64) -> const u8[:] {
 }
 
 // MsgReport is one call's report (docs/SPEC-TABLES.md §3.3, §4): the refusal
-// (reason non-zero), the damage flag, §4's counters, and on a capacity
-// refusal the count the wire carries ("the reader sets the returned count to
-// the wire's M before it returns the refusal"). AnnounceRead counts the
+// (reason non-zero), the damage flag and §4's counters. `count` never carries
+// the wire's M: "A refused batch returns a count of `0`, as every refused
+// batch does; a caller that needs room reads the wire's `M` itself" (§3.3), so
+// LoadMessages leaves it 0. AnnounceRead counts the
 // unknown fields of the announcement's own body in `unknown`.
 struct MsgReport {
     reason: i64,

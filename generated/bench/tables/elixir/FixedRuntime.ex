@@ -447,23 +447,6 @@ defmodule Benchtable.FixedRuntime do
           "non_finite_float: a float32 writes a finite float, got: #{inspect(value)}"
   end
 
-  # A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3):
-  # the value narrowed to float32 is held to the float32 nearest each declared
-  # end, which is what the bounds already are, and the writer raises past
-  # either, as it does for a ranged integer (ranged/2). Its -0 is stored as +0
-  # through cf32_bits (§3.3, fixed-compressed-negzero).
-  def f32_ranged(value, {lo, hi}) do
-    bits = cf32_bits(value)
-    <<n::float-32-little>> = <<bits::little-32>>
-
-    if n < lo or n > hi do
-      raise ArgumentError,
-            "out_of_range: #{inspect(value)} is outside #{lo}..#{hi} held at float32"
-    end
-
-    bits
-  end
-
   def f64_value(bits) when (bits >>> 52 &&& 0x7FF) == 0x7FF,
     do: throw({:refuse, :non_finite_float})
 
@@ -496,6 +479,35 @@ defmodule Benchtable.FixedRuntime do
 
   def cf64_bits(value) when is_float(value) and value == 0.0, do: 0
   def cf64_bits(value), do: f64_bits(value)
+
+  # A COMPRESSED FLOAT'S DECLARED RANGE IS THE FIXED SAVE'S CONTRACT
+  # (docs/SPEC-TABLES.md §3.3, §3.4), held in every build like a ranged
+  # integer's (ranged/2): a finite value outside lo..hi raises, and the save
+  # writes nothing. A value that is not a finite float answers non_finite_float.
+  # THE RANGE IS HELD AT FLOAT32 (§3.3): lo and hi are the float32 nearest each
+  # declared end, and the value is narrowed to float32 before it is tested, so
+  # the 0.1f a load just read saves again under max = 0.1.
+  def cf32_bits(value, {lo, hi}) when is_float(value) do
+    bits = cf32_bits(value)
+    <<n::float-32-little>> = <<bits::little-32>>
+
+    if n < lo or n > hi do
+      raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+    end
+
+    bits
+  end
+
+  def cf32_bits(value, _range), do: f32_bits(value)
+
+  def cf64_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,
+    do: cf64_bits(value)
+
+  def cf64_bits(value, {lo, hi}) when is_float(value) do
+    raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+  end
+
+  def cf64_bits(value, _range), do: f64_bits(value)
 
   @doc """
   A `string(N)`'s used bytes: well-formed UTF-8 with no zero among them, or

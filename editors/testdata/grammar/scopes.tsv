@@ -1,0 +1,12 @@
+# file	line	byte column (1-based)	spelling	required scope prefix (plain = no claimed scope)
+Context.schema	5	5	timestamp	plain
+Context.schema	5	15	timestamp	support.type.primitive.timestamp
+Context.schema	6	24	timestamp	string.quoted.double
+Context.schema	6	34	wstring	string.quoted.double
+Context.schema	11	5	timestamp	plain
+Context.schema	12	5	if	keyword.control
+Context.schema	12	8	timestamp	plain
+Context.schema	18	4	timestamp	comment.line
+Context.schema	18	18	wstring	comment.line
+Reserved.txt	1	7	string	support.type.primitive
+Reserved.txt	2	7	wstring	invalid.illegal.reserved

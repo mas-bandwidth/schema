@@ -3,7 +3,6 @@ package mootable_test
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,8 +21,9 @@ import (
 // mutation as tablewire.DecodeMessages does. THE VERDICT IS THE CONTRACT
 // (docs/rulings.json refusal-verdict-only): a batch is accepted whole, with
 // the same body count, or refused whole, with no values. Why it refused is
-// never compared; a batch above the caller's capacity also answers the
-// wire's count, which is the API's, not a reason.
+// never compared. Every refused batch answers a count of 0 ("A refused batch
+// returns a count of `0`, as every refused batch does", §3.3), so a refusal
+// that answers any other count is a mismatch the sweep reports.
 
 type batchCase struct {
 	name, conn, root, wire string
@@ -111,8 +111,9 @@ end
 }
 
 // goAnswer is the Go engine's verdict on one mutation in moo's line format:
-// "refuse" (with the wire's count for batch_too_large, the API's answer), or
-// the body count twice (delivered, and values returned).
+// "refuse" (a refused batch's count is 0, which moo's line leaves out; any
+// other count is printed and mismatches), or the body count twice (delivered,
+// and values returned).
 func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capacity int, data []byte) string {
 	insts := make([]*tabletext.Instance, capacity)
 	for i := range insts {
@@ -121,7 +122,7 @@ func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capa
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, data, vocab, &rep)
 	if err != nil {
-		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok && r.Reason == tablewire.ReasonBatchTooLarge {
+		if n != 0 {
 			return fmt.Sprintf("refuse %d", n)
 		}
 		return "refuse"
@@ -177,8 +178,8 @@ func TestMooMessageBatchDamageMatchesTheGoEngine(t *testing.T) {
 }
 
 // TestMooMessageBatchCapacityMatchesTheGoEngine: a batch above the caller's
-// capacity is batch_too_large with the wire's count and nothing decoded, at
-// every capacity from one body up.
+// capacity is batch_too_large with a count of 0 and nothing decoded, at every
+// capacity from one body up.
 func TestMooMessageBatchCapacityMatchesTheGoEngine(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()

@@ -397,8 +397,19 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TBool:
 		g.pf("%stable_fixed_put8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
 	case ir.TFloat32:
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3; docs/rulings.json fixed-compressed-negzero), the +0 bits
+			// the read lands it as; a plain float's -0 rides bit-exact
+			g.pf("%stable_fixed_put32( %s + %d, table_stored_float_bits( %s ) );\n", ind, buf, off, expr)
+			return
+		}
 		g.pf("%stable_fixed_putf32( %s + %d, %s );\n", ind, buf, off, expr)
 	case ir.TFloat64:
+		if f.HasFloatRange {
+			g.pf("%stable_fixed_put64( %s + %d, table_stored_double_bits( %s ) );\n", ind, buf, off, expr)
+			return
+		}
 		g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
 		if w == 16 {

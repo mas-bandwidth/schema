@@ -494,16 +494,19 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		return fmt.Sprintf("if(%s, do: 1, else: 0)::unsigned-8", name)
 	case ir.TFloat32:
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
-		// this form is not optimized for bandwidth (§3.4). It is HELD TO ITS
-		// RANGE AT FLOAT32 on the way out (docs/SPEC-TABLES.md §3.3), and
-		// raises past it as an integer leaf does below.
+		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
+		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
+		// plain float's -0 is carried bit-exact. ITS DECLARED RANGE IS THE
+		// WRITER'S CONTRACT, held on the way out like a ranged integer's and
+		// HELD AT FLOAT32 (§3.3): cf32_bits narrows the value, tests it against
+		// the float32 ends the range attribute carries, and raises past them.
 		if f.HasFloatRange {
-			return fmt.Sprintf("R.f32_ranged(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
+			return fmt.Sprintf("R.cf32_bits(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
 		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			return fmt.Sprintf("R.cf64_bits(%s)::little-unsigned-64", name)
+			return fmt.Sprintf("R.cf64_bits(%s, %s)::little-unsigned-64", name, g.rangeAttr(f))
 		}
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
@@ -547,13 +550,6 @@ func textSlack(f *ir.Field, name string) string {
 	return fmt.Sprintf("R.text_slack(%s, %d)", name, f.Type.Size)
 }
 
-// fixedLeafRanged reports a leaf whose writer holds it to a range: a ranged
-// integer, or a compressed float32 held to the float32 nearest each declared
-// end (docs/SPEC-TABLES.md §3.3).
-func fixedLeafRanged(f *ir.Field) bool {
-	return f.HasIntRange || (f.HasFloatRange && f.Type.Kind == ir.TFloat32)
-}
-
 // rangeAttr is the module attribute one ranged leaf's DECLARED bounds ride in,
 // named for the declaration that owns the field so two types in one file cannot
 // collide. It is defined by emitRangeAttrs before any helper that uses it.
@@ -561,7 +557,8 @@ func (g *fixedGen) rangeAttr(f *ir.Field) string {
 	return fmt.Sprintf("@r_%s_%s", g.owner, ir.RustSnake(f.Name))
 }
 
-// emitRangeAttrs defines every ranged leaf's bounds for the declarations this
+// emitRangeAttrs defines every ranged leaf's bounds (a ranged integer's or a
+// compressed float's) for the declarations this
 // module carries, and for every declaration a nested INLINED type brings with
 // it, under the OWNER whose body spells the segment.
 func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
@@ -576,7 +573,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 				return
 			}
 		}
-		if !fixedLeafRanged(f) {
+		if !f.HasIntRange && !f.HasFloatRange {
 			return
 		}
 		g.owner = owner
@@ -586,7 +583,9 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 		}
 		seen[name] = true
 		lo, hi := fixedRangeOf(f)
-		if flo, fhi, ok := fixedFloatRangeOf(f); ok && f.Type.Kind == ir.TFloat32 {
+		if flo, fhi, ok := fixedFloatRangeOf(f); ok {
+			// A COMPRESSED FLOAT'S BOUNDS are its float32 ends, the float32
+			// nearest each declared bound (§3.3, THE RANGE IS HELD AT FLOAT32).
 			lo, hi = flo, fhi
 		}
 		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
@@ -602,7 +601,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 	// spells a bound under the union's own name.
 	for _, u := range unions {
 		for _, v := range u.Variants {
-			if v.F != nil && fixedLeafRanged(v.F) {
+			if v.F != nil && (v.F.HasIntRange || v.F.HasFloatRange) {
 				one(ir.RustSnake(u.Name), v.F)
 			}
 		}

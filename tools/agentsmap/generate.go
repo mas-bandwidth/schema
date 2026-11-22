@@ -211,11 +211,47 @@ func childDirs(root, rel string) ([]string, error) {
 	return names, nil
 }
 
+// mappedDotDirs are the dot-directories the repository tracks. Every other
+// dot-directory is a machine's own (an editor's, a harness's) and is skipped;
+// TestSkippedDirectoriesHoldNoTrackedFile holds that claim to git, so a
+// tracked directory cannot sit unmapped behind the dot rule or a skipNames
+// name, as .claude-plugin did.
+var mappedDotDirs = map[string]bool{
+	".claude-plugin": true,
+	".github":        true,
+}
+
 func skipDir(name string) bool {
 	if skipNames[name] {
 		return true
 	}
-	return strings.HasPrefix(name, ".") && name != ".github"
+	return strings.HasPrefix(name, ".") && !mappedDotDirs[name]
+}
+
+// SkippedDirs is every directory at the mapped layer (the top level, and the
+// children of each Page) that the map leaves out by name, slash-separated and
+// sorted.
+func SkippedDirs(root string, cat []Entry) ([]string, error) {
+	var skipped []string
+	layers := []string{""}
+	for _, e := range cat {
+		if e.Page {
+			layers = append(layers, e.Path)
+		}
+	}
+	for _, layer := range layers {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(layer)))
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() && skipDir(e.Name()) {
+				skipped = append(skipped, strings.TrimPrefix(layer+"/"+e.Name(), "/"))
+			}
+		}
+	}
+	slices.Sort(skipped)
+	return skipped, nil
 }
 
 func parentPath(p string) string {
@@ -254,10 +290,7 @@ func extraAgentsPages(root string, pages map[string]string) []string {
 			return err
 		}
 		if d.IsDir() {
-			if skipNames[d.Name()] {
-				return filepath.SkipDir
-			}
-			if strings.HasPrefix(d.Name(), ".") && d.Name() != ".github" {
+			if path != root && skipDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
