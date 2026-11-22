@@ -1658,8 +1658,8 @@ test-c: tables-c-clean
 # first: the unsabotaged emitter's Types.h is green under the same engine, or
 # the control would be watching a file that was red anyway. The engine runs
 # over Types.h alone, the one file the plant reaches, so a drift elsewhere in
-# the packet output (ExampleView.h is not clean) cannot answer for it. It needs the
-# pinned clang-format, and refuses by name where that does not resolve.
+# the packet output cannot answer for it. It needs the pinned clang-format, and
+# refuses by name where that does not resolve.
 C_CLEAN_CONTROL := build/c-clean-control
 .PHONY: tables-c-format-negative-control
 tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/checks/c-clean-format.sh make/checks/clean-format-controls.sh

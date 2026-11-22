@@ -1,0 +1,6 @@
+ordinary-path	ordinary	comment-only.ratchet	pass	ordinary/clean.h
+empty-ratchet	ordinary	empty.ratchet	pass	ordinary/clean.h
+missing-ratchet	ordinary	missing.ratchet	reject	missing.ratchet
+stale-outside-tree	ordinary	outside.ratchet	reject	outside.h
+space-in-tree	tree with space	empty.ratchet	pass	tree with space/clean.h
+additional-path	ordinary	comment-only.ratchet	pass	ordinary/clean.h
