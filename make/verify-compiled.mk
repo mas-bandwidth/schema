@@ -90,7 +90,7 @@ _verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/s
 	@rm -rf build/verify/conformance-cpp && mkdir -p build/verify/conformance-cpp $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
 
-_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp
+_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp packet-write-refusal-cpp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cpp.csv
 	bench/run.sh --quick --bare --only cpp --out build/verify/bench-cpp.csv
 	@test -s build/verify/bench-cpp.csv
