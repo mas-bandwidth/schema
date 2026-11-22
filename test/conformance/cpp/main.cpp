@@ -32,6 +32,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "TablesTable.h"
@@ -1984,6 +1985,14 @@ static bool write_refusal_hex( const std::string & text, int digits, std::vector
     return true;
 }
 
+// THE ONE CHECKED CONVERSION (defined below): every integer a row names goes
+// into typed storage through wref_store_int, keyed on the storage's own type,
+// and a value that type cannot hold ends the child as UNREPRESENTABLE. A cast
+// would keep the low bits: 256 in a one-byte ordinal lands as 0, a lawful
+// member, and the row would answer `wrote` for a value never written.
+template <typename T> static bool wref_store_int( T & field, const std::string & text );
+static int32_t wref_count( const std::string & text );
+
 // A narrow text's storage set by `length` (filled with `a`) or `bytes` (exact).
 // Past storage only the length moves, and the writer must refuse before it
 // reads past the array.
@@ -1992,9 +2001,9 @@ static bool write_refusal_text( char * storage, int32_t capacity, int32_t & leng
 {
     if ( kind == "length" )
     {
-        const long long n = strtoll( text.c_str(), NULL, 10 );
-        for ( int32_t i = 0; i < (int32_t) n && i < capacity; i++ ) storage[i] = 'a';
-        length = (int32_t) n;
+        const int32_t n = wref_count( text );
+        for ( int32_t i = 0; i < n && i < capacity; i++ ) storage[i] = 'a';
+        length = n;
         return true;
     }
     if ( kind == "bytes" )
@@ -2038,9 +2047,9 @@ static bool write_refusal_bytes_field( uint8_t * storage, int32_t capacity, int3
 {
     if ( kind == "length" )
     {
-        const long long n = strtoll( text.c_str(), NULL, 10 );
-        for ( int32_t i = 0; i < (int32_t) n && i < capacity; i++ ) storage[i] = 0x61;
-        length = (int32_t) n;
+        const int32_t n = wref_count( text );
+        for ( int32_t i = 0; i < n && i < capacity; i++ ) storage[i] = 0x61;
+        length = n;
         return true;
     }
     if ( kind == "bytes" )
@@ -2080,6 +2089,23 @@ template <typename T> static bool wref_store_int( T & field, const std::string &
     return true;
 }
 
+// A count or a length: int32 storage in every generated value.
+static int32_t wref_count( const std::string & text )
+{
+    int32_t v = 0;
+    wref_store_int( v, text );
+    return v;
+}
+
+// An enum's ordinal or a union's tag, held to the enum's own underlying type.
+template <typename E> static bool wref_store_enum( E & field, const std::string & text )
+{
+    typename std::underlying_type<E>::type raw = 0;
+    wref_store_int( raw, text );
+    field = (E) raw;
+    return true;
+}
+
 // The `real` kind (FORMAT.md): a decimal parsed as a double, then rounded to the
 // float storage the way any caller's assignment rounds it, so a row can name
 // the float32 one step past a bound exactly.
@@ -2088,6 +2114,9 @@ static bool parse_wref_real_f32( const std::string & text, float & out )
     char * end = NULL;
     const double d = strtod( text.c_str(), &end );
     if ( end == NULL || *end != 0 ) return false;
+    // a finite decimal past the float's range would be stored as an infinity
+    const double most = (double) std::numeric_limits<float>::max();
+    if ( d - d == 0 && ( d > most || d < -most ) ) _exit( kUnrepresentableExit );
     out = (float) d;
     return true;
 }
@@ -2104,7 +2133,6 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
                                                                            const std::string & path, const std::string & kind,
                                                                            const std::string & text )
 {
-    const long long n = strtoll( text.c_str(), NULL, 10 );
     if ( path == "tenth" ) return parse_wref_float_kind( kind, text, v.tenth );
     if ( path == "seventh" ) return parse_wref_float_kind( kind, text, v.seventh );
     if ( path == "ranged" ) return parse_wref_float_kind( kind, text, v.ranged );
@@ -2113,34 +2141,33 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
     if ( path == "octets" && kind == "count" )
     {
         const int32_t storage = (int32_t) ( sizeof( v.octets ) / sizeof( v.octets[0] ) );
-        for ( int32_t i = v.octets_count; i < (int32_t) n && i < storage; i++ ) v.octets[i] = 9;
-        v.octets_count = (int32_t) n;
+        for ( int32_t i = v.octets_count; i < wref_count( text ) && i < storage; i++ ) v.octets[i] = 9;
+        v.octets_count = wref_count( text );
         return true;
     }
     if ( path == "recs" && kind == "count" )
     {
         const int32_t storage = (int32_t) ( sizeof( v.recs ) / sizeof( v.recs[0] ) );
-        for ( int32_t i = v.recs_count; i < (int32_t) n && i < storage; i++ ) v.recs[i] = v.recs[0];
-        v.recs_count = (int32_t) n;
+        for ( int32_t i = v.recs_count; i < wref_count( text ) && i < storage; i++ ) v.recs[i] = v.recs[0];
+        v.recs_count = wref_count( text );
         return true;
     }
     if ( path == "tones[0]" && kind == "ordinal" )
     {
         if ( tones_count < 1 || tones == NULL ) return false;
-        tones[0] = (E) n;
-        return true;
+        return wref_store_enum( tones[0], text );
     }
     if ( path == "pick" && kind == "tag" )
     {
+        wref_store_enum( v.pick.type, text );
         // a lawful tag takes its arm at the arm's declared default
-        switch ( n )
+        switch ( (int) v.pick.type )
         {
             case 1: v.pick.small = 0; break;
             case 2: v.pick.ratio = 0.0f; break;
             case 3: v.pick.on = false; break;
             default: break;
         }
-        v.pick.type = (shapes::PickType) n;
         return true;
     }
     return false;
@@ -2151,7 +2178,6 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
 static bool write_refusal_set_variable( const std::string & root, void * value, const std::string & path,
                                         const std::string & kind, const std::string & text )
 {
-    const long long n = strtoll( text.c_str(), NULL, 10 );
     if ( root == "Scene" )
     {
         graphdemo::Scene & v = *(graphdemo::Scene *) value;
@@ -2161,8 +2187,8 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "layers" && kind == "count" )
         {
             const int32_t storage = (int32_t) ( sizeof( v.layers ) / sizeof( v.layers[0] ) );
-            for ( int32_t i = v.layers_count; i < (int32_t) n && i < storage; i++ ) v.layers[i] = v.ground;
-            v.layers_count = (int32_t) n;
+            for ( int32_t i = v.layers_count; i < wref_count( text ) && i < storage; i++ ) v.layers[i] = v.ground;
+            v.layers_count = wref_count( text );
             return true;
         }
     }
@@ -2179,16 +2205,15 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         {
             if ( v.grades.count < 1 || v.grades.elements.value == 0 ) return false;
             listdemo::Grade * elems = (listdemo::Grade *) ( (uint8_t *) &v.grades.elements + v.grades.elements.value );
-            elems[0] = (listdemo::Grade) n;
-            return true;
+            return wref_store_enum( elems[0], text );
         }
         if ( path == "hits[0]" && kind == "tag" )
         {
             if ( v.hits.count < 1 || v.hits.elements.value == 0 ) return false;
             listdemo::Hit * elems = (listdemo::Hit *) ( (uint8_t *) &v.hits.elements + v.hits.elements.value );
             // a lawful tag takes its arm at its defaults
-            if ( n == 2 ) elems[0].damage = 0;
-            elems[0].type = (listdemo::HitType) n;
+            wref_store_enum( elems[0].type, text );
+            if ( (int) elems[0].type == 2 ) elems[0].damage = 0;
             return true;
         }
     }
@@ -2208,8 +2233,8 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "bounded_steps" && kind == "count" )
         {
             const int32_t storage = (int32_t) ( sizeof( v.bounded_steps ) / sizeof( v.bounded_steps[0] ) );
-            for ( int32_t i = v.bounded_steps_count; i < (int32_t) n && i < storage; i++ ) v.bounded_steps[i] = v.bounded_steps[0];
-            v.bounded_steps_count = (int32_t) n;
+            for ( int32_t i = v.bounded_steps_count; i < wref_count( text ) && i < storage; i++ ) v.bounded_steps[i] = v.bounded_steps[0];
+            v.bounded_steps_count = wref_count( text );
             return true;
         }
         if ( path == "bounded_steps[3].label" )
@@ -2220,8 +2245,8 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "bounded_steps[0]" && kind == "tag" )
         {
             if ( v.bounded_steps_count < 1 ) return false;
-            if ( n == 4 ) { memset( v.bounded_steps[0].label.value, 0, sizeof( v.bounded_steps[0].label.value ) ); v.bounded_steps[0].label.value_length = 0; }
-            v.bounded_steps[0].type = (cooktorture::StepActionType) n;
+            wref_store_enum( v.bounded_steps[0].type, text );
+            if ( (int) v.bounded_steps[0].type == 4 ) { memset( v.bounded_steps[0].label.value, 0, sizeof( v.bounded_steps[0].label.value ) ); v.bounded_steps[0].label.value_length = 0; }
             return true;
         }
     }
@@ -2247,7 +2272,6 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
 static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
                                const std::string & kind, const std::string & text )
 {
-    const long long n = strtoll( text.c_str(), NULL, 10 );
     if ( root == "RootConfig" )
     {
         tabledemo::RootConfig & v = *(tabledemo::RootConfig *) value;
@@ -2271,43 +2295,43 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         }
         if ( v.weapons_count < 1 ) return false; // every weapons[0] path needs element 0
         tabledemo::WeaponConfig & w0 = v.weapons[0];
-        if ( path == "weapons[0].penetration" && kind == "int" ) { w0.penetration = (int32_t) n; return true; }
-        if ( path == "weapons[0].channel" && kind == "int" ) { w0.channel = (uint32_t) n; return true; }
+        if ( path == "weapons[0].penetration" && kind == "int" ) return wref_store_int( w0.penetration, text );
+        if ( path == "weapons[0].channel" && kind == "int" ) return wref_store_int( w0.channel, text );
         if ( path == "weapons[0].damage" && kind == "float" )
         {
             return parse_wref_f32( text, w0.damage );
         }
         if ( path == "weapons[0].effect" && kind == "tag" )
         {
+            wref_store_enum( w0.effect.type, text );
             // a lawful tag takes its arm at the arm's declared defaults
-            switch ( n )
+            switch ( (int) w0.effect.type )
             {
-                case 0: w0.effect.type = tabledemo::EffectType::None; break;
                 case 1: w0.effect.SelectBuff(); break;
                 case 2: w0.effect.SelectDebuff(); break;
-                default: w0.effect.type = (tabledemo::EffectType) n; break;
+                default: break;
             }
             return true;
         }
         if ( path == "weapons" && kind == "count" )
         {
             const int32_t storage = (int32_t) ( sizeof( v.weapons ) / sizeof( v.weapons[0] ) );
-            for ( int32_t i = v.weapons_count; i < (int32_t) n && i < storage; i++ ) v.weapons[i] = v.weapons[0];
-            v.weapons_count = (int32_t) n;
+            for ( int32_t i = v.weapons_count; i < wref_count( text ) && i < storage; i++ ) v.weapons[i] = v.weapons[0];
+            v.weapons_count = wref_count( text );
             return true;
         }
     }
     if ( root == "LoadoutConfig" )
     {
         tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
-        if ( path == "grade" && kind == "ordinal" ) { v.grade = (tabledemo::Grade) n; return true; }
+        if ( path == "grade" && kind == "ordinal" ) return wref_store_enum( v.grade, text );
     }
     if ( root == "SimState" )
     {
         scalardemo::SimState & v = *(scalardemo::SimState *) value;
-        if ( path == "ticks" && kind == "int" ) { v.ticks = (int32_t) n; return true; }
-        if ( path == "angle" && kind == "int" ) { v.angle = (int32_t) n; return true; }
-        if ( path == "speed" && kind == "int" ) { v.speed = (uint32_t) n; return true; }
+        if ( path == "ticks" && kind == "int" ) return wref_store_int( v.ticks, text );
+        if ( path == "angle" && kind == "int" ) return wref_store_int( v.angle, text );
+        if ( path == "speed" && kind == "int" ) return wref_store_int( v.speed, text );
     }
     if ( root == "TortureFixedWref" )
     {
@@ -2316,8 +2340,8 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         if ( path == "counted_f64" && kind == "count" )
         {
             const int32_t storage = (int32_t) ( sizeof( v.counted_f64 ) / sizeof( v.counted_f64[0] ) );
-            for ( int32_t i = v.counted_f64_count; i < (int32_t) n && i < storage; i++ ) v.counted_f64[i] = v.counted_f64[0];
-            v.counted_f64_count = (int32_t) n;
+            for ( int32_t i = v.counted_f64_count; i < wref_count( text ) && i < storage; i++ ) v.counted_f64[i] = v.counted_f64[0];
+            v.counted_f64_count = wref_count( text );
             return true;
         }
         if ( path == "fixed_f32[1]" && kind == "float" ) return parse_wref_f32( text, v.fixed_f32[1] );
@@ -2354,8 +2378,8 @@ static bool write_refusal_set( const std::string & root, void * value, const std
     if ( root == "StorePurchase" )
     {
         backenddemo::StorePurchase & v = *(backenddemo::StorePurchase *) value;
-        if ( path == "quantity" && kind == "int" ) { v.quantity = (uint8_t) n; return true; }
-        if ( path == "currency" && kind == "ordinal" ) { v.currency = (backenddemo::Currency) n; return true; }
+        if ( path == "quantity" && kind == "int" ) return wref_store_int( v.quantity, text );
+        if ( path == "currency" && kind == "ordinal" ) return wref_store_enum( v.currency, text );
         if ( path == "sku" ) return write_refusal_text( v.sku, (int32_t) sizeof( v.sku ) - 1, v.sku_length, kind, text );
     }
     if ( root == "LoginRequest" )
@@ -2367,7 +2391,7 @@ static bool write_refusal_set( const std::string & root, void * value, const std
     if ( root == "MatchResult" )
     {
         backenddemo::MatchResult & v = *(backenddemo::MatchResult *) value;
-        if ( path == "players[0].score" && kind == "int" ) { v.players[0].score = (int32_t) n; return true; }
+        if ( path == "players[0].score" && kind == "int" ) return wref_store_int( v.players[0].score, text );
     }
     if ( root == "EvoMsg" )
     {
@@ -2376,8 +2400,7 @@ static bool write_refusal_set( const std::string & root, void * value, const std
             return write_refusal_text( v.payload.notice.value, 24, v.payload.notice.value_length, kind, text );
         if ( path == "payload" && kind == "tag" )
         {
-            v.payload.type = (tblvarevo3::EvoPayloadType) n;
-            return true;
+            return wref_store_enum( v.payload.type, text );
         }
     }
     return write_refusal_set_variable( root, value, path, kind, text );

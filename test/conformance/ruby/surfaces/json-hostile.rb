@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'json-hostile').each do |row|
+  RubyConformance.cases(manifest, 'json-hostile') do |row|
     case_name, unit, root, tree = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)

@@ -1481,6 +1481,24 @@ write-refusal wref_enum            tabledemo LoadoutConfig testdata/conformance/
 write-refusal wref_enum_ok         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade                  ordinal 3   wrote
 write-refusal wref_union_tag       tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     3   refused
 write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     2   wrote
+# AN ORDINAL OR A TAG PAST ITS STORAGE (F-100, F-101): 256 and 4294967296 are
+# no member of the enum and no arm of the union, and a driver that narrows the
+# row's token into a one-byte ordinal or tag lands them as 0, a lawful member, and
+# answers wrote for a value it never wrote. The driver stores through its one
+# checked conversion, keyed on the field's declared kind: a leg whose storage
+# cannot hold the value answers unrepresentable, which scores as the refusal
+# (the type system refused it first); a wider leg's writer refuses. Ordinal 1 and
+# tags 0 and 1 are written, and 9, which the byte holds and the declaration does
+# not admit, is refused, beside the twins at 3 and 2 above.
+write-refusal wref_enum_1_ok              tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 1          wrote
+write-refusal wref_enum_9                 tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 9          refused
+write-refusal wref_enum_256               tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 256        refused
+write-refusal wref_enum_4294967296        tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 4294967296 refused
+write-refusal wref_union_tag_0_ok         tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     0          wrote
+write-refusal wref_union_tag_1_ok         tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     1          wrote
+write-refusal wref_union_tag_9            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     9          refused
+write-refusal wref_union_tag_256          tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     256        refused
+write-refusal wref_union_tag_4294967296   tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     4294967296 refused
 write-refusal wref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan refused
 write-refusal wref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf refused
 
