@@ -550,6 +550,8 @@ static partial class Program
             Tabledemo.Schema.PackConfigFromJson, Tabledemo.Schema.PackConfigToJsonMeasure, Tabledemo.Schema.PackConfigToJson),
         Demo<Tabledemo.MinArmFix>("MinArmFix", Tabledemo.Schema.MinArmFixLoad, Tabledemo.Schema.MinArmFixMeasure, Tabledemo.Schema.MinArmFixSave,
             Tabledemo.Schema.MinArmFixFromJson, Tabledemo.Schema.MinArmFixToJsonMeasure, Tabledemo.Schema.MinArmFixToJson),
+        Demo<Tabledemo.MinPlainFix>("MinPlainFix", Tabledemo.Schema.MinPlainFixLoad, Tabledemo.Schema.MinPlainFixMeasure, Tabledemo.Schema.MinPlainFixSave,
+            Tabledemo.Schema.MinPlainFixFromJson, Tabledemo.Schema.MinPlainFixToJsonMeasure, Tabledemo.Schema.MinPlainFixToJson),
         Row<Tblv1.Cfg, Tblv1.TableReport>("tblv1", "Cfg", () => new Tblv1.TableReport(), Copy,
             Tblv1.Schema.CfgLoad, Tblv1.Schema.CfgMeasure, Tblv1.Schema.CfgSave,
             Tblv1.Schema.CfgFromJson, Tblv1.Schema.CfgToJsonMeasure, Tblv1.Schema.CfgToJson),

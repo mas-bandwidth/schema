@@ -658,7 +658,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 159;
+    static const int32_t kCapacity = 160;
     static const int32_t kBuckets = 512;
 
     uint64_t ids[kCapacity];
@@ -2511,14 +2511,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xcb,
-    0x54,
-    0x52,
-    0xa0,
-    0x05,
-    0x90,
-    0xc5,
-    0xbe,
+    0x68,
+    0xf9,
+    0x64,
+    0xcf,
+    0x09,
+    0xe8,
+    0x28,
+    0x6c,
     0x02,
     0x0e,
     0xac,
@@ -2813,6 +2813,19 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x0b,
     0xbf,
     0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
     0x37,
     0xea,
     0x08,
@@ -3952,19 +3965,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xcd,
     0x13,
     0x0d,
-    0x19,
-    0x8c,
-    0xea,
-    0xfe,
-    0x18,
-    0x7d,
-    0xc6,
-    0xdc,
-    0x0e,
-    0x02,
-    0x04,
-    0x08,
-    0x00,
     0x55,
     0x2a,
     0x56,
@@ -4249,12 +4249,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the peer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0xbec59005a05254cbull )
+    if ( vocabulary.strict && version != 0x6c28e809cf64f968ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0xbec59005a05254cbull;
+        to->build_version_own = 0x6c28e809cf64f968ull;
         return false;
     }
 
@@ -9318,7 +9318,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 159;
+static const int32_t kTableRetainKnownIds = 160;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9473,6 +9473,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xf10fad739a0e1660ull,
     0xf252136836b04cb2ull,
     0xf2b45af3b50689dbull,
+    0xf5b735fce4011ff4ull,
     0xf901aa0340249a41ull,
     0xfc9697d1196e6ba6ull,
     0xff8b681912a535a1ull,
@@ -10614,7 +10615,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbec59005a05254cbull;
+static const uint64_t BuildVersion = 0x6c28e809cf64f968ull;
 
 } // namespace tabledemo
 
@@ -12355,88 +12356,88 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
 {
     if ( value.i8_span != 0 )
     {
-        w.put( 46, kTableMessageRefBitsHere );
+        w.put( 47, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i8_span ) - 18446744073709551488ull, 8 );
     }
     if ( value.i8_low != 0 )
     {
-        w.put( 47, kTableMessageRefBitsHere );
+        w.put( 48, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i8_low ) - 18446744073709551488ull, 8 );
     }
     if ( value.i8_high != 0 )
     {
-        w.put( 48, kTableMessageRefBitsHere );
+        w.put( 49, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i8_high ) - 18446744073709551489ull, 8 );
     }
     if ( value.i8_inside != 0 )
     {
-        w.put( 49, kTableMessageRefBitsHere );
+        w.put( 50, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i8_inside ) - 18446744073709551489ull, 8 );
     }
     if ( value.i16_span != 0 )
     {
-        w.put( 50, kTableMessageRefBitsHere );
+        w.put( 51, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i16_span ) - 18446744073709518848ull, 16 );
     }
     if ( value.i16_low != 0 )
     {
-        w.put( 51, kTableMessageRefBitsHere );
+        w.put( 52, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i16_low ) - 18446744073709518848ull, 16 );
     }
     if ( value.i16_high != 0 )
     {
-        w.put( 52, kTableMessageRefBitsHere );
+        w.put( 53, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i16_high ) - 18446744073709518849ull, 16 );
     }
     if ( value.i16_inside != 0 )
     {
-        w.put( 53, kTableMessageRefBitsHere );
+        w.put( 54, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i16_inside ) - 18446744073709518849ull, 16 );
     }
     if ( value.i32_span != 0 )
     {
-        w.put( 54, kTableMessageRefBitsHere );
+        w.put( 55, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i32_span ) - 18446744071562067968ull, 32 );
     }
     if ( value.i32_low != 0 )
     {
-        w.put( 55, kTableMessageRefBitsHere );
+        w.put( 56, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i32_low ) - 18446744071562067968ull, 32 );
     }
     if ( value.i32_high != 0 )
     {
-        w.put( 56, kTableMessageRefBitsHere );
+        w.put( 57, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i32_high ) - 18446744071562067969ull, 32 );
     }
     if ( value.i32_inside != 0 )
     {
-        w.put( 57, kTableMessageRefBitsHere );
+        w.put( 58, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i32_inside ) - 18446744071562067969ull, 32 );
     }
     if ( value.i64_span != 0 )
     {
-        w.put( 58, kTableMessageRefBitsHere );
+        w.put( 59, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i64_span ) - 9223372036854775808ull, 64 );
     }
     if ( value.i64_low != 0 )
     {
-        w.put( 59, kTableMessageRefBitsHere );
+        w.put( 60, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i64_low ) - 9223372036854775808ull, 64 );
     }
     if ( value.i64_high != 0 )
     {
-        w.put( 60, kTableMessageRefBitsHere );
+        w.put( 61, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i64_high ) - 9223372036854775809ull, 64 );
     }
     if ( value.i64_inside != 0 )
     {
-        w.put( 61, kTableMessageRefBitsHere );
+        w.put( 62, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i64_inside ) - 9223372036854775809ull, 64 );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
-        w.put( 62, kTableMessageRefBitsHere );
+        w.put( 63, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.edges_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.edges_count; i++ )
         {
@@ -15386,88 +15387,88 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
 {
     if ( value.u8_span != 0 )
     {
-        w.put( 63, kTableMessageRefBitsHere );
+        w.put( 64, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u8_span ), 8 );
     }
     if ( value.u8_low != 0 )
     {
-        w.put( 64, kTableMessageRefBitsHere );
+        w.put( 65, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u8_low ), 8 );
     }
     if ( value.u8_high != 1 )
     {
-        w.put( 65, kTableMessageRefBitsHere );
+        w.put( 66, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u8_high ) - 1ull, 8 );
     }
     if ( value.u8_inside != 1 )
     {
-        w.put( 66, kTableMessageRefBitsHere );
+        w.put( 67, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u8_inside ) - 1ull, 8 );
     }
     if ( value.u16_span != 0 )
     {
-        w.put( 67, kTableMessageRefBitsHere );
+        w.put( 68, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u16_span ), 16 );
     }
     if ( value.u16_low != 0 )
     {
-        w.put( 68, kTableMessageRefBitsHere );
+        w.put( 69, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u16_low ), 16 );
     }
     if ( value.u16_high != 1 )
     {
-        w.put( 69, kTableMessageRefBitsHere );
+        w.put( 70, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u16_high ) - 1ull, 16 );
     }
     if ( value.u16_inside != 1 )
     {
-        w.put( 70, kTableMessageRefBitsHere );
+        w.put( 71, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u16_inside ) - 1ull, 16 );
     }
     if ( value.u32_span != 0 )
     {
-        w.put( 71, kTableMessageRefBitsHere );
+        w.put( 72, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u32_span ), 32 );
     }
     if ( value.u32_low != 0 )
     {
-        w.put( 72, kTableMessageRefBitsHere );
+        w.put( 73, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u32_low ), 32 );
     }
     if ( value.u32_high != 1 )
     {
-        w.put( 73, kTableMessageRefBitsHere );
+        w.put( 74, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u32_high ) - 1ull, 32 );
     }
     if ( value.u32_inside != 1 )
     {
-        w.put( 74, kTableMessageRefBitsHere );
+        w.put( 75, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u32_inside ) - 1ull, 32 );
     }
     if ( value.u64_span != 0 )
     {
-        w.put( 75, kTableMessageRefBitsHere );
+        w.put( 76, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u64_span ), 64 );
     }
     if ( value.u64_low != 0 )
     {
-        w.put( 76, kTableMessageRefBitsHere );
+        w.put( 77, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u64_low ), 64 );
     }
     if ( value.u64_high != 1ull )
     {
-        w.put( 77, kTableMessageRefBitsHere );
+        w.put( 78, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u64_high ) - 1ull, 64 );
     }
     if ( value.u64_inside != 1ull )
     {
-        w.put( 78, kTableMessageRefBitsHere );
+        w.put( 79, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u64_inside ) - 1ull, 64 );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
-        w.put( 79, kTableMessageRefBitsHere );
+        w.put( 80, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.counts_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.counts_count; i++ )
         {
@@ -16917,11 +16918,11 @@ inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
-    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 153, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
-    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 155, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
-    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
-    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 154, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
-    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
+    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 154, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
+    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 156, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
+    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 153, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 155, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     return bytes;
 }
 
@@ -16944,27 +16945,27 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBody( TableWriter & w, TableIds & id
     }
     if ( value.b16 != 0 )
     {
-        w.header( ids.ref_at( 153, 0xff95701912ad97beull ), 7 ); // b16
+        w.header( ids.ref_at( 154, 0xff95701912ad97beull ), 7 ); // b16
         w.put16( uint16_t( value.b16 ) );
     }
     if ( value.b32 != 0 )
     {
-        w.header( ids.ref_at( 155, 0xff9c5c1912b39470ull ), 8 ); // b32
+        w.header( ids.ref_at( 156, 0xff9c5c1912b39470ull ), 8 ); // b32
         w.put32( uint32_t( value.b32 ) );
     }
     if ( value.b64 != 0 )
     {
-        w.header( ids.ref_at( 152, 0xff92701912ab61e7ull ), 9 ); // b64
+        w.header( ids.ref_at( 153, 0xff92701912ab61e7ull ), 9 ); // b64
         w.put64( uint64_t( value.b64 ) );
     }
     if ( value.b12 != 0 )
     {
-        w.header( ids.ref_at( 154, 0xff95741912ad9e8aull ), 7 ); // b12
+        w.header( ids.ref_at( 155, 0xff95741912ad9e8aull ), 7 ); // b12
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
-        w.header( ids.ref_at( 151, 0xff8b681912a535a1ull ), 9 ); // b48
+        w.header( ids.ref_at( 152, 0xff8b681912a535a1ull ), 9 ); // b48
         w.put64( uint64_t( value.b48 ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -17436,32 +17437,32 @@ inline bool RangedWidthsSaveMessageBody( TableBitWriter & w, const RangedWidths 
 {
     if ( value.b8 != 0 )
     {
-        w.put( 80, kTableMessageRefBitsHere );
+        w.put( 81, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b8 ), 8 );
     }
     if ( value.b16 != 0 )
     {
-        w.put( 81, kTableMessageRefBitsHere );
+        w.put( 82, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b16 ), 16 );
     }
     if ( value.b32 != 0 )
     {
-        w.put( 82, kTableMessageRefBitsHere );
+        w.put( 83, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b32 ), 32 );
     }
     if ( value.b64 != 0 )
     {
-        w.put( 83, kTableMessageRefBitsHere );
+        w.put( 84, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b64 ), 64 );
     }
     if ( value.b12 != 0 )
     {
-        w.put( 84, kTableMessageRefBitsHere );
+        w.put( 85, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b12 ), 12 );
     }
     if ( value.b48 != 0 )
     {
-        w.put( 85, kTableMessageRefBitsHere );
+        w.put( 86, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.b48 ), 48 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -22209,11 +22210,11 @@ inline int64_t RangedWidthsMeasureBodyRetain( TableRetainIds & ids, const Ranged
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
-    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 153, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
-    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 155, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
-    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
-    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 154, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
-    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
+    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 154, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
+    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 156, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
+    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 153, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 155, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -22227,27 +22228,27 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBodyRetain( TableWriter & w, TableRe
     }
     if ( value.b16 != 0 )
     {
-        w.header( ids.ref_at( 153, 0xff95701912ad97beull ), 7 ); // b16
+        w.header( ids.ref_at( 154, 0xff95701912ad97beull ), 7 ); // b16
         w.put16( uint16_t( value.b16 ) );
     }
     if ( value.b32 != 0 )
     {
-        w.header( ids.ref_at( 155, 0xff9c5c1912b39470ull ), 8 ); // b32
+        w.header( ids.ref_at( 156, 0xff9c5c1912b39470ull ), 8 ); // b32
         w.put32( uint32_t( value.b32 ) );
     }
     if ( value.b64 != 0 )
     {
-        w.header( ids.ref_at( 152, 0xff92701912ab61e7ull ), 9 ); // b64
+        w.header( ids.ref_at( 153, 0xff92701912ab61e7ull ), 9 ); // b64
         w.put64( uint64_t( value.b64 ) );
     }
     if ( value.b12 != 0 )
     {
-        w.header( ids.ref_at( 154, 0xff95741912ad9e8aull ), 7 ); // b12
+        w.header( ids.ref_at( 155, 0xff95741912ad9e8aull ), 7 ); // b12
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
-        w.header( ids.ref_at( 151, 0xff8b681912a535a1ull ), 9 ); // b48
+        w.header( ids.ref_at( 152, 0xff8b681912a535a1ull ), 9 ); // b48
         w.put64( uint64_t( value.b48 ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

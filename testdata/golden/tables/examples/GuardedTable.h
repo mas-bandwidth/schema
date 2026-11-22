@@ -658,7 +658,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 159;
+    static const int32_t kCapacity = 160;
     static const int32_t kBuckets = 512;
 
     uint64_t ids[kCapacity];
@@ -2511,14 +2511,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xcb,
-    0x54,
-    0x52,
-    0xa0,
-    0x05,
-    0x90,
-    0xc5,
-    0xbe,
+    0x68,
+    0xf9,
+    0x64,
+    0xcf,
+    0x09,
+    0xe8,
+    0x28,
+    0x6c,
     0x02,
     0x0e,
     0xac,
@@ -2813,6 +2813,19 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x0b,
     0xbf,
     0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
     0x37,
     0xea,
     0x08,
@@ -3952,19 +3965,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xcd,
     0x13,
     0x0d,
-    0x19,
-    0x8c,
-    0xea,
-    0xfe,
-    0x18,
-    0x7d,
-    0xc6,
-    0xdc,
-    0x0e,
-    0x02,
-    0x04,
-    0x08,
-    0x00,
     0x55,
     0x2a,
     0x56,
@@ -4249,12 +4249,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the peer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0xbec59005a05254cbull )
+    if ( vocabulary.strict && version != 0x6c28e809cf64f968ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0xbec59005a05254cbull;
+        to->build_version_own = 0x6c28e809cf64f968ull;
         return false;
     }
 
@@ -9318,7 +9318,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 159;
+static const int32_t kTableRetainKnownIds = 160;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9473,6 +9473,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xf10fad739a0e1660ull,
     0xf252136836b04cb2ull,
     0xf2b45af3b50689dbull,
+    0xf5b735fce4011ff4ull,
     0xf901aa0340249a41ull,
     0xfc9697d1196e6ba6ull,
     0xff8b681912a535a1ull,
@@ -10614,7 +10615,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbec59005a05254cbull;
+static const uint64_t BuildVersion = 0x6c28e809cf64f968ull;
 
 } // namespace tabledemo
 
@@ -11715,6 +11716,7 @@ inline bool PatrolNodeDeclared( uint64_t type_id )
         case 0xd6633ae4e94deecfull: // KeyedConfig
         case 0xa6aa0caea28dcca1ull: // LoadoutConfig
         case 0xe2f227393c6b20a2ull: // MinArmFix
+        case 0xf5b735fce4011ff4ull: // MinPlainFix
         case 0xd02d825db114336eull: // PackConfig
         case 0x1c182e1c2529027bull: // Patrol
         case 0x19fffcb7859da778ull: // ProfileConfig

@@ -173,6 +173,9 @@ func init() {
 	bind("tabledemo", "MinArmFix", func(c codec) codec {
 		return fixedForm(c, tabledemo.MinArmFixFixedLoad, tabledemo.MinArmFixFixedMeasure, tabledemo.MinArmFixFixedSave)
 	})
+	bind("tabledemo", "MinPlainFix", func(c codec) codec {
+		return fixedForm(c, tabledemo.MinPlainFixFixedLoad, tabledemo.MinPlainFixFixedMeasure, tabledemo.MinPlainFixFixedSave)
+	})
 	bind("tabledemo", "KeyedConfig", func(c codec) codec {
 		return fixedForm(c, tabledemo.KeyedConfigFixedLoad, tabledemo.KeyedConfigFixedMeasure, tabledemo.KeyedConfigFixedSave)
 	})

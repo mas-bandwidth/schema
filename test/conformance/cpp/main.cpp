@@ -357,6 +357,7 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, KeyedConfig ),
     CODEC( "tabledemo", tabledemo, PackConfig ),
     CODEC( "tabledemo", tabledemo, MinArmFix ),
+    CODEC( "tabledemo", tabledemo, MinPlainFix ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),

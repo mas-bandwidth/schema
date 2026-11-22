@@ -120,3 +120,12 @@ fixed table MinArmFix
 {
     pick MinPick
 }
+
+// The same counted [A..B] as a PLAIN field (docs/SPEC-TABLES.md section 3.4,
+// ruling R10): a count below A refuses on read in every form, and a writer
+// never produces one. Rows: the plain-min-* and plainmin_* cases.
+
+fixed table MinPlainFix
+{
+    few [2..4]uint32
+}

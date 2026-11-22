@@ -35,6 +35,7 @@ export const fixedRoots = [
   ["tabledemo", "ArchiveConfig", "examples/NestedTable.js"],
   ["tabledemo", "PackConfig", "examples/PackTable.js"],
   ["tabledemo", "MinArmFix", "examples/TablesTable.js"],
+  ["tabledemo", "MinPlainFix", "examples/TablesTable.js"],
   ["tabledemo", "KeyedConfig", "examples/KeyedTable.js"],
   ["tabledemo", "WideBlob", null],
   ["tblv1", "Cfg", "v1/V1Table.js"],

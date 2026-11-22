@@ -52,6 +52,11 @@ fn unit_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) -> boo
         verdict_of(v, text, out, tabledemo::MinArmFixFromJson, tabledemo::MinArmFixToJson);
         return true;
     }
+    if root == "MinPlainFix" {
+        var v = tabledemo::NewMinPlainFix();
+        verdict_of(v, text, out, tabledemo::MinPlainFixFromJson, tabledemo::MinPlainFixToJson);
+        return true;
+    }
     if root == "ProfileConfig" {
         var v = tabledemo::NewProfileConfig();
         verdict_of(v, text, out, tabledemo::ProfileConfigFromJson, tabledemo::ProfileConfigToJson);

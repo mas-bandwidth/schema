@@ -658,7 +658,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 159;
+    static const int32_t kCapacity = 160;
     static const int32_t kBuckets = 512;
 
     uint64_t ids[kCapacity];
@@ -2511,14 +2511,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xcb,
-    0x54,
-    0x52,
-    0xa0,
-    0x05,
-    0x90,
-    0xc5,
-    0xbe,
+    0x68,
+    0xf9,
+    0x64,
+    0xcf,
+    0x09,
+    0xe8,
+    0x28,
+    0x6c,
     0x02,
     0x0e,
     0xac,
@@ -2813,6 +2813,19 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x0b,
     0xbf,
     0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
     0x37,
     0xea,
     0x08,
@@ -3952,19 +3965,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xcd,
     0x13,
     0x0d,
-    0x19,
-    0x8c,
-    0xea,
-    0xfe,
-    0x18,
-    0x7d,
-    0xc6,
-    0xdc,
-    0x0e,
-    0x02,
-    0x04,
-    0x08,
-    0x00,
     0x55,
     0x2a,
     0x56,
@@ -4249,12 +4249,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the peer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0xbec59005a05254cbull )
+    if ( vocabulary.strict && version != 0x6c28e809cf64f968ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0xbec59005a05254cbull;
+        to->build_version_own = 0x6c28e809cf64f968ull;
         return false;
     }
 
@@ -9318,7 +9318,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 159;
+static const int32_t kTableRetainKnownIds = 160;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9473,6 +9473,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xf10fad739a0e1660ull,
     0xf252136836b04cb2ull,
     0xf2b45af3b50689dbull,
+    0xf5b735fce4011ff4ull,
     0xf901aa0340249a41ull,
     0xfc9697d1196e6ba6ull,
     0xff8b681912a535a1ull,
@@ -10614,7 +10615,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbec59005a05254cbull;
+static const uint64_t BuildVersion = 0x6c28e809cf64f968ull;
 
 } // namespace tabledemo
 
@@ -11027,13 +11028,13 @@ inline bool TableEnumSlot( Difficulty value, uint64_t & slot )
             slot = 0;
             return true;
         case Difficulty::Easy:
-            slot = 105;
-            return true;
-        case Difficulty::Normal:
             slot = 106;
             return true;
-        case Difficulty::Hard:
+        case Difficulty::Normal:
             slot = 107;
+            return true;
+        case Difficulty::Hard:
+            slot = 108;
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -11139,13 +11140,13 @@ inline bool TableEnumSlot( ShipType value, uint64_t & slot )
             slot = 0;
             return true;
         case ShipType::Fighter:
-            slot = 114;
-            return true;
-        case ShipType::Bomber:
             slot = 115;
             return true;
-        case ShipType::Scout:
+        case ShipType::Bomber:
             slot = 116;
+            return true;
+        case ShipType::Scout:
+            slot = 117;
             return true;
         default: return false; // no variant names this value: no wire identity
     }
@@ -12574,7 +12575,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
     schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 )
     {
-        w.put( 90, kTableMessageRefBitsHere );
+        w.put( 91, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.display_name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.display_name, value.display_name_length );
@@ -12594,7 +12595,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
-        w.put( 91, kTableMessageRefBitsHere );
+        w.put( 92, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.hardpoints_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.hardpoints_count; i++ )
         {
@@ -12603,7 +12604,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
     }
     if ( value.gunner_present ) // ?GunnerSettings
     {
-        w.put( 92, kTableMessageRefBitsHere );
+        w.put( 93, kTableMessageRefBitsHere );
         if ( !GunnerSettingsSaveMessageBody( w, value.gunner ) ) { return false; }
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15111,7 +15112,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
 {
     if ( value.version != 1 )
     {
-        w.put( 28, kTableMessageRefBitsHere );
+        w.put( 29, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.version ), 32 );
     }
     {
@@ -15119,7 +15120,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
         if ( body_settings < 0 ) { return false; }
         if ( body_settings > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 29, kTableMessageRefBitsHere );
+            w.put( 30, kTableMessageRefBitsHere );
             if ( !GlobalSettingsSaveMessageBody( w, value.settings ) ) { return false; }
         }
     }
@@ -15135,7 +15136,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
         }
         if ( pairs_ships > 0 )
         {
-            w.put( 30, kTableMessageRefBitsHere );
+            w.put( 31, kTableMessageRefBitsHere );
             w.put( (uint64_t) pairs_ships, 2 );
             // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
             // this writer's choice and a reader must not rely on it: every
@@ -15163,7 +15164,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
         }
         if ( pairs_thresholds > 0 )
         {
-            w.put( 31, kTableMessageRefBitsHere );
+            w.put( 32, kTableMessageRefBitsHere );
             w.put( (uint64_t) pairs_thresholds, 2 );
             // ASCENDING BY VARIANT ORDINAL, which is slot order. It is
             // this writer's choice and a reader must not rely on it: every
@@ -15182,7 +15183,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
-        w.put( 32, kTableMessageRefBitsHere );
+        w.put( 33, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.reserves_count ) - 0, 2 );
         for ( int32_t i = 0; i < value.reserves_count; i++ )
         {

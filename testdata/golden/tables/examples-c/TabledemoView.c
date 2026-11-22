@@ -96,6 +96,7 @@ static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
         { "KeyedConfig", "Keyed.schema", 1, &schema_tabledemo_keyed_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "LoadoutConfig", "Tables.schema", 1, &schema_tabledemo_loadout_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "MinArmFix", "Tables.schema", 1, &schema_tabledemo_min_arm_fix_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MinPlainFix", "Tables.schema", 1, &schema_tabledemo_min_plain_fix_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "PackConfig", "Pack.schema", 1, &schema_tabledemo_pack_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Patrol", "Guarded.schema", 1, &schema_tabledemo_patrol_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "ProfileConfig", "Tables.schema", 1, &schema_tabledemo_profile_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -117,7 +118,7 @@ static const char * const MaxLoadoutSlots_view_tags[] = { "tuning" };
     };
     static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
-        20, tables,
+        21, tables,
         6, enums,
         1, flags_decls,
         2, unions,
