@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -131,7 +132,7 @@ func TestMooDriverWritesPriorRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"ann.bin", "past.bin", "inside.bin"} {
-		if !strings.Contains(string(inputs), `"`+f+`"`) {
+		if !strings.Contains(string(inputs), mooLiteral(f)) {
 			t.Errorf("moo: the message-prior stage holds no %s:\n%s", f, inputs)
 		}
 	}
@@ -156,4 +157,16 @@ if [ "$last" = list ]; then echo message-prior; exit 0; fi
 `+priorStandIn)
 	runPriorDriver(t, dir, "lobster", manifest, out, "LOBSTER="+lobster, "LOBSTER_CONFORMANCE_UNITS=units")
 	mustPriorAnswers(t, "lobster", out)
+}
+
+// mooLiteral is stage.pl's spelling of a string: every byte as \xNN.
+func mooLiteral(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		b.WriteString(`\x`)
+		b.WriteString(strings.ToLower(strconv.FormatUint(uint64(s[i])|0x100, 16)[1:]))
+	}
+	b.WriteByte('"')
+	return b.String()
 }
