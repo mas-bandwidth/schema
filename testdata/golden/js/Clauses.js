@@ -484,8 +484,14 @@ export function ZeroTri3(value) {
 }
 
 export function WriteTri3(stream, value) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 3) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
@@ -592,8 +598,14 @@ export function ZeroEleven(value) {
 }
 
 export function WriteEleven(stream, value) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 7) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 255) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
@@ -837,11 +849,17 @@ export function ZeroHoldsEmptyUnion(value) {
 }
 
 export function WriteHoldsEmptyUnion(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
   if (!WriteEmptyUnion(stream, value.u)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -904,6 +922,9 @@ export function ZeroStrs(value) {
 }
 
 export function WriteStrs(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -929,6 +950,9 @@ export function WriteStrs(stream, value) {
     return false;
   }
   if (!stream.serializeBytes(value.b.subarray(0, value.bLength))) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -1004,6 +1028,9 @@ export function ZeroArrNested(value) {
 }
 
 export function WriteArrNested(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -1019,6 +1046,9 @@ export function WriteArrNested(stream, value) {
     if (!WriteEleven(stream, value.items[i])) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -1071,6 +1101,9 @@ export function ZeroSole(value) {
 }
 
 export function WriteSole(stream, value) {
+  if (!globalThis.Number.isInteger(value.only) || value.only < 0 || value.only > 8191) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.only;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;

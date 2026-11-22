@@ -21,11 +21,11 @@ func TestWireFormRegistryIsTheSixRowsInOrder(t *testing.T) {
 		{"the cook", true},
 		{"the block form", true},
 	}
-	if len(WireForms) != len(want) {
-		t.Fatalf("the registry is %d rows, want %d — a new form is a spec change (§3)", len(WireForms), len(want))
+	if len(wireForms) != len(want) {
+		t.Fatalf("the registry is %d rows, want %d — a new form is a spec change (§3)", len(wireForms), len(want))
 	}
 	for i, w := range want {
-		got := WireForms[i]
+		got := wireForms[i]
 		if got.Byte != uint8(i) {
 			t.Errorf("row %d carries byte %d: the registry is append-only and a form's number is forever", i, got.Byte)
 		}
