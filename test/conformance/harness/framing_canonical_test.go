@@ -43,6 +43,9 @@ func TestFramingVectorIdTablesAreCanonical(t *testing.T) {
 			t.Errorf("%s: %v", v.name, err)
 			continue
 		}
+		if len(data) > 0 && data[0] == 3 {
+			continue // first-use order is the variable form's rule; form 3 has no id table
+		}
 		fault := framingTableFault(v, data)
 		if _, purpose := framingNonCanonicalTables[v.name]; purpose {
 			if !strings.HasPrefix(fault, "[unused slots") {
