@@ -40,7 +40,7 @@ func waitStatusRead(toks []token, k int, ctx shellContext) bool {
 		status = "$$?"
 	}
 	if end < len(toks) && toks[end].text == ";" {
-		for j := end + 1; j < len(toks) && !(toks[j].op && toks[j].text == ";"); j++ {
+		for j := end + 1; j < len(toks) && (!toks[j].op || toks[j].text != ";"); j++ {
 			if strings.Contains(toks[j].text, status) {
 				return true
 			}

@@ -1029,8 +1029,8 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 /// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
 /// the count is zero, malformed is set, and every body of the batch goes back
 /// to its declared defaults, bytes after the pad included; "M ABOVE THE
-/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
+/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", nothing decoded and
+/// a count of 0, as every refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 ///
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
@@ -1047,7 +1047,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
         return (0, false);
     };
     if count > values.len() {
-        return (count, report.refuse(TableReason::BatchTooLarge));
+        return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {

@@ -789,6 +789,33 @@ defmodule Driver do
           write_absent(outdir, name)
       end
     end
+
+    # message-batch <case> <connection> <root> <wire>: load with room for every
+    # body and answer the count load_messages returned, 0 for every refusal
+    # (docs/SPEC-TABLES.md §3.3; FORMAT.md, `message-batch`).
+    # Elixir's load_messages hands back each body's raw fields and the values
+    # are checked as they decode, so a body is delivered only once it decodes:
+    # the same read the message surface answers through (answer_message).
+    for [name, connection, root, wire | _] <- rows(rows, "message-batch") do
+      with {unit, announcement} <- Map.get(connections, connection),
+           mod when mod != nil <- message_module(unit),
+           {:ok, announced} <- mod.announce_read(File.read!(announcement)),
+           {:ok, vocab} <- mod.for_root(announced, root) do
+        count =
+          case mod.load_messages(vocab, File.read!(wire), 256) do
+            {:ok, bodies} -> WireFuzz.message_batch_decoded_count(unit, root, vocab, bodies)
+            {:malformed, n, _bodies} -> n
+            {:error, _reason, n} -> n
+            {:error, _reason} -> 0
+          end
+
+        write(outdir, name, "count #{count}\n")
+      else
+        other ->
+          IO.puts(:stderr, "message-batch #{name}: #{inspect(other)}")
+          write_absent(outdir, name)
+      end
+    end
   end
 
   # THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1, test/conformance/README.md).
@@ -2102,6 +2129,37 @@ defmodule WireFuzz do
       vocab ->
         vocab
     end
+  end
+
+  # THE message-batch COUNT: every body decodes or the batch is refused whole,
+  # and a refused batch returns a count of 0 (docs/SPEC-TABLES.md §3.3, §4).
+  # Driver's message-batch rows call it: the decode lives here, beside the
+  # message surface's.
+  def message_batch_decoded_count(unit, root, vocab, bodies) do
+    tmod = file_codec(unit, root)
+    unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+    tables = Map.put(tmod.descriptors(), {:unions}, unions)
+    desc = Map.fetch!(tables, root)
+
+    empty = %{
+      unknown: 0,
+      widened: 0,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0,
+      refused: false
+    }
+
+    whole =
+      Enum.reduce_while(bodies, empty, fn raw_body, rep ->
+        case msg_decode_body(vocab, tables, desc, raw_body, rep) do
+          {:ok, _val, rep2} -> {:cont, rep2}
+          {:malformed, _rep2} -> {:halt, :refused}
+        end
+      end)
+
+    if whole == :refused or damaged?(whole), do: 0, else: length(bodies)
   end
 
   defp message_decode_and_reply(mod, vocab, tables, desc, bodies) do

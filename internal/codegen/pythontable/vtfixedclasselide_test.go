@@ -205,9 +205,9 @@ func TestPythonVtFixedClassElisionEngine(t *testing.T) {
 	if !engineRefuses(u, "Holder", vtElideNaNWire(t, u)) {
 		t.Error("nan: the engine reads a NaN")
 	}
-	if !engineRefuses(u, "Holder", vtElideRoundWire(t, u)) {
-		t.Error("cr_round: the engine reads float32(0.1) under max 0.1")
-	}
+	// cr_round is not held to this engine: the Python leg compares a
+	// compressed float's range at float32 (SPEC.md 4.6), the rule PR #4440
+	// brings to the engine, which this base still compares at float64.
 	wire, resaved := vtElideDeprecatedWire(t, u)
 	t.Logf("deprecated wire: %s", hex.EncodeToString(wire))
 	t.Logf("deprecated resaved: %s", hex.EncodeToString(resaved))
@@ -217,6 +217,7 @@ func TestPythonVtFixedClassElisionEngine(t *testing.T) {
 // and exits nonzero when any is red. Inputs: wire_<case> for each case,
 // nan, round, deprecated and deprecated_resaved.
 const vtElideProbe = `import math
+import struct
 import vtel
 from vtel import Box, Cap, Holder, InvalidValue, Inner, LIMIT, Packed, Refused, Ship
 
@@ -274,18 +275,29 @@ try:
 except Refused:
     pass
 
-# A compressed float is held to its range on the float32 the wire carries.
+# A compressed float is held to its range on the float32 the wire carries,
+# compared at float32 (SPEC.md 4.6): 0.1 and a double that rounds to the same
+# float32 are max = 0.1 itself, and the float32 0.1f on the wire lands.
+top = struct.unpack("<f", struct.pack("<f", 0.1))[0]
+for value in (0.1, 0.1000000015):
+    v = Holder()
+    v.inner.cr = value
+    try:
+        if Holder.load(v.save()).inner.cr != top:
+            fail("cr_round_write")
+    except (InvalidValue, Refused):
+        fail("cr_round_write")
+try:
+    if Holder.load(read("round")).inner.cr != top:
+        fail("cr_round_read")
+except Refused:
+    fail("cr_round_read")
 v = Holder()
-v.inner.cr = 0.1
+v.inner.cr = 0.11
 try:
     v.save()
-    fail("cr_round_write")
+    fail("cr_above_write")
 except InvalidValue:
-    pass
-try:
-    Holder.load(read("round"))
-    fail("cr_round_read")
-except Refused:
     pass
 
 # A deprecated variant reads as the field's declared default (an element's as

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -52,7 +54,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	// a tagged port in the real tree (a `schema new-leg` leg, make/<lang>.mk
 	// beside a build-tagged compiler/target_<lang>.go) is identified by the
 	// target file's first line, so the fixture carries those files too
-	targets, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	targets, err := provesran.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +94,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	// it by the same rule. A builtin target (lua among them) carries no tag and
 	// is probed like every other port.
 	skeletons := map[string]bool{"zig": true} // the planted zig
-	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	tagged, err := provesran.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +144,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	mkFiles, err := provesran.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

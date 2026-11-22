@@ -262,6 +262,11 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, pc.BuildVersion, pc.Wire)
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
 	}
+	for _, mb := range m.Batches {
+		// THE VERDICT IS WITHHELD, and so is the recipe: a driver is handed the
+		// batch and loads it with room for every body (docs/SPEC-TABLES.md §3.3).
+		fmt.Fprintf(&b, "message-batch %s %s %s %s\n", mb.Name, mb.Connection, mb.Root, mb.Wire())
+	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
 		// the wire and the two capacities and nothing about the counters or the
@@ -343,6 +348,9 @@ type expectation struct {
 	// COMPARED, not only the counters, because two legs can count the same
 	// events and land different values.
 	value string
+	// batch is the message-batch row this case answers (docs/SPEC-TABLES.md
+	// §3.3): the answer is the reported count, not bytes.
+	batch *MessageBatch
 	// save is the canonical write-back wire a readable report, framing or
 	// json-hostile row owes in `<name>.wire`. The read must return the WHOLE
 	// value: the JSON text above and the wire bytes here, both the oracle's.
@@ -460,6 +468,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: md.Name, want: want})
+		}
+		// THE BATCH'S REFUSAL CONTRACT (§3.3, §6.5): the count the loader
+		// reported, scored by scoreMessageBatch against the row's verdict.
+		for i := range m.Batches {
+			out = append(out, expectation{name: m.Batches[i].Name, batch: &m.Batches[i]})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how
@@ -869,6 +882,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
+	if e.batch != nil {
+		scoreMessageBatch(answer, e, r)
+		return
+	}
 	if surface == "message" && e.want == nil {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))

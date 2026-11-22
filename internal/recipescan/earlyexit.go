@@ -156,10 +156,7 @@ func earlyExitCondition(toks []token, k int) string {
 		return ""
 	}
 	start := statementStart(toks, k)
-	condition := false
-	if start < len(toks) && !toks[start].op && toks[start].text == "!" {
-		condition = true
-	}
+	condition := start < len(toks) && !toks[start].op && toks[start].text == "!"
 	if start > 0 {
 		b := toks[start-1]
 		if !b.op && (b.text == "if" || b.text == "elif" || b.text == "while" || b.text == "until") {

@@ -1,0 +1,15 @@
+package fixture
+
+import (
+	"context"
+	"os/exec"
+	"testing"
+)
+
+// The constructors are taken as function values and called through variables.
+func TestConstructorValue(t *testing.T) {
+	start := exec.Command
+	startCtx := exec.CommandContext
+	_ = start("luau", "-v").Run()
+	_ = startCtx(context.Background(), "luau", "-v").Run()
+}

@@ -4794,10 +4794,13 @@ typedef MessageFuzz = List<int> Function(Uint8List wire);
 // surface's batch read against a connection's announcement, and the wire
 // fuzzer's mutant read against the unit's OWN announcement.
 final class MessageCodec {
-  const MessageCodec(this.batch, this.fuzz, this.framedFuzz);
+  const MessageCodec(this.batch, this.fuzz, this.framedFuzz, this.count);
   final MessageRun batch;
   final MessageFuzz fuzz;
   final MessageFuzz framedFuzz;
+  // count answers a `message-batch` row: the count LoadMessages returned into
+  // storage for 256 bodies, or null when the announcement was refused.
+  final int? Function(Uint8List announcement, Uint8List wire) count;
 }
 
 // _ownAnnouncement is the unit's compiled announcement, which the fuzzer's
@@ -4850,7 +4853,8 @@ MessageCodec _messageRow<T, V, R>({
     }
     final vocab = ownVocabulary;
     // THE LOAD'S ANSWER IS READ, never dropped: LoadMessages answers the
-    // bodies it read, -1 on failure (§3.3), and the Go reference takes
+    // bodies it read, 0 with the report refused on failure (§3.3: "A refused
+    // batch returns a count of `0`"), and the Go reference takes
     // `count, ok := load(...)` and sets `rep.refused = rep.refused || !ok
     // && !rep.refused` (test/conformance/go/messages.go, messageRow). A load
     // that failed without a refusal is malformed, whatever the report says,
@@ -4988,6 +4992,17 @@ MessageCodec _messageRow<T, V, R>({
       measure: -1,
       saved: out,
     );
+  }, (Uint8List announcement, Uint8List wire) {
+    final vocab = vocabulary();
+    if (!announceRead(vocab, announcement, report())) {
+      return null;
+    }
+    final values = List<T>.generate(256, (_) {
+      final v = fresh();
+      init(v);
+      return v;
+    });
+    return load(values, wire, vocab, report());
   });
 }
 
@@ -5335,6 +5350,33 @@ int surfaceMessage(String outDir) {
       return 1;
     }
     File('$outDir/${f[1]}').writeAsBytesSync(answer);
+  }
+  // message-batch <case> <connection> <root> <wire>: load with room for every
+  // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
+  // FORMAT.md, `message-batch`).
+  for (final f in kind('message-batch')) {
+    List<String>? conn;
+    for (final c in kind('connection')) {
+      if (c[1] == f[2]) {
+        conn = c;
+        break;
+      }
+    }
+    if (conn == null) {
+      stderr.writeln('message-batch ${f[1]}: no connection row ${f[2]}');
+      return 1;
+    }
+    final run = messageRuns['${conn[2]} ${f[3]}'];
+    if (run == null) {
+      stderr.writeln('message-batch ${f[1]}: no message codec for ${conn[2]}.${f[3]}');
+      return 1;
+    }
+    final count = run.count(File(conn[4]).readAsBytesSync(), File(f[4]).readAsBytesSync());
+    if (count == null) {
+      stderr.writeln('message-batch ${f[1]}: the announcement was refused: ${conn[4]}');
+      return 1;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync('count $count\n');
   }
   return 0;
 }

@@ -7803,15 +7803,18 @@ test: slow-gate-scan
 # `test`: it rides ci-full.yml beside the steps it credits. Nothing is
 # MOVED to nightly by this; the scan above, which is the gate, is on `test`.
 #
-# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
-# which tests the gate skipped, and it must still read that when some unrelated
-# test is red. The red itself is `test`'s to report, not this target's, and the
-# accounting below exits nonzero on its own finding.
+# GO'S EXIT STATUS IS HANDED TO THE ACCOUNTING, NOT DROPPED. The accounting
+# still reads the whole transcript and writes its table when go test failed,
+# then exits nonzero naming the status: a transcript from a run that failed,
+# did not build, or was cut short cannot prove every gated test reached its
+# gate. It was `|| true` here, and a transcript cut after its first skip was
+# a green one-owner verdict (the reviewer's F-233). Every package in the
+# transcript must also close with its own pass, fail or skip record.
 .PHONY: slow-gate-coverage
 slow-gate-coverage: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1; echo $$? > build/slowgate/all-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log -go-exit "$$(cat build/slowgate/all-plain.status)"
 
 # THE SAME ACCOUNTING, SHARDED, for ci-full.yml's slow-gate rows. The two
 # halves below were killed at the fleet's 120 s per-commit limit (130 s and
@@ -7838,12 +7841,12 @@ SLOWGATE_SHARDS ?= 26
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1; echo $$? > build/slowgate/codegen-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log -go-exit "$$(cat build/slowgate/codegen-plain.status)"
 slow-gate-coverage-rest: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1; echo $$? > build/slowgate/rest-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log -go-exit "$$(cat build/slowgate/rest-plain.status)"
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the
 # retry-and-classify logic behind the nightly is a committed script
