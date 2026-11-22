@@ -157,11 +157,26 @@ fn root(c: *Ctx, a: Allocator, case: []const u8, unit_key: []const u8, name: []c
         try c.absent(a, case, "no such root");
         return null;
     };
-    if (d.is_fixed) {
-        try c.absent(a, case, "fixed form not implemented");
+    return .{ .unit = u, .decl = d };
+}
+
+/// Load a file at a root. A declared fixed root reads form 3 alone and refuses
+/// every other form by name (SPEC-TABLES.md "NEITHER CLASS BORROWS THE OTHER'S
+/// FORM"); this port has no form-3 codec, so a form-3 file is an honest absence.
+fn loadAt(c: *Ctx, a: Allocator, case: []const u8, r: Root, bytes: []const u8) !?*value.Struct {
+    if (r.decl.is_fixed) {
+        if (bytes.len > 0 and bytes[0] == 3) {
+            try c.absent(a, case, "fixed form (form 3) not implemented");
+            return null;
+        }
+        try c.put(case, "refused\n");
         return null;
     }
-    return .{ .unit = u, .decl = d };
+    var rep: wire.Report = .{};
+    return wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| {
+        try refused(c, case, e);
+        return null;
+    };
 }
 
 fn hasMarker(f: []const []const u8, m: []const u8) bool {
@@ -173,8 +188,7 @@ fn hasMarker(f: []const []const u8, m: []const u8) bool {
 fn surfWire(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
-    var rep: wire.Report = .{};
-    const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| return refused(c, f[1], e);
+    const s = (try loadAt(c, a, f[1], r, bytes)) orelse return;
     const out = wire.save(a, s) catch |e| return refused(c, f[1], e);
     try c.put(f[1], out);
 }
@@ -190,6 +204,7 @@ fn surfJsonRead(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const path = try std.fmt.allocPrint(a, "testdata/conformance/tables/json/{s}.json", .{f[1]});
     const text = c.readFile(a, path) orelse return;
     const s = json.read(a, r.unit, r.decl, text) catch |e| return refused(c, f[1], e);
+    if (r.decl.is_fixed) return c.absent(a, f[1], "accepted; the form-3 save is not implemented");
     const out = wire.save(a, s) catch |e| return refused(c, f[1], e);
     try c.put(f[1], out);
 }
@@ -200,8 +215,7 @@ fn surfJsonWrite(c: *Ctx, a: Allocator, f: []const []const u8, damage: ?[]const 
     const name = try std.fmt.allocPrint(a, "{s}.json", .{f[1]});
     const r = (try root(c, a, name, f[2], f[3])) orelse return;
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, name, "no wire file");
-    var rep: wire.Report = .{};
-    const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| return refused(c, name, e);
+    const s = (try loadAt(c, a, name, r, bytes)) orelse return;
     if (damage) |d| {
         if (std.mem.startsWith(u8, d, "narrow:")) {
             const fi = r.decl.fieldByKey(d[7..]) orelse r.decl.fieldByKey(d[7..]) orelse return c.absent(a, name, "no such field");
@@ -216,8 +230,7 @@ fn surfJsonWrite(c: *Ctx, a: Allocator, f: []const []const u8, damage: ?[]const 
 fn surfReport(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
-    var rep: wire.Report = .{};
-    const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| return refused(c, f[1], e);
+    const s = (try loadAt(c, a, f[1], r, bytes)) orelse return;
     try answer(c, a, f[1], s);
 }
 
@@ -240,6 +253,7 @@ fn surfHostile(c: *Ctx, a: Allocator, f: []const []const u8) !void {
     const path = try std.fmt.allocPrint(a, "{s}/{s}.json", .{ f[4], f[3] });
     const text = c.readFile(a, path) orelse return c.absent(a, f[1], "no tree");
     const s = json.read(a, r.unit, r.decl, text) catch |e| return refused(c, f[1], e);
+    if (r.decl.is_fixed) return c.absent(a, f[1], "accepted; the form-3 save is not implemented");
     try answer(c, a, f[1], s);
 }
 
@@ -250,6 +264,7 @@ const Unrepresentable = error{Unrepresentable};
 /// write-refusal[-json] <case> <unit> <root> <wire> <path> <kind> <value>
 fn surfWriteRefusal(c: *Ctx, a: Allocator, f: []const []const u8, text: bool) !void {
     const r = (try root(c, a, f[1], f[2], f[3])) orelse return;
+    if (r.decl.is_fixed) return c.absent(a, f[1], "fixed form not implemented");
     const bytes = c.readFile(a, f[4]) orelse return c.absent(a, f[1], "no wire file");
     var rep: wire.Report = .{};
     const s = wire.load(a, r.unit, r.decl, bytes, &rep) catch return c.absent(a, f[1], "the row's wire did not load");

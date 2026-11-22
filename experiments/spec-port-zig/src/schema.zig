@@ -229,7 +229,7 @@ pub fn evalNum(u: *const Unit, e: *const Expr) ParseError!Num {
         .neg => |x| {
             const v = try evalNum(u, x);
             return switch (v) {
-                .int => |i| .{ .int = -i },
+                .int => |i| .{ .int = std.math.negate(i) catch return error.ParseError },
                 .float => |f| .{ .float = -f },
             };
         },
@@ -240,9 +240,9 @@ pub fn evalNum(u: *const Unit, e: *const Expr) ParseError!Num {
                 const a = x.int;
                 const c = y.int;
                 return .{ .int = switch (b.op) {
-                    '+' => a + c,
-                    '-' => a - c,
-                    '*' => a * c,
+                    '+' => std.math.add(Big, a, c) catch return error.ParseError,
+                    '-' => std.math.sub(Big, a, c) catch return error.ParseError,
+                    '*' => std.math.mul(Big, a, c) catch return error.ParseError,
                     '/' => if (c == 0) return error.ParseError else @divTrunc(a, c),
                     '%' => if (c == 0) return error.ParseError else @rem(a, c),
                     else => return error.ParseError,
@@ -805,7 +805,7 @@ fn parseIntLit(s: []const u8) ParseError!Big {
     for (digits) |c| {
         if (c == '_') continue;
         const d = std.fmt.charToDigit(c, base) catch return error.ParseError;
-        v = v * base + d;
+        v = std.math.add(Big, std.math.mul(Big, v, base) catch return error.ParseError, d) catch return error.ParseError;
     }
     return v;
 }
@@ -831,6 +831,7 @@ pub fn intLimits(width: u8, signed: bool) struct { min: Int, max: Int } {
         const one: Int = 1;
         return .{ .min = -(one << @intCast(width - 1)), .max = (one << @intCast(width - 1)) - 1 };
     }
+    if (width == 128) return .{ .min = 0, .max = std.math.maxInt(u128) };
     const one: Int = 1;
     return .{ .min = 0, .max = (one << @intCast(width)) - 1 };
 }
