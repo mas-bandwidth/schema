@@ -1,0 +1,9 @@
+#!/bin/sh
+# The conformance driver (test/conformance/README.md): builds once, then runs.
+here=$(cd "$(dirname "$0")" && pwd)
+bin="$here/build/spec-port-lisp"
+if [ ! -x "$bin" ] || [ -n "$(find "$here/src" -newer "$bin" -name '*.lisp' 2>/dev/null)" ]; then
+  mkdir -p "$here/build"
+  sbcl --non-interactive --no-userinit --load "$here/build.lisp" >"$here/build/build.log" 2>&1 || { cat "$here/build/build.log" >&2; exit 1; }
+fi
+exec "$bin" "$@"
