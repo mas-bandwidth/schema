@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v2/internal/pathid"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -135,6 +136,30 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 	// a batch is one publish: every tree lands, or none does
 	txn := atomicfile.New()
 	defer txn.Close()
+	// EVERY MESSAGE GETS A TREE OF ITS OWN: two destinations that are one
+	// directory would leave both messages reading the second, and one inside
+	// another becomes an entry of it that pack refuses. Which directories are
+	// one is the file system's answer, so each destination is made first (the
+	// transaction's own, removed again unless the batch lands) and then
+	// compared by identity: a symlinked spelling, a case-folded or Unicode
+	// spelling on a volume that takes it for the same name, and a nested path
+	// are all found, whether the destination existed or not.
+	for _, tree := range trees {
+		if err := txn.MkdirAll(tree.Dir); err != nil {
+			return report, err
+		}
+	}
+	for i := range trees {
+		for j := i + 1; j < len(trees); j++ {
+			same, err := pathid.Overlap(trees[i].Dir, trees[j].Dir)
+			if err != nil {
+				return report, err
+			}
+			if same {
+				return report, fmt.Errorf("the tree for message %d (%s, %s) and the tree for message %d (%s, %s) are one directory, or one is inside the other: every message of a batch is written to a tree of its own, and nothing was written (docs/SPEC-TABLES.md §3.3, §17.3)", i+1, trees[i].Root, trees[i].Dir, j+1, trees[j].Root, trees[j].Dir)
+			}
+		}
+	}
 	for i, tree := range trees {
 		if err := writeTree(txn, m, insts[i], tree.Root, tree.Dir, oneFile || m.NeedsLabels(tree.Root)); err != nil {
 			return report, err
@@ -210,7 +235,11 @@ func writeTree(txn *atomicfile.Txn, m *tabletext.Model, inst *tabletext.Instance
 		// the disk.
 		oneFile = true
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// the transaction's directory: one this unpack made is removed again if
+	// the unpack is refused or fails. Spelled clean, as it is made, so a
+	// dotted spelling never makes a directory on the way to it.
+	dir = filepath.Clean(dir)
+	if err := txn.MkdirAll(dir); err != nil {
 		return err
 	}
 	view, err := txn.OpenRoot(dir)

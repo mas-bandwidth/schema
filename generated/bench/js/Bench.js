@@ -88,7 +88,7 @@ export class BenchPacket {
     this.y = 0;
     this.z = 0;
     this.big = 0n;
-    this.blob = new Uint8Array(17);
+    this.blob = new globalThis.Uint8Array(17);
   }
 }
 
@@ -130,21 +130,21 @@ export function ZeroBenchPacket(value) {
 }
 
 export function WriteBenchPacket(stream, value) {
-  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.a >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 65535) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.c) || value.c < -1000000 || value.c > 1000000) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < -1000000 || value.c > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.c >>> 0) - (-1000000 >>> 0)) >>> 0;
@@ -167,21 +167,21 @@ export function WriteBenchPacket(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (typeof value.x !== "number" || !Number.isFinite(Math.fround(value.x))) {
+  if (typeof value.x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.x))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.y !== "number" || !Number.isFinite(Math.fround(value.y))) {
+  if (typeof value.y !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.y))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.z !== "number" || !Number.isFinite(Math.fround(value.z))) {
+  if (typeof value.z !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.z))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.z;
@@ -308,70 +308,70 @@ export function ZeroBenchInts(value) {
 }
 
 export function WriteBenchInts(stream, value) {
-  if (!Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
+  if (!globalThis.Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.f0 >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.f1) || value.f1 < 0 || value.f1 > 65535) {
+  if (!globalThis.Number.isInteger(value.f1) || value.f1 < 0 || value.f1 > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f1;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.f2) || value.f2 < -1000000 || value.f2 > 1000000) {
+  if (!globalThis.Number.isInteger(value.f2) || value.f2 < -1000000 || value.f2 > 1000000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.f2 >>> 0) - (-1000000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.f3) || value.f3 < 0 || value.f3 > 3) {
+  if (!globalThis.Number.isInteger(value.f3) || value.f3 < 0 || value.f3 > 3) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f3;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.f4) || value.f4 < -15 || value.f4 > 15) {
+  if (!globalThis.Number.isInteger(value.f4) || value.f4 < -15 || value.f4 > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.f4 >>> 0) - (-15 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.f5) || value.f5 < 0 || value.f5 > 1000) {
+  if (!globalThis.Number.isInteger(value.f5) || value.f5 < 0 || value.f5 > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f5;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.f6) || value.f6 < -2048 || value.f6 > 2047) {
+  if (!globalThis.Number.isInteger(value.f6) || value.f6 < -2048 || value.f6 > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.f6 >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.f7) || value.f7 < 0 || value.f7 > 255) {
+  if (!globalThis.Number.isInteger(value.f7) || value.f7 < 0 || value.f7 > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.f8) || value.f8 < -600000 || value.f8 > 600000) {
+  if (!globalThis.Number.isInteger(value.f8) || value.f8 < -600000 || value.f8 > 600000) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.f8 >>> 0) - (-600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.f9) || value.f9 < 0 || value.f9 > 100) {
+  if (!globalThis.Number.isInteger(value.f9) || value.f9 < 0 || value.f9 > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f9;
@@ -543,7 +543,7 @@ export function ReadBenchBits(stream, value, nested) {
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const MixedWeapon = Object.freeze({
+export const MixedWeapon = globalThis.Object.freeze({
   None: 0,
   Fists: 1,
   Pistol: 2,
@@ -734,21 +734,21 @@ export function WriteMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) {
+  if (!globalThis.Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.posX >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.posY) || value.posY < -16383 || value.posY > 16383) {
+  if (!globalThis.Number.isInteger(value.posY) || value.posY < -16383 || value.posY > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.posY >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) {
+  if (!globalThis.Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.posZ >>> 0) - (-16383 >>> 0)) >>> 0;
@@ -763,35 +763,35 @@ export function WriteMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  if (!Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) {
+  if (!globalThis.Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.velX >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.velY) || value.velY < -2048 || value.velY > 2047) {
+  if (!globalThis.Number.isInteger(value.velY) || value.velY < -2048 || value.velY > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.velY >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.velZ) || value.velZ < -2048 || value.velZ > 2047) {
+  if (!globalThis.Number.isInteger(value.velZ) || value.velZ < -2048 || value.velZ > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.velZ >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.health) || value.health < 0 || value.health > 1000) {
+  if (!globalThis.Number.isInteger(value.health) || value.health < 0 || value.health > 1000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.weapon;
@@ -799,11 +799,11 @@ export function WriteMixedEntity(stream, value) {
     return false;
   }
   {
-    const flagsValue = BigInt.asUintN(64, value.damage);
+    const flagsValue = globalThis.BigInt.asUintN(64, value.damage);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
       return false;
     }
-    NUMBER_SCRATCH.value = Number(flagsValue);
+    NUMBER_SCRATCH.value = globalThis.Number(flagsValue);
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
     }
@@ -867,7 +867,7 @@ export function ReadMixedEntity(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.damage = BigInt(NUMBER_SCRATCH.value);
+  value.damage = globalThis.BigInt(NUMBER_SCRATCH.value);
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -909,7 +909,7 @@ export function WriteMixedStat(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) {
+  if (!globalThis.Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.delta >>> 0) - (-512 >>> 0)) >>> 0;
@@ -967,14 +967,14 @@ export function WriteMixedHitEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) {
+  if (!globalThis.Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) {
     return false;
   }
   NUMBER_SCRATCH.value = value.damage;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) {
+  if (!globalThis.Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) {
     return false;
   }
   NUMBER_SCRATCH.value = value.hitKind;
@@ -1034,7 +1034,7 @@ export function ZeroMixedChatEvent(value) {
 }
 
 export function WriteMixedChatEvent(stream, value) {
-  if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
+  if (!globalThis.Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return false;
   }
   NUMBER_SCRATCH.value = value.channel;
@@ -1090,7 +1090,7 @@ export function WriteMixedPickupEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) {
+  if (!globalThis.Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.amount;
@@ -1113,7 +1113,7 @@ export function ReadMixedPickupEvent(stream, value, nested) {
 }
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const MixedEventType = Object.freeze({
+export const MixedEventType = globalThis.Object.freeze({
   None: 0,
   Hit: 1,
   Chat: 2,
@@ -1164,7 +1164,7 @@ export function ZeroMixedEvent(value) {
 }
 
 export function WriteMixedEvent(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 3) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 3) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -1222,15 +1222,15 @@ export class BenchMixed {
     this.worldTime = 0n; // wire [-1000000000000, 1000000000000]
     this.frameTick = 0n;
     this.serverTime = 0; // wire [0, 65535]
-    this.entities = Array.from({ length: 8 }, () => new MixedEntity());
+    this.entities = globalThis.Array.from({ length: 8 }, () => new MixedEntity());
     this.entitiesCount = 1;
-    this.stats = Array.from({ length: 80 }, () => new MixedStat());
+    this.stats = globalThis.Array.from({ length: 80 }, () => new MixedStat());
     this.statsCount = 0;
     this.gameEvent = new MixedEvent();
-    this.loadout = new Uint8Array(4);
-    this.playerName = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    this.loadout = new globalThis.Uint8Array(4);
+    this.playerName = new globalThis.Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
     this.playerNameLength = 0;
-    this.payload = new Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    this.payload = new globalThis.Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
     this.payloadLength = 0;
     this.aimX = 0; // compressed float [-1.0, 1.0] @ 0.01
     this.aimY = 0; // compressed float [-1.0, 1.0] @ 0.01
@@ -1341,7 +1341,7 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) {
+  if (!globalThis.Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ackSequence;
@@ -1359,7 +1359,7 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.clientId;
@@ -1369,14 +1369,14 @@ export function WriteBenchMixed(stream, value) {
   if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.worldTime - -1000000000000n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.worldTime - -1000000000000n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 41)) {
     return false;
   }
@@ -1388,7 +1388,7 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 24, 8, 0, 65535)) {
     return false;
   }
-  if (!Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = ((value.entitiesCount >>> 0) - (1 >>> 0)) >>> 0;
@@ -1400,7 +1400,7 @@ export function WriteBenchMixed(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.statsCount) || value.statsCount < 0 || value.statsCount > 80) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.statsCount) || value.statsCount < 0 || value.statsCount > 80) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.statsCount;
@@ -1416,7 +1416,7 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
-    if (!Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
       return false;
     }
     NUMBER_SCRATCH.value = value.loadout[i];
@@ -1424,7 +1424,7 @@ export function WriteBenchMixed(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.playerNameLength;
@@ -1437,7 +1437,7 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBytes(value.playerName.subarray(0, value.playerNameLength))) {
     return false;
   }
-  if (!Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.payloadLength;
@@ -1448,8 +1448,8 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.aimX);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+    const x = globalThis.Math.fround(value.aimX);
+    if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -1458,8 +1458,8 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.aimY);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+    const x = globalThis.Math.fround(value.aimY);
+    if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -1468,8 +1468,8 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
-    const x = Math.fround(value.aimZ);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
+    const x = globalThis.Math.fround(value.aimZ);
+    if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
     }
   }
@@ -1477,14 +1477,14 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  if (typeof value.recoil !== "number" || !Number.isFinite(Math.fround(value.recoil))) {
+  if (typeof value.recoil !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.recoil))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.recoil;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.drift !== "number" || !Number.isFinite(value.drift)) {
+  if (typeof value.drift !== "number" || !globalThis.Number.isFinite(value.drift)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.drift;
@@ -1524,14 +1524,14 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) {
+  if (!globalThis.Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.extra;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 15) {
+  if (!globalThis.Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = value.idleTicks;

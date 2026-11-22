@@ -415,6 +415,9 @@ recursive fn cook_value(c: CookCtx&, s: i64, d: const FieldDesc&, col: const Coo
         // A COOKED FLOAT IS FINITE (§3.3): NaN and infinity refuse
         if d.is_f32 && (bits & 0x7F800000) == 0x7F800000 { return cook_refuse(c); }
         if !d.is_f32 && (bits & 0x7FF0000000000000) == 0x7FF0000000000000 { return cook_refuse(c); }
+        // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (SPEC-TABLES §3.3, ruling
+        // fixed-compressed-negzero); a plain float's rides bit-exact
+        if d.frange && (bits == 0x80000000 && d.is_f32 || bits == 0x8000000000000000 && !d.is_f32) { bits = 0; }
         cook_put_at(c, at, bits, col.w);
         return true;
     }

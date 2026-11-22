@@ -267,6 +267,9 @@ type Txn struct {
 	made     []made // directories staging created, outermost first
 	done     bool
 	distinct bool
+	// published: every change was published, so the directories made are
+	// the commit's and stay
+	published bool
 }
 
 // Distinct makes every write of t a file of its own: two writes that reach
@@ -386,9 +389,28 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 	return t.Commit()
 }
 
-// Close ends a transaction that will not commit, releasing what it holds. It
-// is safe after Commit.
+// MkdirAll makes the directory dir (a plain path) and every missing one on
+// the way to it now, for a caller that has to read or compare it before the
+// commit. Each directory it makes is the transaction's: unless every change
+// is published, it is removed again when the transaction ends, if it is
+// empty, so a command refused or failed after this call leaves no directory
+// it made. A directory that holds an entry is never removed.
+func (t *Txn) MkdirAll(dir string) error {
+	if t.done {
+		return errors.New("atomicfile: the transaction has already ended")
+	}
+	return t.mkdirs(OS().faulted(), filepath.Clean(dir))
+}
+
+// Close ends a transaction that will not commit, releasing what it holds and
+// removing the empty directories it made. It is safe after Commit.
 func (t *Txn) Close() {
+	if !t.published {
+		for _, m := range slices.Backward(t.made) {
+			_ = m.f.Remove(m.name) // fails, and keeps it, unless it is empty
+		}
+		t.made = nil
+	}
 	for _, r := range t.roots {
 		_ = r.Close()
 	}
@@ -724,6 +746,7 @@ func (t *Txn) Commit() error {
 		if err := c.f.Rename(c.next, c.file); err != nil {
 			return unchanged(c, err)
 		}
+		t.published = true
 		return nil
 	}
 
@@ -772,6 +795,7 @@ func (t *Txn) Commit() error {
 		return fmt.Errorf("%w; nothing was changed (every entry already moved was put back as it was)", plain(c, err))
 	}
 
+	t.published = true
 	var left []string
 	for _, c := range steps {
 		if c.aside {
