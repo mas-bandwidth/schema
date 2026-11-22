@@ -3473,6 +3473,7 @@ public final class BenchMixedVariable {
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
         assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
+        v.entities.clear();
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }
