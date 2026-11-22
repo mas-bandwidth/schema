@@ -16,6 +16,8 @@
 // copies of it.
 package ir
 
+import "slices"
+
 // WireForm is one row of the registry: the byte, the form's name, whether the
 // BYTE is planned rather than live, and the section that defines the form.
 type WireForm struct {
@@ -29,14 +31,17 @@ type WireForm struct {
 	Where   string // the section of docs/SPEC-TABLES.md that defines it
 }
 
-// WireForms IS THE REGISTRY (docs/SPEC-TABLES.md §3, §3.4). Nothing else in
+// wireForms IS THE REGISTRY (docs/SPEC-TABLES.md §3, §3.4). Nothing else in
 // this tree assigns a form byte a meaning, and a value absent from this table
 // is a value no form defines — which is what the unknown-form negative control
 // plants.
 //
 // Byte `0` is never assigned, so that a zero-filled buffer handed to a reader
 // is a refusal by name and never a form.
-var WireForms = []WireForm{
+//
+// It is unexported so that no importer can change what [WireFormOf] and
+// [FileLine] answer; [WireForms] is the copy a client enumerates.
+var wireForms = []WireForm{
 	{Byte: 0, Name: "never assigned", Where: "§3"},
 	{Byte: 1, Name: "the variable form", Where: "§3"},
 	{Byte: 2, Name: "the message form", Where: "§3.3"},
@@ -45,11 +50,16 @@ var WireForms = []WireForm{
 	{Byte: 5, Name: "the block form", Planned: true, Where: "§19"},
 }
 
+// WireForms enumerates the registry's rows in byte order (docs/SPEC-TABLES.md
+// §3). It is a COPY of the registry: editing it changes nothing [WireFormOf],
+// [FileLine] or any reader answers.
+var WireForms = slices.Clone(wireForms)
+
 // WireFormOf answers the registry row for a byte, and whether the registry
 // assigns it at all. Byte `0` HAS a row and is still not a form: its row says
 // so, and [FileLine] refuses it by name like any unassigned value.
 func WireFormOf(b uint8) (WireForm, bool) {
-	for _, f := range WireForms {
+	for _, f := range wireForms {
 		if f.Byte == b {
 			return f, true
 		}

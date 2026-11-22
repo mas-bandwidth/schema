@@ -148,7 +148,7 @@ _M.ReadProbeHeader <- function(stream, value) {
 _M.WriteProbeHeader <- function(stream, value) {
   _h.value = 171;
   if (!stream.serializeBits(_h, 8)) return false; // const(171, 8)
-  if (typeof value.Version != "integer") return false;
+  if (typeof value.Version != "integer" || (value.Version >>> 3) != 0) return false;
   _h.value = value.Version;
   if (!stream.serializeBits(_h, 3)) return false;
   _h.value = 0;
@@ -204,10 +204,10 @@ _M.ReadProbeBits <- function(stream, value) {
 
 // WriteProbeBits writes value in declared order; false on a refused value.
 _M.WriteProbeBits <- function(stream, value) {
-  if (typeof value.Small != "integer") return false;
+  if (typeof value.Small != "integer" || (value.Small >>> 9) != 0) return false;
   _h.value = value.Small;
   if (!stream.serializeBits(_h, 9)) return false;
-  if (typeof value.Boundary != "integer") return false;
+  if (typeof value.Boundary != "integer" || (value.Boundary >>> 33) != 0) return false;
   _h.value = value.Boundary;
   if (!stream.serializeBits64(_h, 33)) return false;
   if (typeof value.Wide != "integer") return false;
@@ -972,13 +972,13 @@ _M.WriteTestData <- function(stream, value) {
   if (!stream.serializeInt(_h, -100, 100)) return false;
   _h.value = value.C;
   if (!stream.serializeInt(_h, -100, 150)) return false;
-  if (typeof value.D != "integer") return false;
+  if (typeof value.D != "integer" || (value.D >>> 8) != 0) return false;
   _h.value = value.D;
   if (!stream.serializeBits(_h, 8)) return false;
-  if (typeof value.E != "integer") return false;
+  if (typeof value.E != "integer" || (value.E >>> 8) != 0) return false;
   _h.value = value.E;
   if (!stream.serializeBits(_h, 8)) return false;
-  if (typeof value.F != "integer") return false;
+  if (typeof value.F != "integer" || (value.F >>> 8) != 0) return false;
   _h.value = value.F;
   if (!stream.serializeBits(_h, 8)) return false;
   _h.value = value.G;

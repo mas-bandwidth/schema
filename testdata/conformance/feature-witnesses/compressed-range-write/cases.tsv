@@ -1,0 +1,34 @@
+# THE COMPRESSED-FLOAT RANGE WRITE CORPUS (docs/SPEC-TABLES.md §3.3, §3.4):
+# a compressed float's declared [min, max] is the writer's contract, and the
+# fixed-form save refuses a value outside it before it writes a byte (the Go
+# reference engine answers invalid_value; a leg whose write-side checks refuse
+# in every build refuses by its own spelling of the same verdict). A value
+# inside it, the bounds included, is written. Probe.schema is the unit.
+#
+# Each row: load base.json, then set <path> to <value> IN THE NATIVE VALUE,
+# after the load, so no reader clamps or refuses it first; save the fixed form
+# of <root>. <expect> is `refused`, or the stem of the bytes owed,
+# <expect>.fixed.bin, which internal/tablewire's
+# TestCompressedRangeWriteCorpus pins as the Go reference engine's encoding of
+# that same value.
+#
+# The plain row is the CONTROL: p declares no range, so a value no compressed
+# field admits is written, and a writer that range-checked every float fails it.
+#
+# A path is a field, `field[index]` for an array element, `field[Variant]` for
+# an enum-keyed slot, or `field.arm` for a union's set arm.
+#
+# case	root	path	value	expect
+leaf_high	Fix	a	0.5	refused
+leaf_low	Fix	a	-0.01	refused
+leaf_max	Fix	a	0.1	leaf-max
+leaf_min	Fix	a	0	leaf-min
+array_element_high	Fix	xs[1]	0.25	refused
+array_element_in	Fix	xs[1]	0.09	xs-in
+counted_element_high	Fix	ys[1]	0.3	refused
+counted_element_in	Fix	ys[1]	0.07	ys-in
+keyed_slot_high	Fix	ks[High]	0.2	refused
+keyed_slot_in	Fix	ks[High]	0.08	ks-in
+union_arm_high	Fix	pick.v	0.5	refused
+union_arm_in	Fix	pick.v	0.06	pick-in
+plain_control	Fix	p	5	p-big

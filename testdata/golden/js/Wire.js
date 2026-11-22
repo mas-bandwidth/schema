@@ -203,6 +203,9 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
     return false;
   }
+  if (!globalThis.Number.isInteger(value.version) || value.version < 0 || value.version > 7) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.version;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -286,12 +289,21 @@ export function ZeroProbeBits(value) {
 }
 
 export function WriteProbeBits(stream, value) {
+  if (!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.small;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
+  if (typeof value.boundary !== "bigint" || value.boundary < 0n || value.boundary > 8589934591n) { // a bits(N) value must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.boundary;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 33)) {
+    return false;
+  }
+  if (typeof value.wide !== "bigint" || value.wide < 0n || value.wide > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.wide;
@@ -1307,12 +1319,21 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.d) || value.d < 0 || value.d > 255) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.d;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.e) || value.e < 0 || value.e > 255) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.e;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.f) || value.f < 0 || value.f > 255) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.f;
