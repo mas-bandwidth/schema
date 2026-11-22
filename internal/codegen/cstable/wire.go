@@ -209,7 +209,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			}
 			g.pf("        scoped Span<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long nChild_%d = 0;\n", i)
@@ -228,7 +228,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 				g.pf("    scoped Span<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, elemCache_%d, out long payload_%d);\n", i, i, i)
@@ -276,7 +276,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -301,7 +301,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 				g.pf("    scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -1028,7 +1028,7 @@ public static partial class TableWire
                 if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                 {
                     int c = Count(value, f);
-                    int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -1072,7 +1072,7 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+            w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
     }
@@ -1127,7 +1127,7 @@ public static partial class TableWire
             if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
             {
                 int c = Count(value, f);
-                int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -1332,7 +1332,7 @@ public static partial class TableWire
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -1516,7 +1516,7 @@ public static partial class TableWire
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -1600,7 +1600,7 @@ public static partial class TableWire
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;

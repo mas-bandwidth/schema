@@ -879,7 +879,7 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 			typ = f.MapEntry.Name
 			class = true
 		}
-		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
+		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, global::System.Math.Max(n, global::System.Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
 		if class {
 			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new global::%s.%s(); } }", name, name, capitalize(g.unit.Package), typ)
 		}
