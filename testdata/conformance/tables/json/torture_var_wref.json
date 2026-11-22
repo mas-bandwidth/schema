@@ -1,0 +1,31 @@
+{
+  "raw": "AQID",
+  "opt_arr": [
+    1,
+    2
+  ],
+  "arm_bits": {
+    "a_bits": 100
+  },
+  "arm_range": {
+    "a_range": 5
+  },
+  "arm_str": {
+    "a_str": "ok"
+  },
+  "arm_arr": {
+    "a_arr": [
+      7,
+      8
+    ]
+  },
+  "arm_raw": {
+    "a_raw": "CQo="
+  },
+  "chan_lim": {
+    "Alpha": 10,
+    "Beta": 20,
+    "Gamma": 30
+  },
+  "phase": "Next"
+}

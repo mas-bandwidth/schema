@@ -1668,6 +1668,8 @@ instance torture_cook_empty         cooktorture     TortureCook      testdata/co
 instance torture_cook_extremes      cooktorture     TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin
 instance torture_fixed_wref         cooktorture     TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin
 instance torture_fixed_wref_str     cooktorture     TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin
+instance torture_var_wref           cooktorture     TortureVarWref   testdata/conformance/tables/wire/torture_var_wref.bin
+instance torture_fixed_min          cooktorture     TortureFixedMin  testdata/conformance/tables/wire/torture_fixed_min.bin
 instance torture_wide_cook          cooktorturewide TortureWideCook  testdata/conformance/tables/wire/torture_wide_cook.bin
 instance torture_wide_cook_extremes cooktorturewide TortureWideCook  testdata/conformance/tables/wire/torture_wide_cook_extremes.bin
 
@@ -1871,6 +1873,42 @@ write-refusal sfv_opt_bits_wide    cooktorture TortureCook testdata/conformance/
 write-refusal sfv_opt_bits_ok      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin opt_bits                 int 137438953471  wrote
 write-refusal sfv_elem_bits_wide   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_bits[0].v            int 137438953472  refused
 write-refusal sfv_elem_bits_ok     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_bits[0].v            int 137438953471  wrote
+
+# MORE SILENT-FAILURE ROWS (docs/silent-failure-audit-1122.md; docs/SPEC.md 5.1):
+# the cooktorture roots TortureVarWref (variable) and TortureFixedMin (fixed)
+# carry the shapes these rules need. SF-09: a plain bytes(4). SF-13: an
+# optional [..3]int32, an arm [..3]int32 and an arm bytes(4). SF-14: a bits(13)
+# arm, a ranged int32 arm and a string(8) arm, each a union field of the root.
+# SF-15: a [Channel]int32 slot ranged [0, 50]. SF-26 (SPEC-TABLES 2.15 WRITE):
+# Phase.Old is deprecated, ordinal 2, refused on write; Next, ordinal 3, is
+# written. SF-21: FixedSave refuses a [2..4] count below its Min. Each refusal
+# sits beside its lawful twin, and the Go engine answers every row.
+write-refusal       sfw_raw_long          cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin raw               length  5     refused
+write-refusal       sfw_raw_ok            cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin raw               length  4     wrote
+write-refusal       sfw_opt_arr_long      cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin opt_arr           count   4     refused
+write-refusal       sfw_opt_arr_ok        cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin opt_arr           count   3     wrote
+write-refusal       sfw_arm_arr_long      cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_arr.a_arr     count   4     refused
+write-refusal       sfw_arm_arr_ok        cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_arr.a_arr     count   3     wrote
+write-refusal       sfw_arm_raw_long      cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_raw.a_raw     length  5     refused
+write-refusal       sfw_arm_raw_ok        cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_raw.a_raw     length  4     wrote
+write-refusal       sfw_arm_bits_wide     cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_bits.a_bits   int     8192  refused
+write-refusal       sfw_arm_bits_ok       cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_bits.a_bits   int     8191  wrote
+write-refusal       sfw_arm_range_high    cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_range.a_range int     11    refused
+write-refusal       sfw_arm_range_max     cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_range.a_range int     10    wrote
+write-refusal       sfw_arm_range_low     cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_range.a_range int     -1    refused
+write-refusal       sfw_arm_range_min     cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_range.a_range int     0     wrote
+write-refusal       sfw_arm_str_long      cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_str.a_str     length  9     refused
+write-refusal       sfw_arm_str_ok        cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin arm_str.a_str     length  8     wrote
+write-refusal       sfw_slot_high         cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin chan_lim[1]       int     51    refused
+write-refusal       sfw_slot_max          cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin chan_lim[1]       int     50    wrote
+write-refusal       sfw_slot_low          cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin chan_lim[1]       int     -1    refused
+write-refusal       sfw_slot_min          cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin chan_lim[1]       int     0     wrote
+write-refusal       sfw_enum_deprecated   cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin phase             ordinal 2     refused
+write-refusal       sfw_enum_next         cooktorture TortureVarWref  testdata/conformance/tables/wire/torture_var_wref.bin phase             ordinal 3     wrote
+write-refusal-fixed sffw_count_below_min  cooktorture TortureFixedMin testdata/conformance/tables/wire/torture_fixed_min.bin few               count   1     refused
+write-refusal-fixed sffw_count_at_min     cooktorture TortureFixedMin testdata/conformance/tables/wire/torture_fixed_min.bin few               count   2     wrote
+write-refusal-fixed sffw_enum_deprecated  cooktorture TortureFixedMin testdata/conformance/tables/wire/torture_fixed_min.bin phase             ordinal 2     refused
+write-refusal-fixed sffw_enum_next        cooktorture TortureFixedMin testdata/conformance/tables/wire/torture_fixed_min.bin phase             ordinal 3     wrote
 
 # A FIXED BOUND GROWN SINCE THE WRITER (docs/SPEC-TABLES.md §21.1, "a grown
 # bound"): `[N]T` written by a build whose bound was smaller reads as the

@@ -208,3 +208,48 @@ fixed table TortureFixedWref
     bits_val    bits(6)
     u_val       BoundUnion
 }
+
+// THE SILENT-FAILURE ROOTS (docs/silent-failure-audit-1122.md; docs/SPEC.md
+// 5.1): the shapes the shared write-refusal rows `sfw_*` need and no other
+// registered unit declared on a root every leg already loads. TortureVarWref
+// is a VARIABLE root: a plain bytes(N) (SF-09); an optional counted array, an
+// arm array and an arm bytes(N) (SF-13); a bits arm, a ranged arm and a
+// string(N) arm, each a union field of the root itself so every dynamic walker
+// reaches it (SF-14); a keyed-array slot with a range
+// (SF-15); and an enum with a deprecated variant (SF-26). TortureFixedMin is a
+// FIXED root: a counted array with Min 2 (SF-21) and the same enum.
+enum Phase
+{
+    Live
+    Old | deprecated
+    Next
+}
+
+union WrefArm
+{
+    a_none
+    a_bits  bits(13)
+    a_range int32 | min = 0, max = 10
+    a_str   string(8)
+    a_arr   [..3]int32
+    a_raw   bytes(4)
+}
+
+table TortureVarWref
+{
+    raw       bytes(4)
+    opt_arr   ?[..3]int32
+    arm_bits  WrefArm
+    arm_range WrefArm
+    arm_str   WrefArm
+    arm_arr   WrefArm
+    arm_raw   WrefArm
+    chan_lim  [Channel]int32 | min = 0, max = 50
+    phase     Phase
+}
+
+fixed table TortureFixedMin
+{
+    few   [2..4]int32
+    phase Phase
+}
