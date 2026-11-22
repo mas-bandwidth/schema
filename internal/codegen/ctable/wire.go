@@ -791,7 +791,7 @@ func (g *tableGen) writeCountBound(f *ir.Field, expr, ind string) {
 // elements (docs/SPEC.md §4.2, ir.Field.BornCount), and the writers elide it
 // exactly there, as internal/tablewire's encodeArray and messageElides do.
 func countedBirth(f *ir.Field) bool {
-	return f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required && !f.Type.Optional
+	return f.ElidesAtBirth()
 }
 
 // countedRides emits the riding test of a counted array and returns its

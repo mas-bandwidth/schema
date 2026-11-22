@@ -451,7 +451,7 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 		return "keyedPresent > 0"
 	}
 	if f.Array == ir.ArrayCounted {
-		if f.BornCount() > 0 && !f.Required {
+		if f.ElidesAtBirth() {
 			elem := messageElementField(f)
 			g.pf("%svar arrayRides = %sCount != %d;\n", ind, expr, f.BornCount())
 			g.pf("%sif (!arrayRides) {\n", ind)

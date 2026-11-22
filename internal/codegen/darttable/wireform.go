@@ -2763,7 +2763,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2784,6 +2784,14 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
 	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the engine's
+	// encodeArray `allBirth`): M element bodies that are each their terminator
+	// alone (a retained tail is not) roll the field's ids back, unwritten.
+	born := wireBornElides(f)
+	if born {
+		g.pf("%s\tfinal bornMark = w.state.mark();\n", ind)
+		g.pf("%s\tvar born = %s.length == %d;\n", ind, expr, wireBornCount(f))
+	}
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2793,13 +2801,26 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 	g.pf("%s\t\tfinal b = s.sub();\n", ind)
 	g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
 	g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
+	if born {
+		g.pf("%s\t\tif (b.buf.length > 1) born = false;\n", ind)
+	}
 	g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
 	g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
 	g.pf("%s\t}\n", ind)
-	g.pf("%s\tw.putLeb(ref);\n", ind)
-	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
-	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
-	g.pf("%s\tw.putBytes(s.buf);\n", ind)
+	inner := ind
+	if born {
+		g.pf("%s\tif (born) {\n", ind)
+		g.pf("%s\t\tw.state.rollback(bornMark);\n", ind)
+		g.pf("%s\t} else {\n", ind)
+		inner = ind + "\t"
+	}
+	g.pf("%s\tw.putLeb(ref);\n", inner)
+	g.pf("%s\tw.putByte(%d);\n", inner, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", inner)
+	g.pf("%s\tw.putBytes(s.buf);\n", inner)
+	if born {
+		g.pf("%s\t}\n", ind)
+	}
 	g.pf("%s}\n", ind)
 }
 
@@ -2809,7 +2830,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)

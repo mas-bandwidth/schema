@@ -515,6 +515,17 @@ func (f *Field) BornCount() int64 {
 	return 0
 }
 
+// ElidesAtBirth reports whether a writer leaves the field out when it holds
+// its birth value: a counted [Min..N]T with Min > 0 that is neither required
+// nor optional (docs/SPEC-TABLES.md §22.2). A required field is always
+// written (§2.3) and an optional one rides by presence, so neither elides at
+// Min, and a [..N] array's birth value is the empty array every target
+// already elides by count. It is the one statement of the rule: the writers'
+// elision and the readers' refusal of a stored birth value (§3.3) both ask it.
+func (f *Field) ElidesAtBirth() bool {
+	return f.Array == ArrayCounted && f.ArrayMin > 0 && !f.Required && !f.Type.Optional
+}
+
 type FieldTypeKind int
 
 const (

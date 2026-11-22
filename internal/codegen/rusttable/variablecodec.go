@@ -837,7 +837,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		// encodeArray's allBirth): a [Min..N]T holding exactly Min elements,
 		// each at its default — a table element by a body that is its
 		// terminator alone — is not written, and its ids are rolled back
-		birth := born > 0 && !f.Required && !f.Type.Optional
+		birth := f.ElidesAtBirth()
 		if birth {
 			fmt.Fprintf(b, "%slet mark = ids.mark();\n", inner)
 			fmt.Fprintf(b, "%slet mut birth = %s.len() == %d;\n", inner, x, born)

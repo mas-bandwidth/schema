@@ -41,7 +41,11 @@ public final class BenchMixedVariable {
         public int extra = 0;
         public int idleTicks = 0;
 
-        public Value() {}
+        public Value() {
+            for (int i = 0; i < 1; i++) {
+                entities.add(new MixedEntityVariable.Value());
+            }
+        }
     }
 
     public static final long TYPE_ID = 0xeb80cfd516eb3d5cL;
@@ -1458,7 +1462,13 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        if (!v.entities.isEmpty()) {
+        boolean born_entities = v.entities.size() == 1;
+        for (int i = 0; born_entities && i < 1; i++) {
+            if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
+                born_entities = false;
+            }
+        }
+        if (!v.entities.isEmpty() && !born_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -2908,6 +2918,9 @@ public final class BenchMixedVariable {
                         v.entities = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
+                        v.entities.clear();
+                    }
+                    if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 8;
@@ -3460,6 +3473,7 @@ public final class BenchMixedVariable {
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
         assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
+        v.entities.clear();
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }
