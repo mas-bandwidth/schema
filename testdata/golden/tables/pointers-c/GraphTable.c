@@ -8,11 +8,11 @@
    <name>_from_json or <name>_to_json; a project that reads neither the
    descriptors nor a text still gets the whole wire from the header. */
 
-#if !defined(_WIN32) && !defined(__APPLE__) && !defined(GRAPHDEMO__POSIX_C_SOURCE)
-#define GRAPHDEMO__POSIX_C_SOURCE 200809L /* uselocale, newlocale: numbers convert in the "C" locale */
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L /* uselocale, newlocale: numbers convert in the "C" locale */
 #endif
-#if defined(__APPLE__) && !defined(GRAPHDEMO__DARWIN_C_SOURCE)
-#define GRAPHDEMO__DARWIN_C_SOURCE 1
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
 #endif
 
 #include "GraphTable.h"
