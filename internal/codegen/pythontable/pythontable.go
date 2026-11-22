@@ -2282,17 +2282,14 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// Fixed files and variable union arrays start at their declared
-		// minimum. Other variable counted arrays preserve their existing
-		// absent-field reset. Every constructed element is distinct.
-		count := int64(0)
-		if fixed {
-			count = f.BornCount()
-		}
+		// A counted array is born at its declared minimum, in a fixed file
+		// and a variable one alike: the writer elides it at that count
+		// (ElidesAtBirth, docs/SPEC-TABLES.md section 3.3), so an absent field
+		// must read back as the count the writer would elide. Every
+		// constructed element is distinct.
+		count := f.BornCount()
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
-		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
-			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"
