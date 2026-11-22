@@ -469,6 +469,11 @@ public struct TableReport
     public int Reason;
     public string ReasonText;
     public string NonFiniteField;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on Reason BuildVersionMismatch, the peer's announced build version and
+    // this unit's own. Zero on every other path.
+    public ulong BuildVersionRemote;
+    public ulong BuildVersionOwn;
     public ulong LayoutHash;
 
     public const int Accepted = 0, WireDamaged = 1, KindMismatch = 2, OutOfRange = 3, MissingRequired = 4,
@@ -476,7 +481,7 @@ public struct TableReport
         Truncated = 10, PreviousForm = 11, ReservedNotZero = 12, LayoutMalformed = 13, LayoutUnknown = 14,
         LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18,
         CountOverBound = 19, LengthOverBound = 20, TextIllFormed = 21, IntegrityMismatch = 22,
-        NoVocabulary = 23, SecondAnnouncement = 24, VocabularyTooLarge = 25;
+        NoVocabulary = 23, SecondAnnouncement = 24, VocabularyTooLarge = 25, BuildVersionMismatch = 26;
 
     public static string ReasonName(int reason)
     {
@@ -508,6 +513,7 @@ public struct TableReport
             case NoVocabulary: return "no_vocabulary";
             case SecondAnnouncement: return "second_announcement";
             case VocabularyTooLarge: return "vocabulary_too_large";
+            case BuildVersionMismatch: return "build_version_mismatch";
         }
         return "unknown_reason";
     }
@@ -527,6 +533,7 @@ internal sealed class _R
     internal int KindChanged = 0;
     internal int Substituted = 0;
     internal bool Empty = false;
+    public ulong BuildVersionRemote = 0, BuildVersionOwn = 0;
     public ulong LayoutHash = 0;
 }
 
@@ -549,6 +556,7 @@ internal static int _MapReasonCode(_R box)
         if (s == "second_announcement") { return TableReport.SecondAnnouncement; }
         if (s == "vocabulary_too_large") { return TableReport.VocabularyTooLarge; }
         if (s == "truncated") { return TableReport.Truncated; }
+        if (s == "build_version_mismatch") { return TableReport.BuildVersionMismatch; }
         if (s.StartsWith("non_finite_float", StringComparison.Ordinal)) { return TableReport.NonFiniteFloat; }
         if (s.StartsWith("count_over_bound", StringComparison.Ordinal)) { return TableReport.CountOverBound; }
         if (s.StartsWith("length_over_bound", StringComparison.Ordinal)) { return TableReport.LengthOverBound; }
@@ -577,6 +585,8 @@ internal static void _FinishReport(_R box, ref TableReport report, bool ok)
     report.Reason = _MapReasonCode(box);
     report.ReasonText = box.Reason ?? (box.Damaged ? "wire_damaged" : TableReport.ReasonName(report.Reason));
     report.NonFiniteField = box.NonFiniteFloat;
+    report.BuildVersionRemote = box.BuildVersionRemote;
+    report.BuildVersionOwn = box.BuildVersionOwn;
     report.LayoutHash = box.LayoutHash;
 }
 

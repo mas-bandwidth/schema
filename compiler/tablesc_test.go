@@ -435,6 +435,10 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 			// reserved, and internal/check refuses a declaration spelling it
 		case tablenames.Registered(name):
 			// a registered runtime name, refused by the §11 claim
+		case name == "_POSIX_C_SOURCE" || name == "_DARWIN_C_SOURCE":
+			// the feature-test macros the table .c sets before its first
+			// include (uselocale); the qualifier leaves them alone unless a
+			// header declares the name, and then it qualifies that one
 		case name == "PROTOCOL_ID":
 			// the packet emitter's per-unit id, ZQQPKG_PROTOCOL_ID once the
 			// package qualifies it; internal/check claims the spelling for
