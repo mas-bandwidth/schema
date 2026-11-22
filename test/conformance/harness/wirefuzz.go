@@ -592,7 +592,7 @@ func seedMorePopulated(a, b *wireSeed) bool {
 
 // emitBoundedStream emits up to opts.maxMutants mutants deterministically for
 // fast per-language verification:
-//  1. Every pinned hostile vector (preserving --relax-vector invariants).
+//  1. Every pinned hostile vector.
 //  2. Every manifest seed's canonical wire across all live roots.
 //  3. A stateful shrinking-destination & post-refusal reuse sequence
 //     (valid_big -> valid_small -> empty -> bad-form -> half-truncated ->
