@@ -44,9 +44,11 @@ fixed table Msg
 		t.Errorf("tableMessageSkip must refuse a nested element whose skip consumes zero bits:\n%s", skipFn)
 	}
 	loadBody := jsFn(src, "MsgLoadMessageBody")
-	if !strings.Contains(loadBody, "entry.Element.Kind === 0 || entry.Element.Kind === 32") ||
-		!strings.Contains(loadBody, "r.Bits.Offset === before") {
-		t.Errorf("MsgLoadMessageBody must bound zero-width element skips on excess elements:\n%s", loadBody)
+	// a named array walks no surplus at all: a count past this reader's
+	// bound refuses before any element is read (docs/SPEC-TABLES.md §3.3, §4)
+	if !strings.Contains(loadBody, `if (keep > 2) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }`) ||
+		strings.Contains(loadBody, "r.Bits.Offset === before") {
+		t.Errorf("MsgLoadMessageBody must refuse a count past its bound rather than walk surplus elements:\n%s", loadBody)
 	}
 
 	t.Run("node", func(t *testing.T) {

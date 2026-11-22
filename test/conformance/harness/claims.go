@@ -237,7 +237,11 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 		}
 	}
 	for _, md := range m.MessageDrifts {
-		if err := add("message", md.Name, md.Unit, md.Root); err != nil {
+		surface := "message"
+		if md.Prior() {
+			surface = "message-prior"
+		}
+		if err := add(surface, md.Name, md.Unit, md.Root); err != nil {
 			return nil, err
 		}
 	}
