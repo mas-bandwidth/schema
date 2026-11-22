@@ -1,0 +1,20 @@
+// A DECLARATION'S QUALIFICATION ENDS AT THE NEWLINE, A `//` COMMENT, OR THE
+// `{` THAT OPENS ITS BODY (SPEC.md §4.1, §4.2; docs/SPEC-CONFORMANCE.md §8,
+// gap 3). The body may open on the same line as the section, and a one-line
+// body may close there too. Every line below parses.
+package grammarbrace
+
+flags Caps | max = 8 { Jump, Crouch }
+
+fixed table Reading | integrity = "crc32c" {
+    x int32
+}
+
+fixed table Row | forms = "wire" { value int32 }
+
+table Root | forms = "wire,json", integrity = "crc32c" // the section ends at the comment
+{
+    reading Reading
+    row     Row
+    caps    Caps
+}

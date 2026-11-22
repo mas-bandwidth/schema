@@ -910,7 +910,16 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		return
 	}
 	if surface == "wire" && inst.WireRefused {
-		if _, err := os.Stat(answer); err == nil {
+		// THE REFUSAL IS SPELLED `refused` AND A NEWLINE, as on every read
+		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §8 gap
+		// 4); the historical `<case>.absent` file still carries it. Any other
+		// bytes are a value the row forbids.
+		if got, err := os.ReadFile(answer); err == nil {
+			if string(got) == "refused\n" {
+				r.pass++
+				r.mark(e.name, outcomePass)
+				return
+			}
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected wire refusal, got bytes", e.name))
 			r.mark(e.name, outcomeFail)
 			return

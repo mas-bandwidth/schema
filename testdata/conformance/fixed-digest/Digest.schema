@@ -1,0 +1,46 @@
+// THE DEFINITIONS DIGEST, WORKED (docs/SPEC-TABLES.md §3.4, "THE DEFINITIONS
+// DIGEST"; docs/SPEC-CONFORMANCE.md §8, gap 8). One fixed root whose closure
+// emits every row the digest has: C (a counted minimum), R (a ranged integer,
+// a one-sided range filled with the storage bound, a ranged fixed point), D and
+// Q (a compressed float), B (bits), X (fixed point), F (flags with headroom),
+// and the `?` and `e` path segments, a union's `a` segments, a nested table,
+// an enum-keyed array and a field renamed with `was`. vector.txt holds the
+// layout bytes, the digest bytes and the record hash a port computes from
+// this file; compiler/fixed_digest_vector_test.go holds the compiler to them.
+package fixeddigest
+
+enum Mode { Idle, Run, Halt }
+
+flags Caps | max = 12 { Jump, Crouch, Dash }
+
+fixed table Inner
+{
+    level  uint8 | min = 1, max = 9
+    amount fixed(4, 4)
+}
+
+union Pick
+{
+    nothing
+    count  int16 | min = -5, max = 5
+    nested Inner
+}
+
+fixed table Probe
+{
+    hp      int16 | min = 0, max = 100
+    floor   int32 | min = -7
+    speed   float32 | min = 0.0, max = 10.0, resolution = 0.5
+    packed  bits(5)
+    angle   fixed(2, 6) | min = -1, max = 1
+    caps    Caps
+    mode    Mode
+    renamed uint8 | was = "old_name"
+    maybe   ?Inner
+    list    [1..3]Inner
+    keyed   [Mode]uint8 | min = 0, max = 3
+    pick    Pick
+    blob    bytes(4)
+    name    string(8)
+    at      timestamp
+}

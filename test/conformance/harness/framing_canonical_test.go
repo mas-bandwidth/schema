@@ -14,7 +14,14 @@ import (
 var framingNonCanonicalTables = map[string]string{
 	// F7: the vector IS an entry no body references.
 	"frame_unreferenced_entry": "F7: an entry no body references is the vector",
+	// F7: an id first used inside a skipped payload, placed after ids the body
+	// uses later (the Swift spec port's gap 5).
+	"skipped_ids_out_of_order": "F7: an entry out of first-use order is the vector",
 }
+
+// framingOutOfOrderTables are the framingNonCanonicalTables whose one defect
+// is ORDER rather than an unused entry.
+var framingOutOfOrderTables = map[string]bool{"skipped_ids_out_of_order": true}
 
 // TestFramingVectorIdTablesAreCanonical holds every pinned framing vector's id
 // table, the no-writer vectors' included, to FIRST-USE ORDER
@@ -48,8 +55,12 @@ func TestFramingVectorIdTablesAreCanonical(t *testing.T) {
 		}
 		fault := framingTableFault(v, data)
 		if _, purpose := framingNonCanonicalTables[v.name]; purpose {
-			if !strings.HasPrefix(fault, "[unused slots") {
-				t.Errorf("%s: id table %q, want only unused slots", v.name, fault)
+			want := "[unused slots"
+			if framingOutOfOrderTables[v.name] {
+				want = "[byte "
+			}
+			if !strings.HasPrefix(fault, want) || strings.Contains(fault, "unused") != !framingOutOfOrderTables[v.name] {
+				t.Errorf("%s: id table %q, want only its one defect (%s)", v.name, fault, want)
 			}
 			continue
 		}

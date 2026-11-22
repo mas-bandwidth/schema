@@ -1282,6 +1282,10 @@ framing node_table_twice                        graphdemo ListNode testdata/wire
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin        refused -
 framing nested_damage_midway                    tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin             refused -
+# FIRST-USE ORDER COUNTS EVERY REFERENCE IN THE FILE, a skipped payload's
+# included (docs/SPEC-TABLES.md §3; docs/SPEC-CONFORMANCE.md §8, gap 5).
+framing skipped_ids_first_use                   tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin            read    testdata/conformance/tables/framing/cfg_silver.json
+framing skipped_ids_out_of_order                tblr1 Cfg testdata/wire/tables/framing/skipped_ids_out_of_order.bin         refused -
 # T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
 # 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
 # that a reader must load in linear time, are legal.
@@ -1524,6 +1528,8 @@ write-refusal wref_enum            tabledemo LoadoutConfig testdata/conformance/
 write-refusal wref_enum_ok         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade                  ordinal 3   wrote
 write-refusal wref_union_tag       tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     3   refused
 write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     2   wrote
+# tag 0 is None, arms count from 1 (FORMAT.md; docs/SPEC-CONFORMANCE.md §8, gap 6)
+write-refusal wref_union_tag_none  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     0   wrote
 write-refusal wref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan refused
 write-refusal wref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf refused
 
@@ -1556,6 +1562,7 @@ write-refusal-fixed fref_enum            tabledemo LoadoutConfig testdata/confor
 write-refusal-fixed fref_enum_ok         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade                  ordinal 3                wrote
 write-refusal-fixed fref_union_tag       tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     3                refused
 write-refusal-fixed fref_union_tag_ok    tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     2                wrote
+write-refusal-fixed fref_union_tag_none  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     0                wrote
 write-refusal-fixed fref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan              refused
 write-refusal-fixed fref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf              refused
 write-refusal-fixed fref_text_illformed  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    version_note           bytes   61FF62           refused
@@ -1836,6 +1843,7 @@ write-refusal-message mref_unionstr_nul       varevo3_conn EvoMsg        testdat
 write-refusal-message mref_unionstr_ok        varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   61C3A962     wrote
 write-refusal-message mref_union_tag          varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     5            refused
 write-refusal-message mref_union_tag_ok       varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     1            wrote
+write-refusal-message mref_union_tag_none     varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     0            wrote
 write-refusal-message mref_bytes_length       backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  33           refused
 write-refusal-message mref_bytes_length_ok    backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  32           wrote
 
@@ -1867,6 +1875,7 @@ write-refusal-json jref_fx16_low           scalars     SimState         testdata
 write-refusal-json jref_ufx16_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           speed                                    int     65536001     refused
 write-refusal-json jref_enum               tabledemo   LoadoutConfig    testdata/conformance/tables/wire/loadout_full.bin           grade                                    ordinal 4            refused
 write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].effect                        tag     3            refused
+write-refusal-json jref_union_tag_none     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].effect                        tag     0            wrote
 write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
 write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
 write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused

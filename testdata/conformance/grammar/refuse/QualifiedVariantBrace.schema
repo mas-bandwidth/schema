@@ -1,0 +1,8 @@
+// A QUALIFIED VARIANT ENDS ITS OWN LINE (SPEC.md §4.1): a `}` on the same line
+// as a variant's qualification is refused by name. A FIELD's or a VARIANT's
+// section ends only at the newline or a `//` comment; only a DECLARATION's
+// section also ends at the `{` that opens its body (docs/SPEC-CONFORMANCE.md
+// §8, gap 3).
+package grammarvariant
+
+enum Weapon { Laser | beam }
