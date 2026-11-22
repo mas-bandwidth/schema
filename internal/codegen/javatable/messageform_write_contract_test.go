@@ -2,11 +2,11 @@ package javatable
 
 // TestJavaSaveMessagesWriteContract holds the message-form writer to
 // docs/SPEC.md §5.1's Java `SaveMessages` column over a fixed table carried by
-// the message form: rows 1-2 and 8 refuse under `-ea` through the type's
+// the message form: rows 1-2, 8 and 10 refuse under `-ea` through the type's
 // `checkWrite` predicate, and rows 3-7 keep the refusal they already carry.
 // Every refused value has its lawful twin at the same boundary: the twin saves
 // in both builds and loads back equal through loadMessages. A release build is
-// asked only that rows 1-2 and 8 do not throw, because Java is an assert leg
+// asked only that rows 1-2, 8 and 10 do not throw, because Java is an assert leg
 // and the debug assert is the whole of the write-side mechanism.
 
 import (
@@ -44,12 +44,13 @@ func TestJavaSaveMessagesWriteContract(t *testing.T) {
 		{"row6", 6},
 		{"row7", 7},
 		{"row8", 8},
+		{"row10", 10},
 	}
 	for _, c := range cases {
 		ea := factsEA[c.id]
 		plain := factsPlain[c.id]
 		switch c.row {
-		case 1, 2, 8:
+		case 1, 2, 8, 10:
 			if !ea.threw {
 				t.Errorf("%s: under -ea the message writer did not throw AssertionError (result=%d)", c.id, ea.result)
 			}
@@ -104,8 +105,8 @@ func messageWriteFacts(t *testing.T, out string) map[string]messageWriteFact {
 		}
 		facts[f[1]] = fact
 	}
-	if len(facts) != 8 {
-		t.Fatalf("the driver reported %d rows, want 8:\n%s", len(facts), out)
+	if len(facts) != 9 {
+		t.Fatalf("the driver reported %d rows, want 9:\n%s", len(facts), out)
 	}
 	return facts
 }
@@ -210,6 +211,7 @@ fixed table Root
     mood    Mood
     choice  Choice
     ratio   float32
+    scaled  float32 | min = 0, max = 1, resolution = 0.01
 }
 `
 
@@ -269,7 +271,8 @@ const messageWriteContractDriver = `public final class Driver {
                 if (a.choice.note[i] != b.choice.note[i]) { return false; }
             }
         }
-        return Float.floatToRawIntBits(a.ratio) == Float.floatToRawIntBits(b.ratio);
+        return Float.floatToRawIntBits(a.ratio) == Float.floatToRawIntBits(b.ratio)
+                && Float.floatToRawIntBits(a.scaled) == Float.floatToRawIntBits(b.scaled);
     }
 
     static void setText(RootFixed.Value v, byte[] b) {
@@ -345,6 +348,13 @@ const messageWriteContractDriver = `public final class Driver {
             RootFixed.Value good = new RootFixed.Value();
             setText(good, new byte[] { 'h', (byte) 0xc3, (byte) 0xa9, 'l', 'l', 'o' });
             report("row8", save(bad), good);
+        }
+        {
+            RootFixed.Value bad = new RootFixed.Value();
+            bad.scaled = 1.5f;
+            RootFixed.Value good = new RootFixed.Value();
+            good.scaled = 1.0f;
+            report("row10", save(bad), good);
         }
     }
 }

@@ -408,7 +408,8 @@ func (g *gen) emitBuffers() {
 
 // ---- the UTF-8 content check ----
 
-// utf8Helper is the Schema member a string(N) read calls.
+// utf8Helper is the Schema member a string(N) read calls, and a string(N)
+// write asserts in debug builds (SPEC §5.1 row 8).
 const utf8Helper = "ValidUtf8Text"
 
 // usesText reports whether any packet type of the unit holds a string(N).

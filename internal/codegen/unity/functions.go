@@ -419,6 +419,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			// a temp, so the quantization cannot write back into the caller's value
 			g.sf("%s{\n%s    float compressedValue = %s;\n", ind, ind, name)
+			// SPEC §5.1 row 10: finite and inside [min, max] before quantizing,
+			// a debug assert like every write-side check of the C# row.
+			min32, max32 := formatFloat32(float64(float32(f.FMin))), formatFloat32(float64(float32(f.FMax)))
+			g.writeAssert(ind+"    ",
+				fmt.Sprintf("float.IsFinite(compressedValue) && compressedValue >= %s && compressedValue <= %s", min32, max32),
+				fmt.Sprintf("%s out of range [%s, %s]", name, min32, max32))
 			g.call(ind+"    ", g.compressedCall(f, "compressedValue"), "")
 			g.sf("%s}\n", ind)
 			return
@@ -430,6 +436,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes (SPEC §4.7)
 		length := name + "Length"
 		g.countWrite(length, 0, f.Type.Size, ind)
+		if f.Type.Kind == ir.TString {
+			// SPEC §5.1 row 8: the used bytes hold no zero byte and are well-formed UTF-8
+			g.writeAssert(ind, fmt.Sprintf("%s(%s.AsSpan().Slice(0, %s))", utf8Helper, name, length),
+				fmt.Sprintf("%s holds a zero byte or is not well-formed UTF-8", name))
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan().Slice(0, %s))", g.rv(), name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

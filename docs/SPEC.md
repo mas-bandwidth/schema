@@ -2539,7 +2539,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
-  - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
+  - `SaveMessages`: 1–2, 8 and 10 debug; 3–7 every build
 
   - packet `Write`: 1–8 and 10 debug; 11 debug for an unsigned width whose Java storage is wider (`checkWrite`'s `assert value.<field> <= 2^N−1`); unrepresentable for a signed width and a `byte`-stored one, whose storage is exactly `N` bits
 
