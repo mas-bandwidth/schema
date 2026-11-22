@@ -252,7 +252,7 @@ function checkCase(name, wire, expectOK) {
       failed = true;
     }
   } else {
-    if (!ok && count === 0 && rep.Damaged && !rep.Refused && (values[0].a === 0 || values[0].a === -7) && values[1].a === -7) {
+    if (!ok && count === 0 && rep.Damaged && !rep.Refused && values[0].a === 0 && values[1].a === 0) {
       console.log("PASS " + name);
     } else {
       console.log("FAIL " + name + ": ok=" + ok + " count=" + count + " rep=" + JSON.stringify(rep) + " a0=" + values[0].a + " a1=" + values[1].a);

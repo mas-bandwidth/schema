@@ -409,7 +409,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// the whole body, so it projects straight from the file's view with no\n")
 	g.pf("// intermediate copy, and its results are held equal to the shared path's by\n")
 	g.pf("// test. Answers the records read, or -1 with the reason named in the report.\n")
-	g.pf("export function %sFixedLoad(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
+	g.pf("function %sFixedLoadWalk(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
 	g.pf("  TableFixedResetReport(report);\n")
 	g.pf("  if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }\n")
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -588,6 +588,17 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.widened += stage.widened;\n")
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.mismatch += censusKind;\n")
+	g.pf("  return n;\n}\n\n")
+	// R4: EVERY REFUSAL HANDS BACK NO ROW. The walk above answers -1 for every
+	// refusal and never says which rows it touched, so the exported read resets
+	// every row the caller handed in (the whole array, `capacity` or not: the
+	// array is what was given) to its declared defaults on that answer. A null or
+	// undefined slot has nothing to reset and is left as it is.
+	g.pf("export function %sFixedLoad(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
+	g.pf("  const n = %sFixedLoadWalk(values, capacity, bytes, byteLength, plan, report);\n", st.Name)
+	g.pf("  if (n < 0) {\n")
+	g.pf("    for (let j = 0; j < values.length; j++) { if (values[j] !== null && values[j] !== undefined) { Init%s(values[j]); } }\n", st.Name)
+	g.pf("  }\n")
 	g.pf("  return n;\n}\n\n")
 	g.emitFixedCookExports(st)
 }

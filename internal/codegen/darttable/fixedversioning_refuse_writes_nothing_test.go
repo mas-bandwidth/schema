@@ -10,6 +10,10 @@ import (
 // INVERTED and the header's hash at file+8 untouched, so the header still
 // selects the OLD lineage entry — a COMPILED plan with a NONEMPTY fill list —
 // and §5.3 step 11 refuses by name (`no_layout`) before the prefill can run.
+// R4: every row handed in is at its declared default after the refusal. The
+// eight rows are filled by a lawful read first, so a refusal that leaves them
+// as they were leaves eight dirty rows.
+//
 // Every counter is asserted EXACTLY `== 0`, never `>= 1`: a refusal that is not
 // total moves one, and a `>=` read passes the leak the row exists to catch.
 
@@ -22,6 +26,11 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
   final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);
   final at0 = t.TableFixedLimits.layoutAt + layoutBytes;
   check(data.length - at0 > 8, 'record 0 is too short to forge: ${data.length - at0}');
+  final good = Uint8List.fromList(data);
+  for (var k = 0; k < values.length; k++) {
+    final filled = LOAD(values.sublist(k), 1, good, good.length, plan, t.TableFixedReport());
+    check(filled == 1 && !fresh(values[k]), 'the lawful read fills row $k: $filled');
+  }
   head.setUint64(at0, ~head.getUint64(at0, Endian.little), Endian.little); // the forge
   plan.image.fillRange(0, plan.image.length, 0x5A);
   final n = LOAD(values, values.length, data, data.length, plan, report);
@@ -30,6 +39,9 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
       'a record hash naming no layout owes no_layout, not ${name(report.refused)}');
   check(report.unknown == 0 && report.widened == 0,
       'REFUSE is total: no counter moves: ${why(report)}');
+  for (var k = 0; k < values.length; k++) {
+    check(fresh(values[k]), 'R4: row $k is not at its declared default after the refusal');
+  }
   for (var i = 0; i < plan.image.length; i++) {
     check(plan.image[i] == 0x5A, 'the prefill wrote into the poisoned image at $i: ${plan.image[i]}');
   }`

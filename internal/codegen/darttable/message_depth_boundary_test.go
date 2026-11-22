@@ -244,7 +244,7 @@ func runDartDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
 	fmt.Fprintf(&body, "        failed = true;\n")
 	fmt.Fprintf(&body, "      }\n")
 	fmt.Fprintf(&body, "    } else {\n")
-	fmt.Fprintf(&body, "      if (count == 0 && rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {\n")
+	fmt.Fprintf(&body, "      if (count == 0 && rep.refused && values[0].a == 0 && values[1].a == 0) {\n")
 	fmt.Fprintf(&body, "        print('PASS $name');\n")
 	fmt.Fprintf(&body, "      } else {\n")
 	fmt.Fprintf(&body, "        print('FAIL $name: count=$count refused=${rep.refused} a0=${values[0].a} a1=${values[1].a}');\n")

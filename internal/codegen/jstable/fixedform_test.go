@@ -423,6 +423,13 @@ func unitFrom(t *testing.T, src string) *ir.Unit {
 // matching close brace, so a pin can name a loop without matching the rest of
 // the module.
 func jsFn(body, name string) string {
+	// R4: the exported FixedLoad is the refusal reset over the read; the read
+	// itself, the body every row-shape test inspects, is FixedLoadWalk.
+	if strings.HasSuffix(name, "FixedLoad") {
+		if walk := jsFn(body, name+"Walk"); walk != "" {
+			return walk
+		}
+	}
 	sig := "function " + name + "("
 	i := strings.Index(body, sig)
 	if i < 0 {

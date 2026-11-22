@@ -173,18 +173,22 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.emitFn("int", lower+"LoadMessages",
 		[]string{"List<" + st.Name + "> values", "Uint8List bytes",
 			"TableVocabulary vocabulary", "TableReport report"})
+	// R4: EVERY REFUSAL HANDS BACK NO VALUE: every value the caller passed goes
+	// back to its declared default, the batch's count or not, and the read
+	// answers 0.
+	g.pf("  int refuse() {\n    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n    return 0;\n  }\n\n", capitalize(st.Name))
 	if st.Integrity != "" {
 		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.refused = false; }\n")
-		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return 0;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
+		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return refuse();\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
 	}
 	g.pf("  final r = TableMessageReader();\n")
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
 	// "A refused batch returns a count of `0`, as every refused batch does"
 	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0 with the report
 	// refused, and a delivered batch is never empty (M is at least 1).
-	g.pf("  if (count < 0) return 0;\n")
+	g.pf("  if (count < 0) return refuse();\n")
 	g.pf("  if (count > values.length) {\n")
-	g.pf("    report.Refuse('batch_too_large');\n    return 0;\n  }\n")
+	g.pf("    report.Refuse('batch_too_large');\n    return refuse();\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", lower)
 	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
@@ -192,13 +196,11 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// defaults and the read answers no body at all.
 	// DAMAGE DISCARDS THE WHOLE BATCH the same way (docs/SPEC-TABLES.md §4):
 	// no body this call decoded is handed back.
-	g.pf("      for (var j = 0; j <= i; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
-	g.pf("      return 0;\n    }\n")
+	g.pf("      return refuse();\n    }\n")
 	g.pf("  }\n")
 	// damage after the last body (the pad, trailing bytes) discards the batch too
 	g.pf("  if (!tableMessageBatchClose(r)) {\n")
-	g.pf("    for (var j = 0; j < count; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
-	g.pf("    return 0;\n  }\n")
+	g.pf("    return refuse();\n  }\n")
 	g.pf("  return count;\n}\n\n")
 }
 

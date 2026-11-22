@@ -1377,43 +1377,47 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("export function %sLoadMessages(values, vocabulary, data, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
+	// R4: EVERY REFUSAL HANDS BACK NO VALUE: every value the caller passed (its
+	// whole array, the batch's count or not) goes back to its declared defaults
+	// and the read answers 0. A null or undefined slot has nothing to reset and
+	// is left as it is.
+	g.pf("  const refuse = () => {\n")
+	g.pf("    for (let j = 0; j < values.length; j++) { if (values[j] !== null && values[j] !== undefined) { Init%s(values[j]); } }\n", n)
+	g.pf("    return 0;\n  };\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
-		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return 0; }\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return refuse(); }\n")
 		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
 	// "A refused batch returns a count of `0`, as every refused batch does"
 	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0, the report
 	// names the reason, and a delivered batch is never empty (M is at least 1).
-	g.pf("  if (count < 0) { return 0; }\n")
-	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return 0; }\n")
+	g.pf("  if (count < 0) { return refuse(); }\n")
+	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return refuse(); }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
 	g.pf("      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md\n")
 	g.pf("      // §3.3), the strict read included: no body of it is delivered.\n")
 	g.pf("      if (report.NonFiniteFloat) {\n")
-	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
-	g.pf("        return 0;\n")
+	g.pf("        return refuse();\n")
 	g.pf("      }\n")
 	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
 	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")
 	g.pf("      // declared defaults.\n")
-	g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
-	g.pf("      return 0;\n")
+	g.pf("      return refuse();\n")
 	g.pf("    }\n")
 	g.pf("    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE\n")
 	g.pf("    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go\n")
 	g.pf("    // reference and the Rust port do: the count is 0 and\n")
 	g.pf("    // every body of the batch goes back to its declared defaults.\n")
 	g.pf("    if (report.Oor > 0) {\n")
-	g.pf("      for (let j = 0; j < count; j++) { Init%s(values[j]); }\n", n)
 	g.pf("      TableMessageRefuse(report, \"out_of_range\");\n")
-	g.pf("      return 0;\n")
+	g.pf("      return refuse();\n")
 	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  // damage after the last body discards the batch too (§4)\n")
-	g.pf("  if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { Init%s(values[j]); } return 0; }\n", n)
+	g.pf("  if (!tableMessageBatchClose(r)) { return refuse(); }\n")
 	g.pf("  return count;\n}\n\n")
 }

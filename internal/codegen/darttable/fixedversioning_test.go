@@ -754,7 +754,7 @@ String why(t.TableFixedReport r) =>
 bool fresh(t.%[2]s value) {
   final want = t.%[2]s();
   t.init%[2]s(want);
-  return '$value' == '$want' || _same(value, want);
+  return _same(value, want);
 }
 
 bool _same(t.%[2]s a, t.%[2]s b) {

@@ -30,10 +30,12 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
       'the corpus file read back dirty: ${why(report)}');
   for (var k = 0; k < t.TableFixedLimits.layoutAt; k++) {
     final rep = t.TableFixedReport();
-    values[0].x = 0x5A5A5A5A;
-    values[0].y = 0x5A5A5A5A;
-    values[0].z = 0x5A5A5A5A;
-    values[0].w = 0x5A5A5A5A;
+    for (final v in values) {
+      v.x = 0x5A5A5A5A;
+      v.y = 0x5A5A5A5A;
+      v.z = 0x5A5A5A5A;
+      v.w = 0x5A5A5A5A;
+    }
     final short = data.sublist(0, k);
     final n = LOAD(values, values.length, short, short.length, plan, rep);
     check(n == -1, 'a $k-byte file under the header owes -1, not $n: ${why(rep)}');
@@ -41,9 +43,10 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
         'a $k-byte file refuses wire_damaged, not clean: ${why(rep)}');
     check(rep.unknown == 0 && rep.widened == 0 && rep.hash == 0 && rep.layoutHash == 0,
         'a refused read moves no counter and no reported hash: ${why(rep)}');
-    check(values[0].x == 0x5A5A5A5A && values[0].y == 0x5A5A5A5A &&
-        values[0].z == 0x5A5A5A5A && values[0].w == 0x5A5A5A5A,
-        'a $k-byte refused read wrote a destination byte: ${why(rep)}');
+    for (var r = 0; r < values.length; r++) {
+      check(fresh(values[r]),
+          'R4: a $k-byte refused read left row $r off its declared default: ${why(rep)}');
+    }
   }`
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", nil, 0, file, body)

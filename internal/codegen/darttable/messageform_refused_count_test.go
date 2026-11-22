@@ -22,8 +22,8 @@ fixed table Root {
 
 // refusedBatchBody saves ten valid bodies, reads them into storage for eight,
 // and reads the same buffer whole into storage for ten. The short storage is
-// pre-filled so a write of any body shows; the refusal decodes nothing, so all
-// eight keep their values (docs/SPEC-TABLES.md §3.3).
+// pre-filled so a stale value shows; the refusal decodes nothing and (R4) hands
+// every value back at its declared default, so all eight read 0.
 const refusedBatchBody = `
   final vocab = h.TableVocabulary(entries:
       List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
@@ -40,7 +40,7 @@ const refusedBatchBody = `
   check(shortCount == 0 && shortRep.refused && shortRep.reason == 'batch_too_large',
       'ten into eight: count=$shortCount refused=${shortRep.refused} reason=${shortRep.reason}');
   for (var i = 0; i < 8; i++) {
-    check(short[i].a == 100 + i, 'the refused batch wrote body $i: a=${short[i].a}');
+    check(short[i].a == 0, 'the refused batch left value $i off its default: a=${short[i].a}');
   }
   final whole = <h.Root>[for (var i = 0; i < 10; i++) h.Root()];
   final wholeRep = h.TableReport();
@@ -79,7 +79,7 @@ func TestDartMessageRefusedBatchCountsZeroNegativeControl(t *testing.T) {
 		t.Fatalf("the control's unmodified source is not green: %v\n%s", err, out)
 	}
 
-	const fixed = "report.Refuse('batch_too_large');\n    return 0;"
+	const fixed = "report.Refuse('batch_too_large');\n    return refuse();"
 	const old = "report.Refuse('batch_too_large');\n    return count;"
 	out, err = runBatchProbe(t, u, "Root", refusedBatchBody, func(files map[string][]byte) {
 		name := fixedTableBase(u, "Root") + "Fixed.dart"
