@@ -118,8 +118,7 @@ func TestLobsterDamageDiscardNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ file, anchor, replacement, want string }{
 		{"load.lobster", "            read_refuse(report, \"wire_damaged\")\n        return nil\n    return rec", "            read_refuse(report, \"wire_damaged\")\n        return new_record(table_of(root))\n    return rec", "file kept batch discarded tail discarded"},
-		{"message.lobster", "            for(batch) value: release(value)\n            truncate(batch, 0)\n", "", "file discarded batch kept tail discarded"},
-		{"message.lobster", "        for(batch) value: release(value)\n        truncate(batch, 0)\n", "", "file discarded batch discarded tail kept"},
+		{"message.lobster", "    if not ok:\n        for(loaded) rec: release(rec)\n        return 0, false\n", "    if not ok:\n        for(loaded) rec: push(batch, rec)\n        return 0, false\n", "file discarded batch kept tail kept"},
 	} {
 		t.Run(c.file, func(t *testing.T) {
 			got := strings.Join(lobsterDamageProbe(t, c.file, c.anchor, c.replacement), " ")

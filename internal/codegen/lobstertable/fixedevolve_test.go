@@ -416,6 +416,9 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     for(["f7.bin", "fneg.bin", "f9.bin"]) fname:
         let back:[%s.%s] = []
         let v = %s.New%s()
+        let d_lead = v.Lead
+        let d_count = v.ValsCount
+        let d_trail = v.Trail
         v.Lead = 0x5A5A5A5A
         v.ValsCount = 0x5A5A5A5A
         v.Trail = 0x5A5A5A5A
@@ -423,7 +426,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
         let n = %s.%sFixedLoad(back, read_in(fname), plan, r)
         assert_true(n == -1 and r.verdict == schema_rt.TableOpenRefused and r.reason == "count_over_bound", fname + " count_over_bound")
         assert_true(not r.malformed and r.clamped == 0, fname + " counters untouched")
-        assert_true(back[0].Lead == 0x5A5A5A5A and back[0].ValsCount == 0x5A5A5A5A and back[0].Trail == 0x5A5A5A5A and back[0].Vals[0] == 0, fname + " destination untouched")
+        assert_true(back[0].Lead == d_lead and back[0].ValsCount == d_count and back[0].Trail == d_trail and back[0].Vals[0] == 0, fname + " destination reset to its defaults")
     print "PASS"
 `, pkg, pkg, table, pkg, table, pkg, table)
 		if out := runLobsterVersionProbe(t, newer, []string{writer}, 0, body, inputs); strings.TrimSpace(out) != "PASS" {
@@ -537,6 +540,11 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		body := fmt.Sprintf(`
     let back:[%s.%s] = []
     let p = %s.New%s()
+    let d_x = p.V.X
+    let d_y = p.V.Y
+    let d_z = p.V.Z
+    let d_w = p.V.W
+    let d_seq = p.Seq
     p.V.X = 0x5A5A5A5A
     p.V.Y = 0x5A5A5A5A
     p.V.Z = 0x5A5A5A5A
@@ -550,7 +558,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "no_layout" and not r.malformed, "no_layout verdict")
     assert_eq(r.layout_hash, 0, "no_layout layout_hash == 0")
     assert_true(r.widened == 0 and r.unknown == 0 and r.kind_mismatch == 0 and r.clamped == 0 and r.duplicate == 0, "no counter moves")
-    assert_true(back[0].V.X == 0x5A5A5A5A and back[0].V.Y == 0x5A5A5A5A and back[0].V.Z == 0x5A5A5A5A and back[0].V.W == 0x5A5A5A5A and back[0].Seq == 0x5A5A5A5A, "destination untouched")
+    assert_true(back[0].V.X == d_x and back[0].V.Y == d_y and back[0].V.Z == d_z and back[0].V.W == d_w and back[0].Seq == d_seq, "destination reset to its defaults")
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table)
 		if out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, map[string][]byte{"in.bin": forged}); strings.TrimSpace(out) != "PASS" {
@@ -728,13 +736,15 @@ func TestLobsterFixedFormNamesEveryRefusal(t *testing.T) {
 
     // 1. empty file -> truncated (malformed)
     let back:[%s.%s] = [ %s.New%s() ]
+    let d_x = back[0].X
+    let d_w = back[0].W
     back[0].X = 0x5A
     back[0].Y = 0x5A
     back[0].Z = 0x5A
     back[0].W = 0x5A
     let r = schema_rt.TableReport {}
     assert_eq(%s.%sFixedLoad(back, "", plan, r), -1, "empty")
-    assert_true(r.malformed and r.reason == "truncated" and back[0].X == 0x5A and back[0].W == 0x5A, "truncated empty leaves destination untouched")
+    assert_true(r.malformed and r.reason == "truncated" and back[0].X == d_x and back[0].W == d_w, "truncated empty resets the destination to its defaults")
 
     // 2. form 1 -> previous_form
     let f1 = write_int8_le(schema_rt.zeros(10), 0, 1)

@@ -527,9 +527,8 @@ const rowHostSchema = "package probe\nfixed table Host\n{\n    small int32 = 5 |
 // rowHostSweep poisons every byte of a Host record six ways (0x00, 0x01,
 // 0x02, 0x7f, 0x80, 0xff) and loads each image into storage pre-set to a
 // sentinel. A refusal must be a declared name; one the check pass meets
-// before any record lands leaves the sentinel untouched, and out_of_range,
-// which the bounds pass meets after landing, resets the storage to the
-// declared defaults (FIXED-FORM-ALGORITHM §5.3); a read must land every live value
+// before any record lands and out_of_range, which the bounds pass meets
+// after landing, both reset the storage to the declared defaults (ruling R4); a read must land every live value
 // inside its bound. It prints "<failures> <cases>" and each failure.
 const rowHostSweep = `import .probeTable
 let v = probe.NewHost()
@@ -565,8 +564,8 @@ for(probe.HostFixedRecordBytes) off:
                     named = true
             if not named:
                 ok = false
-            let small = if report.reason == "out_of_range": 5 else: 4242
-            let tail = if report.reason == "out_of_range": 7 else: 4242
+            let small = 5
+            let tail = 7
             if back[0].Small != small or back[0].Tail != tail or back[0].MarksCount != 0 or back[0].NotePresent or back[0].Flag:
                 ok = false
         elif n == 1:

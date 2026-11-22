@@ -11,18 +11,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 )
 
-// REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.3, §7 item 3): a fixed
-// load refused before any record lands leaves every value of the caller's
-// batch exactly as it was before the load, never reset to its defaults. The
-// cases are a file with no bytes, a wrong form byte, and five two-record
+// A refused read resets every value handed in (ruling R4, replacing the old
+// "REFUSE is total / untouched" rule of docs/FIXED-FORM-ALGORITHM.md §5.3): a
+// fixed load refused anywhere, before or after a record lands, leaves every
+// value of the caller's batch at its declared defaults. The cases are a file with no bytes, a wrong form byte, and five two-record
 // files whose SECOND record is refused by the CHECK pass: a wrong record
 // hash, a bool byte of 2 in its last field, a text length past its cap, a
 // bool byte of 2 inside a nested record, a bool byte of 2 inside a counted
 // array's second element, and a count past the array's bound. The first
 // record of each file is valid and differs from what the caller filled, so a
 // record that landed before the refusal shows in the comparison. The whole
-// destination is compared through its fixed-form image: every field of all
-// three records, nested and array fields included.
+// destination is compared through its fixed-form image with the image of
+// three fresh defaults: every field of all three records, nested and array
+// fields included.
 func TestFixedRefusalLeavesDestination(t *testing.T) {
 	t.Parallel()
 	const source = `package untouched
@@ -144,13 +145,13 @@ var passed = 0
 var case_index = 0
 for(cases) bad:
     fill(back)
-    let before = untouched.RowFixedSave(back)
+    let defaults = untouched.RowFixedSave([untouched.NewRow(), untouched.NewRow(), untouched.NewRow()])
     let n = untouched.RowFixedLoad(back, bad, plan, report)
     let after = untouched.RowFixedSave(back)
-    if n == -1 and same_bytes(before, after):
+    if n == -1 and same_bytes(defaults, after):
         passed += 1
     else:
-        print(names[case_index] + " returned " + string(n) + " (" + report.reason + "): destination changed, seq " + string(back[0].Seq) + " " + string(back[1].Seq) + " " + string(back[2].Seq))
+        print(names[case_index] + " returned " + string(n) + " (" + report.reason + "): destination is not at its defaults, seq " + string(back[0].Seq) + " " + string(back[1].Seq) + " " + string(back[2].Seq))
     case_index += 1
 print(passed)
 `
@@ -165,6 +166,6 @@ print(passed)
 	}
 	got := strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", nil)))
 	if got != "8" {
-		t.Fatalf("refused fixed loads must leave the destination untouched: got %q, want 8", got)
+		t.Fatalf("refused fixed loads must reset every value handed in: got %q, want 8", got)
 	}
 }
