@@ -73,7 +73,7 @@ def go(x:float):
 		f := float32(x)
 		want := "|non_finite_float"
 		if !math.IsInf(float64(f), 0) {
-			want = fmt.Sprintf(`{ "value": %s }|`, canonical(f))
+			want = fmt.Sprintf(`{ "value": %s } |`, canonical(f))
 		}
 		if out[i] != want {
 			t.Errorf("%v: got %q, want %q", x, out[i], want)
