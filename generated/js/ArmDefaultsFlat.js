@@ -36,17 +36,17 @@ export const FlatReadSlack = 8;
 // must hold DefaultArmMaxBytes.
 export function WriteDefaultArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.entriesCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.entriesCount; i0++) {
     const e0 = value.entries[i0];
-    if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
       return -1;
     }
-    if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
       return -1;
     }
     v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -68,7 +68,7 @@ export function WriteDefaultArmFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
-  if (!Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
+  if (!globalThis.Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
     return -1;
   }
   v = (((value.marker) & 0x7)) >>> 0;
@@ -202,14 +202,14 @@ export function ReadDefaultArmFlatBits(view, numBits, value) {
 // must hold DefaultChoiceMaxBytes.
 export function WriteDefaultChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.type & 0x3));
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (!Number.isInteger(value.first.entriesCount) || value.first.entriesCount < 0 || value.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.first.entriesCount) || value.first.entriesCount < 0 || value.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.first.entriesCount) & 0x3)) >>> 0;
@@ -223,10 +223,10 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
         const e0 = value.first.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -248,7 +248,7 @@ export function WriteDefaultChoiceFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.first.marker) || value.first.marker < 0 || value.first.marker > 7) {
+      if (!globalThis.Number.isInteger(value.first.marker) || value.first.marker < 0 || value.first.marker > 7) {
         return -1;
       }
       v = (((value.first.marker) & 0x7)) >>> 0;
@@ -263,7 +263,7 @@ export function WriteDefaultChoiceFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.second.entriesCount) || value.second.entriesCount < 0 || value.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.second.entriesCount) || value.second.entriesCount < 0 || value.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.second.entriesCount) & 0x3)) >>> 0;
@@ -277,10 +277,10 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
         const e0 = value.second.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -302,7 +302,7 @@ export function WriteDefaultChoiceFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.second.marker) || value.second.marker < 0 || value.second.marker > 7) {
+      if (!globalThis.Number.isInteger(value.second.marker) || value.second.marker < 0 || value.second.marker > 7) {
         return -1;
       }
       v = (((value.second.marker) & 0x7)) >>> 0;
@@ -605,14 +605,14 @@ export function ReadDefaultChoiceFlatBits(view, numBits, value) {
 // must hold DefaultChoicePacketMaxBytes.
 export function WriteDefaultChoicePacketFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.choice.type) || value.choice.type < 0 || value.choice.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.choice.type) || value.choice.type < 0 || value.choice.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.choice.type & 0x3));
   sb = 2;
   switch (value.choice.type) {
     case 1: {
-      if (!Number.isInteger(value.choice.first.entriesCount) || value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.choice.first.entriesCount) || value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.choice.first.entriesCount) & 0x3)) >>> 0;
@@ -626,10 +626,10 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         const e0 = value.choice.first.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -651,7 +651,7 @@ export function WriteDefaultChoicePacketFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.choice.first.marker) || value.choice.first.marker < 0 || value.choice.first.marker > 7) {
+      if (!globalThis.Number.isInteger(value.choice.first.marker) || value.choice.first.marker < 0 || value.choice.first.marker > 7) {
         return -1;
       }
       v = (((value.choice.first.marker) & 0x7)) >>> 0;
@@ -666,7 +666,7 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.choice.second.entriesCount) || value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.choice.second.entriesCount) || value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.choice.second.entriesCount) & 0x3)) >>> 0;
@@ -680,10 +680,10 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         const e0 = value.choice.second.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -705,7 +705,7 @@ export function WriteDefaultChoicePacketFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.choice.second.marker) || value.choice.second.marker < 0 || value.choice.second.marker > 7) {
+      if (!globalThis.Number.isInteger(value.choice.second.marker) || value.choice.second.marker < 0 || value.choice.second.marker > 7) {
         return -1;
       }
       v = (((value.choice.second.marker) & 0x7)) >>> 0;
@@ -1008,17 +1008,17 @@ export function ReadDefaultChoicePacketFlatBits(view, numBits, value) {
 // must hold DefaultBulkArmMaxBytes.
 export function WriteDefaultBulkArmFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.payload.entriesCount) || value.payload.entriesCount < 0 || value.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.payload.entriesCount) || value.payload.entriesCount < 0 || value.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = (((value.payload.entriesCount) & 0x3));
   sb = 2;
   for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
     const e0 = value.payload.entries[i0];
-    if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
       return -1;
     }
-    if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
       return -1;
     }
     v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -1040,10 +1040,10 @@ export function WriteDefaultBulkArmFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
-  if (!Number.isInteger(value.payload.marker) || value.payload.marker < 0 || value.payload.marker > 7) {
+  if (!globalThis.Number.isInteger(value.payload.marker) || value.payload.marker < 0 || value.payload.marker > 7) {
     return -1;
   }
-  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   v = (((value.payload.marker) & 0x7) | (((value.dataLength) & 0x3) << 3)) >>> 0;
@@ -1273,14 +1273,14 @@ export function ReadDefaultBulkArmFlatBits(view, numBits, value) {
 // must hold DefaultBulkChoiceMaxBytes.
 export function WriteDefaultBulkChoiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.type & 0x3));
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (!Number.isInteger(value.first.payload.entriesCount) || value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.first.payload.entriesCount) || value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.first.payload.entriesCount) & 0x3)) >>> 0;
@@ -1294,10 +1294,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         const e0 = value.first.payload.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -1319,10 +1319,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.first.payload.marker) || value.first.payload.marker < 0 || value.first.payload.marker > 7) {
+      if (!globalThis.Number.isInteger(value.first.payload.marker) || value.first.payload.marker < 0 || value.first.payload.marker > 7) {
         return -1;
       }
-      if (!Number.isInteger(value.first.dataLength) || value.first.dataLength < 0 || value.first.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
+      if (!globalThis.Number.isInteger(value.first.dataLength) || value.first.dataLength < 0 || value.first.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
         return -1;
       }
       v = (((value.first.payload.marker) & 0x7) | (((value.first.dataLength) & 0x3) << 3)) >>> 0;
@@ -1369,7 +1369,7 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.second.payload.entriesCount) || value.second.payload.entriesCount < 0 || value.second.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+      if (!globalThis.Number.isInteger(value.second.payload.entriesCount) || value.second.payload.entriesCount < 0 || value.second.payload.entriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.second.payload.entriesCount) & 0x3)) >>> 0;
@@ -1383,10 +1383,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         const e0 = value.second.payload.entries[i0];
-        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
-        if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
         v = (((e0.retries >>> 0) >>> 0)) >>> 0;
@@ -1408,10 +1408,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
           lo = sb === 0 ? 0 : v >>> (4 - sb);
         }
       }
-      if (!Number.isInteger(value.second.payload.marker) || value.second.payload.marker < 0 || value.second.payload.marker > 7) {
+      if (!globalThis.Number.isInteger(value.second.payload.marker) || value.second.payload.marker < 0 || value.second.payload.marker > 7) {
         return -1;
       }
-      if (!Number.isInteger(value.second.dataLength) || value.second.dataLength < 0 || value.second.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
+      if (!globalThis.Number.isInteger(value.second.dataLength) || value.second.dataLength < 0 || value.second.dataLength > 2) { // the length guards the slice; out-of-contract writes are refused
         return -1;
       }
       v = (((value.second.payload.marker) & 0x7) | (((value.second.dataLength) & 0x3) << 3)) >>> 0;

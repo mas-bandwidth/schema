@@ -1,0 +1,18 @@
+package fixture
+
+import (
+	. "os/exec"
+	"testing"
+)
+
+// os/exec is dot-imported for its types; Command here is a local function
+// that records the name and starts nothing.
+func TestDotImportShadow(t *testing.T) {
+	var _ *Cmd
+	var started []string
+	Command := func(name string) { started = append(started, name) }
+	Command("luau")
+	if len(started) != 1 {
+		t.Fatal(started)
+	}
+}

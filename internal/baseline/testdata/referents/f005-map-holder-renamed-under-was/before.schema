@@ -1,0 +1,6 @@
+package referents
+
+table Root
+{
+    cells map[uint16]int32
+}

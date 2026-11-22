@@ -2891,6 +2891,13 @@ static SCHEMA_UNUSED int graphdemo_table_bits_finite32( uint32_t bits ) { return
 static SCHEMA_UNUSED int graphdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int graphdemo_table_float_finite( float f ) { return graphdemo_table_bits_finite32( graphdemo_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int graphdemo_table_double_finite( double d ) { return graphdemo_table_bits_finite64( graphdemo_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t graphdemo_table_stored_float_bits( float f ) { uint32_t b = graphdemo_table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+static SCHEMA_UNUSED uint64_t graphdemo_table_stored_double_bits( double d ) { uint64_t b = graphdemo_table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -6218,8 +6225,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages(graphdemo_stamp_t * value
  *count=0;
  bodies=graphdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }

@@ -1,9 +1,14 @@
 // FNZ.schema — the compressed float's negative zero (docs/SPEC-TABLES.md §3.3)
 //
-// The shared vector build/fixedform-corpus/negative_zero.bin is the reference
-// writer's file with `value` set to -0's bits (the sign bit alone). The rule
-// reads it as +0, uncounted, and writes +0. A plain float's -0 is carried
-// bit-exact and is not this vector's subject.
+// The shared vector build/fixedform-corpus/negative_zero.bin is a HOSTILE
+// file, committed as test/tables/fnz/negative_zero.bin: the reference
+// writer's +0 record (test/tables/fnz/negative_zero_control.bin, the control)
+// with `value` set to -0's bits (the sign bit alone) by hand, because a writer
+// stores +0 for a compressed float's -0 (ruled 2026-11-10, docs/rulings.json
+// fixed-compressed-negzero) and so cannot write it. The fixed-form dump checks
+// the pair and copies the -0 file into the corpus. The rule reads it as +0,
+// uncounted, and writes +0. A plain float's -0 is carried bit-exact and is not
+// this vector's subject.
 //
 // A compressed float is a float32 with min, max and resolution (SPEC §4.3), so
 // this root carries the compression at its one storage width.

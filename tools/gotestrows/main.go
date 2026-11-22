@@ -47,6 +47,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -335,6 +336,59 @@ func embedOwners(list string, files []string, exists func(string) bool) (src, te
 	return src, test
 }
 
+// testdataOwners maps the diff's files under a testdata/ directory to the
+// main-module package that directory belongs to: the directory holding the
+// topmost testdata/ in the path (pkg/testdata/a/b.yml belongs to pkg). Its
+// tests read those files at run time (os.ReadFile, filepath.Glob), which
+// no go:embed records, so without this a testdata-only diff, a new fixture or
+// corpus case, selected no package and its tests did not run on the pull
+// request that changed what they read. The owner is selected alone, as a
+// test embed is: testdata is no package's build input.
+func testdataOwners(list string, files []string) []string {
+	owners := map[string]bool{}
+	for _, f := range files {
+		f = strings.TrimPrefix(f, "./")
+		var dir string
+		switch {
+		case strings.HasPrefix(f, "testdata/"):
+			dir = "."
+		default:
+			before, _, ok := strings.Cut(f, "/testdata/")
+			if !ok {
+				continue
+			}
+			dir = before
+		}
+		owners[dir] = true
+	}
+	if len(owners) == 0 {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for line := range strings.Lines(list) {
+		path, _, _ := strings.Cut(strings.TrimSpace(line), "|")
+		if strings.Contains(path, " ") || strings.HasSuffix(path, ".test") || strings.HasSuffix(path, "_test") {
+			continue
+		}
+		var rel string
+		switch {
+		case path == modulePath:
+			rel = "."
+		case strings.HasPrefix(path, modulePath+"/"):
+			rel = strings.TrimPrefix(path, modulePath+"/")
+		default:
+			continue
+		}
+		if owners[rel] && !seen[rel] {
+			seen[rel] = true
+			out = append(out, "./"+rel)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func joinRel(rel, f string) string {
 	if rel == "." {
 		return f
@@ -487,6 +541,11 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 // packages whose build embeds a changed file.
 func selectPackages(list string, args, seeds, files []string, exists func(string) bool) []string {
 	src, test := embedOwners(list, files, exists)
+	for _, p := range testdataOwners(list, files) {
+		if !slices.Contains(src, p) && !slices.Contains(test, p) {
+			test = append(test, p)
+		}
+	}
 	seeds = append(append([]string(nil), seeds...), src...)
 	out := append(append(append([]string(nil), args...), src...), test...)
 	if len(seeds) > 0 {

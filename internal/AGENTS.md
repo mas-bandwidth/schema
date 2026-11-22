@@ -5,11 +5,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `ast/` | parsed *.schema form | `go test ./internal/parser` | `go test ./internal/parser` |
+| `atomicfile/` | the one publisher every CLI write goes through | `go test ./internal/atomicfile` | `go test ./internal/atomicfile` |
 | `baseline/` | tables baseline pins | `go test ./internal/baseline` | `go test ./internal/baseline` |
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | per-language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
+| `execref/` | os/exec references resolved by binding, for the child-process policies | `go test ./internal/execref` | `go test ./internal/execref` |
 | `fixedproof/` | leg-independent fixed-table proof suite | `go test ./internal/fixedproof` | `go test ./internal/fixedproof` |
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
@@ -24,9 +26,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `modulemove/` | pin and release boundary of the /v3 module move | `go test ./internal/modulemove` | `go test ./internal/modulemove` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
+| `pathid/` | where a path lands, by the file system's identity | `go test ./internal/pathid` | `go test ./internal/pathid` |
+| `provesran/` | zero-match and unknown-candidate refusal for scans | `go test ./internal/provesran` | `go test ./internal/provesran` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
+| `runmatch/` | go test -run selection, as Go matches it | `go test ./internal/runmatch` | `go test ./internal/runmatch` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |
+| `skipledger/` | skip ledger: every reason a test may skip for | `go test ./internal/skipledger` | `go test ./internal/ci -run Skip` |
 | `slowtest/` | 1-2 minute unit-test gate | `make slow-gate-scan` | `make slow-gate-scan` |
 | `tablecook/` | cook form | `go test ./internal/tablecook` | `go test ./internal/tablecook` |
 | `tablenames/` | per-language claimed names | `go test ./compiler` | `go test ./compiler` |

@@ -1079,19 +1079,18 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 			out.text("false")
 		}
 		return true
-	case 10:
-		// a float32's range is compared in float32, as the binary writers compare it
-		value := *(*float32)(storage)
-		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
-			return false
+	case 10, 11:
+		// a float32's range is compared in float32, as the binary writers compare it (widening to float64 is exact)
+		value, low, high := float64(*(*float32)(storage)), float64(float32(f.RangeMin)), float64(float32(f.RangeMax))
+		if f.Kind == 11 {
+			value, low, high = *(*float64)(storage), f.RangeMin, f.RangeMax
 		}
-		return tableJSONWriteFloat(out, float64(value), true)
-	case 11:
-		value := *(*float64)(storage)
-		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
+		if f.HasRange && (value < low || value > high) {
 			return false
+		} else if f.HasRange {
+			value += 0 // a compressed float's -0 is written as +0, and -0 + 0 is +0 (docs/SPEC-TABLES.md §3.3)
 		}
-		return tableJSONWriteFloat(out, value, false)
+		return tableJSONWriteFloat(out, value, f.Kind == 10)
 	case 2, 3, 4:
 		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
 		return true

@@ -32,6 +32,7 @@ func page(path, purpose, guard, command string) Entry {
 // catalog is the map. Top-level directories must all appear; a Page directory's
 // immediate child directories must all appear.
 var catalog = []Entry{
+	e(".claude-plugin", "plugin marketplace entry for skills/", "none", "none"),
 	e(".github", "CI workflows", "go test ./internal/ci", "make test"),
 	page("bench", "cross-language serialize bench", "go test ./bench/corpus", "bench/run.sh"),
 	e("cmd", "schema CLI", "go test ./cmd/schema", "go test ./cmd/schema"),
@@ -82,11 +83,13 @@ var catalog = []Entry{
 
 	// internal/
 	e("internal/ast", "parsed *.schema form", "go test ./internal/parser", "go test ./internal/parser"),
+	e("internal/atomicfile", "the one publisher every CLI write goes through", "go test ./internal/atomicfile", "go test ./internal/atomicfile"),
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
 	page("internal/codegen", "per-language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
+	e("internal/execref", "os/exec references resolved by binding, for the child-process policies", "go test ./internal/execref", "go test ./internal/execref"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
@@ -101,10 +104,14 @@ var catalog = []Entry{
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
 	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
+	e("internal/pathid", "where a path lands, by the file system's identity", "go test ./internal/pathid", "go test ./internal/pathid"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
+	e("internal/runmatch", "go test -run selection, as Go matches it", "go test ./internal/runmatch", "go test ./internal/runmatch"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
+	e("internal/skipledger", "skip ledger: every reason a test may skip for", "go test ./internal/skipledger", "go test ./internal/ci -run Skip"),
 	e("internal/tablecook", "cook form", "go test ./internal/tablecook", "go test ./internal/tablecook"),
 	e("internal/tablenames", "per-language claimed names", "go test ./compiler", "go test ./compiler"),
 	e("internal/tablepack", "pack/unpack", "go test ./internal/tablepack", "go test ./internal/tablepack"),
@@ -190,7 +197,7 @@ var catalog = []Entry{
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/cellmerge", "three-way PORTING.md row merge for diff3 hunks", "go test ./tools/cellmerge", "go run ./tools/cellmerge docs/PORTING.md"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
-	e("tools/gotestreport", "nightly go test -json row report", "go test ./tools/gotestreport", "go run ./tools/gotestreport build/go-test-json"),
+	e("tools/gotestreport", "go test -json row report and skip ledger", "go test ./tools/gotestreport", "go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json"),
 	e("tools/gotestrows", "ci-fast go-test matrix rows", "go test ./tools/gotestrows", "go run ./tools/gotestrows ./..."),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/hostilecorpusexec", "native-port hostile-corpus driver", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
@@ -202,6 +209,7 @@ var catalog = []Entry{
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
+	e("tools/releasetargets", "certify release-gates planner from make's database", "go test ./tools/releasetargets", "go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),

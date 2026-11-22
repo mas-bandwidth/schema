@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // pythonRetainPlanCheck proves the per-commit retention rows partition the
@@ -130,7 +132,7 @@ func pythonRetainPlanCheck(tests []string, makefile []byte) error {
 func pythonRetainTests(t *testing.T) []string {
 	t.Helper()
 	dir := filepath.Join(repoRoot(t), "internal/codegen/pythontable")
-	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+	files, err := provesran.Glob(filepath.Join(dir, "*_test.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

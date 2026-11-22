@@ -803,18 +803,21 @@ const messageBatchRefusalsMain = `
         }
         {
             // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
-            // ... The reader sets the returned count to the wire's M." (closes java/F9)
+            // ... A refused batch returns a count of 0" (docs/SPEC-TABLES.md
+            // §3.3; F-178), and nothing is decoded: the storage is as it was.
             final RootFixed.Value[] three = new RootFixed.Value[] { one, one, one };
             final int m3 = RootMessage.measureMessages(three, 3, new TableVocabulary.Report());
             final byte[] buf3 = new byte[m3];
             if (RootMessage.saveMessages(three, 3, buf3, new TableVocabulary.Report()) != m3) { fail("save 3"); }
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value(), new RootFixed.Value() };
+            values[0].a = 17;
+            values[1].a = 17;
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, buf3, rep);
             say("batch_too_large_read",
-                count == 3 && rep.refused && "batch_too_large".equals(rep.reason) && !rep.damaged
+                count == 0 && rep.refused && "batch_too_large".equals(rep.reason) && !rep.damaged
                 && rep.unknown == 0 && rep.widened == 0
-                && values[0].a == 0 && values[1].a == 0,
+                && values[0].a == 17 && values[1].a == 17,
                 "count=" + count + " refused=" + rep.refused + " reason=" + rep.reason);
         }
         {

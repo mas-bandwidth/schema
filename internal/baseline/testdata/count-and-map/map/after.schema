@@ -1,0 +1,2 @@
+package sample
+table Root { items map[uint16][2..4]int32 }

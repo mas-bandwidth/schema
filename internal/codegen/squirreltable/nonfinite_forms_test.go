@@ -248,7 +248,7 @@ func nfFormsVectors(t *testing.T) (*ir.Unit, []nfFormsRow, map[string][]byte) {
 			rows = append(rows, nfFormsRow{
 				key:  rkey,
 				code: fmt.Sprintf(`{ local out = [T.Floats()]; local rr = {}; local n = T.FloatsLoadMessages(out, voc, I[%q], rr); print(%q + " " + n + " " + nn(rr.reason) + "\n"); }`, rkey, rkey),
-				want: rkey + " -1 non_finite_float: " + l.owner,
+				want: rkey + " 0 non_finite_float: " + l.owner,
 				kind: "msg-read",
 			})
 			// FIXED READ: the leg's own finite file with this slot's bytes patched

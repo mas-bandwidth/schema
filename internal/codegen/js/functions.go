@@ -49,7 +49,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("  // zero bits (SPEC §4.8)\n")
 		g.pf("  return value.type === %sType.None;\n}\n\n", d.Name)
 	} else {
-		g.pf("  if (!Number.isInteger(value.type) || value.type < 0 || value.type > %d) {\n", d.Max)
+		g.pf("  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > %d) {\n", d.Max)
 		g.pf("    return false; // the tag validates BEFORE it rides (SPEC §4.8)\n  }\n")
 		scratch := g.numScratch()
 		g.pf("  %s.value = value.type;\n", scratch)
@@ -431,7 +431,7 @@ func intRangePath(min, max *big.Int) string {
 func (g *gen) emitWriteFoldedNum(expr, lo, hi string, min, max *big.Int, checkInt bool, comment, ind string) {
 	guard := fmt.Sprintf("%s < %s || %s > %s", expr, lo, expr, hi)
 	if checkInt {
-		guard = fmt.Sprintf("!Number.isInteger(%s) || ", expr) + guard
+		guard = fmt.Sprintf("!globalThis.Number.isInteger(%s) || ", expr) + guard
 	}
 	g.pf("%sif (%s) {%s\n%s  return false;\n%s}\n", ind, guard, comment, ind, ind)
 	bits := ir.BitsRequired(min, max)
@@ -471,13 +471,13 @@ func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, comment
 		// degenerate range: ZERO bits — the refusal above is the whole write
 		return
 	}
-	offset := fmt.Sprintf("BigInt.asUintN(64, %s)", expr)
+	offset := fmt.Sprintf("globalThis.BigInt.asUintN(64, %s)", expr)
 	if min.Sign() != 0 {
-		offset = fmt.Sprintf("BigInt.asUintN(64, %s - %s)", expr, lo)
+		offset = fmt.Sprintf("globalThis.BigInt.asUintN(64, %s - %s)", expr, lo)
 	}
 	if bits <= 32 {
 		scratch := g.numScratch()
-		g.pf("%s%s.value = Number(%s);\n", ind, scratch, offset)
+		g.pf("%s%s.value = globalThis.Number(%s);\n", ind, scratch, offset)
 		g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
 		return
 	}
@@ -574,7 +574,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					// BigInt storage with an int32-family range: truncate to
 					// the call family's domain first — the C# (int) cast's
 					// twin — then guard in the Number domain
-					g.pf("%s{\n%s  const rangeValue = Number(BigInt.asIntN(32, %s));\n", ind, ind, name)
+					g.pf("%s{\n%s  const rangeValue = globalThis.Number(globalThis.BigInt.asIntN(32, %s));\n", ind, ind, name)
 					g.emitWriteFoldedNum("rangeValue", lo, hi, f.IntMin, f.IntMax, false, "", ind+"  ")
 					g.pf("%s}\n", ind)
 					return
@@ -624,8 +624,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
 			g.pf("%s{\n", ind)
-			g.pf("%s  const x = Math.fround(%s);\n", ind, name)
-			g.pf("%s  if (!Number.isFinite(x) || x < %s || x > %s) {\n",
+			g.pf("%s  const x = globalThis.Math.fround(%s);\n", ind, name)
+			g.pf("%s  if (!globalThis.Number.isFinite(x) || x < %s || x > %s) {\n",
 				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
 			g.pf("%s    return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)\n", ind)
 			g.pf("%s  }\n%s}\n", ind, ind)
@@ -634,12 +634,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				scratch, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
 			return
 		}
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeFloat(%s)", scratch), "")
 	case ir.TFloat64:
 		scratch := g.numScratch()
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(%s)) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 	case ir.TString, ir.TBytes:
@@ -690,7 +690,7 @@ func (g *gen) rawLit(t ir.FieldType, raw *big.Int) string {
 // type to fill).
 func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
-	g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %d) { // headroom above the wire range cannot ride\n",
+	g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { // headroom above the wire range cannot ride\n",
 		ind, name, name, name, ref.Max)
 	g.pf("%s  return false;\n%s}\n", ind, ind)
 	// A degenerate range (an enum with only the implicit None) costs ZERO
@@ -715,7 +715,7 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 		scratch := g.bigScratch()
 		bits := name
 		if f.Type.Signed {
-			bits = "BigInt.asUintN(64, " + name + ")"
+			bits = "globalThis.BigInt.asUintN(64, " + name + ")"
 		}
 		g.pf("%s%s.value = %s;\n", ind, scratch, bits)
 		g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, 64)", scratch), "")
@@ -736,7 +736,7 @@ func (g *gen) emitBareIntCheck(f *ir.Field, name, ind string) {
 		g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) { // a bare integer must fit its width\n",
 			ind, name, name, bigLit(lo), name, bigLit(hi))
 	} else {
-		g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) { // a bare integer must fit its width\n",
+		g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < %s || %s > %s) { // a bare integer must fit its width\n",
 			ind, name, name, lo.String(), name, hi.String())
 	}
 	g.pf("%s  return false;\n%s}\n", ind, ind)
@@ -843,7 +843,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				scratch := g.numScratch()
 				g.call(ind, fmt.Sprintf("stream.serializeInt(%s, %s, %s)", scratch, lo, hi), "")
 				if f.Type.Width > 32 {
-					g.pf("%s%s = BigInt(%s.value);\n", ind, name, scratch)
+					g.pf("%s%s = globalThis.BigInt(%s.value);\n", ind, name, scratch)
 				} else {
 					g.pf("%s%s = %s.value;\n", ind, name, scratch)
 				}
@@ -856,7 +856,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				} else {
 					// uint32 storage whose range escapes int32: the decoded
 					// value is inside | min, max, so the narrowing is exact
-					g.pf("%s%s = Number(%s.value);\n", ind, name, scratch)
+					g.pf("%s%s = globalThis.Number(%s.value);\n", ind, name, scratch)
 				}
 			default:
 				scratch := g.bigScratch()
@@ -949,7 +949,7 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 		scratch := g.bigScratch()
 		g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, 64)", scratch), "")
 		if f.Type.Signed {
-			g.pf("%s%s = BigInt.asIntN(64, %s.value);\n", ind, name, scratch)
+			g.pf("%s%s = globalThis.BigInt.asIntN(64, %s.value);\n", ind, name, scratch)
 		} else {
 			g.pf("%s%s = %s.value;\n", ind, name, scratch)
 		}
@@ -975,7 +975,7 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 	if wireBits <= 32 {
 		scratch := g.numScratch()
 		g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, wireBits), "")
-		g.pf("%s%s = BigInt(%s.value);\n", ind, name, scratch)
+		g.pf("%s%s = globalThis.BigInt(%s.value);\n", ind, name, scratch)
 		return
 	}
 	scratch := g.bigScratch()
@@ -991,14 +991,14 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 // of C#'s ulong storage domain: a negative misuse value reinterprets to its
 // huge two's-complement pattern and the guard refuses it.
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
-	g.pf("%s{\n%s  const flagsValue = BigInt.asUintN(64, %s);\n", ind, ind, name)
+	g.pf("%s{\n%s  const flagsValue = globalThis.BigInt.asUintN(64, %s);\n", ind, ind, name)
 	if wireBits < 64 {
 		g.pf("%s  if (flagsValue >= 1n << %dn) { // a mask bit above the wire width cannot ride\n", ind, wireBits)
 		g.pf("%s    return false;\n%s  }\n", ind, ind)
 	}
 	if wireBits <= 32 {
 		scratch := g.numScratch()
-		g.pf("%s  %s.value = Number(flagsValue);\n", ind, scratch)
+		g.pf("%s  %s.value = globalThis.Number(flagsValue);\n", ind, scratch)
 		g.call(ind+"  ", fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, wireBits), "")
 	} else {
 		scratch := g.bigScratch()

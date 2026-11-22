@@ -12,7 +12,7 @@
 
 .PHONY: schema-python-runs-hostile-corpus schema-python-runs-hostile-corpus-negative-control
 schema-python-runs-hostile-corpus: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonRunsHostileCorpus$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^(TestPythonRunsHostileCorpus|TestPythonHostileScorerOutcomes)$$' ./internal/codegen/pythontable/
 
 schema-python-runs-hostile-corpus-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostileCorpusPlantedReader$$' ./internal/codegen/pythontable/
