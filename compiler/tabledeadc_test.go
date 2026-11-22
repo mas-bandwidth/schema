@@ -10,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Card C-6: Stop emitting check_default where no probe can set it.
@@ -90,13 +92,13 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	cmd := exec.Command(cc, args...)
+	cmd := testproc.Command(t, cc, args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if output, err := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}
 }

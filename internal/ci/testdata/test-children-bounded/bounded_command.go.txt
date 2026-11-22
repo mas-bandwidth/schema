@@ -1,0 +1,14 @@
+package fixture
+
+import (
+	"testing"
+
+	"example.invalid/schema/internal/testproc"
+)
+
+func TestRunsTheInterpreterBounded(t *testing.T) {
+	out, err := testproc.Command(t, "luau", "probe.luau").CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

@@ -2,13 +2,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaVariableSaveWriteContract holds the variable-form save to the Java
@@ -67,7 +68,7 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 	sources = append(sources, driver)
 	sort.Strings(sources)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -142,7 +143,7 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		{"release", nil},
 	} {
 		run := append(append([]string{}, build.args...), "-cp", classes, "WriteContract")
-		out, err := exec.Command(javaBin, run...).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, run...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("java (%s): %v\n%s", build.name, err, out)
 		}

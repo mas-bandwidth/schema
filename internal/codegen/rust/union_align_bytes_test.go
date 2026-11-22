@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUnionThenFixedByteArrayWire writes a struct whose fixed [4]uint8 array
@@ -97,7 +99,7 @@ fn main() {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(cargoBin, "run", "--quiet")
+	cmd := testproc.Command(t, cargoBin, "run", "--quiet")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(cargoBin)+":"+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

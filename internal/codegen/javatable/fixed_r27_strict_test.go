@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaFixedR27OracleHostile is the functional test for cell java/R27
@@ -94,7 +95,7 @@ func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate f
 	probes, _ := filepath.Glob(filepath.Join(srcDir, "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classesDir}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("javac: %w\n%s", err, out)
 	}
 
@@ -123,7 +124,7 @@ func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate f
 			return fmt.Errorf("%s: manifest bound decision pastBound=%d, wantRefuse=%v", tc.file, pastBound, tc.wantRefuse)
 		}
 
-		out, err := exec.Command(javaBin, "-ea", "-cp", classesDir, probeClasses[i], filepath.Join(corpus, tc.file)).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, "-ea", "-cp", classesDir, probeClasses[i], filepath.Join(corpus, tc.file)).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s: java: %w\n%s", tc.file, err, out)
 		}

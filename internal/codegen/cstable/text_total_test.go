@@ -10,10 +10,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const textTotalSchema = `package probe
@@ -111,7 +112,7 @@ func TestTotalOracle(t *testing.T){
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestTotalOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestTotalOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Go total oracle: %v\n%s", err, out)

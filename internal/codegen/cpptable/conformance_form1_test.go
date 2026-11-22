@@ -31,6 +31,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppFramingStrictRows are the form-1 rows the emitted strict walk refuses
@@ -139,7 +141,7 @@ func cppFramingRun(t *testing.T, root, bin string, rows []cppFramingRow) map[str
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, manifest, "framing", out)
+	cmd := testproc.CommandContext(t, ctx, bin, manifest, "framing", out)
 	cmd.Dir = root
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the C++ driver failed on the framing surface: %v\n%s", err, b)
@@ -215,7 +217,7 @@ func cppConformanceMake(t *testing.T, root string, args ...string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
+	cmd := testproc.CommandContext(t, ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("make %s: %v\n%s", strings.Join(args, " "), err, out)

@@ -3,12 +3,13 @@ package cstable_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The C# conformance driver reads strict and writes back: a fixed root is
@@ -29,7 +30,7 @@ func csConformanceBuild(t *testing.T, root string) string {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", "build/conformance-harness", "build-conformance-cs", "build-cs-cook", "table-base64-cs")
+	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-cs", "build-cs-cook", "table-base64-cs")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -55,7 +56,7 @@ func csDriverSurface(t *testing.T, root, dll, surface, manifest string) string {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "dotnet", dll, manifestPath, surface, outDir)
+	cmd := testproc.CommandContext(t, ctx, "dotnet", dll, manifestPath, surface, outDir)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -72,7 +73,7 @@ func TestCSharpDriverReadsStrictAndWritesBack(t *testing.T) {
 	// The whole matrix over the real corpus.
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "cs", "--work", t.TempDir())
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "cs", "--work", t.TempDir())
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -24,6 +24,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const messageStorageAssertSchema = `package storagerelease
@@ -162,11 +164,11 @@ func runMessageStorageAssertProbe(t *testing.T, u *ir.Unit, body string, flags [
 	if linker, err := exec.LookPath("cc"); err == nil {
 		linkFlags = append(linkFlags, "-C", "linker="+linker)
 	}
-	build := exec.Command("rustc", append(linkFlags, "--edition", "2024", "-A", "warnings", "-o", bin, "main.rs")...)
+	build := testproc.Command(t, "rustc", append(linkFlags, "--edition", "2024", "-A", "warnings", "-o", bin, "main.rs")...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }

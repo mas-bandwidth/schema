@@ -8,11 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 // ArmDefaults carries every generated declaration of ArmDefaults.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -21,8 +16,9 @@ public final class ArmDefaults {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -199,7 +195,7 @@ public final class ArmDefaults {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -262,7 +258,7 @@ public final class ArmDefaults {
 
     // enumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameDefaultChoiceType(long value) {
+    public static java.lang.String enumNameDefaultChoiceType(long value) {
         if (value == DefaultChoiceType.NONE) {
             return "None";
         }
@@ -354,7 +350,7 @@ public final class ArmDefaults {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -507,14 +503,14 @@ public final class ArmDefaults {
     // construction.
     public static void zeroDefaultBulkArm(DefaultBulkArm value) {
         zeroDefaultArm(value.payload);
-        Arrays.fill(value.data, (byte) 0);
+        java.util.Arrays.fill(value.data, (byte) 0);
         value.dataLength = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initDefaultBulkArm(DefaultBulkArm value) {
         initDefaultArm(value.payload);
-        Arrays.fill(value.data, (byte) 0);
+        java.util.Arrays.fill(value.data, (byte) 0);
         value.dataLength = 0;
     }
 
@@ -549,7 +545,7 @@ public final class ArmDefaults {
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
         flushBits(data, pos, scratch);
-        System.arraycopy(value.data, 0, data, pos >>> 3, value.dataLength);
+        java.lang.System.arraycopy(value.data, 0, data, pos >>> 3, value.dataLength);
         pos += value.dataLength * 8;
         return pos;
     }
@@ -574,7 +570,7 @@ public final class ArmDefaults {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -598,7 +594,7 @@ public final class ArmDefaults {
         if ((long) bitsRead + value.dataLength * 8L > numBits) {
             return -1;
         }
-        System.arraycopy(data, bitsRead >>> 3, value.data, 0, value.dataLength);
+        java.lang.System.arraycopy(data, bitsRead >>> 3, value.data, 0, value.dataLength);
         bitsRead += value.dataLength * 8;
         return bitsRead;
     }
@@ -636,7 +632,7 @@ public final class ArmDefaults {
     // enumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType storage
     // value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameDefaultBulkChoiceType(long value) {
+    public static java.lang.String enumNameDefaultBulkChoiceType(long value) {
         if (value == DefaultBulkChoiceType.NONE) {
             return "None";
         }
@@ -730,7 +726,7 @@ public final class ArmDefaults {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
