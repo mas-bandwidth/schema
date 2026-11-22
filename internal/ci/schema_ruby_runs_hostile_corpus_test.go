@@ -475,6 +475,7 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
+	corpusDir, cases = rubyHostileFormFFValidBody(t, corpusDir, cases)
 	clean := rubyHostileRun(t, root, corpusDir, cases, false)
 	if bad := rubyHostileCompare(cases, clean); len(bad) != 0 {
 		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
@@ -484,6 +485,50 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	if len(bad) == 0 {
 		t.Fatal("the planted variable-table form gate bug (0xff admitted) was not observed: corpus stayed green")
 	}
+}
+
+// rubyHostileFormFFValidBody returns a copy of the corpus with one more case:
+// wire-valid's bytes with the form byte set to 0xff, refused by a clean reader
+// (newer_form) and ACCEPTED by a reader whose form gate admits 0xff. The
+// corpus's own wire-form-ff is a single byte, which a planted reader still
+// refuses (as damaged), so under docs/rulings.json refusal-verdict-only the
+// plant is seen only through a verdict this case flips.
+func rubyHostileFormFFValidBody(t *testing.T, corpusDir string, cases []rubyHostileCase) (string, []rubyHostileCase) {
+	t.Helper()
+	dir := t.TempDir()
+	var valid *rubyHostileCase
+	for i, c := range cases {
+		data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(c.Input)))
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		p := filepath.Join(dir, filepath.FromSlash(c.Input))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if c.Name == "wire-valid" {
+			valid = &cases[i]
+		}
+	}
+	if valid == nil {
+		t.Fatal("the corpus carries no wire-valid case to build the form-0xff body from")
+	}
+	data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(valid.Input)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] = 0xff
+	ff := *valid
+	ff.Name = "wire-form-ff-valid-body"
+	ff.Input = "inputs/wire-form-ff-valid-body.bin"
+	ff.Verdict, ff.Reason, ff.Digest = rubyHostileRefuse, "newer_form", "-"
+	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(ff.Input)), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir, append(slices.Clone(cases), ff)
 }
 
 const rubyResourceBoundsSchema = `package probe
@@ -516,6 +561,7 @@ func rubyResourceBoundsDocs() map[string]string {
 	unk.WriteByte('}')
 	return map[string]string{
 		"deep-nesting":        strings.Repeat("[", 132) + strings.Repeat("]", 132),
+		"deep-unknown":        `{"zz": ` + strings.Repeat("[", 132) + strings.Repeat("]", 132) + "}",
 		"huge-count":          `{"big": [` + strings.Repeat("1,", 99999) + "1]}",
 		"recursion":           chain,
 		"giant-string":        `"` + strings.Repeat("x", 70000) + `"`,
@@ -531,6 +577,7 @@ type rubyResourceBoundsWant struct {
 func rubyResourceBoundsWants() map[string]rubyResourceBoundsWant {
 	return map[string]rubyResourceBoundsWant{
 		"deep-nesting":        {"REFUSED", "malformed"},
+		"deep-unknown":        {"REFUSED", "malformed"},
 		"huge-count":          {"REFUSED", "count_over_bound"},
 		"recursion":           {"REFUSED", "malformed"},
 		"giant-string":        {"REFUSED", "kind_mismatch"},
@@ -542,7 +589,7 @@ const rubyResourceBoundsProbe = `# frozen_string_literal: true
 
 require_relative 'probe'
 
-NAMES = %w[deep-nesting huge-count recursion giant-string many-unknown-fields].freeze
+NAMES = %w[deep-nesting deep-unknown huge-count recursion giant-string many-unknown-fields].freeze
 SLOT_SIZE = GC::INTERNAL_CONSTANTS[:RVALUE_SIZE] || 40
 
 NAMES.each do |shape|
@@ -641,7 +688,7 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 				t.Fatalf("%s: bad bytes %q: %v", fields[0], fields[5], err)
 			}
 			if prev, ok := got[fields[0]]; ok {
-				if prev.verdict != r.verdict || prev.reason != r.reason || prev.bytes != r.bytes {
+				if prev.verdict != r.verdict || prev.bytes != r.bytes { // the verdict only: refusal-verdict-only
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %+v vs %+v", fields[0], prev, r)
 				}
 				r.allocated = max(r.allocated, prev.allocated)
@@ -665,7 +712,7 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 			t.Fatalf("shape %s: the probe wrote no line", name)
 		}
 		want := wants[name]
-		if r.verdict != want.verdict || r.reason != want.reason {
+		if r.verdict != want.verdict { // the verdict only: refusal-verdict-only
 			t.Fatalf("shape %s: %s %s, want %s %s", name, r.verdict, r.reason, want.verdict, want.reason)
 		}
 		budget := int(rubyAllocationFactorF*float64(r.bytes)) + int(rubyAllocationSlackKB*1024)
@@ -682,16 +729,19 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 func TestSchemaRubyResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters")
-	guarded, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "", ""))["deep-nesting"]
-	if !ok || guarded.verdict != "REFUSED" || guarded.reason != "malformed" {
-		t.Fatalf("with the depth guard in place deep-nesting must refuse malformed, got %+v", guarded)
+	// deep-unknown, not deep-nesting: a root array is refused whatever the
+	// cap (H is an object), so only nesting under a skipped unknown field
+	// shows the cap as a verdict (docs/rulings.json refusal-verdict-only)
+	guarded, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "", ""))["deep-unknown"]
+	if !ok || guarded.verdict != "REFUSED" {
+		t.Fatalf("with the depth guard in place deep-unknown must refuse, got %+v", guarded)
 	}
-	planted, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "fail_scan if depth > MAX_DEPTH", "fail_scan if depth > 100_000"))["deep-nesting"]
+	planted, ok := rubyResourceBoundsRun(t, rubyResourceBoundsUnit(t, "fail_scan if depth > MAX_DEPTH", "fail_scan if depth > 100_000"))["deep-unknown"]
 	if !ok {
-		t.Fatal("the planted run wrote no deep-nesting line")
+		t.Fatal("the planted run wrote no deep-unknown line")
 	}
-	if planted.verdict == "REFUSED" && planted.reason == "malformed" {
-		t.Fatalf("the planted pattern (depth cap raised) did not change deep-nesting verdict: %+v", planted)
+	if planted.verdict == "REFUSED" {
+		t.Fatalf("the planted pattern (depth cap raised) did not change deep-unknown verdict: %+v", planted)
 	}
 }
 
