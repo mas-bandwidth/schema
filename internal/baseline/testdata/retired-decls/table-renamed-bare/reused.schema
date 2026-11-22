@@ -1,0 +1,21 @@
+package decls
+
+table Link
+{
+    value int32
+    next  *Link
+}
+
+// a NEW table under the name the bare rename freed: a save made before the
+// rename carries ListNode records, and this would be the table they name
+table ListNode
+{
+    s string(8)
+}
+
+table Holder
+{
+    p *Link
+    c int32
+    q *ListNode
+}

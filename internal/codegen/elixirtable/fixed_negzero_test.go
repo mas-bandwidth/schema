@@ -5,8 +5,8 @@ package elixirtable
 // vector is the reference writer's file holding the sign bit alone in the
 // compressed field; this leg reads it through its generated load, lands the
 // value 0 with the sign bit clear, refuses nothing, and saves the canonical
-// bytes the +0 record writes. A plain float's -0 is carried bit-exact and is
-// not this vector's subject.
+// bytes the +0 record writes, from the landed value and from a held -0. A
+// plain float's -0 is carried bit-exact and is not this vector's subject.
 //
 // It compiles and runs the generated unit, so it is a functional test:
 // without SCHEMA_SLOW it skips by name, and under SCHEMA_REQUIRE_CORPUS=1 a
@@ -52,6 +52,9 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
       <<0::little-unsigned-32>> <> binary_part(data, at + 4, byte_size(data) - at - 4)
   saved = T.neg_zero_fixed_save(values)
   check(saved == want, "saving the landed +0 did not write the canonical bytes")
+  <<nz::float>> = <<0x8000000000000000::64>>
+  saved_nz = T.neg_zero_fixed_save([%{v | value: nz}])
+  check(saved_nz == want, "saving a held -0 did not write the +0 record's canonical bytes")
 `
 			out, err := runRootProbe(t, elixirBin, "FNZ", vec.Root, nil, 0, file, body)
 			if err != nil {

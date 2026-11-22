@@ -1,0 +1,20 @@
+package decls
+
+table Link
+{
+    value int32
+    next  *Link
+}
+
+// CONTROL: a new table under a name no update ever retired
+table Fresh
+{
+    s string(8)
+}
+
+table Holder
+{
+    p *Link
+    c int32
+    q *Fresh
+}

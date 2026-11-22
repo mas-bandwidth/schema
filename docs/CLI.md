@@ -3,6 +3,25 @@
 The commands are listed by `schema` with no arguments. Each command's flags are
 documented where the command is: [USAGE.md](USAGE.md).
 
+**No command damages a file it rewrites.** Every command that changes a file
+(`fmt`, `tables-baseline --update`, `lock`, `generate`, `testgen`, `pack`,
+`unpack`, `cook`, `uncook`, `pin`) writes the new content to a temporary file
+beside it and renames that into place, so a write that fails (a full disk, a
+file-size limit, a read-only directory) exits 1 with the file byte for byte as
+it was. A command that changes several entries (`fmt` over several sources or a
+directory, `generate` into a directory, `unpack` into a tree, `pin` across
+packages, `pack --message --announce` and `cook --attribution` with their two
+files) lands all of them or none: every file is staged before any is
+replaced, and a failure puts back the entries already moved. `fmt` formats
+every source before it writes any, so a source that does not parse leaves
+every one as it was. The files pack, cook and uncook write go
+into a directory that is already there: a missing one is refused, not made. A
+path that is a symbolic link is followed and the link stays; an existing file
+keeps its mode. A file made read-only is not replaced: the
+command is refused with nothing changed. `new-leg` only creates files and
+never replaces one. One run writes to an output at a time: schema takes no
+lock.
+
 `schema pin <version> <dir>...` rewrites the compiler pin in every `generate.go`
 `go:generate` line under each directory to `<version>`, printing one line per
 file changed; the line's module path moves to the one the version's major

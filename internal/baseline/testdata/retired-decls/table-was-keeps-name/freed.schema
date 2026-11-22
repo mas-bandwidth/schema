@@ -1,0 +1,14 @@
+package decls
+
+// CONTROL: a `was` rename keeps the wire name, so nothing is freed
+table Link | was = "ListNode"
+{
+    value int32
+    next  *Link
+}
+
+table Holder
+{
+    p *Link
+    c int32
+}
