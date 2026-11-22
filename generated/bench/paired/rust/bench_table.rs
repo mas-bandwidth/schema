@@ -243,7 +243,7 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         out.push(22);
         out.extend_from_slice(&v.server_time.to_le_bytes());
     }
-    if true {
+    if v.entities.len() != 1 || v.entities.iter().enumerate().any(|(j, e)| { let mk = ids.mark(); let mut eb = Vec::new(); mixed_entity_save_body(e, &mut eb, ids, g, None, None, path.step(9, j as u32)); ids.rollback(mk); !eb.is_empty() }) {
         debug_assert!(v.entities.len() <= 8, "entities count past 8");
         debug_assert!(v.entities.len() >= 1, "entities count below 1");
         let r = ids.id_ref(0x935d0fb07bb3822a);

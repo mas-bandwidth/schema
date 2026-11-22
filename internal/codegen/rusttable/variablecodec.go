@@ -819,10 +819,14 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 			// a field elides at its BORN state exactly: the live count is Min
 			// and each of the Min elements is at its default (docs/SPEC-TABLES.md
-			// §2.3). A table element's default is judged by its body; it rides.
+			// §2.3). A table element is at its default when its body is the
+			// terminator alone: its save body writes no field, judged on a scratch
+			// buffer with the id table rolled back.
 			rides = fmt.Sprintf("%s.len() != %d", x, f.ArrayMin)
-			if classOf(f) == vTable {
-				rides = "true"
+			if classOf(f) == vTable && ir.TextListPlain(f) {
+				rides += fmt.Sprintf(" || %s.iter().any(|e| !e.value.is_empty())", x)
+			} else if classOf(f) == vTable {
+				rides += fmt.Sprintf(" || %s.iter().enumerate().any(|(j, e)| { let mk = ids.mark(); let mut eb = Vec::new(); %s(e, &mut eb, ids, g, None, None, path.step(%d, j as u32)); ids.rollback(mk); !eb.is_empty() })", x, fn(f.Type.Name, "save_body"), ordinal)
 			} else {
 				rides += fmt.Sprintf(" || %s.iter().any(|e| %s)", x, elemNonDefaultExpr(f, "e"))
 			}
