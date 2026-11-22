@@ -81,8 +81,8 @@ func TestJsCompressedFloatStoresAreGuarded(t *testing.T) {
 		"an element or keyed slot elides by its -0 bits")
 	has(v, vs, "const t = TableVariableFloatText(TableVariableHeldFloat(d, val), d.f32);",
 		"the JSON writer spells a compressed -0 as -0")
-	same := vs[strings.Index(vs, "function TableVariableSameFloat("):]
-	same = same[:strings.Index(same, "\n}\n")]
+	_, same, _ := strings.Cut(vs, "function TableVariableSameFloat(")
+	same, _, _ = strings.Cut(same, "\n}\n")
 	lacks(v, same, "Held", "the bit compare normalises, so a plain float's -0 no longer rides")
 	before(v, vs, "function writeValue(view, at, fd, value, le, ctx) {", "if (fd.rg === 1 && value === 0) { value = 0; }", "view.setFloat32(at, value, le)")
 	has(v, vs, `{k:"f32",n:"a",at:0,rg:1}`, "the cook descriptor of a compressed float is not marked")

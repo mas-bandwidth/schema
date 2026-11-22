@@ -325,6 +325,7 @@ func init() {
 		Name{Name: "TableVariableFromJsonBytes", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableGuardHolds", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableHeader", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableHeldFloat", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableIds", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableJsonField", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableJsonFields", What: "the JavaScript variable-form runtime module"},
