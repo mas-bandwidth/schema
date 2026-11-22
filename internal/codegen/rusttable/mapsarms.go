@@ -1470,11 +1470,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 		fmt.Fprintf(b, "%s    };\n", in)
 		fmt.Fprintf(b, "%s    if !key_ok { jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
 	}
-	// the map object is a level (§16.2; internal/tabletext readMap reads each
-	// value at depth+1)
-	fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
-	fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)
 	if mapKeyHashed(f) {
 		// THE KEYS PLACED SO FAR, hashed: a key new to the map appends
