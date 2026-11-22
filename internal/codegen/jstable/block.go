@@ -426,7 +426,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { // the base's alignment\n", ir.BlockAlign)
 	g.pf("      throw new globalThis.RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
 	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n", ir.BlockAlign)
-	g.pf("        \"into a fresh Uint8Array first: new globalThis.Uint8Array(bytes)\");\n")
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
 	g.pf("    const handle = openCheck(bytes);\n")
