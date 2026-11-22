@@ -431,24 +431,31 @@ tables-lua-release-negative-control: toolchain-lua build/conformance-harness bui
 		{ echo "NEGATIVE CONTROL FAILED: the release wire fuzz went red, but not on a divergence"; cat build/lua-release-negative/log; exit 1; }
 	@echo "tables-lua-release negative control: the release wire fuzz (seed 2, N=$(LUA_RELEASE_FUZZ_N)) reds on a load that refuses every unknown field as damage"
 
-# PER-CASE ABSENT's REVERSED WITNESS (I4): a copy of the driver whose absent()
-# writes nothing, so a case the leg cannot answer is left with neither an
-# answer nor <case>.absent. The harness must go red on it: an unanswered case
-# is never counted as a pass, so the leg's absences are what it says they are.
+# PER-CASE ABSENT's REVERSED WITNESS (I4), and R13's: a copy of the driver
+# whose absent() and answerRefused() write nothing, so a case the leg cannot
+# answer is left with neither an answer nor <case>.absent, and a must-refuse
+# row (blob_shared on wire, the variable root on message) with no `refused`.
+# The harness must go red on it, on wire and on message: an unanswered case is
+# never counted as a pass, so the leg's refusals and absences are what it says
+# they are. (Since R13 the corpus leaves the lua leg no absence, so the refusal
+# rows are what bites.)
 .PHONY: conformance-negative-control-lua-absent
 conformance-negative-control-lua-absent: toolchain-lua build/conformance-harness build/conformance-lua
 	@rm -rf build/lua-absent-control && mkdir -p build/lua-absent-control
-	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
-	@if cmp -s test/conformance/lua/main.lua build/lua-absent-control/main.lua; then \
-		echo "NEGATIVE CONTROL: the absent sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
+	@sed -e 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' \
+		-e 's|^  writeBytes(outdir .. "/" .. name, "refused\\n")$$|  do end|' \
+		test/conformance/lua/main.lua > build/lua-absent-control/main.lua
+	@if grep -qxF '  writeBytes(outdir .. "/" .. name .. ".absent", reason)' build/lua-absent-control/main.lua || \
+		grep -qxF '  writeBytes(outdir .. "/" .. name, "refused\n")' build/lua-absent-control/main.lua; then \
+		echo "NEGATIVE CONTROL: the absent or refused sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
 	@printf '#!/bin/sh\nexec env LUA=%s %s %s/build/lua-absent-control/main.lua "$$@"\n' '$(LUA)' '$(LUA)' '$(CURDIR)' > build/lua-absent-control/driver
 	@chmod +x build/lua-absent-control/driver
 	@printf 'lua %s/build/lua-absent-control/driver\n' '$(CURDIR)' > build/lua-absent-control/drivers.txt
 	@if build/conformance-harness run --drivers build/lua-absent-control/drivers.txt --work build/lua-absent-control/work > build/lua-absent-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a driver that drops every <case>.absent left conformance green"; cat build/lua-absent-control/log; exit 1; fi
-	@grep -qE '^ *lua / [a-z-]+' build/lua-absent-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: conformance went red, but not on a lua surface"; cat build/lua-absent-control/log; exit 1; }
-	@echo "conformance-negative-control-lua-absent: dropping <case>.absent turns [$$(grep -oE '^ *lua / [a-z-]+' build/lua-absent-control/log | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')] red"
+		echo "NEGATIVE CONTROL FAILED: a driver that drops every <case>.absent and every refusal answer left conformance green"; cat build/lua-absent-control/log; exit 1; fi
+	@for s in wire message; do grep -qE "^ *lua / $$s:" build/lua-absent-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the lua $$s surface did not go red"; cat build/lua-absent-control/log; exit 1; }; done
+	@echo "conformance-negative-control-lua-absent: dropping <case>.absent and the refusal answer turns [$$(grep -oE '^ *lua / [a-z-]+' build/lua-absent-control/log | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')] red"
 
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)

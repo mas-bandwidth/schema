@@ -96,6 +96,13 @@ local function absent(outdir, name, reason)
   writeBytes(outdir .. "/" .. name .. ".absent", reason)
 end
 
+-- A MUST-REFUSE ROW's answer (ruling R13: an absence is never the refusal):
+-- `<case>` holding `refused` and a newline, written only where the runtime
+-- refused (a blob_shared wire) or carries no message form (a variable root).
+local function answerRefused(outdir, name)
+  writeBytes(outdir .. "/" .. name, "refused\n")
+end
+
 local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 
 ---------------------------------------------------------------------------
@@ -276,8 +283,9 @@ local function surfaceFraming(all, outdir)
 end
 
 -- The WIRE surface loads a wire and re-saves it (docs/SPEC-TABLES.md §3).
--- A blob named from two slots is a named absence (FORMAT.md, wire-refused)
--- and no bytes. Any other refusal is that one case, not an exit.
+-- A blob named from two slots is refused (FORMAT.md, wire-refused): the
+-- answer is `refused` and a newline, only when the runtime names blob_shared
+-- (ruling R13), and no bytes. Any other refusal is that one case, not an exit.
 local function wireRefusal(why)
   return type(why) == "string" and why:find("blob_shared", 1, true) ~= nil
 end
@@ -291,7 +299,7 @@ local function surfaceWire(all, outdir)
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
         if wireRefusal(why) then
-          absent(outdir, f[2], "blob_shared")
+          answerRefused(outdir, f[2])
         else
           io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
         end
@@ -299,7 +307,7 @@ local function surfaceWire(all, outdir)
         local saved, wwhy = canonicalWrite(u, f[4], v)
         if saved == nil then
           if wireRefusal(wwhy) then
-            absent(outdir, f[2], "blob_shared")
+            answerRefused(outdir, f[2])
           else
             io.stderr:write("driver: " .. f[2] .. ": Save refused: " .. tostring(wwhy) .. "\n")
           end
@@ -444,13 +452,17 @@ local function surfaceMessage(all, outdir)
     -- message <name> <connection> <root> <file-form wire> <message-form wire>
     local conn = connectionNamed(all, f[3])
     local u = unit(conn[3])
-    if f[6] == "-" then
-      -- a named refusal row: the root is a variable table (§3.3)
-      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
-    elseif not u then
+    local carried = u ~= nil and u.T.MessageRoots ~= nil and u.T.MessageRoots[f[4]]
+    if not u then
       absent(outdir, f[2], NOT_GENERATED)
-    elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
-      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+    elseif f[6] == "-" and not carried then
+      -- a named refusal row: the root is a variable table (§3.3), and the
+      -- generated code carries no message form for it: the refusal (R13)
+      answerRefused(outdir, f[2])
+    elseif f[6] == "-" then
+      fail(f[2] .. ": the unit carries a message form for a variable root " .. f[4])
+    elseif not carried then
+      absent(outdir, f[2], "no message form for this root (SPEC-TABLES §3.3)")
     else
       local vocab = vocabulary(u, conn, f[2])
       local r = newReport()

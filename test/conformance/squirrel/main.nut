@@ -75,6 +75,13 @@ local writeAbsent = function(name) {
   f.close();
 };
 
+// A MUST-REFUSE ROW's answer (ruling R13: an absence is never the refusal):
+// <case> holding `refused` and a newline, written only where the runtime
+// refused (a blob_shared wire) or carries no message form (a variable root).
+local writeRefusal = function(name) {
+  writeText(outdir + "/" + name, "refused\n");
+};
+
 local splitFields = function(line) {
   local out = [];
   local cur = "";
@@ -281,10 +288,11 @@ if (mode == "report" || mode == "framing") {
 }
 
 // LOAD THEN SAVE, the bytes. The strict read refuses a file whose two slots
-// name one blob (§2.5, blob_shared). That row answers <case>.absent holding
-// the name. Any other refusal of a corpus instance is a failure. A writer
-// that refuses by name answers the same absence; a nameless refusal is a
-// failure.
+// name one blob (§2.5, blob_shared). That row answers <case> holding
+// `refused` and a newline (ruling R13: an absence is never the refusal). Any
+// other refusal of a corpus instance is a failure. A writer that refuses
+// blob_shared by name answers the same refusal; another named writer refusal
+// stays an absence naming it; a nameless refusal is a failure.
 if (mode == "wire") {
   foreach (ln in lines) {
     local f = splitFields(ln);
@@ -300,7 +308,7 @@ if (mode == "wire") {
     if (v == null) {
       local shared = report.reason == "blob_shared" || (("sharedBlob" in report) && report.sharedBlob > 0);
       if (shared) {
-        writeText(outdir + "/" + cname + ".absent", "blob_shared");
+        writeRefusal(cname);
         continue;
       }
       throw cname + ": load refused " + wirepath;
@@ -308,6 +316,10 @@ if (mode == "wire") {
     local out = S.save(T, root, v);
     if (out == null) {
       if (S.SaveReason == null) throw cname + ": save refused the value";
+      if (S.SaveReason == "blob_shared") {
+        writeRefusal(cname);
+        continue;
+      }
       writeText(outdir + "/" + cname + ".absent", S.SaveReason);
       continue;
     }
@@ -733,7 +745,8 @@ if (mode == "cook-write") {
 // THE MESSAGE FORM (§3.3): AnnounceRead the connection's announcement into one
 // direction's vocabulary, LoadMessages the batch against it into a storage of
 // the form's batch maximum, then MeasureMessages and SaveMessages, the bytes.
-// A variable table has no message form (§3.3): that row is absent by name.
+// A variable table has no message form (§3.3): its refusal row answers
+// `refused` and a newline (ruling R13).
 if (mode == "message") {
   local connections = {};
   foreach (ln in lines) {
@@ -746,17 +759,19 @@ if (mode == "message") {
     local name = f[1]; local root = f[3];
     if (!(f[2] in connections)) throw name + ": no connection " + f[2];
     local conn = connections[f[2]];
-    if (f[5] == "-") {
-      // a named refusal row: the root is a variable table (§3.3)
-      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
-      continue;
-    }
     if (!generated(conn.unit)) { writeAbsent(name); continue; }
     local T = openUnit(conn.unit)[1];
     if (!T.Descriptors[root].fixed) {
+      if (f[5] == "-") {
+        // a named refusal row: the root is a variable table (§3.3), which
+        // carries no message form: `refused` and a newline (ruling R13)
+        writeRefusal(name);
+        continue;
+      }
       writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
+    if (f[5] == "-") throw name + ": a refusal row names a fixed root " + root;
     local v = {};
     local ar = {};
     if (!T.AnnounceRead(v, readBytes(conn.file), ar)) throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");

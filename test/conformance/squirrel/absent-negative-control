@@ -3,20 +3,30 @@
 # test/conformance/README.md, "Per-case absent").
 #
 # The leg answers a case it cannot carry with `<case>.absent` (main.nut's
-# writeAbsent, the writer's named refusals, a plain table's message rows). This
-# control runs a scratch copy of the driver whose main.nut writes those answers
-# under another name, so the cases go unanswered, and requires the Squirrel
-# leg's conformance run to go red on the wire surface, where blob_shared's
-# named writer refusal is answered absent. No tracked file is written to.
+# writeAbsent, the writer's other named refusals), and a must-refuse row with
+# `<case>` holding `refused` and a newline (main.nut's writeRefusal: the
+# blob_shared wire rows and the variable root's message row; ruling R13, an
+# absence is never the refusal). This control runs a scratch copy of the
+# driver whose main.nut writes both kinds of answer under another name, so the
+# cases go unanswered, and requires the Squirrel leg's conformance run to go
+# red on the wire and the message surfaces. Since R13 the corpus leaves the leg
+# no absence there, so the refusal rows are what bites. No tracked file is
+# written to.
 #
 # The working directory is the repository root.
 set -eu
 out=build/squirrel-absent-negative-control
 rm -rf "$out"
 mkdir -p "$out"
-sed 's/\.absent"/.unanswered"/g' test/conformance/squirrel/main.nut > "$out/main.nut"
-if cmp -s test/conformance/squirrel/main.nut "$out/main.nut"; then
-	echo "NEGATIVE CONTROL FAILED (absent): the sabotage patched nothing" >&2
+sed -e 's/\.absent"/.unanswered"/g' \
+	-e '/^local writeRefusal = function/,/^};/s#outdir + "/" + name, "refused#outdir + "/" + name + ".unanswered", "refused#' \
+	test/conformance/squirrel/main.nut > "$out/main.nut"
+if ! grep -q '\.absent"' test/conformance/squirrel/main.nut || grep -q '\.absent"' "$out/main.nut"; then
+	echo "NEGATIVE CONTROL FAILED (absent): the absent sabotage patched nothing" >&2
+	exit 1
+fi
+if ! grep -qF 'outdir + "/" + name + ".unanswered", "refused' "$out/main.nut"; then
+	echo "NEGATIVE CONTROL FAILED (absent): the refusal sabotage patched nothing" >&2
 	exit 1
 fi
 sed "s#^main=test/conformance/squirrel/main.nut#main=$out/main.nut#" test/conformance/squirrel/driver > "$out/driver"
@@ -31,9 +41,11 @@ if ./build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/wor
 	cat "$out/log" >&2
 	exit 1
 fi
-if ! grep -q "squirrel / wire:" "$out/log"; then
-	echo "NEGATIVE CONTROL FAILED (absent): the wire surface did not go red" >&2
-	cat "$out/log" >&2
-	exit 1
-fi
-echo "Squirrel conformance negative control (absent): unanswered absent cases are caught by wire"
+for s in wire message; do
+	if ! grep -q "squirrel / $s:" "$out/log"; then
+		echo "NEGATIVE CONTROL FAILED (absent): the $s surface did not go red" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+done
+echo "Squirrel conformance negative control (absent): unanswered absent and refusal cases are caught by wire and message"

@@ -22,9 +22,10 @@ while (my $line = <$in>) {
 	die "split.pl: a case name may not leave the output directory: $case\n"
 		if $case =~ m{/} || $case =~ /\A\.\.?\z/;
 	if ($answer =~ /\Aabsent(?: (.+))?\z/s) {
-		# a named absence carries its reason as the file's bytes (the blob_shared
-		# writer refusal, docs/SPEC-TABLES.md §2.5; the variable table's message
-		# row, §3.3), a plain one is empty
+		# a named absence carries its reason as the file's bytes, a plain one is
+		# empty; a refusal (the blob_shared refusal, docs/SPEC-TABLES.md §2.5;
+		# the variable table's message row, §3.3) is never an absence: it is
+		# the hex of `refused` and a newline (ruling R13)
 		my $reason = defined $1 ? $1 : "";
 		open(my $f, ">", "$outdir/$case.absent") or die "split.pl: $case: $!\n";
 		print $f $reason;

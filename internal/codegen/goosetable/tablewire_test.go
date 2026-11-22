@@ -102,13 +102,12 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 		case f[0] == "instance" && len(f) >= 5:
 			want := read(f[4])
 			for _, marker := range f[5:] {
-				if r, ok := strings.CutPrefix(marker, "go-refusal="); ok {
-					want = "absent " + r
-				}
-				// surface_wire names a blob two slots share as absent
-				// blob_shared. The manifest marks that row wire-refused.
-				if marker == "wire-refused" {
-					want = "absent blob_shared"
+				// surface_wire answers a blob two slots share, which the
+				// runtime refuses as blob_shared, with the refusal: `refused`
+				// and a newline, never an absence (ruling R13). The manifest
+				// marks that row wire-refused (or go-refusal=blob_shared).
+				if strings.HasPrefix(marker, "go-refusal=") || marker == "wire-refused" {
+					want = "refused\n"
 				}
 			}
 			c.want["wire"][f[1]], c.unitOf["wire"][f[1]] = want, f[2]

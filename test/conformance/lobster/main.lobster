@@ -101,14 +101,22 @@ def surface_wire(text:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         if not rec:
-            // a wire-refused instance (blob_shared, §2.5) owes the refusal
-            // alone: no bytes, an absence naming the reason
-            print(f[1] + " absent " + schema_rt.strict_reason(rep))
+            // a wire-refused instance (blob_shared, §2.5) owes the refusal,
+            // `refused` and a newline, and only when the runtime named
+            // blob_shared (ruling R13); any other refusal stays an absence
+            // naming the reason
+            let reason = schema_rt.strict_reason(rep)
+            if reason == "blob_shared":
+                say(f[1], "refused\n")
+            else:
+                print(f[1] + " absent " + reason)
             continue
         let out, why = schema_rt.save_reasoned(rec)
-        if why != "":
+        if why == "blob_shared":
             // a value the writer refuses by name (blob_shared, §2.5): the
-            // answer is the refusal, never bytes
+            // answer is the refusal, never bytes (ruling R13)
+            say(f[1], "refused\n")
+        elif why != "":
             print(f[1] + " absent " + why)
         else:
             say(f[1], out)
@@ -199,7 +207,7 @@ def surface_block_dump(text:string):
 // `message <name> <connection> <root> <file wire> <message wire>`, and its
 // third word is the CONNECTION, joined to its
 // `connection <key> <unit> 0x<build> <announcement>` line for the unit. A root
-// that is a variable table carries no message verbs (§3.3): a named absence.
+// that is a variable table carries no message verbs (§3.3): the refusal.
 def surface_message(text:string):
     let lines = tokenize(text, "\n", " \t\r")
     for(lines) line:
@@ -214,7 +222,9 @@ def surface_message(text:string):
                     announcement = c[4]
             if unit == unit_key:
                 if not schema_rt.is_message_root(f[3]):
-                    print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+                    // a variable table carries no message verbs: the row owes
+                    // the refusal, `refused` and a newline (ruling R13)
+                    say(f[1], "refused\n")
                 else:
                     let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
                     let rep = schema_rt.LoadReport {}
