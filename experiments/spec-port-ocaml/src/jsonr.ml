@@ -214,7 +214,12 @@ let rec skip st (v : j) =
        if rest = [] then
          (match Hashtbl.find_opt st.labels l with
           | Some (LDefined _) -> ()
-          | _ -> refuse "malformed: reference before definition")
+          | Some LOpen -> refuse "malformed: reference inside its own definition"
+          | None ->
+            (* SPEC-GAP 8: §16.7 refuses a reference to an undefined label inside a
+               skipped value; json-hostile reserved-ampersand-in-skipped-value reads.
+               The vector is followed. *)
+            ())
        else begin
          if Hashtbl.mem st.labels l then refuse "malformed: label defined twice";
          Hashtbl.replace st.labels l LOpen;

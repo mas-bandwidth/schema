@@ -86,6 +86,7 @@ let rec at_default st (t : ty) (v : value) (d : value) : bool =
     rollback st m;
     body = "\000"
   | Union _, VUnion (o, _), _ -> o = 0
+  | (Ptr _ | Blob _), VPtr None, _ -> true
   | _ -> false
 
 and struct_body st (s : struct_d) (fs : value array) what : string =
@@ -853,10 +854,15 @@ let load (u : unit_t) (root : struct_d) (s : string) : value * int * int =
   if rs.seen <> count then refuse "noncanonical: unused id-table entry";
   (* resolve every slot to its record *)
   let reached = Hashtbl.create 16 in
+  let null_holders = Hashtbl.create 4 in
   List.iter (fun (h, t, i) ->
       if i = 1 then refuse "data_cycle: pointer to root";
       match Hashtbl.find_opt rs.nodes i with
       | None -> refuse "wire_damaged: index past node table"
+      | Some (_, Bool) ->
+        (* a record whose type this reader cannot name: every pointer naming it reads null (§3.1) *)
+        Hashtbl.replace reached i ();
+        Hashtbl.replace null_holders h.nid ()
       | Some (nd, t2) ->
         let ok = match t, t2 with Ptr x, Struct y -> x == y | Blob x, Blob y -> x = y | _ -> false in
         if not ok then refuse "wire_damaged: wrong-type pointer target";
@@ -868,6 +874,7 @@ let load (u : unit_t) (root : struct_d) (s : string) : value * int * int =
   let fixed = Hashtbl.create 16 in
   let rec fix v =
     match v with
+    | VPtr (Some h) when h.nid < 0 && Hashtbl.mem null_holders h.nid -> VPtr None
     | VPtr (Some h) when h.nid < 0 ->
       let t = Hashtbl.find holder_target h.nid in
       if not (Hashtbl.mem fixed t.nid) then (Hashtbl.replace fixed t.nid (); t.nv <- fix t.nv);

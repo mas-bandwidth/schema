@@ -81,7 +81,13 @@ let unit_root key rootname =
 type img = One of value | Batch of value list
 
 let load_wire (l : loaded) (root : struct_d) (s : string) : img =
-  if root.s_fixed then
+  if root.s_fixed && String.length s > 0 && s.[0] = '\001' then begin
+    (* SPEC-GAP 7: SPEC-TABLES §2.2 says a fixed root refuses form 1 as
+       previous_form; the framing rows read form-1 files at fixed roots and
+       owe a form-3 write-back. The vector is followed. *)
+    let v, _, _ = Wire1.load l.u root s in
+    Batch [ v ]
+  end else if root.s_fixed then
     let lin = try Hashtbl.find l.lock root.s_name with Not_found -> [] in
     Batch (Fixed.load_records root lin s ~capacity:(1 lsl 30))
   else begin
@@ -299,7 +305,8 @@ let main () =
             match load_wire l root (read_file wire) with
             | exception e when is_refusal e ->
               log "%s refused: %s" name (reason e);
-              write_file (Filename.concat outdir name) "refused\n"
+              (* SPEC-GAP 6: the contract names no refusal spelling for the wire surface; the historical .absent is the one it says scores *)
+              write_file (Filename.concat outdir (name ^ ".absent")) ""
             | i -> write_file (Filename.concat outdir name) (save_wire root i))
       | "json-read", "instance" :: name :: ukey :: rootname :: _ :: flags when not (List.mem "no-text" flags) ->
         run_case outdir name (fun () ->
