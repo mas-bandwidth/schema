@@ -25,7 +25,7 @@ func TestExternalVocabularyFilteringPreservesFreshCompiler(t *testing.T) {
 		t.Fatal("the vocabulary corpus has no scenarios")
 	}
 	bin := filepath.Join(t.TempDir(), "vocabulary.exe")
-	goBuild(t, filepath.Join("testdata", "client", "vocabulary"), bin)
+	goBuild(t, filepath.Join("testdata", "client", "vocabulary"), ".", bin)
 	for _, tc := range corpus.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			// A child's vocabulary edits end with that process. Each scenario
