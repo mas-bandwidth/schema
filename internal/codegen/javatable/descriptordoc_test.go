@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -24,6 +23,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const docProbeSource = `import java.nio.charset.StandardCharsets;
@@ -179,10 +180,10 @@ func javaDocRows(t *testing.T, javac, javaBin string, u *ir.Unit) []docRow {
 	}
 	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", classes}, srcs...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac %s: %v\n%s", u.Package, err, out)
 	}
-	out, err := exec.Command(javaBin, "-cp", classes, "DocProbe").Output()
+	out, err := testproc.Command(t, javaBin, "-cp", classes, "DocProbe").Output()
 	if err != nil {
 		t.Fatalf("run DocProbe %s: %v", u.Package, err)
 	}

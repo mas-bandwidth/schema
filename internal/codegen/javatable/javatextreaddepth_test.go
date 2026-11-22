@@ -7,7 +7,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const javaTextReadDepthSchema = `package probe
@@ -173,12 +174,12 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probeMain)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	runProbe := func(args ...string) []byte {
 		t.Helper()
-		cmd := exec.Command(javaBin, "-ea", "-cp", classes, "DepthProbe")
+		cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "DepthProbe")
 		cmd.Args = append(cmd.Args, args...)
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()

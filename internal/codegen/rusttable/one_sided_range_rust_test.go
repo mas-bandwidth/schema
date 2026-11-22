@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func rustConstructProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
@@ -32,12 +33,12 @@ func rustConstructProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(main), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("native Rust compile: %v\n%s", err, out)
 	}
-	cmd = exec.Command(filepath.Join(dir, "run"))
+	cmd = testproc.Command(t, filepath.Join(dir, "run"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -249,7 +250,7 @@ func rustRangeFixedOracle(t *testing.T, u *ir.Unit, body string) {
 			}
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("native Go fixed oracle: %v\n%s", err, out)
