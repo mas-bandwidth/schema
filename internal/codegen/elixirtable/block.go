@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // BlockRuntimeModule is the block form's shared runtime, emitted once per unit

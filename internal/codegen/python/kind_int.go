@@ -3,7 +3,7 @@ package python
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The integer kinds int8..uint64, bare or ranged. Python's int is arbitrary

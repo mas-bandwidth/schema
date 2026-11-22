@@ -1,7 +1,7 @@
 package python
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // align pads to the next byte boundary with zeros; a read refuses nonzero

@@ -20,7 +20,7 @@ func TestPythonWidenCIPlan(t *testing.T) {
 	}
 	targets := map[string]int{}
 	auto := map[string]int{}
-	const tablePackage = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
+	const tablePackage = "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable"
 	wanted := []string{"TestPythonScalarWidenHistorical", "TestPythonContainerWidenHistorical", "TestPythonScalarWidenShardPlan", "TestPythonPackageNameCollisions", "TestPythonVtKeyedEnumWriteRefusalsFunctional"}
 	for _, row := range rows {
 		targets[row.Target]++

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
 )
 
 // A UNION ARM IS A FIELD LINE (docs/PORTING.md M18; docs/SPEC-TABLES.md §2.6,

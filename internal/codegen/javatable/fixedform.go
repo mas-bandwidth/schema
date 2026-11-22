@@ -49,7 +49,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the

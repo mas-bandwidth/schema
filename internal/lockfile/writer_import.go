@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ImportWriter attaches an explicitly supplied historical declaration to one

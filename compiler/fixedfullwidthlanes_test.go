@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ctable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // bothFixedRuntimes is the emitted C and C++ fixed runtimes for one probe, by

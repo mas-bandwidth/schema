@@ -3,7 +3,7 @@ package cstable
 import (
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Region metadata accompanies the managed wire; variable units also carry

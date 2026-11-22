@@ -33,11 +33,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // runFixedProbe compiles the unit with the lineage the test plays the lock
@@ -64,7 +64,7 @@ func runFixedProbe(t *testing.T, u *ir.Unit, lineage map[string][]FixedLineageEn
 	if err != nil {
 		t.Fatal(err)
 	}
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\nreplace github.com/mas-bandwidth/schema/v3 => %q\n", root))
 	files["values_test.go"] = []byte(strings.Replace(testSource, "package probe", "package "+u.Package, 1))
 	for name, data := range files {
 		if strings.Contains(name, "/") {

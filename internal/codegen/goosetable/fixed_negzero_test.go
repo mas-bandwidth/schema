@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedvector"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A compressed float's -0 lands as +0 and is written as +0

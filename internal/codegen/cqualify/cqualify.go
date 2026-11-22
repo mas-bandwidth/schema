@@ -31,8 +31,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Qualify returns files with every unit-declared file-scope name qualified

@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE BLOCK FORM (docs/SPEC-TABLES.md §19), in moo: every block-form table

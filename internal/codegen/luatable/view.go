@@ -21,9 +21,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // ViewName is the unit\x27s view module basename: capitalize(package) + "View"

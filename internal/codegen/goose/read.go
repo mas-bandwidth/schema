@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const failRange = "return serialize_fail(s, SERIALIZE_ERROR_VALUE_OUT_OF_RANGE);"

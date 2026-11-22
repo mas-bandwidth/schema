@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // packProbe builds the corpus tree's instance from its canonical text, saves

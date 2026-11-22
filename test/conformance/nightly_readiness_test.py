@@ -17,7 +17,7 @@ loader.exec_module(m)
 
 
 def native(package="gotable", name="TestReady", action="pass", output=""):
-    pkg = "github.com/mas-bandwidth/schema/v2/" + m.package_path(package)
+    pkg = "github.com/mas-bandwidth/schema/v3/" + m.package_path(package)
     return "\n".join(json.dumps(x) for x in [
         {"Package":pkg,"Action":"run","Test":name},
         {"Package":pkg,"Action":"output","Test":name,"Output":output},

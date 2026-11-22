@@ -90,7 +90,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // DefaultFrom and DefaultTo are the move this package exists for. The strings

@@ -5,7 +5,7 @@ import (
 	"hash/fnv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
 )
 
 // RuntimeHeaderName is the one header every generated C file includes: the

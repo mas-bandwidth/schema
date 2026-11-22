@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	javacodegen "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestJavaVariableSaveWriteContract holds the variable-form save to the Java

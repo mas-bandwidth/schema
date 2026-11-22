@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // wasRowTargets is the canonical name of every built-in target whose backends

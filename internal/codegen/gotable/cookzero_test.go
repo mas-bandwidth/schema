@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestGoCookWriteZeroesDeadAndAbsentBytes cooks a root whose optional payload is
@@ -196,10 +196,10 @@ func runCookZeroProbe(t *testing.T, u *ir.Unit, lineage map[string][]FixedLineag
 go 1.26
 
 require (
-	github.com/mas-bandwidth/schema/v2 v2.0.0
+	github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000
 	github.com/mas-bandwidth/serialize.go/v2 v2.0.0
 )
-replace github.com/mas-bandwidth/schema/v2 => %q
+replace github.com/mas-bandwidth/schema/v3 => %q
 replace github.com/mas-bandwidth/serialize.go/v2 => %q
 `, root, runtime))
 	files["values_test.go"] = []byte(probe)

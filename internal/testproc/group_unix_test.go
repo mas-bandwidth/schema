@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // Every child leads its own process group, so the kill at the test's end

@@ -53,16 +53,18 @@ command installs it as `schema` in `$(go env GOPATH)/bin`, which should be on
 your path, because every command on this page is spelled `schema`:
 
 ```
-$ go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
+$ go install github.com/mas-bandwidth/schema/v3/cmd/schema@main
 $ schema version
 schema v3.0.7-0.20261122130757-23d3849a7301 (go1.26.10)
 ```
 
 That builds the head of `main`, where every release is tagged, and needs no
 `make`, no language toolchains, no runtime checkouts and no generation. The
-version is Go's module version, ending in the commit it was built from. Do
-not use `@latest`: the module path still ends in `/v2`, so Go resolves it to
-v2.5.0 rather than the newest release. The README's "Install and build"
+version is Go's module version, ending in the commit it was built from. Use
+`@latest`, which resolves v3.0.7 or later, or `@main`:
+the tags v3.0.0 to v3.0.6 were made while the
+module path still ended in `/v2`, so Go cannot resolve them. The README's
+"Install and build"
 section also lists the prebuilt binaries each release carries, from the first
 release after v3.0.1 on.
 
@@ -4788,9 +4790,9 @@ module docsgen
 
 go 1.26
 
-require github.com/mas-bandwidth/schema/v2 v2.4.0
+require github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000
 
-replace github.com/mas-bandwidth/schema/v2 => ../schema
+replace github.com/mas-bandwidth/schema/v3 => ../schema
 ```
 
 The `replace` points the module at your checkout, and Go does not use a
@@ -4804,8 +4806,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // docs is a generator of our own, selected by --lang docs.

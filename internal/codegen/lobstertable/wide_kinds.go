@@ -14,7 +14,7 @@
 // runtime/schema_save.lobster already writes it at kind_width(36) = 8.
 package lobstertable
 
-import "github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+import "github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
 
 func init() { Register("wide-kinds", emitWideKinds) }
 

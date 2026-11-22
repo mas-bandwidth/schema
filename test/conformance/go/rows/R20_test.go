@@ -141,7 +141,7 @@ func r20FixedProbe(t *testing.T, row, probe string) {
 	r20Run(t, repoRoot, binSchema, "generate", "--lang", "go", "--out", newOut, work)
 
 	runtime := f8SerializeGo(t, repoRoot)
-	goMod := fmt.Sprintf("module rowfixprobe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtime)
+	goMod := fmt.Sprintf("module rowfixprobe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v3 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtime)
 	r20Write(t, filepath.Join(dir, "go.mod"), []byte(goMod), 0o600)
 	r20Write(t, filepath.Join(dir, "probe_test.go"), []byte(probe), 0o600)
 

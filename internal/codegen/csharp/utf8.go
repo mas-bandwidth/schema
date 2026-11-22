@@ -1,6 +1,6 @@
 package csharp
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // unitHasStrings reports whether any struct field in the unit is a string(N),
 // the trigger for the generated content validator.

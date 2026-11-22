@@ -39,7 +39,7 @@ func TestImportName(t *testing.T) {
 	for path, want := range map[string]string{
 		"github.com/mas-bandwidth/serialize.go/v2": "serialize",
 		"github.com/mas-bandwidth/serialize.go":    "serialize",
-		"github.com/mas-bandwidth/schema/v2/ir":    "ir",
+		"github.com/mas-bandwidth/schema/v3/ir":    "ir",
 		"encoding/binary":                          "binary",
 		"math":                                     "math",
 		"example.com/v2":                           "example.com",

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cT05OldFile builds a fixed-form FILE in the OLD writer's layout, in Go, from

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modpath"
+	"github.com/mas-bandwidth/schema/v3/internal/modpath"
 )
 
 func TestRunExitCodes(t *testing.T) {

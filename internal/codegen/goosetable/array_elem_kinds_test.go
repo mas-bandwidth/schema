@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
 )
 
 // THE CLOSED ELEMENT KINDS (docs/SPEC-TABLES.md §3, §4). An array body (kind

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v3/compiler"
 )
 
 // TestSharedBlobWitnessSpellings examines both input and saved wire for every

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE DESCRIPTOR ANNOTATION COLUMNS (docs/SPEC-TABLES.md §8.1) for moo: what a

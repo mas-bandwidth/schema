@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // tableCookWriteRuntime is the write half of the cooked form's shared runtime,

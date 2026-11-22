@@ -3,7 +3,7 @@ package elixirtable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Retention belongs to variable roots (§6.6). Fixed bodies still participate

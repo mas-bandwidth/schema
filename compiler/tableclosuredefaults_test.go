@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // Construction starts a positive-minimum count at that minimum (SPEC 4.2),
@@ -102,7 +102,7 @@ fixed table Root {
 					t.Fatal(err)
 				}
 				runtime := slowtest.SerializeGo(t, "..")
-				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
+				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v3 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
 				cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 				cmd.Dir = dir

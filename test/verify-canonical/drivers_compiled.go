@@ -605,13 +605,13 @@ func verifyGo(repoRoot, schemaBin, corpusDir, workDir string) error {
 	if err := os.MkdirAll(filepath.Join(shimRoot, "tables"), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(shimRoot, "go.mod"), []byte("module github.com/mas-bandwidth/schema/v2\n\ngo 1.23\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(shimRoot, "go.mod"), []byte("module github.com/mas-bandwidth/schema/v3\n\ngo 1.23\n"), 0o644); err != nil {
 		return err
 	}
 	if err := os.Symlink(filepath.Join(repoRoot, "tables", "goruntime"), filepath.Join(shimRoot, "tables", "goruntime")); err != nil && !os.IsExist(err) {
 		return err
 	}
-	genMod := fmt.Sprintf("module canonicalgen\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n", shimRoot)
+	genMod := fmt.Sprintf("module canonicalgen\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\n", shimRoot)
 	if err := os.WriteFile(filepath.Join(genDir, "go.mod"), []byte(genMod), 0o644); err != nil {
 		return err
 	}
@@ -619,7 +619,7 @@ func verifyGo(repoRoot, schemaBin, corpusDir, workDir string) error {
 	if err := os.MkdirAll(appDir, 0o755); err != nil {
 		return err
 	}
-	appMod := fmt.Sprintf("module canonicalapp\n\ngo 1.23\n\nrequire (\n\tcanonicalgen v0.0.0\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n)\n\nreplace canonicalgen => ../gen\nreplace github.com/mas-bandwidth/schema/v2 => %s\n", shimRoot)
+	appMod := fmt.Sprintf("module canonicalapp\n\ngo 1.23\n\nrequire (\n\tcanonicalgen v0.0.0\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n)\n\nreplace canonicalgen => ../gen\nreplace github.com/mas-bandwidth/schema/v3 => %s\n", shimRoot)
 	if err := os.WriteFile(filepath.Join(appDir, "go.mod"), []byte(appMod), 0o644); err != nil {
 		return err
 	}

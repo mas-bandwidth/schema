@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // File blobs now run through the same sizing oracle as message blobs. Their

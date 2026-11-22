@@ -1,7 +1,7 @@
 package python
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The if/else branch: both sides are stored, the taken side rides the wire and

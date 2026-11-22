@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedEvolutionEntry is ONE locked layout of one fixed table, the facts

@@ -158,7 +158,7 @@ $(GOLANGCI_GATE_CLASSES_STAMP): bin/schema $(wildcard $(GOLANGCI_GATE_CLASSES)/*
 	./bin/schema generate --lang go --out $(GOLANGCI_GATE_CLASSES_DIR)/packet $(GOLANGCI_GATE_CLASSES)/packet
 	./bin/schema generate --lang go --out $(GOLANGCI_GATE_CLASSES_DIR)/tables $(GOLANGCI_GATE_CLASSES)/tables
 	@printf 'module lintflat\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_CLASSES_DIR)/packet/go.mod
-	@printf 'module lintlanes\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_CLASSES_DIR)/tables/go.mod
+	@printf 'module lintlanes\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_CLASSES_DIR)/tables/go.mod
 	@touch $@
 
 # golangci_gate_count_files DIR CORPUS LOG ACTUAL: lint one generated module
@@ -230,7 +230,7 @@ schema-go-generated-golangci-lint-gate-nightly-measure: schema-go-generated-gola
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
 		m=$$(sed -n 's/^module //p' "$$d/go.mod"); \
-		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
+		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
 	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log

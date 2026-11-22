@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/scanner"
+	"github.com/mas-bandwidth/schema/v3/internal/scanner"
 )
 
 const grammarPath = "syntaxes/schema.tmLanguage.json"

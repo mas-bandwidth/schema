@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func TestFixedRoadmapJsT06Bounds(t *testing.T) {

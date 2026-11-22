@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 //go:embed runtime/_table.rb runtime/_fixed.rb all:runtime/_table

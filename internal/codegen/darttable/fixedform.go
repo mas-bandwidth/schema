@@ -24,7 +24,7 @@ package darttable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The form byte and the layout's own framing, which §3.4 fixes forever: an

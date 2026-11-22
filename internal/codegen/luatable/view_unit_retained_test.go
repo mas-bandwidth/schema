@@ -8,8 +8,8 @@ import (
 	"testing"
 	"weak"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // Generating a unit's table surface and its view keeps nothing about the unit

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"weak"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The fixed form's writer lookup, which reads the unit's lock for a lineage

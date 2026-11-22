@@ -16,6 +16,8 @@
 
   {"id": "F-158-pin-refuses-v3.0.5", "finding": "F-158", "note": "with v3.0.6 as the first /v3 release, the tag cut with /v2 just below it stays refused", "version": "v3.0.5", "boundary": "v3.0.6", "verdict": "refuse", "reason": "before the module path moved to /v3"},
   {"id": "F-158-pin-accepts-v3.0.6", "finding": "F-158", "note": "control", "version": "v3.0.6", "boundary": "v3.0.6", "verdict": "accept", "path": "/v3"},
+  {"id": "modpath-move-refuses-v3.0.6", "finding": "pin-304", "note": "the boundary the module-path move set: a tag cut with /v2 below it stays refused", "version": "v3.0.6", "boundary": "v3.0.7", "verdict": "refuse", "reason": "before the module path moved to /v3"},
+  {"id": "modpath-move-accepts-v3.0.7", "finding": "pin-304", "note": "control: the first tag cut with /v3", "version": "v3.0.7", "boundary": "v3.0.7", "verdict": "accept", "path": "/v3"},
 
   {"id": "F-159-empty-identifier", "finding": "F-159", "note": "an empty pre-release identifier", "version": "v3.0.1-rc..0.20261121185943-f397f5f7765d", "verdict": "refuse", "reason": "not a Go pseudo-version or semver tag"},
   {"id": "F-159-leading-zero-prerelease", "finding": "F-159", "note": "a numeric pre-release identifier with a leading zero", "version": "v2.5.1-beta.01", "verdict": "refuse", "reason": "not a Go pseudo-version or semver tag"},

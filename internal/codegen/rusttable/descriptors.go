@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE CARD DESCRIPTORS (docs/SPEC-TABLES.md §8, §8.1, §8.3): one table type

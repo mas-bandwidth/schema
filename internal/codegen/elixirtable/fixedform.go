@@ -25,8 +25,8 @@ package elixirtable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable/fixedclosure"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/elixirtable/fixedclosure"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The form byte, and the layout's own framing, which §3.4 fixes forever: an

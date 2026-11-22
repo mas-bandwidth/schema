@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modpath"
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modpath"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // modpathFloor is the fewest files the guard accepts from a walk of the real

@@ -1,8 +1,8 @@
 package gotable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const blockBuildRuntime = `// TableBlockAllocator supplies exactly one allocation per storage lifetime.

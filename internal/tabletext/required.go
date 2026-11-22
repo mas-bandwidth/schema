@@ -2,7 +2,7 @@ package tabletext
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 	"math/big"
 	"strings"
 )

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
 )
 
 func cppIncludeProbe(t *testing.T, value string) []error {

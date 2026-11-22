@@ -13148,7 +13148,7 @@ here?" — §2.2's own distinction between machinery and columns.
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
-(`github.com/mas-bandwidth/schema/v2/tables/goruntime`) and aliases the
+(`github.com/mas-bandwidth/schema/v3/tables/goruntime`) and aliases the
 shared declarations in (`runtime` unset, empty or `shared`). With the
 generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
@@ -13179,7 +13179,7 @@ compile error naming `goruntime.Version`, never a run-time surprise.
 Mixing is not a supported state and nothing is negotiated.
 
 **What compiles a shared unit.** A module that compiles a default-generated
-unit requires `github.com/mas-bandwidth/schema/v2` and resolves it to the
+unit requires `github.com/mas-bandwidth/schema/v3` and resolves it to the
 schema checkout (a `replace` to it, or the released module), beside
 `serialize.go`: the generated code imports `tables/goruntime` and nothing else
 of schema's. Every module this repository writes or commits around generated

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 // TestGoModMatchesPinBoundary holds go.mod's module path and `schema pin`'s

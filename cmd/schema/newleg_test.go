@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func runFail(t *testing.T, bin string, args ...string) (string, int) {
@@ -119,7 +119,7 @@ func TestNewLegZigWritesSkeletonAndFixturePasses(t *testing.T) {
 	// allowed" although the scaffold is right where new-leg puts it. The
 	// replaced repository has no internal/codegen/zig, so the path is the
 	// fixture's alone.
-	mod := "module github.com/mas-bandwidth/schema/v2/internal/codegen/zig\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n"
+	mod := "module github.com/mas-bandwidth/schema/v3/internal/codegen/zig\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\nreplace github.com/mas-bandwidth/schema/v3 => " + repo + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
 		t.Fatal(err)
 	}

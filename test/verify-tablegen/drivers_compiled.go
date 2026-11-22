@@ -9,7 +9,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func compileObjectsParallel(workDir, compiler string, baseFlags []string, srcs []string) ([]string, error) {
@@ -984,14 +984,14 @@ func verifyGo(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, c
 	if err := os.MkdirAll(filepath.Join(shimRoot, "tables"), 0o755); err != nil {
 		return err
 	}
-	shimMod := fmt.Sprintf("module github.com/mas-bandwidth/schema/v2\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n", serGo)
+	shimMod := fmt.Sprintf("module github.com/mas-bandwidth/schema/v3\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n", serGo)
 	if err := os.WriteFile(filepath.Join(shimRoot, "go.mod"), []byte(shimMod), 0o644); err != nil {
 		return err
 	}
 	if err := os.Symlink(filepath.Join(repoRoot, "tables", "goruntime"), filepath.Join(shimRoot, "tables", "goruntime")); err != nil && !os.IsExist(err) {
 		return err
 	}
-	modContent := fmt.Sprintf("module tablegenapp\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", shimRoot, serGo)
+	modContent := fmt.Sprintf("module tablegenapp\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v3 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", shimRoot, serGo)
 	if err := os.WriteFile(filepath.Join(workDir, "go.mod"), []byte(modContent), 0o644); err != nil {
 		return err
 	}

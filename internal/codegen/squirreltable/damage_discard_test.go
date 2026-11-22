@@ -3,7 +3,7 @@ package squirreltable_test
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
 	"os"
 	"path/filepath"
 	"strings"

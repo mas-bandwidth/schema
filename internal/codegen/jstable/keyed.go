@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE KEYED ACCESSORS (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5). An

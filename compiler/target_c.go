@@ -5,11 +5,11 @@ package compiler
 import (
 	"fmt"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cqualify"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ctable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // cTarget emits C99 (SPEC §6.1).

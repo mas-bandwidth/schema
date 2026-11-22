@@ -8,8 +8,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
 )
 
 // undeclaredSchemaModules are the emitted files whose bytes depend on the

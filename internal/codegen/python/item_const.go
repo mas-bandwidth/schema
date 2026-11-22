@@ -1,7 +1,7 @@
 package python
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // const(Value, Bits): the constant rides the wire and a read refuses any other

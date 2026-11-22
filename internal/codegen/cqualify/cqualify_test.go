@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ccommon"
 )
 
 // unit is a hand-written stand-in for an emitter's output: one of every

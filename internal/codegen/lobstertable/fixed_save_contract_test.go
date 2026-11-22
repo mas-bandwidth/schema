@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster"
 )
 
 // TestLobsterFixedSaveHoldsTheWriteContract pins the fixed-form writer that

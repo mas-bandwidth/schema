@@ -16,7 +16,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // carrier is the C++ type a subexpression evaluates in after integer

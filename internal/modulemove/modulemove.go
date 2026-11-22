@@ -19,15 +19,12 @@ import (
 )
 
 // FirstV3ModuleTag is the first v3 release tag whose go.mod names the /v3
-// module path. Empty means there is none yet: go.mod on main still names /v2,
-// so every v3 tag (v3.0.0 to v3.0.4 are cut so) is one Go
-// cannot resolve, and all of them are refused.
-//
-// #4445 SETS THIS IN THE SAME COMMIT AS THE go.mod MOVE, to the version the
-// first release after the move will carry (for example "v3.1.0"). Until then
-// the release gate lets a v3 tag go out with a /v2 go.mod, because pin
-// refuses it; after it, a tag whose go.mod and boundary disagree is refused.
-const FirstV3ModuleTag = ""
+// module path, set by the module-path move (#4445, tools/modpath) in the
+// same commit as go.mod. Every v3 tag below it (tags v3.0.0 to v3.0.6)
+// was cut while go.mod still named /v2, so Go cannot resolve it, and pin
+// refuses it. The release gate refuses a tag whose go.mod and this boundary
+// disagree.
+const FirstV3ModuleTag = "v3.0.7"
 
 // The release gate's refusals, each matched with errors.Is.
 var (

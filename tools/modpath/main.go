@@ -41,8 +41,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modpath"
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modpath"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
 )
 
 func main() {

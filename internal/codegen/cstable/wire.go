@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func isCleanScalarLeaf(f *ir.Field) bool {

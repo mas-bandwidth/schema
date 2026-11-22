@@ -25,7 +25,7 @@ link is left as it is. See USAGE.md's Go
 adoption notes for the bump recipe.
 
 `generate --lang go` emits Go that imports the shared table runtime
-`github.com/mas-bandwidth/schema/v2/tables/goruntime` by default; the compiler
+`github.com/mas-bandwidth/schema/v3/tables/goruntime` by default; the compiler
 option `runtime=standalone` embeds that machinery in the unit instead
 (`compiler.Options{"runtime": "standalone"}`; SPEC-TABLES.md §8.4). Any other
 `runtime` value is refused by name, and the refusal names shared as the

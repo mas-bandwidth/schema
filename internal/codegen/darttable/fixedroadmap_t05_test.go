@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t05Runtime is this leg's shared runtime body: the module every fixed surface

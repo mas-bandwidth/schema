@@ -36,7 +36,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestSharedRoadmapCompile drives the two shared-gate obligations of the NEW

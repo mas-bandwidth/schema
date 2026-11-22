@@ -11,7 +11,7 @@ import (
 	"bytes"
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
 )
 
 // messagesValues is the caller's storage one message read fills. A batch larger

@@ -26,8 +26,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // strictJSON verifies that text is a STRICT RFC 8259 JSON text: valid UTF-8,

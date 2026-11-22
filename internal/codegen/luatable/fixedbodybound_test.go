@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE RECORD-BODY BOUND (docs/FIXED-FORM-ALGORITHM.md §6, §1.1 rule 6;

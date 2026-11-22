@@ -14,16 +14,16 @@ import (
 // in miniature: tablewire imports the parser through check, ir imports
 // nothing of the module, and tools/x imports the parser from its external
 // test package alone.
-const listFixture = `github.com/mas-bandwidth/schema/v2/internal/parser|bytes fmt
-github.com/mas-bandwidth/schema/v2/internal/parser.test|bytes fmt github.com/mas-bandwidth/schema/v2/internal/parser testing
-github.com/mas-bandwidth/schema/v2/internal/check|fmt github.com/mas-bandwidth/schema/v2/internal/parser
-github.com/mas-bandwidth/schema/v2/internal/tablewire|fmt github.com/mas-bandwidth/schema/v2/internal/check github.com/mas-bandwidth/schema/v2/internal/parser
-github.com/mas-bandwidth/schema/v2/internal/tablewire [github.com/mas-bandwidth/schema/v2/internal/tablewire.test]|fmt github.com/mas-bandwidth/schema/v2/internal/check github.com/mas-bandwidth/schema/v2/internal/parser testing
-github.com/mas-bandwidth/schema/v2/ir|fmt
-github.com/mas-bandwidth/schema/v2/ir.test|fmt github.com/mas-bandwidth/schema/v2/ir testing
-github.com/mas-bandwidth/schema/v2/tools/x|fmt
-github.com/mas-bandwidth/schema/v2/tools/x_test [github.com/mas-bandwidth/schema/v2/tools/x.test]|fmt github.com/mas-bandwidth/schema/v2/internal/parser testing
-github.com/mas-bandwidth/schema/v2/tools/x.test|fmt github.com/mas-bandwidth/schema/v2/tools/x github.com/mas-bandwidth/schema/v2/internal/parser testing
+const listFixture = `github.com/mas-bandwidth/schema/v3/internal/parser|bytes fmt
+github.com/mas-bandwidth/schema/v3/internal/parser.test|bytes fmt github.com/mas-bandwidth/schema/v3/internal/parser testing
+github.com/mas-bandwidth/schema/v3/internal/check|fmt github.com/mas-bandwidth/schema/v3/internal/parser
+github.com/mas-bandwidth/schema/v3/internal/tablewire|fmt github.com/mas-bandwidth/schema/v3/internal/check github.com/mas-bandwidth/schema/v3/internal/parser
+github.com/mas-bandwidth/schema/v3/internal/tablewire [github.com/mas-bandwidth/schema/v3/internal/tablewire.test]|fmt github.com/mas-bandwidth/schema/v3/internal/check github.com/mas-bandwidth/schema/v3/internal/parser testing
+github.com/mas-bandwidth/schema/v3/ir|fmt
+github.com/mas-bandwidth/schema/v3/ir.test|fmt github.com/mas-bandwidth/schema/v3/ir testing
+github.com/mas-bandwidth/schema/v3/tools/x|fmt
+github.com/mas-bandwidth/schema/v3/tools/x_test [github.com/mas-bandwidth/schema/v3/tools/x.test]|fmt github.com/mas-bandwidth/schema/v3/internal/parser testing
+github.com/mas-bandwidth/schema/v3/tools/x.test|fmt github.com/mas-bandwidth/schema/v3/tools/x github.com/mas-bandwidth/schema/v3/internal/parser testing
 `
 
 // TestDependentsSelectsEveryPackageThatBuildsOnAChange: a change to the
@@ -67,15 +67,15 @@ func TestDependentsControlDirectoriesAloneMissTablewire(t *testing.T) {
 // embedFixture: the Squirrel generator embeds runtime/module.nut, compiler
 // imports the generator, internal/goldens imports compiler, and
 // internal/codegen/lua's tests alone embed a fixture.
-const embedFixture = `github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel|fmt|runtime/module.nut runtime/sq.nut||runtime/*.nut|
-github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel [github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel.test]|fmt testing|runtime/module.nut runtime/sq.nut|
-github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable|fmt github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel||
-github.com/mas-bandwidth/schema/v2/compiler|fmt github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel||
-github.com/mas-bandwidth/schema/v2/internal/goldens.test|fmt github.com/mas-bandwidth/schema/v2/compiler github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel testing||
-github.com/mas-bandwidth/schema/v2/internal/codegen/lua|fmt||testdata/x.lua 
-github.com/mas-bandwidth/schema/v2/ir|fmt||
-github.com/mas-bandwidth/schema/v2/cmd/schema|fmt|help/ai.md help/usage.md||help|
-github.com/mas-bandwidth/schema/v2/internal/ci.test|fmt github.com/mas-bandwidth/schema/v2/cmd/schema testing||
+const embedFixture = `github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel|fmt|runtime/module.nut runtime/sq.nut||runtime/*.nut|
+github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel [github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel.test]|fmt testing|runtime/module.nut runtime/sq.nut|
+github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable|fmt github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel||
+github.com/mas-bandwidth/schema/v3/compiler|fmt github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel||
+github.com/mas-bandwidth/schema/v3/internal/goldens.test|fmt github.com/mas-bandwidth/schema/v3/compiler github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel testing||
+github.com/mas-bandwidth/schema/v3/internal/codegen/lua|fmt||testdata/x.lua 
+github.com/mas-bandwidth/schema/v3/ir|fmt||
+github.com/mas-bandwidth/schema/v3/cmd/schema|fmt|help/ai.md help/usage.md||help|
+github.com/mas-bandwidth/schema/v3/internal/ci.test|fmt github.com/mas-bandwidth/schema/v3/cmd/schema testing||
 `
 
 // TestSelectPackagesSeedsDependentsFromAnEmbeddedChange: a runtime-only

@@ -3,7 +3,7 @@ package javatable
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	javacodegen "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // A COUNTED ARRAY [Min..Max]T BELOW ITS MINIMUM IS REFUSED ON EVERY READ of

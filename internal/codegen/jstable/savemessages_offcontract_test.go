@@ -3,7 +3,7 @@ package jstable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestJsSaveMessagesRefusesOffContract holds the message writer to docs/SPEC.md

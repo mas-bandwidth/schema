@@ -1,6 +1,6 @@
 package mootable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // THE BASE64 CARRIER (docs/SPEC-TABLES.md §16.8): EVERY TABLE HAS IT, fixed
 // and variable alike, over the wire its Save writes. runtime/textcarrier.moo

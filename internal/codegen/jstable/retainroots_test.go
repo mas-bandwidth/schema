@@ -3,13 +3,13 @@ package jstable
 import (
 	"encoding/hex"
 	"encoding/json"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v3/internal/testproc"
 )
 
 // TestRetainsUnknownOnEveryRootJavaScript is the retain-unknown core of this

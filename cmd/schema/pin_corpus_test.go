@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
-	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v3/internal/modulemove/pincorpus"
 )
 
 // The committed corpus (internal/modulemove/pincorpus, testdata/pin) holds
