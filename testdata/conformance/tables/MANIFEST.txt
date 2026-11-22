@@ -686,16 +686,11 @@ json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/confo
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
-# THE SPEC-PORT GAPS (docs/SPEC-CONFORMANCE.md §8, docs/SPEC-TABLES.md §16.2,
-# §16.7): every key inside a skipped value is capped at 255 decoded bytes; any
-# `&` key in a skipped value other than a first-key `&node` refuses at every
-# root; a variable root holds a skipped value to the label rules whether or
-# not its unit declares a pointer.
+# THE SPEC-PORT GAPS (docs/SPEC-CONFORMANCE.md §8, docs/SPEC-TABLES.md §16.2):
+# every key inside a skipped value is capped at 255 decoded bytes, a map's
+# key included, because a skipped value has no declaration to tell one apart.
 json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
 json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
-json-hostile skipped-ampersand-key         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-ampersand-key refused
-json-hostile skipped-ampersand-key-fixed   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-key-fixed refused
-json-hostile skipped-label-undefined-pointer-free listdemo Army   testdata/conformance/tables/json-hostile/skipped-label-undefined-pointer-free refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused

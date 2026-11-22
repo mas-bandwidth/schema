@@ -17182,8 +17182,7 @@ answer for every port):
 
 - **Every read at a VARIABLE root** holds a skipped value to the label grammar
   AND the definition rules above, whether or not its unit declares a pointer
-  (rows `skipped-label-*` on `graphdemo Scene`, and
-  `skipped-label-undefined-pointer-free` on the pointer-free `listdemo Army`).
+  (rows `skipped-label-*` on `graphdemo Scene`, #4676).
 - **A read at a FIXED root** holds a skipped value to the label GRAMMAR only.
   The fixed class is pointer-free by construction (§2.2), so its read defines
   and resolves no node and keeps no label set: an `&node` first key whose
@@ -17196,8 +17195,8 @@ answer for every port):
   object's first key. The prefix is reserved for `&node` in every object a
   schema could own, and a skipped object might be one; an `&` that begins a
   map key is ordinary data only where the reader PLACES the map (§16.2's map
-  row) (rows `skipped-ampersand-key` at `graphdemo Scene` and
-  `skipped-ampersand-key-fixed` at `tabledemo RootConfig`).
+  row) (rows `skipped-ampersand-stray-key` and
+  `skipped-ampersand-node-not-first` at `tabledemo RootConfig`, #4676).
 
 **The rules, in full.**
 
