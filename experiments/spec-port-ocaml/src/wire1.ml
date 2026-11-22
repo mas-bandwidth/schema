@@ -306,6 +306,7 @@ type rstate = {
   mutable seen : int;                    (* distinct references met so far *)
   mutable unknown : int;
   mutable widened : int;
+  mutable skipped : int list;             (* node indexes named by pointers this reader skipped *)
   mutable pending : (node * ty * int) list;  (* pointer slots to resolve: holder, slot type, index *)
   nodes : (int, node * ty) Hashtbl.t;     (* index -> decoded record *)
   types : (int64, ty) Hashtbl.t;          (* record type id -> what it decodes as *)
@@ -368,7 +369,7 @@ let rec skip rs c kind depth =
   | 14 -> let n = leb rs c in let b = sub rs c n in skip_array rs b (depth + 1) false
   | 16 -> let n = leb rs c in let b = sub rs c n in skip_array rs b (depth + 1) true
   | 15 -> skip_union rs c depth
-  | 17 -> ignore (leb rs c)
+  | 17 -> let i = leb rs c in if i <> 0 then rs.skipped <- i :: rs.skipped
   | 30 -> ignore (ref_ rs c ~required:false)
   | 1 -> let b = byte rs c in if b > 1 then refuse "wire_damaged: bool"
   | 10 -> let s = take rs c 4 in
@@ -847,7 +848,7 @@ let load (u : unit_t) (root : struct_d) (s : string) : value * int * int =
   let ids = Array.init count (fun i -> String.get_int64_le s (tstart + 8 * i)) in
   let dup = Hashtbl.create 16 in
   Array.iter (fun id -> if Hashtbl.mem dup id then refuse "wire_damaged: id twice"; Hashtbl.replace dup id ()) ids;
-  let rs = { s; ids; seen = 0; unknown = 0; widened = 0; pending = []; nodes = Hashtbl.create 16; types = unit_types u } in
+  let rs = { s; ids; seen = 0; unknown = 0; widened = 0; skipped = []; pending = []; nodes = Hashtbl.create 16; types = unit_types u } in
   let c = { p = 1; lim = tstart } in
   let v = read_body rs c root 0 ~root:true in
   if c.p <> c.lim then refuse "wire_damaged: bytes before id table";
@@ -869,6 +870,10 @@ let load (u : unit_t) (root : struct_d) (s : string) : value * int * int =
         (match t with Blob _ -> if Hashtbl.mem reached i then refuse "blob_shared" | _ -> ());
         Hashtbl.replace reached i ();
         Hashtbl.replace holder_target h.nid nd) rs.pending;
+  List.iter (fun i ->
+      if i = 1 then refuse "data_cycle: pointer to root";
+      if not (Hashtbl.mem rs.nodes i) then refuse "wire_damaged: index past node table";
+      Hashtbl.replace reached i ()) rs.skipped;
   Hashtbl.iter (fun i _ -> if not (Hashtbl.mem reached i) then refuse "wire_damaged: node no pointer reaches") rs.nodes;
   (* splice holders, then check the graph for cycles from the root *)
   let fixed = Hashtbl.create 16 in

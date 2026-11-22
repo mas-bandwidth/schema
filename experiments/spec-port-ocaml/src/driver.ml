@@ -80,10 +80,10 @@ let unit_root key rootname =
 
 type img = One of value | Batch of value list
 
-let load_wire (l : loaded) (root : struct_d) (s : string) : img =
-  if root.s_fixed && String.length s > 0 && s.[0] = '\001' then begin
+let load_wire ?(framing = false) (l : loaded) (root : struct_d) (s : string) : img =
+  if framing && root.s_fixed && String.length s > 0 && s.[0] = '\001' then begin
     (* SPEC-GAP 7: SPEC-TABLES §2.2 says a fixed root refuses form 1 as
-       previous_form; the framing rows read form-1 files at fixed roots and
+       previous_form, and the report rows previous_form_* hold that; the framing rows read form-1 files at fixed roots and
        owe a form-3 write-back. The vector is followed. *)
     let v, _, _ = Wire1.load l.u root s in
     Batch [ v ]
@@ -333,7 +333,7 @@ let main () =
       | ("report" | "framing"), k :: case :: ukey :: rootname :: wire :: _ when k = surface ->
         run_case outdir case (fun () ->
             let l, root = unit_root ukey rootname in
-            verdict_surface outdir case root (fun () -> load_wire l root (read_file wire)))
+            verdict_surface outdir case root (fun () -> load_wire ~framing:(surface = "framing") l root (read_file wire)))
       | "json-hostile", "json-hostile" :: case :: ukey :: rootname :: tree :: _ ->
         run_case outdir case (fun () ->
             let _, root = unit_root ukey rootname in
