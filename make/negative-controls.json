@@ -3365,8 +3365,8 @@
     },
     {
       "name": "ruby-write-refusal",
-      "when": "nightly",
-      "why": "the Ruby leg's write-contract controls (test/conformance/ruby/negative-control-write-refusal): each removes one refusal from a copy of the generated tree and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 31 s on a shared bench plus the corpus build, so the three together sit at the two-minute per-commit cap; nightly until measured on a CI runner.",
+      "when": "pull-request",
+      "why": "the Ruby leg's write-contract controls (test/conformance/ruby/negative-control-write-refusal): each removes one refusal from a copy of the generated tree and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 31 s on a shared bench plus the corpus build, so the three together fit the two-minute per-commit cap.",
       "targets": [
         "conformance-negative-control-ruby-write-refusal",
         "conformance-negative-control-ruby-write-refusal-fixed",
@@ -3376,8 +3376,8 @@
     },
     {
       "name": "luau-write-refusal",
-      "when": "nightly",
-      "why": "the Luau leg's write-contract controls (test/conformance/luau/write-refusal-control): each removes one refusal from a copy of the generated units under a mirror of the repository and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 27 s on a shared bench plus the corpus build; nightly until measured on a CI runner.",
+      "when": "pull-request",
+      "why": "the Luau leg's write-contract controls (test/conformance/luau/write-refusal-control): each removes one refusal from a copy of the generated units under a mirror of the repository and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 27 s on a shared bench plus the corpus build, so the three together fit the two-minute per-commit cap.",
       "targets": [
         "conformance-negative-control-luau-write-refusal",
         "conformance-negative-control-luau-write-refusal-fixed",
