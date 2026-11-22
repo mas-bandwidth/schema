@@ -1,0 +1,5 @@
+# THE CASES THE RUST HOSTILE-CORPUS RUNNER MAY SKIP (tools/hostileledger -skips).
+# One line per case: the manifest name, a tab, and one line saying why the
+# port has no reader for it. A skip no line names fails the ledger (the case
+# is registered and was not run), and so does a line whose case runs or is
+# gone from the manifest.

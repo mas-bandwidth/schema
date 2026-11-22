@@ -81,6 +81,7 @@ schema-c-runs-hostile-corpus: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostile
 	$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
 		-jobs $(C_HOSTILE_RUN_JOBS) \
 		-corpus "$(C_HOSTILE_CORPUS)" -findings "$(C_HOSTILE_FINDINGS)" -skips "$(C_HOSTILE_SKIPS)"
+	sh make/checks/hostile-carry-controls.sh c findings $(C_HOSTILE_BUILD)/carry '$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case -corpus "$$CARRY_CORPUS" -findings "$$CARRY_FINDINGS" -skips ""'
 
 test-c: schema-c-runs-hostile-corpus
 

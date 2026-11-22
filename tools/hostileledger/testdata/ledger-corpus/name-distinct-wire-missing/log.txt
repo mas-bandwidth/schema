@@ -1,0 +1,6 @@
+hostile-ledger ran audit-ring@runtime-development
+hostile-ledger ran audit-ring@runtime-production
+hostile-ledger ran audit-ring@flat-development
+hostile-ledger ran audit-ring@flat-production
+hostile-ledger end
+1 case dispatched, 4 rows: 4 pass (audit-wire was never dispatched)

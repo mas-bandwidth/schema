@@ -704,9 +704,17 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   const budget = Number(process.env.HOSTILE_CASE_BUDGET_MS || 5000);
   const jobs = Number(process.env.HOSTILE_JS_JOBS || Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2))));
   const cases = manifestCases(corpus);
+  // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where the
+  // answer is what this port gives the row today, `accept <digest>` or
+  // `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer and no
+  // other (F-079).
   const findings = new Map();
   if (findingsPath && existsSync(findingsPath)) {
     for (const f of rows(findingsPath)) {
+      if (f.length !== 5 || !/^(accept \S+|refuse)$/.test(f[3])) {
+        console.error(`${findingsPath}: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated: ${f.join("\t")}`);
+        process.exit(2);
+      }
       findings.set(f[0], f);
     }
   }
@@ -729,6 +737,13 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   for (const r of skipped) {
     console.log(`SKIP ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
   }
+  // THE LEDGER (docs/HOSTILE-CORPUS.md): one line per ROW a reader answered,
+  // by the row's id (the case's name, and for a packet case its tier and mode). tools/hostileledger holds the lines to the corpus
+  // folder, and it owes the rows from the folder, never from caseRows above:
+  // one per case, and one per tier and mode for a packet case. A case this
+  // file's own enumerator made no row for is therefore a case not run, and a
+  // skipped or unbound row leaves its case short.
+  const ranRows = [];
   live.forEach((row, i) => {
     const got = answers[i];
     if (got.verdict === "unbound") {
@@ -736,6 +751,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
       unbound.push(row.id);
       return;
     }
+    ranRows.push(row.id);
     const w = want(row);
     const finding = findings.get(row.id);
     if (agrees(got, w)) {
@@ -745,8 +761,12 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
       } else {
         passed++;
       }
-    } else if (finding !== undefined) {
-      console.log(`FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[3]} (got ${show(got)})`);
+      // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+      // execution failure (F-070: a worker over budget, a crash, a throw), and
+      // never a different verdict or digest (F-079: a refusal under a finding
+      // for a wrong digest).
+    } else if (finding !== undefined && ((finding[3] === "refuse" && got.verdict === "refuse") || (got.verdict === "accept" && finding[3] === show(got)))) {
+      console.log(`FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[4]} (got ${show(got)})`);
       carried++;
     } else {
       console.log(`FAIL ${row.id} carrier=${row.carrier} got=${show(got)} want=${show(w)}`);
@@ -761,6 +781,10 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   }
   console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
     `${bad.length} unexplained, ${stale.length} stale, ${skipped.length} skipped, ${unbound.length} unbound`);
+  for (const id of ranRows) {
+    console.log(`hostile-ledger ran ${id}`);
+  }
+  console.log("hostile-ledger end");
   // One unit per manifest row that reached a reader. tools/mustrun holds the
   // count to the one the recipe registers for the committed corpus, so an
   // emptied or shortened manifest is red; a row no JavaScript reader carries

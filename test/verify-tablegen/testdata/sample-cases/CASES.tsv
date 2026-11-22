@@ -1,0 +1,8 @@
+# THE TABLEGEN SAMPLE CASES (test/verify-tablegen/cases.go):
+# id <TAB> verdict <TAB> --schemas <TAB> pairs in the corpus <TAB> cases per pair <TAB> what the case is.
+one-schema	pass	1	1	25	control: --schemas 1 runs 25 cases
+default-sample	pass	6	6	25	control: the make default, VERIFY_TABLEGEN_SCHEMAS=6
+no-schema	red:--schemas 0: the sample is empty	0	0	0	F-045: --schemas 0 printed TABLEGEN_OK <lang> 0 and exited 0
+negative-sample	red:the sample is empty	-1	0	0	a negative --schemas
+fewer-pairs-than-asked	red:carries 1 schema pair(s) and --schemas asked for 2	2	1	25	the corpus carries fewer pairs than the sample asked for
+pairs-with-no-case	red:a run over no case passes nothing	2	2	0	pairs that contribute no case

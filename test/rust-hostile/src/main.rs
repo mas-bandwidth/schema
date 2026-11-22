@@ -570,13 +570,22 @@ fn main() {
         .unwrap_or_else(|| thread::available_parallelism().map_or(1, |n| n.get()).min(4))
         .max(1);
 
-    // known findings: name<TAB>slug<TAB>input<TAB>one line. A name of the form
-    // <case>@<profile> is a finding in that build profile only.
+    // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where
+    // the answer is what this port gives the case today, `accept <digest>` or
+    // `refuse` (docs/HOSTILE-CORPUS.md); a finding carries that answer and no
+    // other (F-079). A name of the form <case>@<profile> is a finding in that
+    // build profile only.
     let mut findings: HashMap<String, Vec<String>> = HashMap::new();
     if findings_path.exists() {
-        match rows(findings_path, 4) {
+        match rows(findings_path, 5) {
             Ok(rs) => {
                 for f in rs {
+                    let answer_ok = f[3] == "refuse"
+                        || f[3].strip_prefix("accept ").is_some_and(|d| !d.is_empty() && !d.contains(' '));
+                    if !answer_ok {
+                        eprintln!("{}: a finding's answer is `accept <digest>` or `refuse`: {}", findings_path.display(), f.join("\t"));
+                        std::process::exit(2);
+                    }
                     let key = match f[0].split_once('@') {
                         Some((name, p)) if p == profile => name.to_string(),
                         Some(_) => continue,
@@ -625,7 +634,14 @@ fn main() {
     let (mut passed, mut carried, mut skipped) = (0, 0, 0);
     let mut bad = Vec::new();
     let mut stale = Vec::new();
+    // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+    // name, which tools/hostileledger holds to the corpus folder. A SKIP and
+    // a case no worker reached are cases not run.
+    let mut ran: Vec<String> = Vec::new();
     for (f, got) in manifest.iter().zip(results.iter()) {
+        if got.as_ref().is_some_and(|g| !g.starts_with("SKIP ")) {
+            ran.push(f[0].clone());
+        }
         let got = got.clone().unwrap_or_else(|| "runner error: no result".to_string());
         let (name, carrier) = (&f[0], &f[1]);
         let expected = expected(&f[6], carrier, &f[7], &f[8]);
@@ -643,8 +659,12 @@ fn main() {
                 println!("PASS {name}");
                 passed += 1;
             }
-        } else if let Some(fc) = finding {
-            println!("FIX-CARD: {}: {} {}", fc[1], fc[2], fc[3]);
+        } else if let Some(fc) = finding.filter(|fc| if fc[3] == "refuse" { got.starts_with("refuse ") } else { got == fc[3] }) {
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a runner error),
+            // and never a different verdict or digest (F-079: a refusal under
+            // a finding for a wrong digest). Anything else falls through to FAIL.
+            println!("FIX-CARD: {}: {} {} (got {got})", fc[1], fc[2], fc[4]);
             carried += 1;
         } else {
             println!("FAIL {name} carrier={carrier} got={got} want={expected}");
@@ -657,6 +677,10 @@ fn main() {
         bad.len(),
         stale.len()
     );
+    for name in &ran {
+        println!("hostile-ledger ran {name}");
+    }
+    println!("hostile-ledger end");
     // The count line build/mustrun reads: a case is RUN when the port answered
     // it (a pass, a carried FIX-CARD or an unexplained verdict). A SKIP is not
     // run, so a case that starts skipping moves the count off the one the

@@ -1,0 +1,6 @@
+# THE WIRE AND PACKET CASES THE GOOSE HOSTILE-CORPUS RUNNER DOES NOT RUN
+# (tools/hostileledger -skips; make/goose-fuzz.mk). One line per case: the
+# manifest name, a tab, and one line saying why (a schema the goose target
+# refuses, a root the unit has no reader for). A case the runner answers
+# absent that no line names fails the ledger, and so does a line whose case
+# runs or is gone from the manifest.

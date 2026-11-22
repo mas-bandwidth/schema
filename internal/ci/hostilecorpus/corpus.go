@@ -97,6 +97,11 @@ func Parse(text string) ([]Case, error) {
 		if err := validateInput(f[4]); err != nil {
 			return nil, fmt.Errorf("manifest line %d (%s): %w", i+1, f[0], err)
 		}
+		// `<case>@<row>` is a row id (RowIDs): a case named like one would
+		// share its id with another case's row in every runner log (F-076)
+		if strings.Contains(f[0], "@") {
+			return nil, fmt.Errorf("manifest line %d: the case name %s carries @, which spells a row id (<case>@<row>), never a case", i+1, f[0])
+		}
 		out = append(out, Case{
 			Name: f[0], Carrier: f[1], Schema: f[2], Table: f[3], Input: f[4],
 			Provenance: f[5], Verdict: f[6], Reason: f[7], Digest: f[8],
