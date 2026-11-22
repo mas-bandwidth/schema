@@ -112,3 +112,30 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## 7. The announcement-size row
+
+SPEC-TABLES.md §3.3 (THE ANNOUNCEMENT WRITER REFUSES WHAT THE READER REFUSES)
+is held by one shared row, which every port's announcement test owes:
+
+- **The unit** is `AnnounceSchema(n)` (`internal/tablewire/idcap.go`): `n`
+  announced vocabulary entries exactly.
+- **The lawful twin, n = 4096.** The port's `Announce` writes the bytes
+  pinned in `testdata/conformance/announce-cap/announce-4096.txt` (length and
+  SHA-256, written by the Go reference, `TestAnnounceGoldenAtTheBound`), and the
+  port's own `AnnounceRead` accepts them.
+- **The refused row, n = 4097.** `AnnounceMeasure` and `Announce` refuse and
+  write nothing.
+- **Both runtime forms**, where a port has more than one (Go standalone and
+  shared): the Go reference runs the row in both, statically and run
+  (`TestGoAnnouncementRefusalHoldsInBothRuntimeForms` and
+  `TestGoAnnouncementRefusalRunsInBothRuntimeForms`, `internal/codegen/gotable`).
+
+**Why this row is not a manifest row of the tables corpus.** Every surface of
+section 2 drives a READER or a value writer (`AnnounceRead`, `LoadMessages`,
+`SaveMessages`, `Save`) against units the manifest lists, and each leg builds
+each manifest unit through its own make rule; no surface asks a unit's
+announcement writer for its bytes, and a 4096-entry unit would be built by all
+seventeen legs. The row is therefore owed by each port's own announcement test,
+held to the golden above, until a corpus surface for the announcement writer is
+added (a follow-up, not part of this fix).

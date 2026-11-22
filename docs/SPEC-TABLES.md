@@ -6753,6 +6753,21 @@ well as about work, and this is where that memory lives.
   **4096 REMAINS THE CONFORMING DEFAULT** where a receiver's storage is grown
   rather than declared, which is what a language with a growable array does,
   and the byte bound's 64 KiB does not move (SECURITY, below).
+- **THE ANNOUNCEMENT WRITER REFUSES WHAT THE READER REFUSES.** A receiver refuses an
+  announcement above its entry bound as `vocabulary_too_large` (above, and the
+  bound rule of §3.3, **4096 the conforming default**), so a writer never
+  produces one: `AnnounceMeasure` and `Announce` of a unit whose announced
+  vocabulary holds MORE than 4096 entries answer `-1` (or the port's refusal
+  idiom) and write no bytes, and a unit with exactly 4096 entries is written
+  and read back whole. **The refusal is a property of the unit, so it holds in
+  every form a port generates the unit in**: a Go unit emitted standalone and
+  one emitted against the shared runtime (§8.4) refuse alike, and a shared
+  runtime carries no announcement writer and no refusal constant of its own,
+  because a constant identical across units would be hoisted there as the
+  lawful answer. The shared test unit is `AnnounceSchema(n)` in
+  `internal/tablewire/idcap.go` (an enum filling the vocabulary and
+  `fixed table Root { keys [K]uint8 }`; exactly `n` announced entries), and
+  docs/SPEC-CONFORMANCE.md §7 states the row.
 - **A RESOLVED ENTRY IS WHAT A DECODE READS AND NOTHING MORE**: the id, the
   kind, the packing, the payload's width already resolved out of the kind and
   the announced bits, the range base, the array's own bounds, and the
