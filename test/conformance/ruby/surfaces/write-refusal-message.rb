@@ -13,8 +13,13 @@ def self.run(manifest, outdir)
       RubyConformance.absent(outdir, case_name, 'message form is not emitted for this root')
       next
     end
-    value = cls.load(RubyConformance.read_bytes(wire))
-    RubyConformance.assign_mutation(value, path, kind, token)
+    value = RubyConformance.load_or_fresh(cls, wire)
+    begin
+      RubyConformance.assign_mutation(value, path, kind, token)
+    rescue RubyConformance::Unrepresentable
+      RubyConformance.write_bytes(outdir, case_name, "unrepresentable\n".b)
+      next
+    end
     refused = [:measure_messages, :save_messages].map do |verb|
       pkg.public_send(verb, cls, [value])
       false
