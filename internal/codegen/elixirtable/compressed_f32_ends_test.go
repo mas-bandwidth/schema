@@ -10,7 +10,7 @@ import (
 // toolchain: the descriptor every variable, JSON, cook and block read and
 // write compares against carries the float32 nearest each end (max = 0.1 is
 // 0.10000000149011612, never 0.1), the fixed writer holds the leaf to the same
-// pair through R.f32_ranged, and the runtime narrows a written value to
+// pair through R.cf32_bits, and the runtime narrows a written value to
 // float32 before the test. The control: a plain float32 carries no range at
 // all. TestElixirCompressedF32EndsCorpus runs the corpus itself.
 func TestElixirCompressedF32EndsSource(t *testing.T) {
@@ -56,8 +56,8 @@ fixed table F
 			t.Errorf("Table.ex holds the declared end as a float64: %q", bad)
 		}
 	}
-	if !strings.Contains(fixed, "{"+lo+", "+hi+"}") || !strings.Contains(fixed, "R.f32_ranged(v_r, @r_f_r)") {
-		t.Error("the fixed writer does not hold r to its float32 ends through R.f32_ranged")
+	if !strings.Contains(fixed, "{"+lo+", "+hi+"}") || !strings.Contains(fixed, "R.cf32_bits(v_r, @r_f_r)") {
+		t.Error("the fixed writer does not hold r to its float32 ends through R.cf32_bits")
 	}
 	// the control: the plain float p writes its bits with no range
 	if !strings.Contains(fixed, "R.f32_bits(v_p)") || strings.Contains(fixed, "@r_f_p") {

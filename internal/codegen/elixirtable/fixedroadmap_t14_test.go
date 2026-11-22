@@ -27,9 +27,9 @@ func TestFixedRoadmapElixirT14CompressedFloats(t *testing.T) {
 		bin := elixirBinary(t)
 		t14Cite(t)
 		src := t14ElixirEmit(t, t14ElixirOld, nil)
-		// a compressed float stores its float32 bits through R.f32_ranged,
-		// which holds the range at float32 and stores +0 for -0 through R.cf32_bits
-		if !strings.Contains(src, "R.f32_ranged(") {
+		// a compressed float32 stores its bits through cf32_bits, which holds the
+		// range at float32 and writes +0 for -0 (docs/SPEC-TABLES.md §3.3)
+		if !strings.Contains(src, "R.cf32_bits(") {
 			t.Fatal("the fixed write does not store the float32 bits")
 		}
 		if !strings.Contains(src, "def dequantize_bits") {
