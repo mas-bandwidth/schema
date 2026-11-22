@@ -1697,7 +1697,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if tag == 0 {
 			in.report.Unknown++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -2196,7 +2196,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 					in.report.Refuse(TableRefuseMalformed, "")
 				}
 				in.report.Unknown++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			case !tableJSONShapeMatches(shape, in.valueShape()) && !(f.Pointer && in.valueShape() == 'z'):
@@ -2224,6 +2224,12 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if f.IsArray {
+		// the array is a container one level below the table holding it, counted toward
+		// the cap whether or not it holds an element (FL-12)
+		if depth+1 > tableJSONMaxDepth {
+			in.bad = true
+			return false
+		}
 		if in.peek() != '[' {
 			in.bad = true
 			return false
