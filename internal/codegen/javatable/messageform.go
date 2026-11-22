@@ -2930,8 +2930,22 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        return loadMessages(values, values == null ? 0 : values.length, vocab, data, report);\n")
 	g.pf("    }\n\n")
 
+	// RULING R4: after ANY refusal every value the call was given (the first
+	// `capacity` slots of `values`, never past its length) holds its declared
+	// default, not only the bodies read so far. A refused batch returns 0 and a
+	// batch that reads returns its count, at least 1, so 0 is the refusal. A
+	// null slot has nothing to reset and stays null.
 	g.pf("    public static int loadMessages(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
-	g.pf("        if (report == null) { report = new TableVocabulary.Report(); } else { report.zero(); }\n")
+	g.pf("        if (report == null) { report = new TableVocabulary.Report(); }\n")
+	g.pf("        int n = loadMessagesWalk(values, capacity, vocab, data, report);\n")
+	g.pf("        if (n == 0 && values != null) {\n")
+	g.pf("            int given = java.lang.Math.max(0, java.lang.Math.min(capacity, values.length));\n")
+	g.pf("            for (int j = 0; j < given; j++) { if (values[j] != null) { reset(values[j]); } }\n")
+	g.pf("        }\n")
+	g.pf("        return n;\n")
+	g.pf("    }\n\n")
+	g.pf("    private static int loadMessagesWalk(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
+	g.pf("        report.zero();\n")
 	g.pf("        if (data == null || data.length == 0) { report.damaged = true; return 0; }\n")
 	g.pf("        if ((data[0] & 0xff) != 2) {\n")
 	g.pf("            report.refused = true;\n")
@@ -2966,25 +2980,22 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null) { values[i] = new %s(); }\n", valType)
 	// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
-	// §3.3): no body of it is delivered, so every body read so far is reset
+	// §3.3): no body of it is delivered, so every value handed in is reset
 	// and the count is zero.
 	g.pf("            boolean read = loadMessageBody(r, values[i]);\n")
 	g.pf("            if (report.refused) {\n")
-	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
 	// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): a body that
 	// does not read, or a batch whose bits do not end where the last body
-	// does, delivers zero bodies, every body read so far reset.
+	// does, delivers zero bodies, every value handed in reset (R4, above).
 	g.pf("            if (!read || report.damaged) {\n")
 	g.pf("                report.damaged = true;\n")
-	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
 	g.pf("            report.damaged = true;\n")
-	g.pf("            for (int j = 0; j < count; j++) { reset(values[j]); }\n")
 	g.pf("            return 0;\n")
 	g.pf("        }\n")
 	g.pf("        return count;\n")
