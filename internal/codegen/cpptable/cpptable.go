@@ -795,8 +795,10 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // in as the bytes and the length, an integer key as the value, and NULL\n" +
 			"    // is NOT INSERTED: a key past the bound, or an arena that could not carve\n" +
 			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
-			"    // or the int32 cap. NULL on every field that is neither.\n" +
-			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+			"    // or the int32 cap. NULL on every field that is neither. FRESH says the\n" +
+			"    // caller already knows no entry holds this key (the text read keeps a\n" +
+			"    // set of the keys it placed), so a map skips its linear find.\n" +
+			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );"
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -1112,6 +1114,10 @@ inline const char TableDocNone[1] = "";
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
