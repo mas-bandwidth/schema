@@ -5282,7 +5282,7 @@ table, before a byte is written (on the write-side rule of SPEC.md §5.1:
 a debug assert in C, C++, C#, Rust, Java and Dart, a refusal in every build
 everywhere else), and no writer's id storage grows past 4096 entries. So no
 writer produces a file its own readers refuse, and the refusal is a
-reader's defense against a hostile file.
+reader's defense against a hostile file. A retained id (§6.6) that would be the 4097th is lost and counted, never written.
 
 **THIS FORM IS THE VARIABLE WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four

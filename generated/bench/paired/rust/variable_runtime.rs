@@ -343,6 +343,16 @@ impl IdTable {
         self.entries.truncate(mark);
     }
 
+    /// THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+    /// table of more than 4096 entries, so a save refuses by name a value that
+    /// needs more, whatever the build. Checked once at the end of the walk, so a
+    /// speculative intern that a rollback undoes never refuses.
+    pub fn check_bound(&mut self) {
+        if self.entries.len() > 4096 && self.refused.is_none() {
+            self.refused = Some(String::from("id_table_full: more than 4096 ids"));
+        }
+    }
+
     pub fn id_ref(&mut self, id: u64) -> u64 {
         for (i, &e) in self.entries.iter().enumerate() {
             if e == id {
@@ -1581,7 +1591,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
         ids.entries.push(id);
         return ids.entries.len() as u64;
     }
-    if retain.ids.len() >= retain.ids.capacity() {
+    if retain.ids.len() >= retain.ids.capacity() || ids.entries.len() >= 4096 {
         return 0;
     }
     retain.ids.push(id);

@@ -132,6 +132,9 @@ let SaveRefuseUnknownRoot: i64 = 6;
 let SaveRefuseNonFiniteFloat: i64 = 7;
 let SaveRefuseInvalidValue: i64 = 8;
 let SaveRefuseLayoutUnsupported: i64 = 9;
+// the id table would hold more than 4096 entries (docs/SPEC-TABLES.md §3), which
+// every reader refuses, so the writer refuses first
+let SaveRefuseIdTableOverBound: i64 = 10;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -145,6 +148,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseNonFiniteFloat => "non_finite_float",
         SaveRefuseInvalidValue => "invalid_value",
         SaveRefuseLayoutUnsupported => "layout_unsupported",
+        SaveRefuseIdTableOverBound => "id_table_over_bound",
         _ => "",
     };
 }
@@ -940,6 +944,7 @@ fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     put(c, 1); // THE FORM BYTE (§3)
     body(c, t, root_val, true);
     if c.refusal != 0 { return c.refusal; }
+    if c.ids.len > 4096 { c.out.resize(start); return SaveRefuseIdTableOverBound; }
     // THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
     for id in c.ids { put_le(c, id, 8); }
     put_le(c, c.ids.len as! u64, 8);

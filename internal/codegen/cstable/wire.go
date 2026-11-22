@@ -362,7 +362,7 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(%sTableType(), bytes, out _); }\n\n", st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
 	}
-	cap := ir.TableWireIdCapacity(g.unit)
+	cap := min(ir.TableWireIdCapacity(g.unit), ir.TableWireIdTableBound)
 	if !ir.VariableTables(g.unit)[st.Name] {
 		g.emitTypedWireSurface(st)
 		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
