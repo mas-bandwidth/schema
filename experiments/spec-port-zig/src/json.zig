@@ -564,7 +564,7 @@ pub const Reader = struct {
                     xs[i] = .{ .key = try r.mapKey(mt.key, m.key), .val = try r.place(mt.val, m.val, null, mt.val_optional) };
                 }
                 wire.sortEntries(mt.key, xs);
-                for (1..xs.len) |i| if (wire.keyOrder(mt.key, xs[i - 1].key, xs[i].key) != .lt) return refuse("malformed: repeated map key");
+                if (xs.len > 1) for (1..xs.len) |i| if (wire.keyOrder(mt.key, xs[i - 1].key, xs[i].key) != .lt) return refuse("malformed: repeated map key");
                 return .{ .map = xs };
             },
             .pointer => |sd| return r.pointer(sd, jv),

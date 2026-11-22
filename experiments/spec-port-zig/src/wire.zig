@@ -980,7 +980,7 @@ pub fn load(a: Allocator, unit: *const schema.Unit, root: *schema.StructDecl, in
     // distinct: sort a copy, compare neighbours (bounded by the 4096 cap)
     const sorted = try a.dupe(u64, ids);
     std.mem.sort(u64, sorted, {}, std.sort.asc(u64));
-    for (1..n) |i| if (sorted[i] == sorted[i - 1]) return refuse("wire_damaged: id twice");
+    if (n > 1) for (1..n) |i| if (sorted[i] == sorted[i - 1]) return refuse("wire_damaged: id twice");
     const body = buf[1 .. buf.len - 8 - 8 * n];
 
     var sc: Scan = .{ .a = a, .ids = ids };
