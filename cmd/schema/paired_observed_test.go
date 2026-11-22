@@ -38,7 +38,12 @@ func TestPairedPublishNeverHidesAnExistingDestination(t *testing.T) {
 			if flags[tc.Verb] == "" {
 				t.Fatalf("the corpus names verb %q", tc.Verb)
 			}
-			dir := t.TempDir()
+			// the publisher works on resolved paths, so the fault is planted on
+			// one too: macOS hands out a temporary directory under a symlink
+			dir, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
 			side, payload := filepath.Join(dir, "side.bin"), filepath.Join(dir, "payload.bin")
 			olds := map[string]string{
 				side:    mustRead(t, filepath.Join(corpus, "initial", tc.Verb, "side.bin")),
@@ -97,7 +102,7 @@ func TestPairedPublishNeverHidesAnExistingDestination(t *testing.T) {
 				return wrap("link "+oldname+" to "+newname, link(oldname, newname))
 			}
 
-			err := publishOutputsWith(f, tc.Verb, []pairOutput{
+			err = publishOutputsWith(f, tc.Verb, []pairOutput{
 				{outputPath{flags[tc.Verb], side}, []byte(news[side])},
 				{outputPath{"--out", payload}, []byte(news[payload])},
 			}, nil)
