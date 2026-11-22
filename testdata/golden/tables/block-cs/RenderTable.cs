@@ -436,7 +436,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -446,7 +446,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[2]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_2 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -456,7 +456,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[3]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_3 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -466,7 +466,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[4]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_4 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -476,7 +476,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[5]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_5 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -486,7 +486,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[6]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_6 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -496,7 +496,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[7]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_7 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -506,7 +506,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[8]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_8 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -516,7 +516,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[9]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_9 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -538,7 +538,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -548,7 +548,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[2]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_2 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -558,7 +558,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[3]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_3 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -568,7 +568,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[4]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_4 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -578,7 +578,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[5]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_5 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -588,7 +588,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[6]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_6 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -598,7 +598,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[7]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_7 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -608,7 +608,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[8]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_8 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -618,7 +618,7 @@ namespace Blockdemo
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[9]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_9 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }

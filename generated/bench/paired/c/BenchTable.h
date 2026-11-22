@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_BENCH_BENCHTABLE_H
-#define SCHEMA_BENCH_BENCHTABLE_H
+#ifndef SCHEMA_BENCH_Bench_table_h
+#define SCHEMA_BENCH_Bench_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -11037,4 +11037,4 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_to_json( const bench_bench_mixed_
 }
 #endif
 
-#endif /* SCHEMA_BENCH_BENCHTABLE_H */
+#endif /* SCHEMA_BENCH_Bench_table_h */

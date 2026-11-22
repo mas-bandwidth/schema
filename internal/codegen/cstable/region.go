@@ -287,7 +287,7 @@ const tableRegionSource = `
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -436,7 +436,7 @@ const tableRegionSource = `
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
@@ -508,7 +508,7 @@ const tableRegionSource = `
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)
