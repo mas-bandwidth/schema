@@ -32,7 +32,7 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = {
-	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
@@ -609,6 +609,53 @@ local function surfaceMessage(lines: { { string } })
 				error(f[2] .. ": message save refused or disagreed with the measure")
 			end
 			say(f[2], out)
+		end
+	end
+end
+
+-- `message-prior` (testdata/conformance/tables/FORMAT.md) is the same read of a
+-- PRIOR WRITER's batch, handed on its own keywords (`prior-connection`,
+-- `prior-message`). A row may owe a refusal, so the answer is what the public
+-- read returned: the batch re-saved, or the line `<case> refused <reason>`,
+-- which the shell driver writes as `<case>.refused` and the harness never
+-- compares (docs/rulings.json `refusal-verdict-only`).
+local function surfaceMessagePrior(lines: { { string } })
+	local connections: { [string]: { string } } = {}
+	for _, c in kind(lines, "prior-connection") do
+		connections[c[2]] = c
+	end
+	for _, f in kind(lines, "prior-message") do
+		local conn = connections[f[3]]
+		if conn == nil then
+			error("prior-message " .. f[2] .. " names no prior-connection " .. f[3])
+		end
+		local u = unit(conn[3])
+		local M = u and optional(u, "schema_message")
+		local d = if u ~= nil then rootOf(u, f[4]) else nil
+		if u == nil or M == nil or d == nil then
+			say(f[2], nil)
+		elseif not (d.table and d.fixed) then
+			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+		else
+			local v = M.NewVocabulary()
+			local r = report()
+			if not M.AnnounceRead(v, file(conn[5]), r) then
+				error(f[2] .. ": the announcement was refused (" .. tostring(r.reason) .. ")")
+			end
+			local count, bodies = M.LoadMessages(v, f[4], file(f[6]), 256, r)
+			if count < 1 or r.malformed or r.verdict ~= 0 then
+				print(f[2] .. " refused " .. tostring(r.reason))
+			else
+				local size = M.MeasureMessages(v, f[4], bodies, r)
+				if size < 0 then
+					error(f[2] .. ": message measure refused (" .. tostring(r.reason) .. ")")
+				end
+				local out, n = M.SaveMessages(v, f[4], bodies, r)
+				if out == nil or n ~= size then
+					error(f[2] .. ": message save refused or disagreed with the measure")
+				end
+				say(f[2], out)
+			end
 		end
 	end
 end
@@ -1385,6 +1432,8 @@ elseif surface == "cook-write" then
 	surfaceCookWrite(lines)
 elseif surface == "message" then
 	surfaceMessage(lines)
+elseif surface == "message-prior" then
+	surfaceMessagePrior(lines)
 elseif surface == "cook" then
 	surfaceCook(lines)
 elseif surface == "cook-foreign" then

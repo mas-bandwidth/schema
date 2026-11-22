@@ -80,6 +80,7 @@ func TestLuauDriverListsItsSurfaces(t *testing.T) {
 var conformanceSurface = map[string]bool{
 	"wire":                  true,
 	"message":               true,
+	"message-prior":         true,
 	"report":                true,
 	"framing":               true,
 	"retain":                true,

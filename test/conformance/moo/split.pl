@@ -3,7 +3,8 @@
 #   perl split.pl <main.moo's stdout> <outdir>
 #
 # Every line main.moo prints for a surface is `<case> <hex>` (the answer's
-# bytes, lowercase hex, possibly empty) or `<case> absent`, and becomes ONE FILE
+# bytes, lowercase hex, possibly empty), `<case> absent` or `<case> refused`
+# (a read the leg ran and refused), and becomes ONE FILE
 # PER CASE in <outdir>: the bytes as <case>, or the empty <case>.absent the
 # harness counts as a per-case absence (test/conformance/README.md;
 # docs/PORTING.md I4). Any other line is the driver failing, never a case
@@ -27,6 +28,16 @@ while (my $line = <$in>) {
 		# row, §3.3), a plain one is empty
 		my $reason = defined $1 ? $1 : "";
 		open(my $f, ">", "$outdir/$case.absent") or die "split.pl: $case: $!\n";
+		print $f $reason;
+		close $f or die "split.pl: $case: $!\n";
+		next;
+	}
+	if ($answer =~ /\Arefused(?: (.*))?\z/s) {
+		# a read the leg ran and refused (the message-prior surface): its own
+		# diagnostic as the file's bytes, never compared (docs/rulings.json
+		# refusal-verdict-only)
+		my $reason = defined $1 ? $1 : "";
+		open(my $f, ">", "$outdir/$case.refused") or die "split.pl: $case: $!\n";
 		print $f $reason;
 		close $f or die "split.pl: $case: $!\n";
 		next;
