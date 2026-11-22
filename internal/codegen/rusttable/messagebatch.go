@@ -976,7 +976,7 @@ func (m *msgGen) emitBatch(st *ir.Struct) {
 		measureExtra = "4 + "
 		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
 		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
-		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
+		loadPrefix = "    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            return (0, false);\n        };\n        body\n    } else { data };\n"
 	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
