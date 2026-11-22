@@ -835,7 +835,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 		}
 	}
 	g.emitWriteBoundsAssert(g.pf, f, expr, ind)
-	g.store(ind, fixedOff(base, at), f.Type, expr)
+	// A compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3,
+	// fixed-compressed-negzero); its range keeps it off the Float32List fast
+	// path above, so every compressed store comes through here.
+	g.store(ind, fixedOff(base, at), f.Type, dartStoredFloat(f, expr))
 }
 
 func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, expr, ind string) {
