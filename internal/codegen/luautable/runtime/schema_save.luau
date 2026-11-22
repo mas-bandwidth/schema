@@ -1034,6 +1034,30 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			local born = fd.min or 0
 			if not required then
 				if n == 0 then return true end
+				if n == born and fd.e.s == "tab" then
+					-- A COUNTED ARRAY OF TABLES AT ITS BIRTH COUNT ELIDES WHEN EVERY
+					-- ELEMENT'S BODY IS ITS TERMINATOR ALONE (§3.3, §22.2): the body
+					-- is the kind, the count, then n elements of at least `01 00`
+					-- each, so a body of exactly that size holds nothing else. The
+					-- id and the writes are undone with it, as a nested table's.
+					local m = mark(c.ids)
+					local fref = ref(c.ids, fd.id)
+					local b = new_writer(c.count)
+					w_u8(b, fd.ek)
+					w_leb(b, n)
+					for i = 1, n do
+						if not write_value(c, fd.e, b, elem_at(val, i), nil) then return false end
+					end
+					if b.n == 1 + leb_len(n) + 2 * n then
+						rollback(c.ids, m)
+						return true
+					end
+					w_leb(w, fref)
+					w_u8(w, 14)
+					w_leb(w, b.n)
+					w_sub(w, b)
+					return true
+				end
 				if n == born and fd.e.s ~= "tab" then
 					local lens = v[fd.slot .. "Length"]
 					local all = true

@@ -2360,7 +2360,27 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 				elide = ((val.Type or 0) == 0)
 			elseif fd.s == "arr" then
 				if fd.array == "counted" then
-					elide = ((rec[fd.slot .. "Count"] or 0) == 0)
+					local cnt = rec[fd.slot .. "Count"] or 0
+					elide = (cnt == 0)
+					-- A COUNTED ARRAY [Min..N]T IS ELIDED AT ITS BIRTH VALUE
+					-- (docs/SPEC-TABLES.md §3.3, §22.2; messageElides): exactly Min
+					-- elements, each at its default (a float by its bits, a table by
+					-- a body that is its terminator alone)
+					if not elide and (fd.min or 0) > 0 and cnt == fd.min then
+						local allDef = true
+						for i = 1, cnt do
+							local el = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
+							if fd.e.s == "union" then
+								if el ~= nil and (el.Type or 0) ~= 0 then allDef = false; break end
+							elseif fd.e.s == "tab" then
+								local ep = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+								if not mEncodeElem(ep, desc.name, fd, entry.shape, el) or ep.w.bits > c.refBits then allDef = false; break end
+							elseif not mAtDefault(fd.e, el) then
+								allDef = false; break
+							end
+						end
+						elide = allDef
+					end
 				elseif fd.array == "keyed" then
 					elide = (probe.w.bits <= bitsReq(0, entry.shape.max))
 				elseif fd.array == "fixed" and fd.e.s ~= "tab" then
