@@ -8,19 +8,19 @@ import (
 	"testing"
 )
 
-// verdictTB records how Program ended a test instead of ending it.
-type verdictTB struct {
+// programTB records how Program ended a test instead of ending it.
+type programTB struct {
 	testing.TB
 	verdict, text string
 }
 
-func (r *verdictTB) Helper() {}
+func (r *programTB) Helper() {}
 
-func (r *verdictTB) Fatalf(format string, args ...any) {
+func (r *programTB) Fatalf(format string, args ...any) {
 	r.verdict, r.text = "fail", fmt.Sprintf(format, args...)
 }
 
-func (r *verdictTB) Skip(args ...any) {
+func (r *programTB) Skip(args ...any) {
 	r.verdict, r.text = "skip", fmt.Sprint(args...)
 }
 
@@ -78,7 +78,7 @@ func TestProgramHoldsTheLanePromise(t *testing.T) {
 			if lane != "-" {
 				t.Setenv(lane, "1")
 			}
-			rec := &verdictTB{TB: t}
+			rec := &programTB{TB: t}
 			got := Program(rec, program, envVar, "SCHEMA_REQUIRE_"+envVar)
 			switch verdict {
 			case "run":
