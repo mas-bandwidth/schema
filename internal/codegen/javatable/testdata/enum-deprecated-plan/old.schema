@@ -1,0 +1,16 @@
+// The writer side of the deprecated-variant compiled-plan test (docs/SPEC-TABLES.md
+// section 2.15): Old is a live variant here.
+package vold_enum_dep
+
+enum Mood
+{
+    Calm
+    Old
+    Fierce
+}
+
+fixed table Lineage
+{
+    one Mood
+    row [..3]Mood
+}
