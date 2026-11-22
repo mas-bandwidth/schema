@@ -152,7 +152,18 @@ verify-tablegen-$(1): build/verify-tablegen-bin verify-tablegen-cases build/veri
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-tablegen --corpus build/verify-tablegen/corpus
 
-_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
+_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1)
+
+# THE TABLEGEN GATE IS ITS OWN SHARD (verify-<lang>-tablegen, the fourth
+# verify-leg gate in ci-fast.yml). Inside _verify-cpp-bench it made one job
+# of about 4.5 minutes on a busy runner against the two-minute limit; on its
+# own row it runs beside bench, and verify-<lang> still runs every gate.
+.PHONY: _verify-$(1)-tablegen verify-$(1)-tablegen
+_verify-$(1)-tablegen: verify-tablegen-$(1)
+_verify-$(1)-all: _verify-$(1)-tablegen
+
+verify-$(1)-tablegen:
+	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-tablegen
 endef
 
 $(foreach L,$(VERIFY_ALL_18_LEGS),$(eval $(call verify_widen_18_rules,$(L))))
