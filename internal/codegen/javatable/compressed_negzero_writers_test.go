@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 BY EVERY JAVA WRITER
@@ -132,11 +132,11 @@ func TestJavaCompressedNegZeroWriters(t *testing.T) {
 		sources = append(sources, path)
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-encoding", "UTF-8", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, flags := range [][]string{{"-ea"}, {}} {
-		cmd := exec.Command(javaBin, append(flags, "-cp", classes, "NegZeroWriters", corpus)...)
+		cmd := testproc.Command(t, javaBin, append(flags, "-cp", classes, "NegZeroWriters", corpus)...)
 		out, err := cmd.CombinedOutput()
 		if err != nil || !strings.Contains(string(out), "\nPASS rows=15 twins=84\n") {
 			t.Fatalf("java %v: %v\n%s", flags, err, out)
