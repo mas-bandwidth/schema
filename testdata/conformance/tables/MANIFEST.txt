@@ -1528,6 +1528,7 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # remains first-use ordered; the current writer emits its own field order.
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
 

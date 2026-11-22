@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/binary"
 	"os"
+	"path/filepath"
+	"runtime"
 )
 
 // THE REGRESSION VECTORS OF 2026-11-22 (docs/fix-ledger-1122.md): each holds
@@ -20,7 +22,11 @@ func init() {
 		name: "rr_map_key_repeated", unit: "listdemo", root: "Squad", ids: squadIds,
 		body: cat(b(1, 14, 32, 13, 2), squadEntry(2, 20), squadEntry(2, 90), name50, b(0)),
 	})
-	full, err := os.ReadFile("../../../testdata/conformance/tables/wire/fixedevo_v3_full.bin")
+	// The path is taken from this source file, never from the working
+	// directory: the json-fuzz controls run this test binary as a driver
+	// from another directory, and init runs there too.
+	_, self, _, _ := runtime.Caller(0)
+	full, err := os.ReadFile(filepath.Join(filepath.Dir(self), "../../../testdata/conformance/tables/wire/fixedevo_v3_full.bin"))
 	if err != nil {
 		panic(err)
 	}
