@@ -2,6 +2,7 @@ package rubytable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -115,9 +116,7 @@ func TestRubyCompressedF32EndsCorpus(t *testing.T) {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		ins := map[string][]byte{"probe.rb": []byte(probe.String())}
-		for k, v := range inputs {
-			ins[k] = v
-		}
+		maps.Copy(ins, inputs)
 		out := runBothRubyPins(t, dir, "probe.rb", ins)
 		got := map[string]string{}
 		for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {

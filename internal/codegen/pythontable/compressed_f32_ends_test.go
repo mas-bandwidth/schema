@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -124,9 +125,7 @@ func TestPythonCompressedF32EndsCorpus(t *testing.T) {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		ins := map[string][]byte{"main.py": []byte(probe.String())}
-		for k, v := range inputs {
-			ins[k] = v
-		}
+		maps.Copy(ins, inputs)
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", ins)
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", pin, err, stderr)
