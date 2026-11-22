@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // innerSchemaPath and innerCorpusDir are the committed inner-bound schema and
@@ -104,7 +104,7 @@ func TestJsMessageInnerBoundRefused(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(jsInnerMessageProbe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, "probe.mjs")
+		cmd := testproc.Command(t, node, "probe.mjs")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil || strings.TrimSpace(string(out)) != "OK 16" {
