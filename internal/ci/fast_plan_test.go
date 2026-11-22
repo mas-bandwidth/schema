@@ -146,7 +146,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			// the Squirrel leg row runs make targets; its two unit packages ride the make-file rule
 			name:  "squirrel card leg only",
 			files: "make/squirrel-cards.mk",
-			want:  `no|./internal/codegen/squirrel ./internal/codegen/squirreltable|["squirrel"]`,
+			want:  `no|./internal/recipescan ./internal/codegen/squirrel ./internal/codegen/squirreltable|["squirrel"]`,
 		},
 		{
 			name:  "dart leg only",
@@ -225,12 +225,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			// which selects its leg as make/<lang>.mk does
 			name:  "elixir card make file",
 			files: "make/elixir-packet-write-text.mk",
-			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+			want:  `no|./internal/recipescan ./internal/codegen/elixirtable|["elixir"]`,
 		},
 		{
 			name:  "c card make file",
 			files: "make/c-packet-write-text.mk",
-			want:  `no|./internal/codegen/ctable|["c"]`,
+			want:  `no|./internal/recipescan ./internal/codegen/ctable|["c"]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -281,8 +281,8 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"dart leg", "internal/codegen/darttable/darttable.go", `["dart"]|./internal/codegen/darttable ./internal/goldens ./internal/fuzz`},
 		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
-		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
-		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
+		{"lua make file", "make/lua.mk", `["lua"]|./internal/recipescan ./internal/codegen/lua ./internal/codegen/luatable`},
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan`},
 		{"docs only", "docs/TUTORIAL.md", `[]|`},
 		// a page that states the language list re-checks it against the registry
 		{"language list page", "docs/CONTRIBUTING.md", `[]|./internal/languages`},
@@ -312,8 +312,9 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"moo runtime", "internal/codegen/moo/runtime/serialize_float.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens ./internal/fuzz`},
 		{"moo table runtime", "internal/codegen/mootable/runtime/json.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens ./internal/fuzz`},
-		{"moo make file", "make/moo.mk", `[]|./internal/codegen/moo ./internal/codegen/mootable`},
-		{"squirrel make file", "make/squirrel.mk", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable`},
+		{"moo make file", "make/moo.mk", `[]|./internal/recipescan ./internal/codegen/moo ./internal/codegen/mootable`},
+		{"squirrel make file", "make/squirrel.mk", `[]|./internal/recipescan ./internal/codegen/squirrel ./internal/codegen/squirreltable`},
+		{"a recipe script", "tools/go-ci-corpus.sh", `[]|./internal/recipescan`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script

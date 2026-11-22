@@ -404,6 +404,13 @@ jobs:
             for d in $src_dirs; do
               case " $packages " in *" ./$d "*) src_packages="$src_packages ./$d" ;; esac
             done
+            # THE RECIPES. internal/recipescan reads every makefile and shell
+            # script; its tree test refuses a makefile off "bash -o pipefail",
+            # an early-exit reader in a pipefail condition, an unread wait and a
+            # stamp that skips its work. A diff touching any recipe runs it.
+            if grep -qE '(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$' <<<"$files"; then
+              case " $packages " in *" ./internal/recipescan "*) ;; *) packages="$packages ./internal/recipescan" ;; esac
+            fi
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
             # .nut, .goose, .rs ... file under its codegen directory) is tested
             # by that language's two Go packages, the type surface and the
