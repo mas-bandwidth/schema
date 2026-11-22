@@ -46,7 +46,7 @@ table Needs {
 table Lists {
     names [..2]string(4)
     open []string
-    body string
+    by map[string]int32
 }
 
 fixed table Msg {
@@ -177,7 +177,7 @@ void main() {
     try { w.listsWireSave(w.Lists()..names = [w.ListsNamesText()..value = 'toolong']); } on AssertionError { asserted = true; }
     check(asserted, 'text list WireSave must assert');
     asserted = false;
-    try { w.listsWireSave(w.Lists()..body = 'a\u0000b'); } on AssertionError { asserted = true; }
+    try { w.listsWireSave(w.Lists()..by = {'a\u0000b': 1}); } on AssertionError { asserted = true; }
     check(asserted, 'unbounded text WireSave must assert');
   }
   print('OK');
