@@ -310,6 +310,14 @@ func buildFixedSpecField(f *ir.Field, inElement bool) *fixedSpec {
 		case *ir.Flags:
 			s.shape = "int"
 			s.signed = false
+			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH), on
+			// the reader's own image after any lineage plan, as every range is
+			if r.WireBits < 64 {
+				s.hasRange = true
+				s.loBig = new(big.Int)
+				s.hiBig = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(r.WireBits)), big.NewInt(1))
+			}
 			s.defInt = new(big.Int)
 			if !inElement && f.HasDefault && f.DefInt != nil {
 				s.defInt.Set(f.DefInt)
@@ -1538,6 +1546,10 @@ func emitFixedElementStore(b *strings.Builder, _ *ir.Unit, f *ir.Field, expr, bu
 			fmt.Fprintf(b, "TableWire.FixedPut(%s, %d, %d, (ulong)%s);\n", buf, off, size, expr)
 			return
 		case *ir.Flags:
+			if r.WireBits < 64 {
+				// the write holds the mask to its width W (docs/SPEC-TABLES.md §4), debug only
+				fmt.Fprintf(b, "Debug.Assert(((ulong)%s >> %d) == 0, \"%s holds a flags bit at or above its width %d\");\n", expr, r.WireBits, f.Name, r.WireBits)
+			}
 			fmt.Fprintf(b, "TableWire.FixedPut(%s, %d, %d, (ulong)%s);\n", buf, off, size, expr)
 			return
 		}

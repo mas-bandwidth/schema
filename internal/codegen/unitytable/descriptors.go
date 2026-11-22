@@ -508,6 +508,11 @@ func messageSlotCols(u *ir.Unit, f *ir.Field) string {
 	lo, hi, ok := ir.TableRawRange(f)
 	if f.Type.Kind == ir.TBits {
 		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)), true
+	} else if fl, isFlags := f.Type.Ref.(*ir.Flags); isFlags && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+		// mask, and each value is held to this reader's own W
+		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)), true
 	} else if !ok && ir.TableKindWide(tableScalarKind(f)) {
 		lo, hi = tableStorageRange(f.Type.Signed, f.Type.Width)
 		ok = true
@@ -650,6 +655,10 @@ func (c *descCtx) wireColumns(f *ir.Field) string {
 	} else if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
 		high := (uint64(1) << f.Type.Width) - 1
 		fmt.Fprintf(&b, ", WriteValidRaw = delegate (ulong raw) { return raw <= %dUL; }", high)
+	} else if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+		// HOLDS A MASK TO ITS WIDTH): a write never lands a bit its own read refuses
+		fmt.Fprintf(&b, ", WriteValidRaw = delegate (ulong raw) { return (raw >> %d) == 0; }", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		b.WriteString(", HasFloatRange = true")
@@ -684,6 +693,11 @@ func (c *descCtx) wireColumns(f *ir.Field) string {
 		}
 	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		fmt.Fprintf(&rc, "if ((ulong)v > %dUL) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", (uint64(1)<<f.Type.Width)-1)
+	} else if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+		// §4): flags append at the end, so old data never carries one, and an old
+		// reader does not read new data; every widened unsigned kind lands here too
+		fmt.Fprintf(&rc, "if ((raw >> %d) != 0) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		lit := formatFloat64Lit
