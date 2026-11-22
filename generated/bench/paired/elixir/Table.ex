@@ -2546,7 +2546,7 @@ defmodule Bench.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    check_field(a, payload)
+    write_value(a, if(payload == nil, do: a.default, else: payload))
     {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
@@ -5326,6 +5326,15 @@ defmodule Bench.Table do
 
   defp write_value(_f, _v), do: :ok
 
+  # An enum value is nil, the reserved "None", or the name of a variant that is
+  # not deprecated (docs/SPEC-TABLES.md §2.15); any other name is a refusal and
+  # never a raise.
+  defp write_enum_name(f, name) do
+    if name not in [nil, "None"] and
+         (not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),
+       do: throw(:invalid_value)
+  end
+
   # one array element by the array's element kind: a table element is a body
   # (its own fields are held when save_fields writes it), a string its UTF-8
   # and bound, an enum a member name, a union an arm, a float its range at its
@@ -5339,15 +5348,6 @@ defmodule Bench.Table do
   # "None" is the reserved nil spelling a fixed root's optional enum array
   # carries (json_list_elem/3 writes it as is)
   defp write_element(%{elem_kind: 30} = f, e), do: write_enum_name(f, e)
-
-  # An enum value is nil, the reserved "None", or the name of a variant that is
-  # not deprecated (docs/SPEC-TABLES.md §2.15); any other name is a refusal and
-  # never a raise.
-  defp write_enum_name(f, name) do
-    if name not in [nil, "None"] and
-         (not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),
-       do: throw(:invalid_value)
-  end
 
   defp write_element(%{elem_kind: 15} = f, e), do: write_arm(f.elem, e)
 
@@ -6239,7 +6239,7 @@ defmodule Bench.Table do
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
 
   defp json_field(%{t: :enum} = f, name, _depth) when is_binary(name) do
-    check_enum(f, name)
+    write_enum_name(f, name)
     ["\"", json_escape(name), "\""]
   end
 
@@ -6336,7 +6336,7 @@ defmodule Bench.Table do
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
 
   defp json_list_elem(%{elem_kind: 30} = f, e, _depth) when is_binary(e) do
-    check_enum(f, e)
+    write_enum_name(f, e)
     ["\"", json_escape(e), "\""]
   end
 
@@ -6765,11 +6765,12 @@ defmodule Bench.Table do
   end
 
   # json_skip_value walks a value the reader drops (an unknown key, a kind
-  # mismatch, an element past its bound), so a label defined inside it is
-  # still defined and a later reference to it reads null, never malformed
-  # (docs/SPEC-TABLES.md §16.2, §16.7). The label rules hold inside it as they
-  # do for a placed pointer: a reference to a label not yet defined, or still
-  # open, and a second definition of a label, are malformed.
+  # mismatch, an element past its bound). The label rules apply there as
+  # everywhere (docs/SPEC-TABLES.md §16.2, §16.7): a label alone REFERS, and
+  # the text must have defined it and closed that definition; a label with
+  # fields DEFINES, must be new to the text, and stays open until the skipped
+  # object closes, so a later reference reads null and a second definition is
+  # malformed.
   defp json_skip_value({:obj, [{"&node", label}]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) and
          (not Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
@@ -6782,21 +6783,33 @@ defmodule Bench.Table do
   end
 
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
-    if Process.get(:elixir_json_variable, false) do
-      defs = Process.get(:elixir_json_defs, %{})
+    variable = Process.get(:elixir_json_variable, false)
 
-      if Map.has_key?(defs, label) or Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
+    if variable do
+      if Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
+           Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
         Process.put(:elixir_json_bad, true)
         throw(:wire_damaged)
       end
 
-      Process.put(:elixir_json_defs, Map.put(defs, label, :dropped))
+      Process.put(:elixir_json_open, Map.put(Process.get(:elixir_json_open, %{}), label, true))
     end
 
     Enum.each(rest, fn {k, v} ->
       json_skip_key(k)
       json_skip_value(v)
     end)
+
+    if variable do
+      Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+      Process.put(
+        :elixir_json_defs,
+        Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+      )
+    end
+
+    :ok
   end
 
   defp json_skip_value({:obj, pairs}) do

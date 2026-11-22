@@ -884,7 +884,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				if wasNotAsked(notAsked, s, e.name) {
+				if notAsked.has(s, e.name) {
 					r.missing++
 					r.mark(e.name, outcomeAbsent)
 					r.verdict(e.name, "absent")
@@ -973,17 +973,6 @@ func scorePrior(answer string, e expectation, r *result) {
 		r.pass++
 		r.mark(e.name, outcomePass)
 	}
-}
-
-// wasNotAsked answers whether the expectation name on surface belongs to a row
-// the leg was not handed (an opt-in unit it does not name, optin.go). The
-// json-write surface names its expectations `<case>.json` after the instance
-// row they come from, so the row is found under the case name.
-func wasNotAsked(notAsked map[string]bool, surface, name string) bool {
-	if notAsked[name] {
-		return true
-	}
-	return surface == "json-write" && notAsked[strings.TrimSuffix(name, ".json")]
 }
 
 // scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose

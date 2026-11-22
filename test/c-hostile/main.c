@@ -30,6 +30,7 @@ const hc_binding_t * hc_bindings_streamdemo( int * count );
 const hc_binding_t * hc_bindings_mapdemo( int * count );
 const hc_binding_t * hc_bindings_listdemo( int * count );
 const hc_binding_t * hc_bindings_shapes( int * count );
+const hc_binding_t * hc_bindings_inner( int * count );
 const hc_binding_t * hc_bindings_probe( int * count );
 const hc_binding_t * hc_bindings_featurewitnesses( int * count );
 const hc_binding_t * hc_bindings_hostilepacket( int * count );
@@ -39,6 +40,7 @@ static const hc_unit_t units[] = {
     hc_bindings_graphdemo, hc_bindings_scalardemo, hc_bindings_streamdemo,
     hc_bindings_mapdemo,   hc_bindings_listdemo,    hc_bindings_probe,
     hc_bindings_featurewitnesses, hc_bindings_hostilepacket, hc_bindings_shapes,
+    hc_bindings_inner,
 };
 
 static int answered;

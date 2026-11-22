@@ -1010,7 +1010,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                    report->refuse_reason = wire_damaged;\n")
 	g.pf("                    return -1;\n                }\n            }\n        }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
-	if ir.TableFixedClampNeeded(st) {
+	if fixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
 		g.pf("        // §5.8): every record written so far goes back to its defaults and\n")
 		g.pf("        // the counters back to what they were before the batch.\n")
@@ -1034,7 +1034,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
-	if ir.TableFixedClampNeeded(st) {
+	if fixedClampNeeded(st) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
 		g.pf("        {\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
 		g.pf("            report->widened = batch_widened;\n            return -1;\n        }\n")
@@ -1248,7 +1248,7 @@ func fixedOpName(op int) string {
 // nested type is a call and not an inlining, so a type that appears twice in a
 // closure is spelled once.
 func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !fixedClampNeeded(st) {
 		return
 	}
 	g.fixedOwner = st
@@ -1302,7 +1302,7 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 // writeAdmits is the check a writer of table st asserts (docs/SPEC.md §5.1),
 // or "" when the fixed form bounds nothing in st's closure.
 func (g *tableGen) writeAdmits(st *ir.Struct) string {
-	if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+	if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) || !fixedClampNeeded(st) {
 		return ""
 	}
 	return st.Name + "FixedWriteAdmits"
@@ -1321,7 +1321,7 @@ func (g *tableGen) emitWriteAssert(st *ir.Struct, value, ind string) {
 // text refusal, so the load can leave the refusing record's counters where they
 // stood — REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.8).
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !fixedClampNeeded(st) {
 		return
 	}
 	g.pf("// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's\n")
@@ -1357,7 +1357,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
-	if !ir.TableFixedClampNeededField(f) {
+	if !fixedClampNeededField(f) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
@@ -1386,6 +1386,10 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
+		g.emitFixedCountMin(f, val+"."+f.Name+"_count", ind)
+		if !fixedElementClampNeeded(f) {
+			return
+		}
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
 		// and a zero nobody wrote is not a value to hold to a range.
 		count := fmt.Sprintf("(int64_t) %s.%s_count", val, f.Name)
@@ -1429,6 +1433,10 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 		g.emitFixedClampElement(f, val+"["+idx+"]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
+		g.emitFixedCountMin(f, cnt, ind)
+		if !fixedElementClampNeeded(f) {
+			return
+		}
 		idx := fmt.Sprintf("ai_%d", indent)
 		count := fmt.Sprintf("(int64_t) %s", cnt)
 		if g.fixedWriteCheck {
@@ -1488,7 +1496,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ir.TableFixedClampNeeded(r) {
+			if fixedClampNeeded(r) {
 				switch {
 				case g.fixedWriteCheck:
 					g.pf("%sbad |= (int) !%sFixedWriteAdmits( %s );\n", ind, r.Name, expr)
@@ -1513,12 +1521,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 						ind, expr, r.Max, expr, f.Type.Name)
 				}
 			}
-			if !ir.TableFixedClampNeededUnionArm(r) {
+			if !fixedClampNeededUnionArm(r) {
 				return
 			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
-				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+				if v.F == nil || !fixedClampNeededField(v.F) {
 					continue
 				}
 				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
@@ -1555,20 +1563,18 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
+	case g.fixedWriteCheck && f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		// A FLOAT'S RANGE IS ROW 10 of the write contract (docs/SPEC.md §5.1),
+		// which every writer holds, the message form's included: the ends
+		// alone, a float32's compared at float32. A -0 is not a violation;
+		// the writer stores +0 for it. A NaN or an infinity is row 7's,
+		// refused in every build after this assert, so the range is tested
+		// on a finite value only.
+		g.fixedWriteFloatRange(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+	case g.fixedWriteCheck && f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		g.fixedWriteFloatRange(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// ROW 10 IS THE WRITE CHECK'S (docs/SPEC.md §5.1): a compressed
-		// float off its range is refused by the writer, and in this assert
-		// leg that is the debug assert FixedSave and SaveMessages hold over
-		// this body. THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
-		// §3.3): the ends are the float32 literals nearest the declared
-		// bounds, so the 0.1f a reader landed under max = 0.1 saves again.
-		// A plain float has no range and nothing to count. A NaN or an
-		// infinity is row 7's, refused in every build after this assert,
-		// so the range is tested on a finite value only.
-		if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
-			g.pf("%sbad |= (int) ( TableFloatFinite( %s ) && ( %s < %s || %s > %s ) );\n",
-				ind, expr, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
-		}
+		// an unranged float has no row of the write contract to hold
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 		g.fixedNegZero(expr, true, ind)
@@ -1600,6 +1606,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 }
 
 // fixedClampBoth is a two-ended clamp: the select, then the count as an add.
+// fixedWriteFloatRange is the fixed write check's row 10 (docs/SPEC.md
+// §5.1) on one ranged float: a finite value past either end fails the check.
+func (g *tableGen) fixedWriteFloatRange(expr, lo, hi, ind string) {
+	g.pf("%sbad |= (int) ( TableFloatFinite( %s ) && ( %s < %s || %s > %s ) );\n", ind, expr, expr, lo, expr, hi)
+}
+
 func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	// THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
 	// meant: clang reads a bitwise operator between two comparisons as a
@@ -1790,4 +1802,88 @@ func (g *tableGen) emitFixedFiniteElement(f *ir.Field, expr string, depth, inden
 		}
 		g.pf("%s    default: break;\n%s}\n", ind, ind)
 	}
+}
+
+// emitFixedCountMin holds a counted array's stored count to its declared Min
+// (docs/SPEC.md §5.1 row 3) in the bounds pass: over storage, after either
+// plan's copy, so the plans themselves are unchanged. The read counts it
+// out_of_range; the check and the write check fail on it.
+func (g *tableGen) emitFixedCountMin(f *ir.Field, count, ind string) {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return
+	}
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) ( %s < %d ); // a count below the declared Min (§5.1 row 3)\n", ind, count, f.ArrayMin)
+		return
+	}
+	g.pf("%sif ( %s < %d ) { oor_count++; } // a count below the declared Min (§5.1 row 3)\n", ind, count, f.ArrayMin)
+}
+
+// fixedClampNeeded is ir.TableFixedClampNeeded with one bound more: a counted
+// array whose declared minimum is above zero holds its stored count to
+// [Min, N] in the same straight-line pass (docs/SPEC.md §5.1 row 3), the C
+// leg's rule (internal/codegen/ctable/fixedform.go).
+func fixedClampNeeded(st *ir.Struct) bool {
+	return ir.TableFixedClampNeeded(st) || fixedMinCountIn(st, map[string]bool{})
+}
+
+func fixedClampNeededField(f *ir.Field) bool {
+	return ir.TableFixedClampNeededField(f) || fixedMinCountField(f, map[string]bool{})
+}
+
+func fixedClampNeededUnionArm(r *ir.Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && fixedClampNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedMinCountIn(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedMinCountField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// fixedElementClampNeeded is whether a counted array's ELEMENTS are walked:
+// a bound on the element itself, or a counted array with a positive minimum
+// anywhere beneath it (a [..4]Child whose Child holds [2..4]uint8). The
+// array's own count minimum is not an element's bound: emitFixedCountMin
+// holds it before the walk.
+func fixedElementClampNeeded(f *ir.Field) bool {
+	return ir.TableFixedClampNeededField(f) || fixedMinCountElement(f, map[string]bool{})
+}
+
+func fixedMinCountField(f *ir.Field, seen map[string]bool) bool {
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		return true
+	}
+	return fixedMinCountElement(f, seen)
+}
+
+// fixedMinCountElement is whether f's element type, a table or a union arm's
+// payload at any depth, holds a counted array with a positive minimum.
+func fixedMinCountElement(f *ir.Field, seen map[string]bool) bool {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
+		return false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fixedMinCountIn(r, seen)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.F != nil && fixedMinCountField(v.F, seen) {
+				return true
+			}
+		}
+	}
+	return false
 }

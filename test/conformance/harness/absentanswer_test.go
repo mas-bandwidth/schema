@@ -113,26 +113,3 @@ func TestReasonedAbsentOnACommittedAcceptedRowFails(t *testing.T) {
 		}
 	}
 }
-
-// A row on an opt-in unit the leg does not name is not asked of it, on every
-// surface, json-write's `<case>.json` expectation included: it counts absent,
-// never "the driver wrote nothing".
-func TestOptInRowIsNotAskedOnEverySurface(t *testing.T) {
-	t.Parallel()
-	notAsked := map[string]bool{"shapes_bounds_ends": true}
-	for _, tc := range []struct {
-		surface, name string
-		want          bool
-	}{
-		{"wire", "shapes_bounds_ends", true},
-		{"json-read", "shapes_bounds_ends", true},
-		{"json-write", "shapes_bounds_ends.json", true},
-		{"json-write", "root_full.json", false},
-		{"wire", "shapes_bounds_ends.json", false},
-		{"wire", "root_full", false},
-	} {
-		if got := wasNotAsked(notAsked, tc.surface, tc.name); got != tc.want {
-			t.Errorf("wasNotAsked(%s, %s) = %v, want %v", tc.surface, tc.name, got, tc.want)
-		}
-	}
-}

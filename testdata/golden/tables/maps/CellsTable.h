@@ -467,8 +467,10 @@ struct TableFieldInfo
     // in as the bytes and the length, an integer key as the value, and NULL
     // is NOT INSERTED: a key past the bound, or an arena that could not carve
     // another segment. A LIST ignores the key and APPENDS, NULL at the arena
-    // or the int32 cap. NULL on every field that is neither.
-    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    // or the int32 cap. NULL on every field that is neither. FRESH says the
+    // caller already knows no entry holds this key (the text read keeps a
+    // set of the keys it placed), so a map skips its linear find.
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -493,6 +495,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -10511,11 +10517,15 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // relabels one it found. A key is copied only when an entry is created, which
 // is what makes a repeated key leave the identity it matched untouched. NULL
 // is one thing and one thing only: the arena refused.
+//
+// FRESH: the caller already knows no entry holds this key (the text read keeps
+// a set of the keys it placed), so the linear scan is skipped and a map of n
+// keys reads in O( n ) in any key order.
 template <typename Entry, typename Key>
-inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
+inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key, bool fresh = false )
 {
     if ( worker.arena == NULL ) { return NULL; }
-    Entry * found = TableMapScan( *worker.arena, map, key );
+    Entry * found = fresh ? NULL : TableMapScan( *worker.arena, map, key );
     if ( found != NULL )
     {
         TableResetMapValue( *found ); // a repeated key is LAST-WINS, whole
@@ -15136,15 +15146,15 @@ extern const TableTypeInfo CellsRowsEntryTableInfo;
 extern const TableTypeInfo CellsTableInfo;
 
 inline const TableFieldInfo CellsRowsEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( CellsRowsEntry, key ), (uint32_t) sizeof( CellsRowsEntry::key ), (uint32_t) offsetof( CellsRowsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( CellsRowsEntry, value ), (uint32_t) sizeof( CellsRowsEntry::value[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( CellsRowsEntry, key ), (uint32_t) sizeof( CellsRowsEntry::key ), (uint32_t) offsetof( CellsRowsEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( CellsRowsEntry, value ), (uint32_t) sizeof( CellsRowsEntry::value[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CellsRowsEntryTableInfo = { "CellsRowsEntry", (uint32_t) sizeof( CellsRowsEntry ), 2, CellsRowsEntryTableFields, +[]( void * p ) { CellsRowsEntryReset( *(CellsRowsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CellsRowsEntryTableType() { return &CellsRowsEntryTableInfo; }
 
 inline const TableFieldInfo CellsTableFields[] = {
-    { "rows", "rows", "map[string(8)]int32", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Cells, rows ), (uint32_t) sizeof( CellsRowsEntry ), (uint32_t) offsetof( Cells, rows.count ), 0xffffffffu, &CellsRowsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<CellsRowsEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cells, past ), (uint32_t) sizeof( Cells::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "rows", "rows", "map[string(8)]int32", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Cells, rows ), (uint32_t) sizeof( CellsRowsEntry ), (uint32_t) offsetof( Cells, rows.count ), 0xffffffffu, &CellsRowsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t, bool fresh ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<CellsRowsEntry> *) slot, TableMapKeyRef{ key, key_length }, fresh ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cells, past ), (uint32_t) sizeof( Cells::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CellsTableInfo = { "Cells", (uint32_t) sizeof( Cells ), 2, CellsTableFields, +[]( void * p ) { CellsReset( *(Cells *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CellsTableType() { return &CellsTableInfo; }

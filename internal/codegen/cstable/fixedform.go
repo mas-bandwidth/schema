@@ -436,9 +436,9 @@ func (b *fixedRootBuild) scalarOp(f *ir.Field) byte {
 
 func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
 	if elemType == "byte" {
-		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
+		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
 	}
-	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, global::System.Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -968,7 +968,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1001,7 +1001,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1445,7 +1445,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1468,7 +1468,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1635,9 +1635,9 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 			slice = buf
 		}
 		if elemType == "byte" {
-			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
+			g.pf("%sif (%s != null) { %s.AsSpan(0, global::System.Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
 		} else {
-			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %d)), %s); }\n", ind, slotsExpr, elemType, slotsExpr, slotsExpr, count, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, global::System.Math.Min(%s.Length, %d)), %s); }\n", ind, slotsExpr, elemType, slotsExpr, slotsExpr, count, slice)
 		}
 		return
 	}
@@ -1663,9 +1663,9 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 			slice = buf
 		}
 		if elemType == "byte" {
-			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
+			g.pf("%sif (%s != null) { %s.AsSpan(0, global::System.Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
 		} else {
-			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %s)), %s); }\n", ind, expr, elemType, expr, expr, nExpr, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, global::System.Math.Min(%s.Length, %s)), %s); }\n", ind, expr, elemType, expr, expr, nExpr, slice)
 		}
 		return
 	}
@@ -2264,7 +2264,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if hasWriterBounds {
 		g.pf("        if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }\n")
 	}
-	if csFixedClampNeeded(st) {
+	if ir.TableFixedBoundsNeeded(st) {
 		g.pf("        if (!%sFixedClamp(values[k], report)) { refused = true; }\n", name)
 	}
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal

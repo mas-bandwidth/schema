@@ -246,7 +246,12 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.pf("    }\n")
 	case f.CountedOnWire():
 		g.storageAssert("    ", "value."+name+"_count", f.ArrayBound)
-		g.pf("    if ( value.%s_count > 0 )\n    {\n", name)
+		g.countMinAssert("    ", f)
+		rides := fmt.Sprintf("value.%s_count > 0", name)
+		if r := g.countedBirthRides(f, "    ", "return "+messageBad(pass)+";", true, pass); r != "" {
+			rides = r
+		}
+		g.pf("    if ( %s )\n    {\n", rides)
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
 		g.pf("    }\n")
@@ -462,6 +467,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		// §3.3), a compressed float's too, before it is quantized: the measure
 		// and the save refuse it at the same place
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return %s; } // a NaN or an infinity is refused (§3.3)\n", ind, expr, messageBad(pass))
+		if f.HasFloatRange {
+			// ROW 10 (docs/SPEC.md §5.1): the quantizer's clamp is not the
+			// writer's answer to an off-range value in a debug build
+			g.emitFloatRangeAssert(f, expr, ind)
+		}
 	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)

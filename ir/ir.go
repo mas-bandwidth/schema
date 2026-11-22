@@ -111,6 +111,20 @@ type Enum struct {
 	// Its ordinal and name hash stay for life, nothing new may name it, and
 	// the lock records the marker one way — it may turn on and never off.
 	VariantDeprecated []bool
+	// SchemaName is the DECLARED name of an enum whose Name a backend's own
+	// copy of the unit respelled, as [Struct.SchemaName] is for a table: ""
+	// on every unit the checker produces. See [Enum.DeclaredName].
+	SchemaName string
+}
+
+// DeclaredName is the enum's name as the schema declares it: Name, unless a
+// backend respelled it (see [Struct.DeclaredName]). Every id and projection
+// that folds an enum's name reads this.
+func (e *Enum) DeclaredName() string {
+	if e.SchemaName != "" {
+		return e.SchemaName
+	}
+	return e.Name
 }
 
 // Flags is a `flags` declaration: one bit per variant, consumed as masks
@@ -125,6 +139,18 @@ type Flags struct {
 	// Variants (docs/SPEC-TABLES.md §8.3).
 	VariantDocs []string
 	VariantTags [][]string
+	// SchemaName is the DECLARED name of a flags whose Name a backend's own
+	// copy of the unit respelled, as [Struct.SchemaName] is for a table.
+	SchemaName string
+}
+
+// DeclaredName is the flags' name as the schema declares it (see
+// [Struct.DeclaredName]).
+func (f *Flags) DeclaredName() string {
+	if f.SchemaName != "" {
+		return f.SchemaName
+	}
+	return f.Name
 }
 
 // Union is a first-class one-of type (SPEC §4.8): the implicit None row at
@@ -138,6 +164,18 @@ type Union struct {
 	StorageBits int            // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 	Doc         string         // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags        []string       // the declaration's tags, in declared order (SPEC §4.2)
+	// SchemaName is the DECLARED name of a union whose Name a backend's own
+	// copy of the unit respelled, as [Struct.SchemaName] is for a table.
+	SchemaName string
+}
+
+// DeclaredName is the union's name as the schema declares it (see
+// [Struct.DeclaredName]).
+func (un *Union) DeclaredName() string {
+	if un.SchemaName != "" {
+		return un.SchemaName
+	}
+	return un.Name
 }
 
 // UnionVariant is one arm of a [Union]. AN ARM IS A FIELD LINE (SPEC §4.8,
@@ -580,10 +618,35 @@ type FieldType struct {
 // the Go escape): Name, unless a backend respelled the table it names, and then
 // that table's declared name. Every PUBLISHED type name reads it.
 func (t FieldType) DeclaredName() string {
-	if st, ok := t.Ref.(*Struct); ok && st != nil && st.Name == t.Name {
-		return st.DeclaredName()
+	switch ref := t.Ref.(type) {
+	case *Struct:
+		if ref != nil && ref.Name == t.Name {
+			return ref.DeclaredName()
+		}
+	case *Enum:
+		if ref != nil && ref.Name == t.Name {
+			return ref.DeclaredName()
+		}
+	case *Union:
+		if ref != nil && ref.Name == t.Name {
+			return ref.DeclaredName()
+		}
+	case *Flags:
+		if ref != nil && ref.Name == t.Name {
+			return ref.DeclaredName()
+		}
 	}
 	return t.Name
+}
+
+// keyEnumDeclared is the declared name of the enum an enum-keyed array is keyed
+// by: the name its ids and projections fold, whatever a backend's copy of the
+// unit spells it.
+func keyEnumDeclared(f *Field) string {
+	if f.KeyEnumRef != nil && f.KeyEnumRef.Name == f.KeyEnum {
+		return f.KeyEnumRef.DeclaredName()
+	}
+	return f.KeyEnum
 }
 
 // TextUnbounded reports an unbounded text value: a bare `string` element or key

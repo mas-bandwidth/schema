@@ -62,7 +62,7 @@ func TestLuauDriverListsItsSurfaces(t *testing.T) {
 	var lines []string
 	units := map[string]bool{}
 	optIn := optInUnits(t, root)
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
 		if key, ok := strings.CutPrefix(line, "unit "); ok {
 			if !optIn[key] {

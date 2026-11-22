@@ -274,16 +274,19 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 					shape = "(" + shape + "||in.peek()=='n')"
 				}
 				fmt.Fprintf(&b, "        if(%s){\n", shape)
-				depthExpr := "depth + 1"
-				if arm.Body() {
-					depthExpr = "depth"
-				}
-				readJsonFieldValue(&b, u, st, &one, depthExpr)
+				// DEPTH (§16.2; internal/tabletext readUnion): the holder is
+				// at depth, the union object at depth+1, and the arm's value
+				// at depth+2. A body arm and a field arm both read through
+				// the field walk one level down, whose own scalar walk adds
+				// the level, so a body arm's table is at depth+2 as Go reads it.
+				readJsonFieldValue(&b, u, st, &one, "depth + 1")
 				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			}
 			b.WriteString("        }else ")
 		}
-		b.WriteString("{in.rep.unknown++;in.skipValue();}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
+		// an unknown arm's value is skipped where it sits, at depth+2, so
+		// one level past the cap refuses as the engine's does (§16.2)
+		b.WriteString("{in.rep.unknown++;in.skipValue(depth + 2);}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
 	}
 	// Enum payload helpers use the same ID-to-ordinal rule as table fields.
 	for _, f := range st.Fields {
@@ -327,7 +330,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// §3, §4); only an unbounded count past what a list can hold is refused.
 	countCheck := "else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}%s", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "count", "count_over_bound"))
 	}
 	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
 	if retain {
@@ -356,7 +359,7 @@ func writeUnionFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "        if(v.%s.tag!=0){w.putLeb(w.ref(F_%s));w.put8(15);%sVariable.writePayload(w,graph,v.%s);}\n", m, m, un.Name, m)
 		return
 	}
-	fmt.Fprintf(b, "        if(!v.%s.isEmpty()){w.putLeb(w.ref(F_%s));w.put8(14);\n", m, m)
+	fmt.Fprintf(b, "        if(%s){w.putLeb(w.ref(F_%s));w.put8(14);\n", variableArrayRides(b, f, m), m)
 	writeVariablePayload(b, u, st.Name, f, "v."+m, "w", 0)
 	b.WriteString("        }\n")
 }

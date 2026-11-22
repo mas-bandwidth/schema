@@ -165,14 +165,76 @@ tables = %{
   "tables/maps" => Mapdemo.Table,
   "tables/lists" => Listdemo.Table,
   "test/tables/shapes" => Shapes.Table,
+  "test/tables/inner" => Inner.Table,
   "schemas/probe.schema" => Probe.Table,
   "testdata/conformance/feature-witnesses/full/Features.schema" => Featurewitnesses.Table
 }
 
 messages = %{
   "tables/examples" => Tabledemo.TableMessage,
-  "tables/messages" => Messagedemo.TableMessage
+  "tables/messages" => Messagedemo.TableMessage,
+  "test/tables/inner" => Inner.TableMessage
 }
+
+# A message body is the vocabulary's own spelling: one {ref, value} pair per
+# field the body sets (docs/SPEC-TABLES.md §3.3), a nested record a body of its
+# own, a bytes(N) its byte list. The text writer takes the variable value, so
+# one walk turns the first into the second: the ref names the announced entry,
+# the entry's id names the declared field, and a field the body does not set
+# keeps the default from_json/2 states for its table. A shape this walk does
+# not know is the case's answer (:unhandled), never a guessed digest.
+table_defaults = fn mod, table ->
+  case mod.from_json(table, "{}") do
+    {:ok, defaults, _report} -> defaults
+    _ -> %{}
+  end
+end
+
+body_value = fn body_value, mod, vocab, table, body ->
+  fields = Map.fetch!(mod.descriptors(), table).fields
+
+  Enum.reduce_while(body, {:ok, table_defaults.(mod, table)}, fn {ref, v}, {:ok, acc} ->
+    id = if ref >= 1 and ref <= length(vocab.entries), do: Enum.at(vocab.entries, ref - 1).id
+
+    converted =
+      case Enum.find(fields, &(&1.id == id)) do
+        nil ->
+          {:unhandled, "ref #{ref} names no field of #{table}"}
+
+        %{t: :list, elem_t: :record, elem: elem} = f when is_list(v) ->
+          Enum.reduce_while(v, {:ok, []}, fn b, {:ok, out} ->
+            case body_value.(body_value, mod, vocab, elem, b) do
+              {:ok, e} -> {:cont, {:ok, [e | out]}}
+              other -> {:halt, other}
+            end
+          end)
+          |> case do
+            {:ok, out} -> {:ok, f.name, Enum.reverse(out)}
+            other -> other
+          end
+
+        %{t: :table, elem: elem} = f ->
+          with {:ok, e} <- body_value.(body_value, mod, vocab, elem, v), do: {:ok, f.name, e}
+
+        %{t: :bytes} = f when is_list(v) ->
+          {:ok, f.name, :erlang.list_to_binary(v)}
+
+        %{t: t} = f when t in [:int, :float, :bool, :string, :bytes] ->
+          {:ok, f.name, v}
+
+        %{t: :list, elem_t: t} = f when t in [:int, :float, :bool] ->
+          {:ok, f.name, v}
+
+        f ->
+          {:unhandled, "field #{f.name} of #{table}: a #{inspect(Map.get(f, :t))} in a message body"}
+      end
+
+    case converted do
+      {:ok, name, value} -> {:cont, {:ok, Map.put(acc, name, value)}}
+      other -> {:halt, other}
+    end
+  end)
+end
 
 # ---- the fixed-root file form (form 3) ----
 #
@@ -428,15 +490,19 @@ run = fn carrier, schema, table, payload ->
 
       # a message read is bound to its root record (docs/SPEC-TABLES.md §3.3)
       with {:ok, vocab} <- message.for_root(announced, table),
-           {:ok, [[]] = values} <- message.load_messages(vocab, payload, 1) do
-        # the batch's one body sets no field: the decoded value is the table's
-        # defaults, and from_json/2 is where the port states them.
-        {:ok, defaults, _report} = mod.from_json(table, "{}")
+           {:ok, [body] = values} <- message.load_messages(vocab, payload, 1) do
+        # the batch's one body over the table's defaults, which from_json/2
+        # states: a body that sets no field is the defaults themselves
+        case body_value.(body_value, mod, vocab, table, body) do
+          {:ok, value} ->
+            after_accept.({:accept, digest.(mod, table, value)}, fn ->
+              message.measure_messages(vocab, values)
+              message.save_messages(vocab, values)
+            end)
 
-        after_accept.({:accept, digest.(mod, table, defaults)}, fn ->
-          message.measure_messages(vocab, values)
-          message.save_messages(vocab, values)
-        end)
+          {:unhandled, why} ->
+            {:unhandled_decoded_value, why}
+        end
       else
         {:ok, values} ->
           {:unhandled_decoded_value, values}

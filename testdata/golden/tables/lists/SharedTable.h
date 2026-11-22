@@ -467,8 +467,10 @@ struct TableFieldInfo
     // in as the bytes and the length, an integer key as the value, and NULL
     // is NOT INSERTED: a key past the bound, or an arena that could not carve
     // another segment. A LIST ignores the key and APPENDS, NULL at the arena
-    // or the int32 cap. NULL on every field that is neither.
-    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    // or the int32 cap. NULL on every field that is neither. FRESH says the
+    // caller already knows no entry holds this key (the text read keeps a
+    // set of the keys it placed), so a map skips its linear find.
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -493,6 +495,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -10307,11 +10313,15 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // relabels one it found. A key is copied only when an entry is created, which
 // is what makes a repeated key leave the identity it matched untouched. NULL
 // is one thing and one thing only: the arena refused.
+//
+// FRESH: the caller already knows no entry holds this key (the text read keeps
+// a set of the keys it placed), so the linear scan is skipped and a map of n
+// keys reads in O( n ) in any key order.
 template <typename Entry, typename Key>
-inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
+inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key, bool fresh = false )
 {
     if ( worker.arena == NULL ) { return NULL; }
-    Entry * found = TableMapScan( *worker.arena, map, key );
+    Entry * found = fresh ? NULL : TableMapScan( *worker.arena, map, key );
     if ( found != NULL )
     {
         TableResetMapValue( *found ); // a repeated key is LAST-WINS, whole
@@ -15872,15 +15882,15 @@ extern const TableTypeInfo PhotoTableInfo;
 extern const TableTypeInfo AlbumTableInfo;
 
 inline const TableFieldInfo PhotoTableFields[] = {
-    { "width", "width", "uint32", 0xdbdacd932fd1e9bfull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, width ), (uint32_t) sizeof( Photo::width ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "height", "height", "uint32", 0x17720bf67d347222ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, height ), (uint32_t) sizeof( Photo::height ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "width", "width", "uint32", 0xdbdacd932fd1e9bfull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, width ), (uint32_t) sizeof( Photo::width ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "height", "height", "uint32", 0x17720bf67d347222ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, height ), (uint32_t) sizeof( Photo::height ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo PhotoTableInfo = { "Photo", (uint32_t) sizeof( Photo ), 2, PhotoTableFields, +[]( void * p ) { PhotoReset( *(Photo *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PhotoTableType() { return &PhotoTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
-    { "photos", "photos", "Photo", 0x40b1d94aff3ab130ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Album, photos ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Album, photos.count ), 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Photo *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Photo *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "cover", "cover", "Photo", 0xaa19a78e404dea20ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, cover ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "photos", "photos", "Photo", 0x40b1d94aff3ab130ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Album, photos ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Album, photos.count ), 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd, bool ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Photo *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Photo *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "cover", "cover", "Photo", 0xaa19a78e404dea20ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, cover ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 2, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }

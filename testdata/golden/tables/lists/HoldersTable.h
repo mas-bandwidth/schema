@@ -467,8 +467,10 @@ struct TableFieldInfo
     // in as the bytes and the length, an integer key as the value, and NULL
     // is NOT INSERTED: a key past the bound, or an arena that could not carve
     // another segment. A LIST ignores the key and APPENDS, NULL at the arena
-    // or the int32 cap. NULL on every field that is neither.
-    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    // or the int32 cap. NULL on every field that is neither. FRESH says the
+    // caller already knows no entry holds this key (the text read keeps a
+    // set of the keys it placed), so a map skips its linear find.
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -493,6 +495,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -10307,11 +10313,15 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
 // relabels one it found. A key is copied only when an entry is created, which
 // is what makes a repeated key leave the identity it matched untouched. NULL
 // is one thing and one thing only: the arena refused.
+//
+// FRESH: the caller already knows no entry holds this key (the text read keeps
+// a set of the keys it placed), so the linear scan is skipped and a map of n
+// keys reads in O( n ) in any key order.
 template <typename Entry, typename Key>
-inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key )
+inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key key, bool fresh = false )
 {
     if ( worker.arena == NULL ) { return NULL; }
-    Entry * found = TableMapScan( *worker.arena, map, key );
+    Entry * found = fresh ? NULL : TableMapScan( *worker.arena, map, key );
     if ( found != NULL )
     {
         TableResetMapValue( *found ); // a repeated key is LAST-WINS, whole
@@ -28034,55 +28044,55 @@ extern const TableTypeInfo ArmyTableInfo;
 extern const TableTypeInfo DeckTableInfo;
 
 inline const TableFieldInfo SampleTableFields[] = {
-    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Sample, v ), (uint32_t) sizeof( Sample::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Sample, v ), (uint32_t) sizeof( Sample::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SampleTableInfo = { "Sample", (uint32_t) sizeof( Sample ), 1, SampleTableFields, +[]( void * p ) { SampleReset( *(Sample *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SampleTableType() { return &SampleTableInfo; }
 
 inline const TableFieldInfo RowTableFields[] = {
-    { "items", "items", "Sample", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, items ), (uint32_t) sizeof( Sample ), (uint32_t) offsetof( Row, items.count ), 0xffffffffu, &SampleTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Sample> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Sample> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "label", "label", "int32", 0x39f7fcec8fcb623dull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, label ), (uint32_t) sizeof( Row::label ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "items", "items", "Sample", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, items ), (uint32_t) sizeof( Sample ), (uint32_t) offsetof( Row, items.count ), 0xffffffffu, &SampleTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd, bool ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Sample> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Sample> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "label", "label", "int32", 0x39f7fcec8fcb623dull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, label ), (uint32_t) sizeof( Row::label ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
 
 inline const TableFieldInfo SheetTableFields[] = {
-    { "rows", "rows", "Row", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Sheet, rows ), (uint32_t) sizeof( Row ), (uint32_t) offsetof( Sheet, rows.count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Row> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Row> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "pinned", "pinned", "Row", 0x5f82477707ad620full, 17, false, true, []( const void * slot ) -> const void * { return (const void *) RowAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) RowEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Sheet, pinned ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "rows", "rows", "Row", 0xa3a7061ff10a8138ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Sheet, rows ), (uint32_t) sizeof( Row ), (uint32_t) offsetof( Sheet, rows.count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd, bool ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Row> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Row> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "pinned", "pinned", "Row", 0x5f82477707ad620full, 17, false, true, []( const void * slot ) -> const void * { return (const void *) RowAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) RowEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Sheet, pinned ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SheetTableInfo = { "Sheet", (uint32_t) sizeof( Sheet ), 2, SheetTableFields, +[]( void * p ) { SheetReset( *(Sheet *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SheetTableType() { return &SheetTableInfo; }
 
 inline const TableFieldInfo ItemTableFields[] = {
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Item, count ), (uint32_t) sizeof( Item::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ItemTableInfo = { "Item", (uint32_t) sizeof( Item ), 1, ItemTableFields, +[]( void * p ) { ItemReset( *(Item *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ItemTableType() { return &ItemTableInfo; }
 
 inline const TableFieldInfo SquadRosterEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadRosterEntryTableType() { return &SquadRosterEntryTableInfo; }
 
 inline const TableFieldInfo SquadTableFields[] = {
-    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "name", "name", "int32", 0xc4bcadba8e631b86ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Squad, name ), (uint32_t) sizeof( Squad::name ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value, bool fresh ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value, fresh ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "name", "name", "int32", 0xc4bcadba8e631b86ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Squad, name ), (uint32_t) sizeof( Squad::name ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 2, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo ArmyTableFields[] = {
-    { "squads", "squads", "Squad", 0x7848019b0c02a926ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Army, squads ), (uint32_t) sizeof( Squad ), (uint32_t) offsetof( Army, squads.count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Squad> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Squad> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Army, past ), (uint32_t) sizeof( Army::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "squads", "squads", "Squad", 0x7848019b0c02a926ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Army, squads ), (uint32_t) sizeof( Squad ), (uint32_t) offsetof( Army, squads.count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd, bool ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Squad> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Squad> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Army, past ), (uint32_t) sizeof( Army::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ArmyTableInfo = { "Army", (uint32_t) sizeof( Army ), 2, ArmyTableFields, +[]( void * p ) { ArmyReset( *(Army *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArmyTableType() { return &ArmyTableInfo; }
 
 inline const TableFieldInfo DeckTableFields[] = {
-    { "hands", "hands", "Row", 0x81b46a69304ee2c9ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Deck, hands ), (uint32_t) sizeof( Deck::hands[0] ), (uint32_t) offsetof( Deck, hands_count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Deck, past ), (uint32_t) sizeof( Deck::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "hands", "hands", "Row", 0x81b46a69304ee2c9ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Deck, hands ), (uint32_t) sizeof( Deck::hands[0] ), (uint32_t) offsetof( Deck, hands_count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Deck, past ), (uint32_t) sizeof( Deck::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DeckTableInfo = { "Deck", (uint32_t) sizeof( Deck ), 2, DeckTableFields, +[]( void * p ) { DeckReset( *(Deck *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DeckTableType() { return &DeckTableInfo; }

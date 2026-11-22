@@ -518,7 +518,7 @@ public final class MixedEventVariable {
         if ("hit".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedHitEventVariable.jsonReadFields(in, v.hit, depth + 1);
+                    MixedHitEventVariable.jsonReadFields(in, v.hit, depth + 1 + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
@@ -531,7 +531,7 @@ public final class MixedEventVariable {
         } else if ("chat".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedChatEventVariable.jsonReadFields(in, v.chat, depth + 1);
+                    MixedChatEventVariable.jsonReadFields(in, v.chat, depth + 1 + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
@@ -544,7 +544,7 @@ public final class MixedEventVariable {
         } else if ("pickup".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedPickupEventVariable.jsonReadFields(in, v.pickup, depth + 1);
+                    MixedPickupEventVariable.jsonReadFields(in, v.pickup, depth + 1 + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
@@ -556,7 +556,7 @@ public final class MixedEventVariable {
             }
         } else {
             in.rep.unknown++;
-            in.skipValue();
+            in.skipValue(depth + 2);
         }
         if (in.peek() == ',') {
             in.p++;

@@ -25,6 +25,7 @@ const Map<String, String> tableUnits = <String, String>{
   'tables/maps': 'mapdemo',
   'tables/lists': 'listdemo',
   'test/tables/shapes': 'shapes',
+  'test/tables/inner': 'inner',
   'schemas/probe.schema': 'probe',
   'testdata/conformance/feature-witnesses/full/Features.schema': 'featurewitnesses',
 };

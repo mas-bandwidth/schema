@@ -451,6 +451,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo

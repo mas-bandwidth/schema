@@ -156,7 +156,9 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report()); number.space(); if(number.bad||number.p!=0||mapKey.isEmpty()){in.bad=true;return;} number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length){in.bad=true;return;} if(!TableJson.integerToken(mapKey)){accepted=false;in.rep.refuse(\"kind_mismatch\");}else{java.math.BigInteger n=TableJson.exactIntegerToken(mapKey); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
-	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)
+	// THE MAP OBJECT IS A LEVEL (§16.2; internal/tabletext readMap): an
+	// entry's value is read at depth+1, as the engine reads it.
+	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s + 1);\n", st.Name, m, depth)
 	fmt.Fprintf(b, "                    if(in.bad)return; if(!seen_%s.add(entry.key)){in.rep.refuse(\"text_damaged\");}else v.%s.add(entry); }\n", m, m)
 	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
 }

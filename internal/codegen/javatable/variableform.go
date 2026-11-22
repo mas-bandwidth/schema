@@ -3392,6 +3392,10 @@ public final class TableJson {
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
         public final java.util.Map<java.lang.Long, LabelEntry> labels = new java.util.HashMap<>();
+        // graph: the root is variable, so its text carries labels (§16.7) and
+        // a skipped object's & key is held to the label rules; a fixed root's
+        // reader skips such a value whole (internal/tabletext Read).
+        boolean graph = true;
 
         final byte[] t;
         int p;
@@ -3993,10 +3997,15 @@ public final class TableJson {
             }
             p++; // the opening bracket
             java.util.Set<java.lang.String> seenKey = null;
+            // the label a definition in this skipped object opened: it stays
+            // open until the object closes (§16.7)
+            boolean first = true;
+            long opened = 0;
             while (true) {
                 int c = peek();
                 if (c == closing) {
                     p++;
+                    closeSkipped(opened);
                     return;
                 }
                 if (c == 0) {
@@ -4023,30 +4032,51 @@ public final class TableJson {
                         return;
                     }
                     p++;
-                    // A DEFINITION IN A SKIPPED VALUE STILL TAKES ITS LABEL, with no
-                    // node, so a later reference reads null rather than refusing
-                    // (docs/SPEC-TABLES.md §16.7, §17.5; read.go's skippedAmpersand).
-                    if ("&node".equals(key)) {
+                    // THE LABEL RULES APPLY IN A SKIPPED VALUE AS EVERYWHERE
+                    // (docs/SPEC-TABLES.md §16.7; read.go's skippedAmpersand), in
+                    // a variable root: the label is the object's first key and
+                    // is spelled &node; a label alone (a trailing comma allowed)
+                    // REFERS and must name a closed definition; a label with
+                    // fields DEFINES, must be new, and takes its label with no
+                    // node, so a later reference reads null. A fixed root skips
+                    // the value whole.
+                    if (graph && key != null && key.startsWith("&")) {
+                        if (!first || !"&node".equals(key)) {
+                            bad = true;
+                            return;
+                        }
                         long labelId = scanLabel();
                         if (bad) {
                             return;
                         }
-                        if (!labels.containsKey(labelId)) {
-                            labels.put(labelId, new LabelEntry(null, 0L, false));
-                        }
                         c = peek();
+                        if (c != ',' && c != closing) {
+                            bad = true;
+                            return;
+                        }
+                        LabelEntry entry = labels.get(labelId);
                         if (c == ',') {
                             p++;
-                            continue;
+                            c = peek();
                         }
                         if (c == closing) {
                             p++;
+                            if (entry == null || entry.open) {
+                                bad = true;
+                            }
                             return;
                         }
-                        bad = true;
-                        return;
+                        if (entry != null) {
+                            bad = true;
+                            return;
+                        }
+                        labels.put(labelId, new LabelEntry(null, 0L, true));
+                        first = false;
+                        opened = labelId;
+                        continue;
                     }
                 }
+                first = false;
                 skipValue(depth + 1);
                 if (bad) {
                     return;
@@ -4058,10 +4088,19 @@ public final class TableJson {
                 }
                 if (c == closing) {
                     p++;
+                    closeSkipped(opened);
                     return;
                 }
                 bad = true;
                 return;
+            }
+        }
+
+        // closeSkipped closes the label a skipped object's definition opened:
+        // a reference after it reads null (§16.7).
+        private void closeSkipped(long opened) {
+            if (opened != 0) {
+                labels.put(opened, new LabelEntry(null, 0L, false));
             }
         }
     }
@@ -4161,6 +4200,19 @@ func variableElemWireKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 // countRead is the Java expression that reads a collection's count after its
 // element kind: a bounded collection's against the enclosing body (Reader.count,
 // as the engine's arrayBody), an unbounded list's inside its own L.
+// countMinRefuse is the read's hold on a counted array's declared minimum
+// (docs/SPEC.md §5.1 row 3), spliced after the bound's clamp: a count under
+// the minimum refuses, at whatever depth the record sits, the way the engine
+// and every other port's read holds [Min, N]. A count past N is clamped and
+// refused by the line it follows, so this is its else. Nothing for an array
+// with no minimum.
+func countMinRefuse(f *ir.Field, n, reason string) string {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" else if (%s < %d) { report.refuse(%q); }", n, f.ArrayMin, reason)
+}
+
 func countRead(f *ir.Field, reader string) string {
 	if f.ArrayBound > 0 {
 		return reader + ".count(r.limit)"
@@ -4388,6 +4440,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
 			}
 			b.WriteString("            }\n")
+		}
+		if n := variableBornCount(f); n > 0 {
+			// A [A..B]T COUNT IS BORN AT A, its declared minimum, each slot
+			// value-initialized (docs/SPEC.md §4.2; ir.Field.BornCount): the
+			// value fromJson("{}") and an absent field land on, as Go's does.
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n            }\n", n, varMember(f), variableDefault(variableBornElement(f)))
 		}
 	}
 	b.WriteString("        }\n")
@@ -5174,6 +5232,11 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 		fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
 		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
+		if !ir.VariableTables(u)[st.Name] {
+			// A FIXED ROOT'S TEXT CARRIES NO LABELS (§16.7): a skipped value
+			// is skipped whole, as the Go reader's nil graph skips it.
+			fmt.Fprintf(b, "        in.graph = false;\n")
+		}
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
@@ -5262,7 +5325,12 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        long labelId = in.scanLabel();\n")
 	b.WriteString("        if (in.bad || labelId <= 0) return null;\n")
+	// A LABEL IS FOLLOWED BY ITS OBJECT'S , OR } AND NOTHING ELSE, and what
+	// follows says which half it is (§16.7): a label alone, a trailing comma
+	// allowed (§16.2), REFERS; a label with fields after it DEFINES.
 	b.WriteString("        int c = in.peek();\n")
+	b.WriteString("        if (c != '}' && c != ',') { in.bad = true; return null; }\n")
+	b.WriteString("        if (c == ',') { in.p++; c = in.peek(); }\n")
 	b.WriteString("        if (c == '}') {\n")
 	b.WriteString("            in.p++;\n")
 	b.WriteString("            TableJson.LabelEntry entry = in.labels.get(labelId);\n")
@@ -5270,9 +5338,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            if (entry.typeId == 0) { return null; }\n")
 	b.WriteString("            if (entry.typeId != targetTypeId) { in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("            return (Value) entry.value;\n")
-	b.WriteString("        } else if (c == ',') {\n")
-	b.WriteString("            in.p++;\n")
-	b.WriteString("            if (in.peek() == '}') { in.bad = true; return null; }\n")
+	b.WriteString("        } else {\n")
 	b.WriteString("            if (in.labels.containsKey(labelId)) { in.bad = true; return null; }\n")
 	b.WriteString("            Value child = new Value();\n")
 	b.WriteString("            TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);\n")
@@ -5280,8 +5346,6 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child, depth + 1);\n")
 	b.WriteString("            entry.open = false;\n")
 	b.WriteString("            return child;\n")
-	b.WriteString("        } else {\n")
-	b.WriteString("            in.bad = true; return null;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
@@ -5347,7 +5411,13 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			if f.Type.Optional || f.Type.Pointer {
 				takesNull = "true"
 			}
-			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			if variableBornCount(f) > 0 {
+				// A LIST BORN AT A (variableBornCount) is replaced whole by
+				// the list the text places, never appended to.
+				fmt.Fprintf(b, "                if (in.peek() != 'n' || (repeated && %s)) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			} else {
+				fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			}
 		}
 		readJsonFieldValue(b, u, st, f, "depth")
 		b.WriteString("                }\n")
@@ -6182,7 +6252,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// struct-array read below already does.
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
-			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
+			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }%s\n", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 			if f.Array != ir.ArrayFixed {
 				fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 				fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
@@ -6242,9 +6312,9 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		if f.ArrayBound > 0 {
 			if f.IsTextList() {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(%q); }\n", f.ArrayBound, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(%q); }%s\n", f.ArrayBound, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf, countMinRefuse(f, "n", "count_over_bound: "+f.TextListElem().MapEntryOf))
 			} else {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }%s\n", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 			}
 		}
 		if f.Array != ir.ArrayFixed {
@@ -6396,7 +6466,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	cond := variableCompatibleKinds(ek, "ek")
 	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else {"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.refuse(\"out_of_range\"); }", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.refuse(\"out_of_range\"); }%s", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 	}
 	// The header is the element kind AND the count, read before either is
 	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
@@ -6582,7 +6652,7 @@ func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6696,7 +6766,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		fmt.Fprintf(b, "            w.put8(17); w.putLeb(v.%s.size());\n", m)
@@ -6708,7 +6778,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {

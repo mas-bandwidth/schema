@@ -1,0 +1,13 @@
+package hostilemin
+
+fixed table Rec
+{
+    a int32
+}
+
+table R
+{
+    xs   [2..4]uint8 | required
+    recs [2..3]Rec
+    tail int32
+}

@@ -64,15 +64,13 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 			listed[s] = true
 		}
 	}
-	raw, err := os.ReadFile(manifest)
-	if err != nil {
+	// the derived manifest, as `harness run` hands it: the opt-in filter
+	// reads the derived line kinds and refuses any other (optin.go)
+	derived := filepath.Join(t.TempDir(), "manifest.txt")
+	if err := deriveManifest(m, derived); err != nil {
 		t.Fatal(err)
 	}
-	copied := filepath.Join(t.TempDir(), "manifest.txt")
-	if err := os.WriteFile(copied, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	legManifestPath, notAsked, _, err := legManifest(m, copied, "rust", listed)
+	legManifestPath, notAsked, _, err := legManifest(m, derived, "rust", listed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +78,7 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 		t.Run(surface, func(t *testing.T) {
 			var rows []WriteRefusal
 			for _, wr := range m.WriteRefusals {
-				if wr.Surface() == surface && !notAsked[wr.Name] {
+				if wr.Surface() == surface && !notAsked.has(surface, wr.Name) {
 					rows = append(rows, wr)
 				}
 			}

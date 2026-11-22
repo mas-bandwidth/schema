@@ -74,6 +74,8 @@ import '../../build/dart-hostile/generated/tabledemo/TabledemoWire.dart' as tabl
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoWire.dart' as messagedemo;
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoFixed.dart' as messagedemo_fixed;
 import '../../build/dart-hostile/generated/messagedemo/MessagesFixed.dart' as messages;
+import '../../build/dart-hostile/generated/inner/InnerFixed.dart' as inner_fixed;
+import '../../build/dart-hostile/generated/inner/InnerWire.dart' as inner;
 
 // ---- the answer a case gets ----
 
@@ -256,6 +258,7 @@ String _fixedRefusal(tabledemo_fixed.TableFixedReport r) {
 
 // null: no fixed root is bound for this (schema, table)
 Answer? _fixedWire(String schema, String table, Uint8List payload) {
+  if (schema == _innerSchema) return _innerRoots[table]?.fixedWire(payload);
   if (schema != 'tables/examples' || table != 'ShipEntry') return null;
   final values = <tabledemo_fixed.ShipEntry>[tabledemo_fixed.ShipEntry()];
   final report = tabledemo_fixed.TableFixedReport();
@@ -267,6 +270,176 @@ Answer? _fixedWire(String schema, String table, Uint8List payload) {
     if (pack_fixed.shipEntryFixedSave(values, 1, out) < 0) throw StateError('the fixed writer refused the decoded value');
   });
 }
+
+// ---- the inner-bound unit (test/tables/inner) ----
+//
+// Every root is an array of one child kind on a fixed root, read as a form 3
+// file (wire) and as a message batch (message). Both decode into the fixed
+// class, which has no text writer: the value is carried into the variable
+// class field by field and digested through that class's text writer, as the
+// tabledemo ShipEntry above is.
+
+const String _innerSchema = 'test/tables/inner';
+
+inner.CountChild _innerCount(inner_fixed.CountChild f) =>
+    inner.CountChild()..vals = List<int>.of(Uint8List.sublistView(f.vals, 0, f.valsCount));
+inner.RangeChild _innerRange(inner_fixed.RangeChild f) => inner.RangeChild()..level = f.level;
+inner.TextChild _innerText(inner_fixed.TextChild f) => inner.TextChild()..word = _fixedText(f.word, f.wordLength);
+// a bytes(N) is a Latin-1 string in the variable class (its text writer
+// base64-encodes latin1.encode of it)
+inner.BytesChild _innerBytes(inner_fixed.BytesChild f) =>
+    inner.BytesChild()..blob = latin1.decode(Uint8List.sublistView(f.blob, 0, f.blobLength));
+
+// The fixed refusal codes the manifest names; every other code is `damaged`.
+String _innerFixedRefusal(inner_fixed.TableFixedReport r) {
+  if (r.nonFiniteFloat.isNotEmpty) return 'non_finite_float';
+  return switch (r.refused) {
+    inner_fixed.TableFixedRefusal.messageFormAsFile => 'message_form_as_file',
+    inner_fixed.TableFixedRefusal.newerForm => 'newer_form',
+    inner_fixed.TableFixedRefusal.batchTooLarge => 'batch_too_large',
+    _ => 'damaged',
+  };
+}
+
+// One inner root's public verbs, and its carry into the variable class's text.
+final class _InnerRoot<F> {
+  final F Function() fresh;
+  final inner_fixed.TableFixedPlan Function() newPlan;
+  final int Function(List<F>, int, Uint8List, int, inner_fixed.TableFixedPlan, inner_fixed.TableFixedReport) fixedLoad;
+  final int Function(int) fixedMeasure;
+  final int Function(List<F>, int, Uint8List) fixedSave;
+  final int Function(List<F>, Uint8List, inner_fixed.TableVocabulary, inner_fixed.TableReport) loadMessages;
+  final int Function(List<F>, inner_fixed.TableReport) measureMessages;
+  final int Function(List<F>, Uint8List, inner_fixed.TableReport) saveMessages;
+  final String Function(F) text;
+  const _InnerRoot(this.fresh, this.newPlan, this.fixedLoad, this.fixedMeasure, this.fixedSave, this.loadMessages,
+      this.measureMessages, this.saveMessages, this.text);
+
+  Answer fixedWire(Uint8List payload) {
+    final values = <F>[fresh()];
+    final report = inner_fixed.TableFixedReport();
+    final n = fixedLoad(values, 1, payload, payload.length, newPlan(), report);
+    if (n != 1 || report.refused != inner_fixed.TableFixedRefusal.none) {
+      return Answer('refuse', _innerFixedRefusal(report));
+    }
+    return _after(_accepted(text(values[0])), 'FixedMeasure/FixedSave', () {
+      final out = Uint8List(fixedMeasure(1));
+      if (fixedSave(values, 1, out) < 0) throw StateError('the fixed writer refused the decoded value');
+    });
+  }
+
+  Answer message(Uint8List payload, {required bool announced}) {
+    final vocab = inner_fixed.TableVocabulary(
+        entries: List<inner_fixed.TableMessageEntry>.generate(4096, (_) => inner_fixed.TableMessageEntry(0, 0)));
+    if (announced) {
+      final own = Uint8List(inner_fixed.announceMeasure());
+      inner_fixed.announce(own);
+      if (!inner_fixed.announceRead(vocab, own, inner_fixed.TableReport())) {
+        return const Answer('error', 'the unit could not read its own announcement');
+      }
+    }
+    final values = <F>[fresh()];
+    final r = inner_fixed.TableReport();
+    final count = loadMessages(values, payload, vocab, r);
+    if (r.refused) return Answer('refuse', corpusReason(r.reason, payload));
+    if (count != 1) return _damaged;
+    return _after(_accepted(text(values[0])), 'MeasureMessages/SaveMessages', () {
+      final need = measureMessages(values, inner_fixed.TableReport());
+      saveMessages(values, Uint8List(need < 0 ? 64 : need + 64), inner_fixed.TableReport());
+    });
+  }
+}
+
+final Map<String, _InnerRoot<Object>> _innerRoots = <String, _InnerRoot<Object>>{
+  'FixedLooseCount': _InnerRoot<inner_fixed.FixedLooseCount>(
+      inner_fixed.FixedLooseCount.new,
+      inner_fixed.fixedLooseCountFixedNewPlan,
+      inner_fixed.fixedLooseCountFixedLoad,
+      inner_fixed.fixedLooseCountFixedMeasure,
+      inner_fixed.fixedLooseCountFixedSave,
+      inner_fixed.fixedLooseCountLoadMessages,
+      inner_fixed.fixedLooseCountMeasureMessages,
+      inner_fixed.fixedLooseCountSaveMessages,
+      (f) => inner.fixedLooseCountToJson(
+          inner.FixedLooseCount()..nest = [for (var i = 0; i < f.nestCount; i++) _innerCount(f.nest[i])])),
+  'FixedTightCount': _InnerRoot<inner_fixed.FixedTightCount>(
+      inner_fixed.FixedTightCount.new,
+      inner_fixed.fixedTightCountFixedNewPlan,
+      inner_fixed.fixedTightCountFixedLoad,
+      inner_fixed.fixedTightCountFixedMeasure,
+      inner_fixed.fixedTightCountFixedSave,
+      inner_fixed.fixedTightCountLoadMessages,
+      inner_fixed.fixedTightCountMeasureMessages,
+      inner_fixed.fixedTightCountSaveMessages,
+      (f) => inner.fixedTightCountToJson(
+          inner.FixedTightCount()..nest = [for (var i = 0; i < f.nestCount; i++) _innerCount(f.nest[i])])),
+  'FixedLooseRange': _InnerRoot<inner_fixed.FixedLooseRange>(
+      inner_fixed.FixedLooseRange.new,
+      inner_fixed.fixedLooseRangeFixedNewPlan,
+      inner_fixed.fixedLooseRangeFixedLoad,
+      inner_fixed.fixedLooseRangeFixedMeasure,
+      inner_fixed.fixedLooseRangeFixedSave,
+      inner_fixed.fixedLooseRangeLoadMessages,
+      inner_fixed.fixedLooseRangeMeasureMessages,
+      inner_fixed.fixedLooseRangeSaveMessages,
+      (f) => inner.fixedLooseRangeToJson(
+          inner.FixedLooseRange()..nest = [for (var i = 0; i < f.nestCount; i++) _innerRange(f.nest[i])])),
+  'FixedTightRange': _InnerRoot<inner_fixed.FixedTightRange>(
+      inner_fixed.FixedTightRange.new,
+      inner_fixed.fixedTightRangeFixedNewPlan,
+      inner_fixed.fixedTightRangeFixedLoad,
+      inner_fixed.fixedTightRangeFixedMeasure,
+      inner_fixed.fixedTightRangeFixedSave,
+      inner_fixed.fixedTightRangeLoadMessages,
+      inner_fixed.fixedTightRangeMeasureMessages,
+      inner_fixed.fixedTightRangeSaveMessages,
+      (f) => inner.fixedTightRangeToJson(
+          inner.FixedTightRange()..nest = [for (var i = 0; i < f.nestCount; i++) _innerRange(f.nest[i])])),
+  'FixedLooseText': _InnerRoot<inner_fixed.FixedLooseText>(
+      inner_fixed.FixedLooseText.new,
+      inner_fixed.fixedLooseTextFixedNewPlan,
+      inner_fixed.fixedLooseTextFixedLoad,
+      inner_fixed.fixedLooseTextFixedMeasure,
+      inner_fixed.fixedLooseTextFixedSave,
+      inner_fixed.fixedLooseTextLoadMessages,
+      inner_fixed.fixedLooseTextMeasureMessages,
+      inner_fixed.fixedLooseTextSaveMessages,
+      (f) => inner.fixedLooseTextToJson(
+          inner.FixedLooseText()..nest = [for (var i = 0; i < f.nestCount; i++) _innerText(f.nest[i])])),
+  'FixedTightText': _InnerRoot<inner_fixed.FixedTightText>(
+      inner_fixed.FixedTightText.new,
+      inner_fixed.fixedTightTextFixedNewPlan,
+      inner_fixed.fixedTightTextFixedLoad,
+      inner_fixed.fixedTightTextFixedMeasure,
+      inner_fixed.fixedTightTextFixedSave,
+      inner_fixed.fixedTightTextLoadMessages,
+      inner_fixed.fixedTightTextMeasureMessages,
+      inner_fixed.fixedTightTextSaveMessages,
+      (f) => inner.fixedTightTextToJson(
+          inner.FixedTightText()..nest = [for (var i = 0; i < f.nestCount; i++) _innerText(f.nest[i])])),
+  'FixedLooseBytes': _InnerRoot<inner_fixed.FixedLooseBytes>(
+      inner_fixed.FixedLooseBytes.new,
+      inner_fixed.fixedLooseBytesFixedNewPlan,
+      inner_fixed.fixedLooseBytesFixedLoad,
+      inner_fixed.fixedLooseBytesFixedMeasure,
+      inner_fixed.fixedLooseBytesFixedSave,
+      inner_fixed.fixedLooseBytesLoadMessages,
+      inner_fixed.fixedLooseBytesMeasureMessages,
+      inner_fixed.fixedLooseBytesSaveMessages,
+      (f) => inner.fixedLooseBytesToJson(
+          inner.FixedLooseBytes()..nest = [for (var i = 0; i < f.nestCount; i++) _innerBytes(f.nest[i])])),
+  'FixedTightBytes': _InnerRoot<inner_fixed.FixedTightBytes>(
+      inner_fixed.FixedTightBytes.new,
+      inner_fixed.fixedTightBytesFixedNewPlan,
+      inner_fixed.fixedTightBytesFixedLoad,
+      inner_fixed.fixedTightBytesFixedMeasure,
+      inner_fixed.fixedTightBytesFixedSave,
+      inner_fixed.fixedTightBytesLoadMessages,
+      inner_fixed.fixedTightBytesMeasureMessages,
+      inner_fixed.fixedTightBytesSaveMessages,
+      (f) => inner.fixedTightBytesToJson(
+          inner.FixedTightBytes()..nest = [for (var i = 0; i < f.nestCount; i++) _innerBytes(f.nest[i])])),
+};
 
 Answer _wire(String schema, String table, Uint8List payload, {required bool retain}) {
   if (!retain && payload.isNotEmpty && payload[0] == tabledemo_fixed.tableFixedForm) {
@@ -319,7 +492,10 @@ Answer _messageAccepted(messagedemo_fixed.ToolMessage value) {
 messagedemo_fixed.TableVocabulary _messageVocabulary() => messagedemo_fixed.TableVocabulary(
     entries: List<messagedemo_fixed.TableMessageEntry>.generate(4096, (_) => messagedemo_fixed.TableMessageEntry(0, 0)));
 
-Answer _message(String table, Uint8List payload, {required bool announced}) {
+Answer _message(String schema, String table, Uint8List payload, {required bool announced}) {
+  if (schema == _innerSchema) {
+    return _innerRoots[table]?.message(payload, announced: announced) ?? _unbound('message');
+  }
   if (table != 'ToolMessage') return _unbound('message');
   final vocab = _messageVocabulary();
   if (announced) {
@@ -365,9 +541,9 @@ Answer run(String carrier, String schema, String table, Uint8List payload) {
     case 'wire_retain':
       return _wire(schema, table, payload, retain: true);
     case 'message':
-      return _message(table, payload, announced: true);
+      return _message(schema, table, payload, announced: true);
     case 'message_novocab':
-      return _message(table, payload, announced: false);
+      return _message(schema, table, payload, announced: false);
     case 'announce':
     case 'announce_second':
     case 'announce_bytes':

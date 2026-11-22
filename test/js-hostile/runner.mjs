@@ -65,9 +65,10 @@
 // that accept the runner also drives the value through Measure, Save and ToJson
 // (and the retaining pair on a retaining read): a throw or hang there FAILS the
 // row, a clean refusal (-1, null) does not. A message accept decodes into the
-// fixed class, which has no text writer; the runner proves the body set no
-// field by comparing its fixed record with a freshly initialized one, byte for
-// byte, and digests the defaults the text read of `{}` states. A packet accept
+// fixed class, which has no text writer: a body that set no field (its fixed
+// record equals a freshly initialized one, byte for byte) is digested through
+// the defaults the text read of `{}` states, and a body that set one is carried
+// into the variable class as a form 3 read is and digested there. A packet accept
 // is digested as SHA-256 of the bytes the same tier's own writer emits when it
 // re-writes the decoded value; a writer that refuses or throws is an error.
 import { createHash } from "node:crypto";
@@ -204,6 +205,14 @@ function fixedToVariable(view, vm, typeName, src) {
       out[f.name] = new TextDecoder("utf-8", { fatal: true }).decode(src[p].subarray(0, src[p + "Length"]));
       continue;
     }
+    if (f.typeName === "bytes") {
+      // a bytes(N) is an array of u8 to the descriptor, but its record keeps
+      // a used LENGTH beside the storage (no Count), and the variable class
+      // holds it as a Uint8Array of that length
+      if (!Number.isInteger(src[p + "Length"])) { throw new Error(`no used length for ${typeName}.${f.name}`); }
+      out[f.name] = Uint8Array.from(src[p].subarray(0, src[p + "Length"]));
+      continue;
+    }
     const one = (x) => {
       if (f.table !== null) { return fixedToVariable(view, vm, f.typeName, x); }
       const en = view.enums.find((e) => e.name === f.typeName);
@@ -220,6 +229,7 @@ function fixedToVariable(view, vm, typeName, src) {
     };
     if (f.isArray) {
       const n = f.counted ? src[p + "Count"] : f.arrayBound;
+      if (!Number.isInteger(n)) { throw new Error(`no count for ${typeName}.${f.name}`); }
       out[f.name] = Array.from({ length: n }, (_, i) => one(src[p][i]));
     } else {
       out[f.name] = one(src[p]);
@@ -412,7 +422,14 @@ class Reader {
     batch[`${T}FixedSave`]([value], 1, a);
     batch[`${T}FixedSave`]([fresh], 1, b);
     if (!a.every((x, i) => x === b[i])) {
-      return { verdict: "error", detail: "the decoded body set a field: no text writer to digest it" };
+      // a body that set a field is carried into the variable class, as an
+      // accepted form 3 read is, and digested through its text writer
+      const vm = u.with(`${T}ToJson`, "TableVariableReport", T);
+      const view = u.with("TableUnitView");
+      if (vm === null || view === null) {
+        return { verdict: "error", detail: "the decoded body set a field: no text writer to digest it" };
+      }
+      return this.accepted(vm[`${T}ToJson`](fixedToVariable(view.TableUnitView, vm, T, value)));
     }
     const variable = u.need("text reader", `${T}FromJson`, `${T}ToJson`, "TableVariableReport");
     const defaults = variable[`${T}FromJson`]("{}", new variable.TableVariableReport());

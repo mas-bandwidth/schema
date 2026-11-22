@@ -276,6 +276,10 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	// the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
 	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
+		g.pf("%[1]s    if ( n%[2]s < (uint64_t) %[3]d ) // a count below the declared Min (§5.1 row 3)\n%[1]s    {\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, f.ArrayMin)
+	}
 	if f.IsTextList() && ir.TextListPlain(f) && !ir.TextListUnbounded(f) {
 		m := ir.TextListValue(f).Type.Size
 		width := ir.TableMessageBitsRequired(0, m)
@@ -309,8 +313,13 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
 	}
 	trackFixedNonDef := gate != "" && f.Array == ir.ArrayFixed && kind != tkTable
+	// A [A..B]T ARRAY BORN AT A (docs/SPEC.md §4.2) that rides with A elements
+	// all at their defaults is the birth value, which the writer elides: the
+	// payload is no proof of a value, so it is damage, as an empty counted
+	// array that rides is (internal/tablewire messagedecode's allBirth)
+	trackBirth := gate != "" && f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required && !f.Type.Optional && !f.HasFloatRange
 	nonDefVar := ""
-	if trackFixedNonDef {
+	if trackFixedNonDef || trackBirth {
 		nonDefVar = "any_non_default" + sfx
 		g.pf("%s    bool %s = false;\n", ind, nonDefVar)
 	}
@@ -322,6 +331,11 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	case tableScalarKind(f) == tkTable:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.pf("%s%sReset( scratch%s );\n", inner, f.Type.Name, sfx)
+		if trackBirth {
+			// an element body that is its zero reference alone is a default element
+			g.pf("%s{\n%s    TableBitReader birth_peek%s = r;\n%s    uint64_t birth_ref%s = 0;\n%s    if ( !birth_peek%s.get( birth_ref%s, vocabulary.ref_bits ) || birth_ref%s != 0 ) { %s = true; }\n%s}\n",
+				inner, inner, sfx, inner, sfx, inner, sfx, sfx, sfx, nonDefVar, inner)
+		}
 		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
 	case tableScalarKind(f) == tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
@@ -338,7 +352,7 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 		typ, _ := g.cppFieldType(f.Type)
 		g.pf("%s%s scratch%s = %s;\n", inner, typ, sfx, g.fieldDefaultExpr(f))
 		g.emitMessageReadScalarFromEntry(f, "scratch"+sfx, inner, from, true, widened)
-		if trackFixedNonDef {
+		if nonDefVar != "" {
 			if kind == tkF32 || (widened && kind == tkF64) {
 				g.pf("%sif ( %s.elem_packing == 2 || ( %s ) ) { %s = true; }\n", inner, from, g.fieldDiffers(f, "scratch"+sfx), nonDefVar)
 			} else {
@@ -348,6 +362,9 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = scratch%s; }\n", inner, sfx, base, idx, sfx)
 	}
 	g.pf("%s    }\n", ind)
+	if trackBirth {
+		g.pf("%[1]s    if ( %[2]s && n%[3]s == %[5]d && !report->damaged && !report->refused && !%[4]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx, nonDefVar, f.BornCount())
+	}
 	if trackFixedNonDef {
 		g.pf("%[1]s    if ( %[2]s && n%[3]s > 0 && !report->damaged && !report->refused && !%[4]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx, nonDefVar)
 	}

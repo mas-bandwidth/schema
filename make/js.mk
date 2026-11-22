@@ -799,8 +799,9 @@ test-js: tables-js-fixed-roadmap
 # THE MESSAGE FORM'S JAVASCRIPT TESTS, UNDER A TARGET THAT CANNOT SKIP.
 # TestMessageFormAnnounceJavaScript, TestMessageFormBatchJavaScript and
 # TestMessageFormConformanceJavaScript (docs/SPEC-TABLES.md §3.2, §3.3 and the
-# conformance driver's message rows) and the two small regressions beside them
-# take node through jsNode, which SKIPS a test when no node is on PATH — the
+# conformance driver's message rows) and the three small regressions beside them
+# (the third, TestJsMessageInnerBoundRefused, runs the corpus's inner-message
+# rows: a bound one record down refuses the batch) take node through jsNode, which SKIPS a test when no node is on PATH — the
 # exact failure tables-js-versioning's comment above describes: `go test ./...`
 # asserts nothing there, so a regression rides into CI green. Under this target
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE, and the target ALSO
@@ -810,13 +811,13 @@ test-js: tables-js-fixed-roadmap
 .PHONY: tables-js-message-form
 tables-js-message-form:
 	@mkdir -p build
-	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization|TestJsMessageInnerBoundRefused)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
 		cat build/js-message-form.log; \
 		if [ $$rc -ne 0 ]; then echo "tables-js-message-form: go test exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-message-form.log; then \
 			echo "tables-js-message-form: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1:"; grep -E '^ *--- SKIP' build/js-message-form.log; exit 1; \
 		fi
-	@echo 'tables JS message form: announce, batch and conformance rows plus two regressions ran under node, none skipped'
+	@echo 'tables JS message form: announce, batch and conformance rows plus three regressions ran under node, none skipped'
 
 test-js: tables-js-message-form
 

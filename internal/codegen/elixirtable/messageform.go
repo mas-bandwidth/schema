@@ -199,7 +199,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       end)
 
     rec
-    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub}} ->
+    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub, _range}} ->
       case Map.get(to_lookup.by_raw, raw) do
         {to_ref, te} ->
           case Map.fetch(present, fid) do
@@ -1040,7 +1040,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
                            sub_of(decl)
                          ),
                        false <- entry.kind == 15 and value == :none,
-                       false <- stored_at_default?(vocab, decl, value) do
+                       false <- stored_at_default?(vocab, decl, value),
+                       true <- held?(rec, entry.id, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
 
@@ -1082,7 +1083,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       nil ->
         if own_build?(vocab), do: :undeclared, else: :skip
 
-      {index, raw, rule, sub} ->
+      {index, raw, rule, sub, _range} ->
         if own_build?(vocab) do
           exact = raw == Map.get(entry, :raw)
 
@@ -1092,6 +1093,28 @@ const messageBatchRuntimeBody = `  @batch_max 256
         else
           {:ok, {index, false, rule, sub}}
         end
+    end
+  end
+
+  # THE READ HOLDS THIS READER'S OWN DECLARED RANGE (docs/SPEC-TABLES.md §3.3,
+  # §4). A ranged integer rides as its offset from the announced base in the
+  # announced bits, and those bits can spell a value past the bound this
+  # record declares: "min = 1, max = 9" rides in four bits, which spell 1..16.
+  # A value its own declaration does not admit refuses the batch, at any
+  # depth and whatever the record holding this one declares, as it does on a
+  # file (the Go engine's messagedecode.go holds the same; test/tables/inner,
+  # the inner-message-*-range-past-max rows). An integer array's elements are
+  # held the same way.
+  defp held?(rec, id, value) do
+    case Map.get(rec, id) do
+      {_index, _raw, _rule, _sub, {:each, lo, hi}} ->
+        is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
+
+      {_index, _raw, _rule, _sub, {lo, hi}} ->
+        is_integer(value) and value >= lo and value <= hi
+
+      _ ->
+        true
     end
   end
 
@@ -2514,6 +2537,9 @@ const messageRuntimeBody = `  defstruct announced: false,
 //	{:counted, born, e}   no element, or the born count all at e
 //	{:fixed, e}           every element at e
 //	:zero_ref             an enum or a union element at reference 0
+//
+// A field's entry is {index, raw, rule, sub, range}; range is the declared
+// integer range the read holds the field's value to (messageReadRange), or nil.
 func messageRecords(u *ir.Unit) (string, bool) {
 	closure := tablewire.MessageClosure(u)
 	names := make([]string, 0, len(closure))
@@ -2535,7 +2561,7 @@ func messageRecords(u *ir.Unit) (string, bool) {
 		for i, f := range st.Fields {
 			e := ir.TableFieldEntry(f)
 			// the entry's bytes behind a leading 1, as one integer (entry/1's :raw)
-			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions)))
+			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions), messageReadRange(f)))
 		}
 		records = append(records, fmt.Sprintf("%q => %%{%s}", name, strings.Join(fields, ", ")))
 	}
@@ -2583,6 +2609,25 @@ func messageRecords(u *ir.Unit) (string, bool) {
 const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n\n"
 const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n\n"
 const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
+
+// messageReadRange is the declared integer range a message read holds field
+// f's value to (held?/3): `{lo, hi}` on the raw scale for a ranged integer,
+// bits(N) or fixed-point leaf, `{:each, lo, hi}` for a counted or fixed array
+// of them, and nil for every other field, an enum-keyed array included. Only a
+// DECLARED range is held here, as the Go engine's message read holds it.
+func messageReadRange(f *ir.Field) string {
+	if !f.HasIntRange || f.IsMap() || f.Type.Pointer || f.KeyEnum != "" {
+		return "nil"
+	}
+	lo, hi, ok := messageIntBounds(f)
+	if !ok {
+		return "nil"
+	}
+	if f.Array != ir.ArrayNone {
+		return fmt.Sprintf("{:each, %s, %s}", lo.String(), hi.String())
+	}
+	return fmt.Sprintf("{%s, %s}", lo.String(), hi.String())
+}
 
 // messageSub is what a body under field f is read against: a record's name, a
 // union's arms by name, or nil.

@@ -404,7 +404,6 @@ func init() {
 		Name{Name: "TableVariableRound", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSameBytes", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSameFloat", What: "the JavaScript variable-form runtime module"},
-		Name{Name: "TableVariableSameFloatField", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSave", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSaveWalk", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSaveWhy", What: "the JavaScript variable-form runtime module"},
