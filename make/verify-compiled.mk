@@ -3,13 +3,14 @@
 #
 #   cpp, c, cs, unity, go, rust, java, dart, elixir
 #
-# Each language exposes three independent sub-targets sized for ci-fast.yml's
+# Each language exposes four independent sub-targets sized for ci-fast.yml's
 # strict 2-minute job ceiling (cold-verified <= 85s), plus one umbrella target:
 #
 #   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire + 128-bit/UTF-8/defaults/finite
 #   make verify-<lang>-bench         packet & table 64-variant bench gates + 9-surface cards conformance + UnitView/descriptors + packet write/end contracts
 #   make verify-<lang>-fuzz          deterministic wire-fuzz smoke (plain + --retain, 6-step shrinking reuse + multi-body batches + all 64 roots)
-#   make verify-<lang>               runs all three in a single parallel Make DAG
+#   make verify-<lang>-tablegen      generated-schema table round trips (make/verify-widen-18.mk)
+#   make verify-<lang>               runs all four in a single parallel Make DAG
 
 VERIFY_COMPILED_LEGS := cpp c cs unity go rust java dart elixir
 VERIFY_JOBS          ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
