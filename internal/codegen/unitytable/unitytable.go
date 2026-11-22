@@ -318,8 +318,14 @@ func emitRuntimeFile(
 	fmt.Fprintf(&schema, "public const ulong BuildVersion = 0x%016xUL;\n\n", ir.BuildVersion(u))
 	fmt.Fprintf(&schema, "static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(tablewire.Announce(u)))
 	schema.WriteString("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n")
-	schema.WriteString("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\n")
-	schema.WriteString("public static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
+	if len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries {
+		// more entries than any receiver's default maximum: refuse (docs/SPEC-TABLES.md §3.3)
+		schema.WriteString("public static int AnnounceMeasure() { return -1; }\n")
+		schema.WriteString("public static ReadOnlySpan<byte> Announce() { return ReadOnlySpan<byte>.Empty; }\n")
+	} else {
+		schema.WriteString("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\n")
+		schema.WriteString("public static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
+	}
 	schema.WriteString("public static bool AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, ref TableReport report)\n{\n    var box = new _R();\n    bool ok = TableWire.AnnounceRead(vocabulary, bytes, box) == TableWire.Verdict.Ok;\n    _FinishReport(box, ref report, ok);\n    return ok;\n}\n\n")
 
 	schema.WriteString(unityCoreRuntimeTypesSource)

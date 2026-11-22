@@ -71,6 +71,10 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	refBits := ir.TableMessageRefBits(len(vocab))
 
 	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(tablewire.Announce(u)), 1)
+	// MORE ENTRIES THAN ir.TableVocabularyMaxEntries: every receiver at the default
+	// maximum refuses the announcement as vocabulary_too_large, so the writer refuses
+	// (-1) rather than hand it out (docs/SPEC-TABLES.md §3.3).
+	annBody = strings.ReplaceAll(annBody, "%%ANNOUNCEOVER%%", fmt.Sprint(len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries))
 	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
@@ -125,13 +129,13 @@ public final class TableVocabulary {
     private static final long tableBuildVersion = %%BUILDVERSION%%;
 
     public static int announceMeasure() {
-        return tableAnnouncement.length;
+        return %%ANNOUNCEOVER%% ? -1 : tableAnnouncement.length;
     }
 
     // Copy the announcement into the caller's buffer and answer its length, or
     // -1 when the buffer is too small (the C++ reference's ` + "`" + `-1` + "`" + `, §3.3).
     public static int announce(byte[] buffer) {
-        if (buffer == null || buffer.length < tableAnnouncement.length) {
+        if (%%ANNOUNCEOVER%% || buffer == null || buffer.length < tableAnnouncement.length) {
             return -1;
         }
         java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
