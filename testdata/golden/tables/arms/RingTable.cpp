@@ -54,7 +54,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, bool & reference, uint64_t & opened );
+// the skipped object that opened a definition (opened, from the call above) closes
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -378,7 +380,9 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
     }
     int32_t count = 0;
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    // a [A..B]T count below its declared Min is outside the contract too
+    // (docs/SPEC.md §5.1 row 3); array_min is 0 on every other field
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
@@ -3071,12 +3075,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
+    uint64_t opened = 0; // the label a definition this skipped object opened
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
+            TableJsonSkippedClose( in, opened );
             return true;
         }
         if ( c == 0 )
@@ -3110,7 +3116,9 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
+                bool reference = false;
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, reference, opened ) ) { return false; }
+                if ( reference ) { return true; } // consumed whole, its } included
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3121,6 +3129,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                 if ( c == close )
                 {
                     in.pos++;
+                    TableJsonSkippedClose( in, opened );
                     return true;
                 }
                 in.bad = true;
@@ -3138,6 +3147,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
+            TableJsonSkippedClose( in, opened );
             return true;
         }
         in.bad = true;
@@ -3436,10 +3446,14 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 break;
             }
         }
+        // DEPTH (§16.2): the union's holder is at depth, the union object at
+        // depth+1, and the arm's value at depth+2, where it is read or
+        // skipped; a field or pointer arm reads at depth+1, whose own walk
+        // adds the level, as a by-value field's does
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3464,7 +3478,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3489,13 +3503,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3506,7 +3520,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
@@ -3981,6 +3995,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             in.bad = true;
             return false;
         }
+        // A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+        // in the text form as on the wire
+        if ( f->array_min > 0 && placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
+        }
         TableJsonSetCount( base, f, placed );
         return true;
     }
@@ -4228,6 +4249,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             in.bad = true;
             return false;
+        }
+        // A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+        // in the text form as on the wire
+        if ( f->array_min > 0 && placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
         }
         // a fixed array's tail keeps the defaults the prefill left there,
         // exactly as a short wire count does
@@ -4636,6 +4664,16 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
         value = value * 10 + digit;
         in.pos++;
     }
+    // the label is followed by its object's , or } and nothing else:
+    // a label then a key with no comma between is not JSON (§16.7, RFC
+    // 8259's value-separator)
+    const char next = TableJsonPeek( in );
+    if ( next != ',' && next != '}' )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
     label = value;
     return true;
 }
@@ -4913,13 +4951,18 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
 }
 
 // An `&`-prefixed key opening an object the walk is SKIPPING — a value past an
-// array's bound, an unknown key's value, a value of the wrong shape. A
-// definition in there still takes its label, so the numbering survives whatever
-// the storage could not hold (§16.7): the label is registered with no node, and a
-// reference to it reads null. Any other prefixed key is the reserved prefix
-// out of place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t )
+// array's bound, an unknown key's value, a value of the wrong shape. THE LABEL
+// RULES HOLD IN A SKIPPED VALUE (§16.7): a label alone (a trailing comma
+// allowed) REFERS, so the text must have defined it and closed that
+// definition, and the object is consumed whole (reference). A label with
+// fields DEFINES, so the text must not have defined it; the definition still
+// takes its label, so the numbering survives whatever the storage could not
+// hold: the label is registered with no node, open until the skipped object
+// closes (opened), and a later reference to it reads null. Any other prefixed
+// key is the reserved prefix out of place.
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, bool & reference, uint64_t & opened )
 {
+    reference = false;
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL || !TableJsonKeyEquals( "&node", key, key_length ) )
     {
@@ -4929,14 +4972,54 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
     }
     uint64_t label = 0;
     if ( !TableJsonScanLabel( in, label ) ) { return false; }
-    bool taken = false;
-    if ( TableJsonGraphMapReach( graph->labels, label, taken ) == NULL )
+    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, label );
+    const int64_t mark = in.pos;
+    if ( TableJsonPeek( in ) == ',' ) { in.pos++; }
+    if ( TableJsonPeek( in ) != '}' )
+    {
+        in.pos = mark; // a definition: the comma is the skipped object's to read
+    }
+    else
+    {
+        in.pos++;
+        if ( entry == NULL || entry->open != 0 )
+        {
+            in.report->damaged = true;
+            in.bad = true;
+            return false;
+        }
+        reference = true;
+        return true;
+    }
+    if ( entry != NULL )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
-    return true; // a fresh entry is node 0, type NULL: a definition with no node
+    bool taken = false;
+    entry = TableJsonGraphMapReach( graph->labels, label, taken );
+    if ( entry == NULL )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    entry->open = 1;
+    entry->node = 0;
+    entry->type = NULL;
+    opened = label;
+    return true;
+}
+
+// the skipped object that opened a definition closes, and the definition
+// with it: a later reference reads null
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL || opened == 0 ) { return; }
+    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, opened );
+    if ( entry != NULL ) { entry->open = 0; }
 }
 
 // ---- writing: from a region's const root ----
@@ -5274,7 +5357,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             in.bad = true;
             return false;
         }
-        void * element = f->place( *graph->worker, slot, NULL, 0, 0 );
+        void * element = f->place( *graph->worker, slot, NULL, 0, 0, false );
         if ( element == NULL )
         {
             // NOT ADDED: the arena could not carve another segment, or the
@@ -5292,7 +5375,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             {
                 in.report->refused = true;
                 in.report->refuse_reason = out_of_range;
-                f->place( *graph->worker, slot, NULL, 0, -1 );
+                f->place( *graph->worker, slot, NULL, 0, -1, false );
                 total_oor_flag = true;
             }
             else
