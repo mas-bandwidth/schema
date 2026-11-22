@@ -2070,6 +2070,11 @@ func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 			// enum cannot hold at all.
 			_ = r
 			return true
+		case *Flags:
+			// AND SO IS A MASK NARROWER THAN ITS STORAGE: a bit at or above W
+			// refuses the load (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A
+			// MASK TO ITS WIDTH).
+			return r.WireBits < 64
 		}
 		return false
 	}

@@ -163,7 +163,7 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	// A measure that rides the same contract as the save it sizes: MeasureReason
 	// must name the value Save would refuse (docs/USAGE.md "Writes are the
 	// caller's responsibility").
-	if viol := writeBoundViolation(f, expr); viol != "" {
+	if viol := fileWriteBoundViolation(f, expr); viol != "" {
 		if ride != "" {
 			g.pf("%sif (%s) && (%s) { return -1 }\n", ind, ride, viol)
 		} else {
@@ -701,7 +701,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	// min/max, or past its bits(N) width, is a value the reader clamps and
 	// counts. The writer refuses it instead; scalarBounds is the list both
 	// sides are generated from.
-	if viol := writeBoundViolation(f, expr); viol != "" {
+	if viol := fileWriteBoundViolation(f, expr); viol != "" {
 		g.pf("%sif %s { return false }\n", ind, viol)
 	}
 	kind := ir.TableWireScalarKind(f)

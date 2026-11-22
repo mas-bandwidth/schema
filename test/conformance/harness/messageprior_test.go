@@ -28,7 +28,7 @@ func priorRows(t *testing.T, m *Manifest) map[string]MessageDrift {
 
 // TestMessagePriorWriterIsRangesApart holds what the rows claim about their
 // writer: it is today's schema with every ranged declaration twice as wide,
-// `mask` two bits wider and the three kind fields int32, so nothing but those
+// `mask` two bits wider, Perms one flag longer (R17) and the three kind fields int32, so nothing but those
 // declarations separates the writer from the reader.
 func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 	t.Chdir(conformanceRoot(t))
@@ -51,9 +51,10 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 		"max = 50", "max = 100", "bits(5)", "bits(7)",
 		"narrowed int16", "narrowed int32", "retyped  string(16)", "retyped  int32", "widened  int64", "widened  int32",
 		"restring string(16)", "restring int64", "stamp    timestamp", "stamp    int64", "max = 240", "max = 250",
+		"flags Perms { Read, Write }", "flags Perms { Read, Write, Exec }",
 	).Replace(narrow)
 	if wide != want {
-		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7), the three kind fields int32, restring and stamp int64 (R14) and band max = 250 (R15)")
+		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7), the three kind fields int32, restring and stamp int64 (R14) , band max = 250 (R15) and Perms one flag longer (R17)")
 	}
 }
 

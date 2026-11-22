@@ -20522,6 +20522,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -20897,6 +20898,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         arm_payloadu += 8; // Capabilities
                         w.header( arm_refu, 9 );
                         w.putleb( (uint64_t) arm_payloadu ); // caps
+                        schema_assert( ( uint64_t( value.history[elem_i].caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                         w.put64( uint64_t( value.history[elem_i].caps ) );
                         break;
                     }
@@ -21333,6 +21335,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -21354,6 +21362,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -21807,6 +21821,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         break;
                                                     }
                                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_v &= 0x3ull;
+                                                        r.report->refused = true;
+                                                        r.report->refuse_reason = out_of_range;
+                                                    }
                                                     value.history[(int32_t) i].caps = decoded_v;
                                                     value.history[(int32_t) i].type = ToolBodyType::Caps;
                                                     r.report->widened++;
@@ -21823,6 +21843,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                 break;
                                             }
                                             uint64_t decoded_v = uint64_t( elem_arm.get64() );
+                                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_v &= 0x3ull;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = out_of_range;
+                                            }
                                             value.history[(int32_t) i].caps = decoded_v;
                                             break;
                                         }
@@ -23209,6 +23235,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             }
                                             int64_t decoded_wide_2 = (int64_t) raw_2;
                                             if ( arm.packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            if ( ( (uint64_t) decoded_wide_2 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_wide_2 &= 0x3ull;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
                                             uint64_t decoded_v_2 = (uint64_t) decoded_wide_2;
                                             value.body.caps = decoded_v_2;
                                         }
@@ -23242,6 +23274,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                     }
                                     int64_t decoded_wide_2 = (int64_t) raw_2;
                                     if ( arm.packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                    if ( ( (uint64_t) decoded_wide_2 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_wide_2 &= 0x3ull;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
                                     uint64_t decoded_v_2 = (uint64_t) decoded_wide_2;
                                     value.body.caps = decoded_v_2;
                                 }
@@ -23735,6 +23773,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     }
                                                     int64_t decoded_wide_3 = (int64_t) raw_3;
                                                     if ( arm_2.packing == 1 && !past_3 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                                    if ( ( (uint64_t) decoded_wide_3 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_wide_3 &= 0x3ull;
+                                                        report->refused = true;
+                                                        report->refuse_reason = out_of_range;
+                                                    }
                                                     uint64_t decoded_v_3 = (uint64_t) decoded_wide_3;
                                                     ( in_bounds ? value.history[i] : scratch ).caps = decoded_v_3;
                                                 }
@@ -23768,6 +23812,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             }
                                             int64_t decoded_wide_3 = (int64_t) raw_3;
                                             if ( arm_2.packing == 1 && !past_3 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                            if ( ( (uint64_t) decoded_wide_3 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_wide_3 &= 0x3ull;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
                                             uint64_t decoded_v_3 = (uint64_t) decoded_wide_3;
                                             ( in_bounds ? value.history[i] : scratch ).caps = decoded_v_3;
                                         }
@@ -24570,6 +24620,7 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -24946,6 +24997,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -24967,6 +25024,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -27570,6 +27633,11 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
             bad |= (int) !TransactionFixedInRange( value.body.transact );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            bad |= (int) ( ( (uint64_t) value.body.caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
@@ -27619,6 +27687,11 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
             case ToolBodyType::Transact:
             {
                 bad |= (int) !TransactionFixedInRange( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                bad |= (int) ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -27694,6 +27767,11 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
             bad |= (int) !TransactionFixedWriteAdmits( value.body.transact );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            bad |= (int) ( ( (uint64_t) value.body.caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
@@ -27743,6 +27821,11 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
             case ToolBodyType::Transact:
             {
                 bad |= (int) !TransactionFixedWriteAdmits( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                bad |= (int) ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -27818,6 +27901,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
             TransactionFixedClampBody( value.body.transact, oor_count, damaged );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            if ( ( (uint64_t) value.body.caps >> 2 ) != 0 ) { value.body.caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             if ( (uint64_t) value.body.origin.type > 4u ) { value.body.origin.type = OriginType::None; oor_count++; }
@@ -27871,6 +27959,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
             case ToolBodyType::Transact:
             {
                 TransactionFixedClampBody( value.history[i].transact, oor_count, damaged );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                if ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ) { value.history[i].caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -42561,6 +42654,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -42936,6 +43030,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         arm_payloadu += 8; // Capabilities
                         w.header( arm_refu, 9 );
                         w.putleb( (uint64_t) arm_payloadu ); // caps
+                        schema_assert( ( uint64_t( value.history[elem_i].caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                         w.put64( uint64_t( value.history[elem_i].caps ) );
                         break;
                     }
@@ -43363,6 +43458,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -43384,6 +43485,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -43840,6 +43947,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         break;
                                                     }
                                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_v &= 0x3ull;
+                                                        r.report->refused = true;
+                                                        r.report->refuse_reason = out_of_range;
+                                                    }
                                                     value.history[(int32_t) i].caps = decoded_v;
                                                     value.history[(int32_t) i].type = ToolBodyType::Caps;
                                                     r.report->widened++;
@@ -43856,6 +43969,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                 break;
                                             }
                                             uint64_t decoded_v = uint64_t( elem_arm.get64() );
+                                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_v &= 0x3ull;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = out_of_range;
+                                            }
                                             value.history[(int32_t) i].caps = decoded_v;
                                             break;
                                         }
@@ -44572,6 +44691,7 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -44955,6 +45075,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -44976,6 +45102,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }

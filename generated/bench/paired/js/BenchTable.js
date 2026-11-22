@@ -2458,7 +2458,7 @@ export function MixedEntityFixedCheckBody(value) {
   if (typeof value.health !== "number" || !globalThis.Number.isInteger(value.health)) { return false; }
   if (value.health < 0 || value.health > 1000) { return false; }
   if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { return false; }
-  if (typeof value.damage !== "bigint") { return false; }
+  if (typeof value.damage !== "bigint" || (value.damage >> 8n) !== 0n) { return false; }
   return true;
 }
 
@@ -2508,6 +2508,10 @@ export function MixedEntityFixedDecode(value, view, at, report) {
   { let tag = 0;
     tag = view.getUint8(at + 40);
     if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+  { let n;
+    n = view.getBigUint64(at + 41, true);
+    if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   { const b = view.getUint8(at + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   { const b = view.getUint8(at + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.entityId = view.getUint32(at, true);
@@ -2533,6 +2537,7 @@ export function MixedEntityFixedDecode(value, view, at, report) {
   value.weapon = view.getUint8(at + 40);
   if (value.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.damage = view.getBigUint64(at + 41, true);
+  if ((value.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.moving = view.getUint8(at + 49) !== 0;
   value.firing = view.getUint8(at + 50) !== 0;
 }
@@ -2902,6 +2907,10 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -3066,6 +3075,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
         e1.weapon = view.getUint8(oi + 40);
         if (e1.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.damage = view.getBigUint64(oi + 41, true);
+        if ((e1.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.moving = view.getUint8(oi + 49) !== 0;
         e1.firing = view.getUint8(oi + 50) !== 0;
       }
@@ -3315,6 +3325,10 @@ export function FixedTableFixedDecode(value, view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -3481,6 +3495,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
           e2.weapon = view.getUint8(oi + 40);
           if (e2.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.damage = view.getBigUint64(oi + 41, true);
+          if ((e2.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.moving = view.getUint8(oi + 49) !== 0;
           e2.firing = view.getUint8(oi + 50) !== 0;
         }
@@ -3654,6 +3669,10 @@ export function FixedTableFixedCheckRead(view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -4151,6 +4170,7 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
         { const [v, ok, holds] = tableMessageReadInteger(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v;
           if (!holds) { TableMessageRefuse(r.Report, "out_of_range"); return false; }
           x = globalThis.BigInt.asUintN(64, x);
+          if ((x >> 8n) !== 0n) { TableMessageRefuse(r.Report, "out_of_range"); return false; }
           value.damage = x;
         }
         if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && entry.Shape.Packing === 1 && entry.Shape.Bits === 8 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (value.damage === 0n)) { r.Report.Damaged = true; return false; }

@@ -722,6 +722,12 @@ func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
 		maxv := (uint64(1) << f.Type.Width) - 1
 		return fmt.Sprintf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, x, maxv, f.Name, f.Type.Width)
 	}
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS
+		// A MASK TO ITS WIDTH): its own reader refuses a bit at or above W, so
+		// a writer never writes one.
+		return fmt.Sprintf("%sdebug_assert!(%s >> %d == 0, \"%s has a flags bit at or above its width %d\");\n", ind, x, fl.WireBits, f.Name, fl.WireBits)
+	}
 	return ""
 }
 
@@ -1152,6 +1158,13 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 	}
 	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
 	b.WriteString(clamp)
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD
+		// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
+		// flags append at the end, so old data never carries one, and an old
+		// reader does not read new data. The widened kinds are held the same.
+		fmt.Fprintf(b, "%sif x >> %d != 0 { report.damaged = true; }\n", ind, fl.WireBits)
+	}
 	fmt.Fprintf(b, "%s%s = %s;\n", ind, dst, rustCastStmt("x", suffix, scalarRust(f)))
 }
 

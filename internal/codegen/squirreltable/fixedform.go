@@ -690,11 +690,16 @@ func fixedEmitWriteArrayGuard(m *Module, f *ir.Field, expr, ind string, n int64)
 // (docs/SPEC.md §5.1 rows 1 and 2): a value that is not a Squirrel integer,
 // or one outside the intersection of its declared raw range, its bits(N)
 // width and its storage width. A uint64 is a signed Squirrel integer, so it
-// compares with the sign bit flipped; a flags mask is checked for its type
-// only (row 9: a file keeps every bit).
+// compares with the sign bit flipped. A flags mask is held to W, the width
+// its reader holds it to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+// ITS WIDTH).
 func fixedEmitWriteIntGuard(m *Module, f *ir.Field, expr, ind string) {
 	refuse := fixedWriteRefusal(m, f)
 	storage := fixedStorageBytes(f.Type)
+	if w, ok := fixedFlagsWidth(f); ok {
+		m.Printf("%sif (typeof %s != \"integer\" || (%s >>> %d) != 0) %s\n", ind, expr, expr, w, refuse)
+		return
+	}
 	if (f.Type.Kind != ir.TInt && f.Type.Kind != ir.TFixed && f.Type.Kind != ir.TBits) || storage < 1 || storage > 8 {
 		m.Printf("%sif (typeof %s != \"integer\") %s\n", ind, expr, refuse)
 		return
@@ -744,6 +749,20 @@ func fixedEmitWriteIntGuard(m *Module, f *ir.Field, expr, ind string) {
 		}
 	}
 	m.Printf("%sif (%s) %s\n", ind, strings.Join(conds, " || "), refuse)
+}
+
+// fixedFlagsWidth is W, a flags mask's wire width (the variant count, or K
+// under `| max = K`), when it is below 64 and so leaves bits a mask may not set
+// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH).
+func fixedFlagsWidth(f *ir.Field) (int, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return 0, false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return 0, false
+	}
+	return int(fl.WireBits), true
 }
 
 // fixedIntLit spells a 64-bit integer as a Squirrel literal; the most
@@ -1007,6 +1026,11 @@ func fixedEmitRangeGuard(m *Module, f *ir.Field, expr, ind string, storage int64
 		return
 	}
 	if f.Type.Kind == ir.TNamed {
+		// A MASK BIT AT OR ABOVE W REFUSES out_of_range (docs/SPEC-TABLES.md §4,
+		// A TABLE LOAD HOLDS A MASK TO ITS WIDTH; tablewire fixed.go element)
+		if w, ok := fixedFlagsWidth(f); ok {
+			m.Printf("%sif ((%s >>> %d) != 0) return \"out_of_range\";\n", ind, expr, w)
+		}
 		return
 	}
 	signed := ir.TableKindSigned(ir.TableScalarKind(f))

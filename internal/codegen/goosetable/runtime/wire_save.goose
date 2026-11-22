@@ -701,6 +701,12 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
             refuse(c, SaveRefuseInvalidValue);
             return;
         }
+        // a mask is held to W, the width its reader holds it to
+        // (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+        if d.mw > 0 && d.mw < 64 && (v.hi != 0 || (v.lo >> (d.mw as! u64)) != 0) {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
     }
     let w = kind_width(kind);
     if w == 16 {

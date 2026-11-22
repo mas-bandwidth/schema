@@ -674,13 +674,22 @@ func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
 		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 		e.p(ind, "}")
 	}
+	// A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+	// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+	// wider mask, and each value is held to this reader's W
+	if m, ok := flagsMask(f); ok {
+		e.p(ind, "if %s > %s {", x, m)
+		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
+		e.p(ind, "}")
+	}
 }
 
 // clamps reports whether a 64-bit-or-narrower integer declaration has a
 // bound to apply on the read.
 func clamps(f *ir.Field) bool {
 	_, _, ok := ir.TableRawRange(f)
-	return (ok && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed)) || (f.Type.Kind == ir.TBits && f.Type.Width < 64)
+	_, mask := flagsMask(f)
+	return (ok && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed)) || (f.Type.Kind == ir.TBits && f.Type.Width < 64) || mask
 }
 
 // readClamp128 is THE 128-BIT CLAMP: a value decoded into an int128,

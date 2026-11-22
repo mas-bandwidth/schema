@@ -521,6 +521,13 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 				ind, expr, expr, expr, r.Max)
 			return
 		case *ir.Flags:
+			if r.WireBits < 64 {
+				// A FLAGS MASK IS HELD TO W in every build (docs/SPEC-TABLES.md §4,
+				// A TABLE LOAD HOLDS A MASK TO ITS WIDTH): its own reader refuses a
+				// bit at or above W, so the writer never writes one.
+				g.pf("%sif (typeof %s !== \"bigint\" || (%s >> %dn) !== 0n) { return false; }\n", ind, expr, expr, r.WireBits)
+				return
+			}
 			g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
 			return
 		}
@@ -728,6 +735,8 @@ func fixedFieldChecked(f *ir.Field) bool {
 		case *ir.Enum:
 			_, checked := fixedEnumClampMax(r)
 			return checked
+		case *ir.Flags:
+			return r.WireBits < 64 // a mask bit at or above W refuses (§4)
 		}
 	}
 	return fixedScalarBounded(f)
@@ -987,6 +996,17 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 				g.pf("%s{ let tag = 0;\n", ind)
 				g.loadTag(ind+"  ", "tag", off(base, at), int64(r.StorageBits/8))
 				g.pf("%s  if (tag > %d) { report.refused = TableFixedRefusal.OutOfRange; return; } }\n", ind, max)
+			}
+			return
+		case *ir.Flags:
+			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			// before any destination byte is written, on either plan.
+			if r.WireBits < 64 {
+				g.pf("%s{ let n;\n", ind)
+				g.load(ind+"  ", "n", "view", off(base, at), f.Type)
+				g.emitDecodeBounds(ind+"  ", "n", f)
+				g.pf("%s}\n", ind)
 			}
 			return
 		}
@@ -1458,6 +1478,15 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 // the second refusal of two. Vacuous ends — a bound sitting on the storage
 // width's own limit — are dropped, because no loaded value can fail them.
 func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
+	// A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range
+	// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): flags
+	// append at the end, so old data never carries one, and an old reader does
+	// not read new data. Identity and a compiled plan land the mask alike, so
+	// this projection holds both.
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		g.pf("%sif ((%s >> %dn) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", ind, expr, fl.WireBits)
+		return
+	}
 	// A RANGED FLOAT REFUSES out_of_range ON THE SAME TEST as the ranged
 	// integer below, and against THIS READER'S own min and max (schema#1164,
 	// ruled statement B): in the fixed form a compressed float rides AS THE

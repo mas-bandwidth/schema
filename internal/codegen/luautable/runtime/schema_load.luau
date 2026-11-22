@@ -563,6 +563,12 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 		end
 		if ucmp_gt(x, bmax) then x = bmax; report.clamped = report.clamped + 1; noteField("clamped", _fieldName) end
 	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+	-- (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+	-- scalarAt): a mask widened from a narrower unsigned kind is held the same way
+	if fd.fw ~= nil and fd.fw < 64 and typeof(x) == "integer" and integer.rshift(x, integer.create(fd.fw)) ~= 0i then
+		report.clamped = report.clamped + 1; noteField("clamped", _fieldName)
+	end
 	return x
 end
 

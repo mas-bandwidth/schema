@@ -1421,6 +1421,11 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 					}
 					{
 						v := payload29.Unsigned(entry.Shape.Kind)
+						if v>>3 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "LoadoutConfig.perks")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Perks = Perks(v)
 					}
 				}

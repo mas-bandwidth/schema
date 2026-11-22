@@ -220,6 +220,12 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		case *ir.Enum:
 			// ROW 5: an ordinal inside the variant set (0 is the unset value)
 			fmt.Fprintf(b, "%sassert %s >= 0 && %s <= %d : %q;\n", ind, expr, expr, len(ref.Variants), name)
+		case *ir.Flags:
+			// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+			// HOLDS A MASK TO ITS WIDTH): a save never writes a bit its own read refuses
+			if ref.WireBits < 64 {
+				fmt.Fprintf(b, "%sassert (%s >>> %d) == 0L : %q;\n", ind, expr, ref.WireBits, name)
+			}
 		case *ir.Struct, *ir.Union:
 			fmt.Fprintf(b, "%sassert %sVariable.checkWrite(%s, walk);\n", ind, f.Type.Name, expr)
 		}

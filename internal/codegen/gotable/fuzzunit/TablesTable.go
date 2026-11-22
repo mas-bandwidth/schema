@@ -2057,6 +2057,9 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 			if ref := w.Ids.refAtHit(45, 0x4b06f5847096e54a); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
+			if value.Perks>>3 != 0 {
+				return false
+			}
 			w.Put64(uint64(value.Perks))
 		}
 	}
@@ -2431,6 +2434,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>3 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "LoadoutConfig.perks")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Perks = Perks(v)
 					}
 					r.Report.Widened++
@@ -2445,6 +2453,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			{
 				v := r.Get64()
+				if v>>3 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "LoadoutConfig.perks")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Perks = Perks(v)
 			}
 		case 0xbf31137ff783e939: // primary
@@ -2823,6 +2836,9 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 		if value.Perks != 0 {
 			if ref := w.Ids.refAtHit(45, 0x4b06f5847096e54a); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
+			}
+			if value.Perks>>3 != 0 {
+				return false
 			}
 			w.Put64(uint64(value.Perks))
 		}
@@ -3269,6 +3285,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>3 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "LoadoutConfig.perks")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Perks = Perks(v)
 					}
 					r.Report.Widened++
@@ -3283,6 +3304,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			{
 				v := r.Get64()
+				if v>>3 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "LoadoutConfig.perks")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Perks = Perks(v)
 			}
 		case 0xbf31137ff783e939: // primary
@@ -6341,6 +6367,9 @@ func LoadoutConfigFixedBoundsBody(value *LoadoutConfig, over *int32) {
 			(*over)++
 		}
 	}
+	if value.Perks>>3 != 0 {
+		(*over)++
+	}
 	WeaponConfigFixedBoundsBody(&value.Primary, over)
 	for i := range 2 {
 		WeaponConfigFixedBoundsBody(&value.Backups[i], over)
@@ -6528,6 +6557,9 @@ func LoadoutConfigFixedCheckBody(value *LoadoutConfig) bool {
 		if uint64(value.Podium[i]) > 3 {
 			return false
 		}
+	}
+	if value.Perks>>3 != 0 {
+		return false
 	}
 	if !WeaponConfigFixedCheckBody(&value.Primary) {
 		return false

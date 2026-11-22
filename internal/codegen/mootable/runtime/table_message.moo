@@ -1849,6 +1849,16 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 			return nil, refuseRead(t, "out_of_range")
 		end
 	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+	-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+	-- wider mask, and each value is held to this reader's W
+	if fd.mw ~= nil and fd.mw < 64 then
+		local cap = Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), fd.mw), Uint64.fromNumber(1))
+		local uv = if type(value) == "number" then value else (if Int64.is(value) then Int64.toUint64(value) else value)
+		if Uint64.cmp(uv, cap) > 0 then
+			return nil, refuseRead(t, "out_of_range")
+		end
+	end
 	-- outside the reader kind's domain refuses, as a declared range does
 	-- (docs/SPEC-TABLES.md §3.3): never wrapped, never replaced
 	local raw: any = value

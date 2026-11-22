@@ -1690,6 +1690,17 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 				}
 			}
 			return
+		case *ir.Flags:
+			// A MASK BIT AT OR ABOVE W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+			// HOLDS A MASK TO ITS WIDTH) refuses the read and the write alike.
+			if cond, ok := flagsWidthBound(f, expr); ok {
+				if chk {
+					g.pf("%sif %s { return false }\n", ind, cond)
+				} else {
+					g.pf("%sif %s { (*over)++ }\n", ind, cond)
+				}
+			}
+			return
 		}
 		return
 	}

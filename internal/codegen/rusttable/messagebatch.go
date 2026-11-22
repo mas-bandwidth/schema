@@ -893,6 +893,12 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		max := uint64(1)<<f.Type.Width - 1
 		m.pf("%sif x > %d { x = %d; report.out_of_range(%q); }\n", ind, max, max, owner)
 	}
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A NEWER WRITER ANNOUNCES A WIDER MASK, and the reader holds each
+		// value to its OWN W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK
+		// TO ITS WIDTH): a bit at or above it refuses by name as out_of_range.
+		m.pf("%sif x >> %d != 0 { report.out_of_range(%q); }\n", ind, fl.WireBits, owner)
+	}
 	typ := cookElemType(f)
 	switch typ {
 	case "TableI128", "TableU128":

@@ -138,3 +138,22 @@ The file-form writers are under `test/tables/r14/`: each is the
 `featurewitnesses` schema with one declaration edited, and its wire is
 `schema pack --root Root` of the `Root.json` beside it. The message-form
 writer is `test/tables/prior/PriorWide.schema`.
+
+## Ruling row: R17 (2026-11-22)
+
+"The newer reader can read old data, but never the other way." A `flags`
+mask with a bit at or above the reader's own W refuses the whole load
+`out_of_range` on every table form, and every table writer refuses to write one
+(SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; §3.3; SPEC.md §4.2).
+
+| ruling (where) | refuses | lawful twin |
+|---|---|---|
+| R17: a mask bit at or above the reader's W refuses the load, file and message (SPEC-TABLES.md §4, §3.3; SPEC.md §4.2) | `report r17_flags_past_width` (VarEvo2's Read and Exec read by tblvarevo1, variable form) | `report r17_flags_inside_width` (Read and Write from the same writer) |
+| | `report r17_fixed_flags_past_width` (bit 17 of a 17-variant mask, fixed form) | `report r17_fixed_flags_inside_width` (the unforged file) |
+| | `message-prior prior_flags_past` (the writer's Exec, message form) | `message-prior prior_flags_inside` |
+
+The variable-form writer is `test/tables/varevo/VarEvo2.schema` and each wire is
+`schema pack --root EvoDoc` of `test/tables/r17/<Case>/EvoDoc.json` under it.
+The engine's red-when-planted test is
+`internal/tablewire` `TestFlagBitsPastWidthRefuse`, which also holds every
+writer's refusal.

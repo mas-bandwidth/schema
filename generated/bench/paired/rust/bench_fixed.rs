@@ -234,6 +234,7 @@ pub fn mixed_entity_fixed_write_body(b: &mut [u8], value: &MixedEntityRow) {
     debug_assert!(value.weapon <= 15, "weapon ordinal exceeds the enum's extent");
     let at = 40;
     b[at..at + 1].copy_from_slice(&value.weapon.to_le_bytes());
+    debug_assert!(value.damage >> 8 == 0, "damage has a flags bit at or above its width 8");
     let at = 41;
     b[at..at + 8].copy_from_slice(&value.damage.to_le_bytes());
     let at = 49;
@@ -312,6 +313,9 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     {
         let at = 41;
         let raw = u64::from_le_bytes(b[at..at + 8].try_into().expect("the declared width"));
+        if raw >> 8 != 0 && report.slack == 0 {
+            report.held += 1;
+        }
         value.damage = raw;
     }
     {

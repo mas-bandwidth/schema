@@ -488,6 +488,15 @@ func FlagsOf(f *ir.Field) *ir.Flags {
 	return fl
 }
 
+// FlagsPastWidth reports a mask holding a bit at or above the declaration's
+// wire width W (the variant count, or K under `| max = K`). Every table read
+// refuses such a mask out_of_range and every table writer refuses to write one
+// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): the newer
+// reader reads old data, and never the other way.
+func FlagsPastWidth(fl *ir.Flags, u uint64) bool {
+	return fl.WireBits < 64 && u>>uint(fl.WireBits) != 0
+}
+
 // NewArm builds ONE ARM's storage, zero-established (SPEC §5): an arm is a
 // field line (docs/SPEC-TABLES.md §2.6), so its storage is a field's, and an
 // arm takes no specified default — the reset a fresh field takes IS the

@@ -204,8 +204,9 @@ defmodule Benchtable.BenchTableFixed do
         R.ranged(v_vel_y, @r_table_entity_vel_y)::little-signed-32,
         R.ranged(v_vel_z, @r_table_entity_vel_z)::little-signed-32,
         R.ranged(v_health, @r_table_entity_health)::little-signed-32,
-        Benchtable.TableWeapon.to_int(v_weapon)::little-unsigned-8, v_damage::little-unsigned-64,
-        if(v_moving, do: 1, else: 0)::unsigned-8, if(v_firing, do: 1, else: 0)::unsigned-8>>
+        Benchtable.TableWeapon.to_int(v_weapon)::little-unsigned-8,
+        R.fits(v_damage, 8, false)::little-unsigned-64, if(v_moving, do: 1, else: 0)::unsigned-8,
+        if(v_firing, do: 1, else: 0)::unsigned-8>>
 
     acc
   end
@@ -234,6 +235,7 @@ defmodule Benchtable.BenchTableFixed do
     c = R.clamps(c, f_vel_z, -2048, 2047)
     c = R.clamps(c, f_health, 0, 1000)
     c = R.past(c, f_weapon, 15)
+    c = R.clamps(c, f_damage, 0, 255)
 
     {%Benchtable.TableEntity{
        entity_id: min(max(f_entity_id, 0), 4095),
@@ -248,7 +250,7 @@ defmodule Benchtable.BenchTableFixed do
        health: min(max(f_health, 0), 1000),
        weapon:
          elem(Benchtable.TableWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
-       damage: f_damage,
+       damage: min(f_damage, 255),
        moving: R.flag(f_moving),
        firing: R.flag(f_firing)
      }, c, m}
@@ -282,6 +284,7 @@ defmodule Benchtable.BenchTableFixed do
     c = R.clamps(c, f_vel_z, -2048, 2047)
     c = R.clamps(c, f_health, 0, 1000)
     c = R.past(c, f_weapon, 15)
+    c = R.clamps(c, f_damage, 0, 255)
 
     v =
       %Benchtable.TableEntity{
@@ -297,7 +300,7 @@ defmodule Benchtable.BenchTableFixed do
         health: min(max(f_health, 0), 1000),
         weapon:
           elem(Benchtable.TableWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
-        damage: f_damage,
+        damage: min(f_damage, 255),
         moving: R.flag(f_moving),
         firing: R.flag(f_firing)
       }

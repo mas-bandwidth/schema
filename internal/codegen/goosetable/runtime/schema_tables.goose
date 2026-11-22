@@ -62,6 +62,7 @@ struct FieldDesc {
     lo: Int128,
     hi: Int128,
     bits: i32,                // bits(N)
+    mw: i32,                  // a flags mask's wire width W (docs/SPEC-TABLES.md §4)
     ibits: i32,               // fixed(I, F)
     fbits: i32,
     is_f32: bool,

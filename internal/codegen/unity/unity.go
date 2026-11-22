@@ -537,8 +537,8 @@ func (g *gen) emitEnumSurface(name string, variants []string, max int64) {
 
 func (g *gen) emitFlags(d *ir.Flags) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
-	g.tf("// %s — one bit per variant; wire %d bits (SPEC §4.2). ulong-backed, the full\n", d.Name, d.WireBits)
-	g.tf("// width §4.2 requires, so bits a newer build appended survive a round trip.\n")
+	g.tf("// %s — one bit per variant; wire %d bits (SPEC §4.2). ulong-backed: 64 bits\n", d.Name, d.WireBits)
+	g.tf("// is the variant ceiling (§4.2); a table load refuses a bit at or above the wire width.\n")
 	g.tf("[Flags]\npublic enum %s : ulong\n{\n", d.Name)
 	for i, v := range d.Variants {
 		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))

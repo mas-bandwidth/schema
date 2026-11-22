@@ -476,6 +476,9 @@ function V.toRaw(fd: any, v: any): any
 	local kw, signed = fd.kw, fd.signed == true
 	if fd.lo ~= nil and (V.rawCmp(x, fd.lo, kw, signed) < 0 or V.rawCmp(x, fd.hi, kw, signed) > 0) then return nil end
 	if fd.bits ~= nil and fd.bits < kw * 8 and V.rawCmp(x, V.bitsCap(fd.bits, kw), kw, false) > 0 then return nil end
+	-- a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+	-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+	if fd.mw ~= nil and fd.mw < kw * 8 and V.rawCmp(x, V.bitsCap(fd.mw, kw), kw, false) > 0 then return nil end
 	return x
 end
 

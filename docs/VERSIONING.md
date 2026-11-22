@@ -285,6 +285,9 @@ field for it; the layout is in the wire form section below.
 identity is its bit. The rule for flags is *append at the end*; insert,
 reorder and rename-in-place are the silent class and the baseline refuses
 them. Removing a variant frees no bit: retire the name, keep the position.
+The newer reader reads old data, and never the other way (R17, 2026-11-22): a
+mask carrying a bit at or above the reader's own width W refuses the load
+`out_of_range`, which only new data meeting an old reader can produce.
 
 **Defaults are part of the wire contract.** A field equal to its declared
 default is elided from the wire, and an absent field reads as the default. So
@@ -796,10 +799,11 @@ spent, no payload of the variable form changes, no skip rule of the variable for
 changes. The protocol id does not move, the build version does not move, the
 baseline does not move, the text form does not move, the cook and the block do
 not move, no EVOLUTION row of the table above moves, and neither does the
-damage rule. ONE row does, in this form only: the MASK ROUND-TRIP row: a `flags` mask rides at its declared W bits here rather than as
-a raw `uint64`, which is the packet wire's rule taken for the packet wire's
-reason, so a bit a newer build appended survives a file round trip and not a
-message one. Sixty-four bits for a three-bit mask is the largest fixed overspend
+damage rule. A `flags` mask rides at its declared W bits here rather than
+as a raw `uint64`, the packet wire's rule taken for the packet wire's reason,
+and it moves no row, because both forms hold a mask to W: a load refuses a bit
+at or above the reader's W `out_of_range` and a save refuses to write one
+(SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH). Sixty-four bits for a three-bit mask is the largest fixed overspend
 a small message has, and a mask is the one payload whose file width comes from
 its storage rather than from anything the schema declares. The read report keeps
 its counters and their meanings. The packet wire is

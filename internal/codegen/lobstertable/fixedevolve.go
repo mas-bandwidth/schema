@@ -684,6 +684,9 @@ func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 }
 
 func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
+	if _, ok := lobsterFlagsHi(f); ok {
+		return true // a mask holds to W (docs/SPEC-TABLES.md §4)
+	}
 	if len(lobsterScalarStorageBounds(f, "x")) != 0 {
 		return true
 	}
@@ -714,6 +717,9 @@ func fixedBoundNeeded(f *ir.Field, chk bool) bool {
 	}
 	if f.Array == ir.ArrayCounted && chk {
 		return true
+	}
+	if _, ok := lobsterFlagsHi(f); ok && chk {
+		return true // a mask holds to W (docs/SPEC-TABLES.md §4)
 	}
 	if f.Array != ir.ArrayNone || f.KeyEnumRef != nil {
 		elem := *f
@@ -924,6 +930,16 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 					}
 				}
 			}
+			return true
+		case *ir.Flags:
+			// A MASK BIT AT OR ABOVE W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS
+			// A MASK TO ITS WIDTH) refuses the read out_of_range and the write
+			// invalid_value; a mask is never clamped
+			hi, ok := lobsterFlagsHi(f)
+			if !ok || !chk {
+				return false
+			}
+			g.Pf("%sif schema_rt.ult(%s, %s):\n%s    return false\n", ind, hi, expr, ind)
 			return true
 		}
 		return false
@@ -1932,4 +1948,15 @@ func emitFixedWriterRawElement(g *lobster.Gen, f *ir.Field, at, ind string, seq 
 			g.Pf("%sif %s:\n%s    return schema_rt.TableRefuseOutOfRange\n", ind, strings.Join(conds, " or "), ind)
 		}
 	}
+}
+
+// lobsterFlagsHi is the largest mask a flags field holds, as a literal: every
+// bit below W, the declaration's wire width (the variant count, or K under
+// | max = K). ok is false for a field that is not a mask or a mask 64 bits wide.
+func lobsterFlagsHi(f *ir.Field) (string, bool) {
+	fl, isFlags := f.Type.Ref.(*ir.Flags)
+	if f.Type.Kind != ir.TNamed || !isFlags || fl.WireBits >= 64 {
+		return "", false
+	}
+	return lobster.IntLit(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1))), true
 }

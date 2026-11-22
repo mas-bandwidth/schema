@@ -348,7 +348,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     return v, pos + w
   elseif s == "flags" then
-    return unpack_int(buf, pos, 8, false), pos + 8
+    -- a mask bit at or above W refuses (docs/SPEC-TABLES.md §4, A TABLE LOAD
+    -- HOLDS A MASK TO ITS WIDTH; fixed.go element)
+    local m = unpack_int(buf, pos, 8, false)
+    if d.bits ~= nil and d.bits < 64 and m >> d.bits ~= 0 then refuse_out_of_range() end
+    return m, pos + 8
   elseif s == "table" then
     local child = T.Tables[d.target].fixed_size
     local v = decode_table(T, d.target, buf, pos, child)
@@ -703,7 +707,11 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     end
     return nil
   elseif s == "flags" then
-    return unpack_int(buf, pos, node.size, false)
+    -- an older layout holds a mask to W too (docs/SPEC-TABLES.md §4;
+    -- fixedlineage.go element)
+    local m = unpack_int(buf, pos, node.size, false)
+    if d.bits ~= nil and d.bits < 64 and m >> d.bits ~= 0 then refuse_out_of_range() end
+    return m
   elseif s == "table" then
     return decode_old_table(T, d.target, node, buf, pos, rep)
   elseif s == "union" then

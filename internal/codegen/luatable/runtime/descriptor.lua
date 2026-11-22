@@ -346,6 +346,12 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < 64 and math.ult((1 << d.bits) - 1, val) then
       return where
     end
+  elseif s == "flags" then
+    -- A MASK IS HELD TO W, the width its reader holds it to (docs/SPEC-TABLES.md
+    -- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): no writer writes a mask its
+    -- own reader refuses.
+    if math.type(val) ~= "integer" then return where end
+    if d.bits ~= nil and d.bits < 64 and val >> d.bits ~= 0 then return where end
   elseif s == "bool" then
     if type(val) ~= "boolean" then return where end
   elseif s == "wide" then

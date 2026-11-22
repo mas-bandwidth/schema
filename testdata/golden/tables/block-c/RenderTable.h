@@ -5064,6 +5064,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_body( blockdemo_table_writer
         if ( !( value->flags == 0 ) )
         {
             blockdemo_table_writer_header_at( w, 8, 0x17a3a1a985f75aecull, 9 );
+            schema_assert( ( (uint64_t)( value->flags ) >> 4 ) == 0 ); /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */
             blockdemo_table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
@@ -5218,6 +5219,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) blockdemo_table_reader_get8( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 4 ) != 0 ) { decoded_wide &= 0xfull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->flags = decoded_wide;
                                 break;
                             }
@@ -5225,6 +5227,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) blockdemo_table_reader_get16( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 4 ) != 0 ) { decoded_wide &= 0xfull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->flags = decoded_wide;
                                 break;
                             }
@@ -5232,6 +5235,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) blockdemo_table_reader_get32( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 4 ) != 0 ) { decoded_wide &= 0xfull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->flags = decoded_wide;
                                 break;
                             }
@@ -5240,6 +5244,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
+                                    if ( ( (uint64_t) decoded_v >> 4 ) != 0 ) { decoded_v &= 0xfull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                     value->flags = decoded_v;
                                 }
                                 break;
@@ -5256,6 +5261,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) blockdemo_table_reader_get64( &(*r) );
+                    if ( ( (uint64_t) decoded_v >> 4 ) != 0 ) { decoded_v &= 0xfull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                     value->flags = decoded_v;
                 }
                 break;
@@ -5711,6 +5717,9 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
+  if ( ( (uint64_t) decoded >> 4 ) != 0 ) { decoded &= 0xfull;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+  } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
   value->flags=(blockdemo_ship_flags_t)decoded;
   }
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
@@ -14394,6 +14403,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_finite_body_( c
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
+    if ( ( (uint64_t) value->flags >> 4 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
     if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
@@ -14457,6 +14467,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_write_check_body_( const blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
+    if ( ( (uint64_t) value->flags >> 4 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
     if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }

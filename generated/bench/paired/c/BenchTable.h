@@ -4470,6 +4470,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 36, 0x7f6308be8ab37fc0ull, 9 );
+            schema_assert( ( (uint64_t)( value->damage ) >> 8 ) == 0 ); /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */
             bench_table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
     }
@@ -5090,6 +5091,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             {
                                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint8_t) bench_table_reader_get8( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) { decoded_wide &= 0xffull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->damage = decoded_wide;
                                 break;
                             }
@@ -5097,6 +5099,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             {
                                 if ( !bench_table_reader_has( &(*r), 2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint16_t) bench_table_reader_get16( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) { decoded_wide &= 0xffull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->damage = decoded_wide;
                                 break;
                             }
@@ -5104,6 +5107,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             {
                                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 uint64_t decoded_wide = (uint32_t) bench_table_reader_get32( &(*r) );
+                                if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) { decoded_wide &= 0xffull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                 value->damage = decoded_wide;
                                 break;
                             }
@@ -5112,6 +5116,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                                 if ( !bench_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                                 {
                                     uint64_t decoded_v = (uint64_t) bench_table_reader_get64( &(*r) );
+                                    if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) { decoded_v &= 0xffull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                                     value->damage = decoded_v;
                                 }
                                 break;
@@ -5128,6 +5133,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                 if ( !bench_table_reader_has( &(*r), 8 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 {
                     uint64_t decoded_v = (uint64_t) bench_table_reader_get64( &(*r) );
+                    if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) { decoded_v &= 0xffull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
                     value->damage = decoded_v;
                 }
                 break;
@@ -5779,6 +5785,9 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
  if(!bench_table_message_number(r,entry,&lo,&hi))goto damaged;
   uint64_t decoded=(uint64_t)lo;
   (void)hi;
+  if ( ( (uint64_t) decoded >> 8 ) != 0 ) { decoded &= 0xffull;
+  r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
+  } /* a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4) */
   value->damage=(bench_mixed_damage_t)decoded;
   }
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
@@ -10622,6 +10631,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fi
     (*out_of_range) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
     (*out_of_range) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
     if ( (uint64_t) value->weapon > 15u ) { (*out_of_range)++; }
+    if ( ( (uint64_t) value->damage >> 8 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
 }
 
 /* MixedStat's read-side bounds. */
@@ -10743,6 +10753,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fi
     (*out_of_range) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
     (*out_of_range) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
     if ( (uint64_t) value->weapon > 15u ) { (*out_of_range)++; }
+    if ( ( (uint64_t) value->damage >> 8 ) != 0 ) { (*out_of_range)++; } /* a fixed flags mask held to W (docs/SPEC-TABLES.md §4) */
 }
 
 /* MixedStat's write check (docs/SPEC.md §5.1). */

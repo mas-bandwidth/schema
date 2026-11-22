@@ -128,6 +128,10 @@ r14_child_value_as_pointer refused
 r14_features_twin  read
 r14_optional_pointer_as_optional refused
 r16_optional_plain_as_optional read
+r17_fixed_flags_inside_width read
+r17_fixed_flags_past_width refused
+r17_flags_inside_width read
+r17_flags_past_width refused
 r1_cfg_as_r2       refused
 r1_ping_as_r2      refused
 r2_cfg_as_r1       refused

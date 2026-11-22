@@ -3663,6 +3663,7 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   {
     if (value.damage != 0) {
       w.put(42, tableMessageRefBits);
+      assert((value.damage >>> 8) == 0);
       w.put(value.damage - 0, 8);
     }
   }
@@ -3993,6 +3994,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
             if (!tableMessageRangedHolds(entry.kind, shape.base, value.damage)) { r.report.Refuse('out_of_range'); return false; }
           }
         }
+        if ((value.damage >>> 8) != 0) { r.report.Refuse('out_of_range'); return false; }
         if (exact && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
@@ -5718,6 +5720,7 @@ void mixedEntityFixedWriteBody(
   view.setInt32(at + 36, value.health, Endian.little);
   assert(value.weapon >= 0 && value.weapon <= 15);
   view.setUint8(at + 40, value.weapon);
+  assert((value.damage >>> 8) == 0);
   view.setUint64(at + 41, value.damage, Endian.little);
   view.setUint8(at + 49, value.moving ? 1 : 0);
   view.setUint8(at + 50, value.firing ? 1 : 0);
@@ -5821,6 +5824,10 @@ void mixedEntityFixedDecode(
     report.refused = TableFixedRefusal.outOfRange;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
+  if ((value.damage >>> 8) != 0) {
+    value.damage &= 0xff;
+    report.refused = TableFixedRefusal.outOfRange;
+  }
   {
     final b = view.getUint8(at + 49);
     if (b > 1) {

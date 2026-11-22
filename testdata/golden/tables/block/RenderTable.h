@@ -9059,6 +9059,7 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
         else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
     }
+    schema_assert( ( uint64_t( value.flags ) >> 4 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
     if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
     if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
@@ -9127,6 +9128,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
     if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
+        schema_assert( ( uint64_t( value.flags ) >> 4 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
         w.put64( uint64_t( value.flags ) );
     }
     if ( value.object_id != 0 )
@@ -9312,6 +9314,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
+                        if ( ( (uint64_t) decoded_v >> 4 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                        {
+                            decoded_v &= 0xfull;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -9333,6 +9341,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
+                if ( ( (uint64_t) decoded_v >> 4 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                {
+                    decoded_v &= 0xfull;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.flags = decoded_v;
                 break;
             }
@@ -10012,6 +10026,12 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( ( (uint64_t) decoded_wide >> 4 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_wide &= 0xfull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -10044,6 +10064,12 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
+                    if ( ( (uint64_t) decoded_wide >> 4 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                    {
+                        decoded_wide &= 0xfull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
@@ -23707,6 +23733,7 @@ TABLE_FIXED_INLINE bool RenderShipFixedInRange( const RenderShip & value )
 {
     (void) value;
     int bad = 0;
+    bad |= (int) ( ( (uint64_t) value.flags >> 4 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     bad |= (int) ( (uint64_t) value.ship_type > 3u );
     bad |= (int) ( (uint64_t) value.team > 4u );
     return bad == 0;
@@ -23718,6 +23745,7 @@ inline bool RenderShipFixedWriteAdmits( const RenderShip & value )
 {
     (void) value;
     int bad = 0;
+    bad |= (int) ( ( (uint64_t) value.flags >> 4 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     bad |= (int) ( (uint64_t) value.ship_type > 3u );
     bad |= (int) ( (uint64_t) value.team > 4u );
     return bad == 0;
@@ -23729,6 +23757,7 @@ inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_
     (void) value;
     (void) oor_count;
     (void) damaged;
+    if ( ( (uint64_t) value.flags >> 4 ) != 0 ) { value.flags &= 0xfull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; oor_count++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
 }

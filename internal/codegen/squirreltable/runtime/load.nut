@@ -334,6 +334,11 @@ local rangeScalar = function(fd, kind, x, report) {
     local MIN = 0x8000000000000000;
     if ((x ^ MIN) > (max ^ MIN)) { x = max; report.oor = report.oor + 1; }
   }
+  // A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+  // (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+  // scalarAt): a mask widened from a narrower unsigned kind is held the same way
+  if (fd.shape == "flags" && fd.flagbits != null && fd.flagbits < 64 && (x >>> fd.flagbits) != 0)
+    report.oor = report.oor + 1;
   return x;
 };
 
@@ -1887,7 +1892,10 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     return null;
   }
   if (e.shape == "flags") {
-    set(u64At(bytes, off));
+    // a mask bit at or above W refuses out_of_range (docs/SPEC-TABLES.md §4)
+    local m = u64At(bytes, off);
+    if (e.flagbits != null && e.flagbits < 64 && (m >>> e.flagbits) != 0) report.oor = report.oor + 1;
+    set(m);
     return null;
   }
   if (e.shape == "bool") {

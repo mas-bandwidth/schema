@@ -4049,6 +4049,9 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 		}
 		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
 	}
+	if (value.Damage != 0) && (value.Damage>>8 != 0) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(40, 0x7f6308be8ab37fc0)) + 1 + 8
 	} // damage
@@ -4237,6 +4240,9 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 		if value.Damage != 0 {
 			if ref := w.Ids.refAtHit(40, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
+			}
+			if value.Damage>>8 != 0 {
+				return false
 			}
 			w.Put64(uint64(value.Damage))
 		}
@@ -4703,6 +4709,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "TableEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = TableDamage(v)
 					}
 					r.Report.Widened++
@@ -4717,6 +4728,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 			}
 			{
 				v := r.Get64()
+				if v>>8 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "TableEntity.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Damage = TableDamage(v)
 			}
 		case 0x11a44fc1d1243da7: // moving
@@ -8164,6 +8180,9 @@ func TableEntityFixedBoundsBody(value *TableEntity, over *int32) {
 	if uint64(value.Weapon) > 15 {
 		(*over)++
 	}
+	if value.Damage>>8 != 0 {
+		(*over)++
+	}
 }
 
 // TableStat's read-side bounds: each value outside them counts one in over.
@@ -8347,6 +8366,9 @@ func TableEntityFixedCheckBody(value *TableEntity) bool {
 		return false
 	}
 	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	if value.Damage>>8 != 0 {
 		return false
 	}
 	return true

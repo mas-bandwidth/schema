@@ -895,19 +895,17 @@ FloatExpr   = float expression over float literals, int literals and const names
     file scope otherwise begin with reserved words, so one token of lookahead
     disambiguates.
 
-    **The full width is a VERSIONING decision, and the reason is worth
-    stating rather than reading as a convenience.** A mask rides on the table
-    wire as a raw `uint64`, kind `9` (SPEC-TABLES.md §3), so a build that
-    appended variants sends bits an older build has no name for. Full-width
-    storage is what lets that older build LOAD those bits, hold them, and
-    write them back on its next save unchanged: appended bits survive a read
-    and a rewrite. Storage derived from the declared variant count, the way
-    an `enum`'s is, would drop every bit above the older build's own last one
-    on the way in, and nothing could report it, because a mask is the wire's
-    one positional vocabulary and no counter can see a bit that is not there
-    (SPEC-TABLES.md §4.1). The cost is fifty-six bits of storage nobody uses
-    in a three-variant declaration, and it buys the one property the
-    append-at-the-end law is worth having.
+    **The `uint64` storage is the 64-variant CEILING, not a versioning
+    device.** One bit per variant and sixty-four at most, so every
+    declaration's mask fits one type in every target, and that type is the
+    API. A mask rides on the table wire as a raw `uint64`, kind `9`
+    (SPEC-TABLES.md §3), and every table read holds it to the reader's own W:
+    **a bit at or above W refuses the whole load `out_of_range`**, and
+    every table writer refuses to write one (SPEC-TABLES.md §4, A TABLE LOAD
+    HOLDS A MASK TO ITS WIDTH). The newer reader reads old data, and never the
+    other way (R17, 2026-11-22): flags append at the end and a spent bit stays
+    spent, so old data never carries a bit past a newer reader's W, and an
+    old reader that meets new data refuses it by name.
   - **The derived-range rule:** a field that indexes a declared set derives
     its range from the set, never restates it — both wires derive from the
     declaration; `min`/`max` are not valid on enum-family fields.
@@ -2401,7 +2399,7 @@ a caller can hold that the declaration does not admit:
 | 6 | a union tag outside its arm set | refused |
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
-| 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
+| 9 | a `flags` value with a bit no variant names | refused: every table read refuses a bit at or above the reader's W `out_of_range` (SPEC-TABLES §4); the file writers refuse one at or above W, and the text and message writers refuse a bit no variant names |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 | 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
 

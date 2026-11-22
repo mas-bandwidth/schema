@@ -366,6 +366,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		s := tableIntLit(high, signed, 8)
 		g.pf("%s if(decoded>%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}\n", ind, s, s)
 	}
+	g.emitFlagsWidthClamp(f, "decoded", ind+" ")
 	g.pf("%s %s=(%s)decoded; }\n", ind, dst, g.cFieldType(f.Type))
 }
 

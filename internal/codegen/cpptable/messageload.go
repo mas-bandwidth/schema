@@ -804,6 +804,7 @@ func (g *tableGen) emitMessageClampWide(f *ir.Field, signed bool, width int, dec
 		maxv := (uint64(1) << f.Type.Width) - 1
 		g.pf("%[1]sif ( (uint64_t) %[2]s > %[3]dull )\n%[1]s{\n%[1]s    %[4]s = (int64_t) %[5]dull;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s} // bits(%[6]d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
 	}
+	g.emitFlagsWidthClamp(f, decoded, "report->", ind)
 }
 
 // emitMessageClamp is §4's clamp, the variable form's own text: the declared range
@@ -828,6 +829,7 @@ func (g *tableGen) emitMessageClamp(f *ir.Field, signed bool, width int, decoded
 		maxv := (uint64(1) << f.Type.Width) - 1
 		g.pf("%[1]sif ( %[2]s > %[3]dull )\n%[1]s{\n%[1]s    %[4]s = %[5]dull;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s} // bits(%[6]d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
 	}
+	g.emitFlagsWidthClamp(f, decoded, "report->", ind)
 }
 
 // ---- the batch's three verbs, over a FIXED root ----

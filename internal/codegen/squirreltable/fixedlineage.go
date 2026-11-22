@@ -512,6 +512,11 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			return
 		case *ir.Flags:
 			m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+			// an older layout holds a mask to the reader's W too (docs/SPEC-TABLES.md
+			// §4; tablewire fixedlineage.go element)
+			if w, ok := fixedFlagsWidth(f); ok {
+				m.Printf("%sif ((%s >>> %d) != 0) return \"out_of_range\";\n", ind, expr, w)
+			}
 			return
 		}
 	}

@@ -6487,22 +6487,17 @@ bits by the array row's own rule. **An entry of kind `17` met in a body is
 damage**: a fixed root numbers no node, so a node index has no width to be
 stepped over at.
 
-**A `flags` MASK'S APPENDED BITS SURVIVE A FILE ROUND TRIP AND NOT A MESSAGE
-ONE, and that is §4's round-trip row MOVED for this form.** §4 states it for the
-packet wire and the reason carries over unchanged: a file rides a mask as a raw
-`uint64` under kind `9`, so an older build loads the bits a newer one appended,
-holds them, and writes them back unharmed, and a message rides a mask at W bits,
-W being the writer's own variant count, so a build that loaded appended bits out
-of a file and then puts that same mask on a message has bits the message cannot
-carry: **the message save REFUSES it** (a writer never truncates), and so
-does the JSON write, which has no name for such a bit (§16.3). The file save
-writes the mask whole, so a file read then written back is byte-identical. **The reason the row moves is
-BANDWIDTH**, which is this form's whole design statement: sixty-four bits for a
-three-bit mask is the single largest fixed overspend a small message has, and a
-mask is the one payload whose file width comes from its storage rather than from
-anything the schema declares. A build that ferries masks between the forms keeps
-its own bits inside its own W, or carries the mask in a file. **This is the
-ONE row of §4 this form moves**, and there is no second.
+**A `flags` MASK IS HELD TO W ON BOTH FORMS, so file and message agree.** A
+file rides a mask as a raw `uint64` under kind `9` and a message rides it at
+its declared W bits, and both hold it to W: a file load refuses a bit at or above
+the reader's W `out_of_range` (§4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH), the
+file save refuses to write one, **the message save REFUSES it** (a writer never
+truncates), and so does the JSON write, which has no name for such a bit (§16.3).
+So every mask a file read lands fits a message, and no row of §4 moves for it.
+**The reason the widths differ is BANDWIDTH**, which is this form's whole design
+statement: sixty-four bits for a three-bit mask is the single largest fixed
+overspend a small message has, and a mask is the one payload whose file width
+comes from its storage rather than from anything the schema declares.
 
 **EVERY ALIGN ON THIS WIRE IS RELATIVE TO THE BATCH BUFFER'S BYTE `0`**, which
 is the form byte's own first byte, and never to a body's start or to anything
@@ -6998,16 +6993,14 @@ W bits and not as the file's raw `uint64` (above). An enum variant and a union
 arm ride by NAME at a reference's width and not by the packet wire's ordinal or
 tag (above). And a compressed float rides as its QUANTIZED INDEX under SPEC.md
 §4.3's rule (the announcement, above), where the file carries the raw float
-and holds it to its bounds. The first and the third are the two exceptions to
-the round trip, and each is stated: a file carrying a mask's bits above the
-writer's W cannot be saved as a message (the message save refuses it, never
-truncating it), and a file carrying a compressed float OFF the announced grid,
+and holds it to its bounds. The third is the one exception to the round trip,
+and it is stated: a file carrying a compressed float OFF the announced grid,
 saved as a message, carries the nearest grid point, so file to message to file
-reproduces a mask only inside W and a float only when it already lies on the
-grid. The second is not an
-exception, because a name is the value on both forms and the variable form already
-carries it. A value that is on the grid and inside W reproduces its file byte
-for byte, which is what every vector below is.
+reproduces a float only when it already lies on the grid. The first is not an
+exception, because both forms hold a mask to W (above), so every mask a file
+holds fits its W bits; the second is not one, because a name is the value on
+both forms and the variable form already carries it. A value that is on the
+grid reproduces its file byte for byte, which is what every vector below is.
 
 **A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
 compressed float is defined for the FINITE values in `[min, max]`.
@@ -7215,9 +7208,8 @@ counts them. It follows that the wire fuzzer's widen pass has no purchase on
 this form, because a mutant would have to forge the announcement both sides
 read from their own unit, so the row is held by a PEER WHOSE DECLARATION HAS MOVED
 instead, which is the shape every other §4 row on this form is held by.
-**§4's MASK ROUND-TRIP ROW is the one row of §4 this form moves**: a mask rides at its
-declared W bits here rather than as a raw `uint64`, so a bit a newer build
-appended survives a file round trip and not a message one (above). The
+A mask rides at its declared W bits here rather than as a raw `uint64`, and
+both forms hold it to W (above), so no row of §4 moves for it either. The
 compressed float's quantization is not a §4 row, because §4 has none for it: it
 is the third of the three ways this form changes a value across the forms
 (above), and it is pinned by the round trip's own rows rather than by §4's.
@@ -7741,9 +7733,10 @@ entries announces about 5 KB once.
   the variable form and saving the message form must reproduce the message form's
   pinned bytes, and the reverse must reproduce the variable form's. Red if one byte
   differs in either direction, which is the negative control on every rule here
-  that says the VALUE does not move. The two exceptions the round-trip
-  paragraph states, a mask's bits above W and a compressed float off the grid,
-  each have a row of their own below and never ride this one.
+  that says the VALUE does not move. The one exception the round-trip
+  paragraph states, a compressed float off the grid, has a row of its own below
+  and never rides this one; a mask's bits above W never reach a round trip,
+  because the file load refuses them.
 - **The batch.** One vector of three `Envelope` bodies, each arm a different
   message, written as a batch and as three batches of one, whose byte counts
   are both pinned, and a vector of 256
@@ -7818,10 +7811,9 @@ entries announces about 5 KB once.
   or delivers any body of the damaged batch.
 - **The mask's width.** A `flags` field of three variants in a message and in a
   file, whose message payload is three bits and whose file payload is eight
-  bytes, and a file load carrying a bit above the reader's W saved into a
-  message, which must drop it. Red if a leg writes sixty-four bits on a message,
-  or keeps the appended bit through the message round trip and so contradicts the
-  row §4 states as moved.
+  bytes, and a file carrying a bit above the reader's W, whose load must refuse
+  `out_of_range`. Red if a leg writes sixty-four bits on a message, or loads a
+  file carrying a bit above its W.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each refuses, writes nothing. Red if a leg reads either.
   Beside them the same two on the SKIP path: a body naming an enum entry the
@@ -9415,35 +9407,29 @@ flags Perks { Shielded, Hardened, Cloaked, Turbo } // v2: WRONG — an insert
 // Cloaked. The compiler retains no history and cannot see this.
 
 flags Perks { Shielded, Cloaked, Turbo, Hardened } // v2: RIGHT — appended
-// every stored bit keeps its meaning; an old reader keeps bit 3 and writes it
-// back in a file, a new reader sees it clear in old data.
+// every stored bit keeps its meaning; a new reader sees bit 3 clear in old
+// data, and an old reader that meets bit 3 refuses the load out_of_range.
 ```
 
 Removing a flags variant frees no bit either: retire the name, keep the
 position (a spent bit stays spent). The 64-bit storage is the ceiling.
 
-**A TABLE LOAD DOES NOT JUDGE A MASK AGAINST A RANGE.** A `flags` field rides
-as a raw `uint64`, kind `9` (§3), and a bit above the reader's own W is KEPT,
-not cleared and not refused: a mask field's domain is all subsets, so there is
-no range for it to fall outside. That is the whole reason the storage is
-`uint64` in every target at the full width rather than at the declared variant
-count (SPEC.md §4.2) — an older build loads the bits a newer one appended,
-holds them, and writes them back on its next save unharmed, which is the one
-thing that keeps append-at-the-end worth having across a mixed fleet.
-
-**The bits survive a FILE round trip and NOT a packet one, and NOT a MESSAGE
-one, and the cost is named rather than left to be discovered.** The packet wire
-carries a mask in W raw bits, W being the reader's own variant count (SPEC.md
-§4.2, §4.3), so an older build that loaded appended bits out of a file and then
-puts that same mask on a packet DROPS them by width, silently, with no counter
-on either wire able to say so. **The MESSAGE FORM takes the packet wire's rule
-here** (§3.3), for the packet wire's reason, bandwidth: a form-`2` body writes a
-mask at its declared W bits rather than as kind `9`'s raw `uint64`, so a mask with
-appended bits cannot ride a message: the message save REFUSES it rather than
-drop them, because a table writer never truncates. This is the
-one row of this table the message form moves, and §3.3
-states it as a departure. A build that ferries masks between the forms keeps its
-own bits inside its own W, or carries the mask in a FILE.
+**A TABLE LOAD HOLDS A MASK TO ITS WIDTH.** A `flags` field rides as a raw
+`uint64`, kind `9` (§3), and every table read holds it to the reader's own W
+(the variant count, or K under `| max = K`): **a bit at or above W refuses the
+WHOLE load `out_of_range`**, on the variable form, the fixed form and the
+message form alike, and a mask that arrived WIDENED from a narrower kind is held
+the same way. Every table writer holds the same rule, so a same-build round trip
+never writes what its own reader refuses: the variable and fixed savers refuse a
+mask past W (by debug assert in C, C++, C#, Rust, Java and Dart; in every build
+in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose, Python, Ruby and
+Lobster), the message saver refuses it (§3.3), and the text writer refuses a bit
+no variant names (§16.3). **The newer reader reads old data, and never the other
+way** (R17, 2026-11-22): append-at-the-end, and a spent bit staying spent, mean
+old data never carries a bit past a newer reader's W, so the rule costs no
+lawful read; an old reader that meets new data refuses it by name, and that is
+lawful. The `uint64` storage is the 64-variant ceiling and the API type
+(SPEC.md §4.2), not a versioning device.
 
 **A DEFAULT IS PART OF THE WIRE CONTRACT.** A field holding its declared
 default is elided (§3), so the reader's default is what the absence means —

@@ -405,6 +405,7 @@ defmodule Benchtable.Table do
             "Airborne",
             "Downed"
           ],
+          flags_bits: 8,
           cook_off: 48,
           count_off: -1,
           present_off: -1,
@@ -5335,6 +5336,7 @@ defmodule Benchtable.Table do
 
     case f do
       %{min: lo, max: hi} when is_number(v) and (v < lo or v > hi) -> throw(:invalid_value)
+      %{flags_bits: bits} when v > Bitwise.bsl(1, bits) - 1 -> throw(:invalid_value)
       _ -> :ok
     end
 
@@ -5394,6 +5396,9 @@ defmodule Benchtable.Table do
     if not is_integer(e), do: throw(:invalid_value)
 
     if Map.has_key?(f, :elem_min) and (e < f.elem_min or e > f.elem_max),
+      do: throw(:invalid_value)
+
+    if Map.has_key?(f, :elem_flags_bits) and e > Bitwise.bsl(1, f.elem_flags_bits) - 1,
       do: throw(:invalid_value)
 
     bits = Map.get(f, :elem_bits, kind_width(kind) * 8)
@@ -5714,10 +5719,23 @@ defmodule Benchtable.Table do
       else: {v, report}
   end
 
+  # A FLAGS MASK HOLDS TO W, its declaration's wire width (docs/SPEC-TABLES.md
+  # §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a bit at or above W refuses
+  # the whole load, out_of_range, naming the field, on the raw u64 and on
+  # every widening alike. The newer reader reads old data, never the reverse.
+  defp clamp_int(v, %{flags_bits: bits, name: name}, report) do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, %{elem_flags_bits: bits, name: name}, report),
+    do: clamp_int(v, %{flags_bits: bits, name: name}, report)
 
   defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
 

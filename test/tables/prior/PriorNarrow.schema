@@ -12,12 +12,16 @@
 // its timestamp (`stamp`), each beside a lawful twin of the same type
 // (`kept64`, `stamped`). R15 adds `band`, uint8 200..250 to the writer and
 // 200..240 to the reader: the writer's announcement is lawful though its top
-// offsets pass 255, and each value is held on the body. The two files differ
+// offsets pass 255, and each value is held on the body. R17 adds `perms`: the
+// writer's Perms has a third flag, Exec, that the reader's does not, and a body
+// with that bit set refuses `out_of_range`. The two files differ
 // in these declarations and nothing else, which
 // TestMessagePriorWriterIsRangesApart holds.
 package tblprior
 
 enum Axis { X, Y }
+
+flags Perms { Read, Write }
 
 type Inner
 {
@@ -59,4 +63,5 @@ fixed table Prior
     stamp    timestamp
     stamped  timestamp
     band     uint8 = 200 | min = 200, max = 240
+    perms    Perms
 }

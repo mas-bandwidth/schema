@@ -1089,6 +1089,12 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 			d.refuse(ReasonOutOfRange)
 		}
 	}
+	if fl := tabletext.FlagsOf(f); fl != nil && tabletext.FlagsPastWidth(fl, uint64(value)) {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+		// mask, and an old reader does not read new data
+		d.refuse(ReasonOutOfRange)
+	}
 	cell.I = value
 	cell.U = uint64(value)
 	if !signed && f.Type.Width < 64 && f.Type.Width > 0 {

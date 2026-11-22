@@ -610,10 +610,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
 			g.pf("%s\tif v < %s || v > %s { %s }\n", ind, lo, hi, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
 		}
-		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { %s }\n", ind, max, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
-		}
+		g.emitWidthRead(f, wireKind, ind, onBad)
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			typ = "byte"

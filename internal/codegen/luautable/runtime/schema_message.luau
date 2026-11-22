@@ -611,7 +611,7 @@ end
 -- refusal names <Table>.<field> even when the deprecated value is an element.
 local function named(f: any, name: string): any
 	if f == nil or f.name ~= nil then return f end
-	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, f32 = f.f32, fbits = f.fbits, ibits = f.ibits, bits = f.bits, signed = f.signed, kw = f.kw, name = name }
+	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, f32 = f.f32, fbits = f.fbits, ibits = f.ibits, bits = f.bits, fw = f.fw, signed = f.signed, kw = f.kw, name = name }
 end
 
 local function variantIndex(vs: any, id: integer): number
@@ -1502,6 +1502,17 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 			end
 		end
 	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+	-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+	-- wider mask, and each value is held to this reader's W
+	if fd ~= nil and fd.fw ~= nil and fd.fw < 128 then
+		for bi = fd.fw, 127 do
+			if bit16(val16, bi) ~= 0 then
+				rep.clamped = (rep.clamped or 0) + 1
+				return nil, false
+			end
+		end
+	end
 	local packed16, pok = checkAndPackInt16ForOwn(val16, oe.shape)
 	if not pok or packed16 == nil then
 		rep.clamped = (rep.clamped or 0) + 1
@@ -2095,6 +2106,9 @@ local function mValidScalar(e: any, val: any): (boolean, string?)
 			local top: any = if typeof(val) == "integer" then integer.sub(integer.lshift(1i, integer.create(e.bits)), 1i) else (2 ^ e.bits - 1)
 			if mCmpLt(top, val, false) then return false, "invalid_value" end
 		end
+		-- a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+		-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+		if e.fw ~= nil and e.fw < 64 and typeof(val) == "integer" and integer.rshift(val, integer.create(e.fw)) ~= 0i then return false, "invalid_value" end
 		return true, nil
 	end
 	return true, nil
