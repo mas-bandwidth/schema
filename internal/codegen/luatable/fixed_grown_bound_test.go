@@ -72,7 +72,7 @@ print("ok")
 		wire := readFile(t, filepath.Join(corpus, "old_"+r.row+".bin"))
 		stdout, stderr, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"wire": wire})
 		if err != nil || strings.TrimSpace(stdout) != "ok" {
-			return fmt.Errorf("%s: %v: %s%s", r.row, err, stdout, stderr)
+			return fmt.Errorf("%s: %w: %s%s", r.row, err, stdout, stderr)
 		}
 	}
 	return nil
