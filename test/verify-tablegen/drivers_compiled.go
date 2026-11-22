@@ -1595,7 +1595,13 @@ func verifyJava(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
                     checkBytes(c.id, out, c.w1);
                     return;
                 }
-                if (c.op == 6) {
+                // op 7's message half has no Java counterpart: the text codec
+                // lives on the variable form's Value (lists), the message
+                // writer takes the fixed form's Value (arrays), and the
+                // generated code has no conversion between them, so there is
+                // no record the text lands in that the writer can take. The
+                // text half is checked as the other targets check it.
+                if (c.op == 6 || c.op == 7) {
                     var rep = new %s.TableVariable.Report();
                     var v = %s.%sVariable.fromJson(c.in, rep);
                     if (v == null || rep.damaged || rep.refused) die(c.id, "fromJson fix");
@@ -1801,7 +1807,11 @@ func verifyDart(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
         checkBytes(c.id, out, c.w1);
         return;
       }
-      if (c.op == 6) {
+      // op 7's message half has no Dart counterpart: the text codec is the
+      // wire library's FixRoot, the message writer takes the fixed library's
+      // FixRoot (a distinct class), and the generated code has no conversion
+      // between them. The text half is checked as the other targets check it.
+      if (c.op == 6 || c.op == 7) {
         final rep = %s_w.TableTextReport();
         final v = %s_w.%sFromJson(utf8.decode(c.inp), rep);
         if (rep.refused) die(c.id, 'FromJson fix');
