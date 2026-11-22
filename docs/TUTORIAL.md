@@ -93,7 +93,7 @@ build is pinned to:
 ```
 $ cd ..
 $ git clone --branch v2.1.3 https://github.com/mas-bandwidth/serialize.git
-$ git clone --branch v2.0.2 https://github.com/mas-bandwidth/serialize.c.git
+$ git clone --branch v2.1.1 https://github.com/mas-bandwidth/serialize.c.git
 ```
 
 Nothing to build in either. Part 3 adds `-I ../serialize` to a compile line and
@@ -4543,12 +4543,23 @@ with two storages if the consumer reads while you fill.
 
 The same declaration generates the read half everywhere. Here is **Go reading
 the block C++ just wrote**. The bytes went through a file for the demo, and a
-pointer handoff is the production path. Generate the Go side and give the
-consumer a module of its own:
+pointer handoff is the production path. Generate the Go side into a directory
+of its own, `gengo`, which holds one package, `starlight`. The warning is the
+one `check` gave:
 
 ```
 $ schema generate --lang go --out gengo .
+warning: table RenderFrame: a fixed table's record body is 196624 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
 ```
+
+The consumer is a Go module in this directory, and `gengo` is a package inside
+it, imported as `starlightconsume/gengo`. The generated code imports two
+modules. One is the table runtime, `tables/goruntime`, which lives in the
+compiler's own module, so require that module at **the version `schema
+version` printed** in Part 1. The generated code and the runtime check each
+other's version when they compile, and a runtime from another build refuses to
+compile with them. The other is serialize.go, the Go packet runtime, at the tag
+this build is pinned to.
 
 `go.mod`, entire:
 
@@ -4558,14 +4569,21 @@ module starlightconsume
 go 1.26
 
 require (
-	github.com/mas-bandwidth/serialize.go/v2 v2.0.0
-	starlight v0.0.0
+	github.com/mas-bandwidth/schema/v2 v2.5.1-0.20261121091243-8c356aa9b51e
+	github.com/mas-bandwidth/serialize.go/v2 v2.1.1
 )
-
-replace github.com/mas-bandwidth/serialize.go/v2 => ../serialize.go
-
-replace starlight => ./gengo
 ```
+
+```
+$ go mod tidy
+go: downloading github.com/mas-bandwidth/schema/v2 v2.5.1-0.20261121091243-8c356aa9b51e
+go: downloading github.com/mas-bandwidth/serialize.go/v2 v2.1.1
+```
+
+If you built `schema` from a clone in Part 1, its version (`v2.4.0-148-gbafdb69`)
+is not a Go module version. Keep the `require` line as it is and point it at
+the clone with one more line, `replace github.com/mas-bandwidth/schema/v2 =>
+../schema`.
 
 `consume.go`, entire:
 
@@ -4578,7 +4596,7 @@ import (
 	"os"
 	"unsafe"
 
-	"starlight"
+	starlight "starlightconsume/gengo"
 )
 
 // aligned64 returns a window of raw at least n bytes long whose first byte is
@@ -4612,8 +4630,11 @@ func main() {
 }
 ```
 
+Run it by name. The directory also holds `produce.cpp`, and `go run .` refuses
+a package with C++ files in it unless it uses cgo:
+
 ```
-$ go run .
+$ go run consume.go
 go read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
 go build version 0x50bb1cc4b2f9c3a5
 ```
@@ -4652,14 +4673,15 @@ fixed table RenderShip
 
 ```
 $ schema generate --lang go --out gengo .
-$ go run .
+warning: table RenderFrame: a fixed table's record body is 213008 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+$ go run consume.go
 not this build's block
 ```
 
 Every schema edit is a regenerate on both sides. That is the trade for zero
 version machinery in a 60 Hz path: nothing to absorb, nothing to ask for by
 name. Data that outlives builds rides the wire, which this same table still
-has. Take `shield` back out and `go run .` reads the frame again.
+has. Take `shield` back out and `go run consume.go` reads the frame again.
 
 **You now have** the simulation to renderer handoff: filled in parallel at
 frame rate, read in place from another language, guarded by one comparison.
@@ -4681,10 +4703,12 @@ Part 6 drew the line: the packet wire, the cook and the block cross all nine
 targets, and the table wire is C++'s within one build. This part runs all three
 crossings, from the same `starlight` unit, into Go.
 
-Generate the Go side of the unit you already have:
+Generate the Go side of the unit you already have, into the consumer module
+from Part 12:
 
 ```
 $ schema generate --lang go --out gengo .
+warning: table RenderFrame: a fixed table's record body is 196624 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
 ```
 
 ### The packet wire
@@ -4736,7 +4760,7 @@ import (
 
 	"github.com/mas-bandwidth/serialize.go/v2"
 
-	"starlight"
+	starlight "starlightconsume/gengo"
 )
 
 func main() {
@@ -4812,7 +4836,7 @@ import (
 	"os"
 	"unsafe"
 
-	"starlight"
+	starlight "starlightconsume/gengo"
 )
 
 // aligned64 returns a window of raw at least n bytes long whose first byte is

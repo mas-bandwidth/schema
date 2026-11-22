@@ -2264,17 +2264,20 @@ table Scene
 }
 ```
 
-No pointer, no allocation, and the table stays fixed-size. Use `*` when the
+No pointer, no allocation, and a `fixed table` may hold it. Use `*` when the
 structure needs it: recursion (a chain, a tree), one large subtree you would
-rather not carry by value, or a node several parents name. One pointer
-anywhere in a table's by-value closure turns it variable-length, and that
-changes the whole build-and-load lifecycle below.
+rather not carry by value, or a node several parents name. A table with a
+pointer anywhere in its by-value closure must be a plain `table`, and that
+class has the whole build-and-load lifecycle below.
 
-**The compiler derives the mode; you never declare it.** A table with no
-pointer anywhere in its by-value closure is FIXED-SIZE — a plain struct with
-the three functions above, and it pays nothing at all for what follows. A
-table with a pointer in that closure is VARIABLE-LENGTH, and it is never held
-by value: you build it, lock it, and read it through a root pointer.
+**You declare the class; the compiler never derives it** (SPEC-TABLES.md §2.2).
+A `fixed table` is FIXED-SIZE — a plain struct with the three functions above,
+and it pays nothing at all for what follows; the compiler refuses one whose
+by-value closure holds a pointer, a map, an unbounded array, a used-size byte
+buffer, a guarded field or a nested variable table, naming the field. A plain
+`table` is VARIABLE-LENGTH whatever its fields are, and it is never held by
+value: you build it, lock it, and read it through a root pointer. A body that
+could be fixed today does not quietly become fixed.
 
 <!-- example: fragment -->
 ```cpp
