@@ -97,7 +97,7 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	}
 	sort.Strings(keys)
 	for _, n := range keys {
-		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") {
+		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") || featureMacro(n) {
 			continue
 		}
 		q, ok := qualify(n, decls.kind[n], pkg)
@@ -114,6 +114,13 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 		rename[n] = q
 	}
 	return rename, nil
+}
+
+// featureMacro: a feature-test macro (_POSIX_C_SOURCE, _DARWIN_C_SOURCE, ...)
+// a unit defines ahead of its first include. The C library reads it by its own
+// name, so it is never respelled.
+func featureMacro(n string) bool {
+	return len(n) > 1 && n[0] == '_' && n[1] >= 'A' && n[1] <= 'Z'
 }
 
 type kind int

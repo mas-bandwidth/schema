@@ -173,3 +173,18 @@ func TestRuntimeHeaderVersionTracksItsText(t *testing.T) {
 		t.Errorf("the include must check the header's own version %s with a hard #error:\n%s", version, inc)
 	}
 }
+
+// TestQualifyLeavesFeatureTestMacros: _POSIX_C_SOURCE and _DARWIN_C_SOURCE are
+// read by the C library under those names; a unit that defines them keeps them.
+func TestQualifyLeavesFeatureTestMacros(t *testing.T) {
+	out, err := Qualify(map[string][]byte{
+		"View.c": []byte("#ifndef _POSIX_C_SOURCE\n#define _POSIX_C_SOURCE 200809L\n#endif\n#define _DARWIN_C_SOURCE 1\nint vec3_count( void ) { return 1; }\n"),
+	}, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out["View.c"])
+	if !strings.Contains(got, "#define _POSIX_C_SOURCE 200809L") || !strings.Contains(got, "#define _DARWIN_C_SOURCE 1") || !strings.Contains(got, "example_vec3_count") {
+		t.Errorf("feature-test macros must pass through unqualified:\n%s", got)
+	}
+}
