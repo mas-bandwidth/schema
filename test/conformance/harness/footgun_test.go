@@ -34,6 +34,7 @@ const (
 //	good            answers wire, json-read and json-write over every instance
 //	silent          `list` prints nothing and exits 0
 //	unknown-surface `list` also names a surface the harness does not have
+//	retired         `list` also names the retired cook-reason surface
 //	partial         wire leaves beta unanswered
 //	ghost           wire also answers a row named ghost
 //	malformed       wire answers alpha with bytes that are not its wire
@@ -58,6 +59,8 @@ func fakeDriver(mode string, args []string) int {
 			return 0
 		case "unknown-surface":
 			fmt.Println("wirez")
+		case "retired":
+			fmt.Println("cook-reason")
 		}
 		fmt.Println("wire\njson-read\njson-write")
 		return 0
@@ -241,6 +244,17 @@ func TestDriverListingAnUnknownSurfaceIsRed(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "wirez") {
 		t.Fatalf("a driver listing the unknown surface wirez was not refused by name: %v\n%s", err, out)
 	}
+}
+
+// TestDriverListingARetiredSurfaceIsNamed: a retired surface name (drivers
+// still list cook-reason and block-reason) is not refused, but it is not
+// dropped in silence either: the run names it.
+func TestDriverListingARetiredSurfaceIsNamed(t *testing.T) {
+	out, ok, err := runFake(t, "retired", "")
+	if err != nil || !ok {
+		t.Fatalf("a driver listing a retired surface was refused: %v\n%s", err, out)
+	}
+	mustSay(t, out, []string{"conformance IGNORES cook-reason listed by the go leg: retired surface(s), not run and not scored", footer}, nil)
 }
 
 // TestDriverAnsweringSomeRowsIsRed: a row left unanswered fails by name.

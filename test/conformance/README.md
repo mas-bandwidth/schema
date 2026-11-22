@@ -391,6 +391,7 @@ success line:
 |---|---|
 | `list` exits 0 and names no surface | refuses the leg: `named no surface` (exit 1) |
 | `list` names a surface the harness does not have | refuses the leg, naming it (exit 1) |
+| `list` names a RETIRED surface (`cook-reason`, `block-reason`, `strict-reason`) | prints `conformance IGNORES <name> listed by the <lang> leg` on every run; not run, not scored |
 | leaves a row of a surface unanswered (no file, no `.absent`) | `FAIL`, `<lang> / <surface>: <row>: the driver wrote nothing` |
 | writes a file no row of the surface owns | `FAIL`, `<file>: the driver answered a row the corpus did not send` |
 | writes an answer that is not the row's | `FAIL`, the row and the first difference |

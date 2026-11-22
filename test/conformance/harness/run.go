@@ -780,9 +780,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		langs = append(langs, d.lang)
 		results[d.lang] = map[string]*result{}
 
-		listed, err := listSurfaces(d, derived)
+		listed, retired, err := listSurfaces(d, derived)
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
+		}
+		if len(retired) > 0 {
+			_, _ = io.WriteString(w, "conformance IGNORES "+strings.Join(retired, ", ")+" listed by the "+d.lang+" leg: retired surface(s), not run and not scored\n")
 		}
 		for _, s := range surfaces {
 			if opts.only != nil && !opts.only[s] {
@@ -1267,14 +1270,21 @@ func absentReference(surface, how string) string {
 			"against a surface nothing pins", surface, how)
 }
 
-func listSurfaces(d driver, manifest string) (map[string]bool, error) {
+// retiredSurfaces are surface names the harness once ran and no longer
+// does (readthenwrite_test.go holds them out of surfaces). A driver that
+// still lists one is stale, not wrong: the harness says so by name on every
+// run rather than dropping it in silence, and a name that is neither a surface
+// nor retired is refused.
+var retiredSurfaces = []string{"cook-reason", "block-reason", "strict-reason"}
+
+func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, "list")
 	cmd := exec.Command(argv[0], argv[1:]...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("`%s list` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
+		return nil, nil, fmt.Errorf("`%s` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
 	// `list` IS AN ANSWER AND IS HELD TO ONE. An empty list is a driver that
 	// answers nothing — exit 0 and no output reads exactly like a port that
@@ -1283,10 +1293,14 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	// harness never asks for (a typo, or a stale name), which it would
 	// otherwise drop in silence while the real surface went absent.
 	out := map[string]bool{}
-	var unknown []string
+	var unknown, retired []string
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		s := strings.TrimSpace(line)
 		if s == "" {
+			continue
+		}
+		if slices.Contains(retiredSurfaces, s) {
+			retired = append(retired, s)
 			continue
 		}
 		if !slices.Contains(surfaces, s) {
@@ -1296,14 +1310,14 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 		out[s] = true
 	}
 	if len(unknown) > 0 {
-		return nil, fmt.Errorf("`%s list` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
+		return nil, nil, fmt.Errorf("`%s` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
 			strings.Join(argv, " "), len(unknown), strings.Join(unknown, ", "), strings.Join(surfaces, ","))
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("`%s list` exited 0 and named no surface: a driver that answers nothing is not a pass",
+		return nil, nil, fmt.Errorf("`%s` exited 0 and named no surface: a driver that answers nothing is not a pass",
 			strings.Join(argv, " "))
 	}
-	return out, nil
+	return out, retired, nil
 }
 
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
