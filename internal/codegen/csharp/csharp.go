@@ -370,8 +370,8 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.needsSystem = true // [Flags]
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — one bit per variant, consumed as masks; wire %d bits (SPEC §4.2).\n", d.Name, d.WireBits)
-	g.tf("// The backing type is ulong in every declaration, the full width §4.2\n")
-	g.tf("// requires, so bits a newer build appended survive a read and a rewrite.\n")
+	g.tf("// The backing type is ulong in every declaration: 64 bits is the variant\n")
+	g.tf("// ceiling (§4.2), and a table load refuses a bit at or above the wire width.\n")
 	g.tf("[Flags]\npublic enum %s : ulong\n{\n", d.Name)
 	for i, v := range d.Variants {
 		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
