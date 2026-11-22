@@ -76,7 +76,7 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 }
 
 func requireToken(out string, err error, lang string) error {
-	want := fmt.Sprintf("BITPHASE_OK %s 66", lang)
+	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(requiredRoster()))
 	if err != nil {
 		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
 	}
@@ -111,28 +111,87 @@ func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestC
 	return loadManifest(corpusDir)
 }
 
+// bitphasePhases are the bit phases BitPhase.schema declares a packet for.
+var bitphasePhases = []int{0, 1, 7, 31, 32, 33, 56, 63}
+
+// requiredRoster is the corpus the verifier owes, row by row: the 0-bit
+// EmptyZero pair, and for every phase three valid variants and the five
+// hostile inputs (a flipped reserved, const, align and trailing-pad bit, and a
+// trailing byte). It is written here, not read from the manifest the C++
+// oracle writes (test/verify-bitphase/cpp/oracle.cpp), so that the manifest is
+// held to a roster it did not produce: 66 rows that are not THESE rows is not
+// the corpus, and that used to pass on the count alone (F-043: 66 copies of
+// the first EmptyZero row printed BITPHASE_OK).
+func requiredRoster() []manifestCase {
+	out := []manifestCase{
+		{"valid", "EmptyZero", "valid_empty.bin"},
+		{"refuse", "EmptyZero", "hostile_empty_pad.bin"},
+	}
+	for _, k := range bitphasePhases {
+		typ := fmt.Sprintf("Phase%d", k)
+		for v := range 3 {
+			out = append(out, manifestCase{"valid", typ, fmt.Sprintf("valid_p%d_v%d.bin", k, v)})
+		}
+		for _, kind := range []string{"reserved", "const", "align", "trailpad", "trailbyte"} {
+			out = append(out, manifestCase{"refuse", typ, fmt.Sprintf("hostile_%s_p%d.bin", kind, k)})
+		}
+	}
+	return out
+}
+
+// loadManifest reads the corpus and holds it to requiredRoster by IDENTITY:
+// every required row is there exactly once, no other row is, no line is
+// malformed, and no two rows carry the same bytes (a file copied over another
+// is one vector, not two).
 func loadManifest(corpusDir string) ([]manifestCase, map[string][]byte, error) {
 	mraw, err := os.ReadFile(filepath.Join(corpusDir, "manifest.tsv"))
 	if err != nil {
 		return nil, nil, err
 	}
+	required := map[manifestCase]bool{}
+	for _, c := range requiredRoster() {
+		required[c] = true
+	}
 	var cases []manifestCase
 	blobs := make(map[string][]byte)
-	for line := range strings.SplitSeq(strings.TrimSpace(string(mraw)), "\n") {
+	seen := map[manifestCase]bool{}
+	sameBytes := map[string]string{}
+	var bad []string
+	for n, line := range strings.Split(strings.TrimSpace(string(mraw)), "\n") {
 		fields := strings.Split(strings.TrimSpace(line), "\t")
 		if len(fields) != 3 {
+			bad = append(bad, fmt.Sprintf("line %d is not kind, type, file: %q", n+1, line))
 			continue
 		}
 		c := manifestCase{Kind: fields[0], Type: fields[1], File: fields[2]}
+		switch {
+		case !required[c]:
+			bad = append(bad, fmt.Sprintf("line %d (%s %s %s) is not a row of the required roster", n+1, c.Kind, c.Type, c.File))
+			continue
+		case seen[c]:
+			bad = append(bad, fmt.Sprintf("line %d repeats %s %s %s", n+1, c.Kind, c.Type, c.File))
+			continue
+		}
+		seen[c] = true
 		b, err := os.ReadFile(filepath.Join(corpusDir, c.File))
 		if err != nil {
 			return nil, nil, err
 		}
+		if other, dup := sameBytes[string(b)]; dup {
+			bad = append(bad, fmt.Sprintf("%s carries the same bytes as %s: one vector, counted twice", c.File, other))
+		}
+		sameBytes[string(b)] = c.File
 		cases = append(cases, c)
 		blobs[c.File] = b
 	}
-	if len(cases) != 66 {
-		return nil, nil, fmt.Errorf("expected 66 bitphase cases, got %d", len(cases))
+	for _, c := range requiredRoster() {
+		if !seen[c] {
+			bad = append(bad, fmt.Sprintf("the required row %s %s %s is missing", c.Kind, c.Type, c.File))
+		}
+	}
+	if len(bad) > 0 {
+		return nil, nil, fmt.Errorf("%s is not the bitphase corpus (%d required rows, %d distinct ones read):\n  %s",
+			filepath.Join(corpusDir, "manifest.tsv"), len(required), len(cases), strings.Join(bad, "\n  "))
 	}
 	return cases, blobs, nil
 }
@@ -211,8 +270,21 @@ func main() {
 	schemaMooFlag := flag.String("schema-moo", "./build/schema-moo", "path to build/schema-moo")
 	workFlag := flag.String("work", "./build/verify-bitphase", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
+	rosterCasesFlag := flag.String("roster-cases", "", "replay this committed folder of manifest cases and exit (testdata/roster-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only build oracle and generate corpus")
 	flag.Parse()
+	if *rosterCasesFlag != "" {
+		scratch, err := os.MkdirTemp("", "bitphase-roster-cases-")
+		if err == nil {
+			err = runRosterCases(*rosterCasesFlag, scratch)
+			_ = os.RemoveAll(scratch)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	repoRoot, err := filepath.Abs(*repoFlag)
 	if err != nil {
@@ -284,7 +356,7 @@ func main() {
 				errs <- err
 				return
 			}
-			fmt.Printf("BITPHASE_OK %s 66\n", lang)
+			fmt.Printf("BITPHASE_OK %s %d\n", lang, len(cases))
 		})
 	}
 	wg.Wait()

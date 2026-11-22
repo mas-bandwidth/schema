@@ -1221,6 +1221,17 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 
 test-js: tables-js-wire-fuzz-negative-control
 
+# THE MESSAGE-LOAD VERDICT (test/conformance/js/messageverdict.mjs): the
+# wire-fuzz adapters answer the public API's verdict, never a counter's
+# (F-112), replayed over the committed test/conformance/js/testdata/
+# message-verdict/cases.json beside a negative control that the counter
+# predicate fails exactly the F-112 cases. node:test, no generated code.
+.PHONY: js-message-verdict-test
+js-message-verdict-test:
+	$(NODE) --test test/conformance/js/messageverdict.test.mjs
+
+test-js: js-message-verdict-test
+
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;
 # cards-js-conformance runs the harness `cards` subcommand over the JS driver;
@@ -1716,6 +1727,7 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
 	@cp test/conformance/js/fixed.mjs build/$@/fixed.mjs
 	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
+	@cp test/conformance/js/messageverdict.mjs build/$@/messageverdict.mjs
 	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
 		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
@@ -1735,6 +1747,7 @@ conformance-negative-control-js-fixed: build/conformance-harness build/tables-ge
 	@rm -rf build/$@ && mkdir -p build/$@
 	@cp test/conformance/js/main.mjs build/$@/main.mjs
 	@cp test/conformance/js/writerefusal.mjs build/$@/writerefusal.mjs
+	@cp test/conformance/js/messageverdict.mjs build/$@/messageverdict.mjs
 	@sed 's/  if (row === undefined) { return codec; }/  if (row !== null) { return codec; }/' test/conformance/js/fixed.mjs > build/$@/fixed.mjs
 	@! cmp -s test/conformance/js/fixed.mjs build/$@/fixed.mjs || { echo "NEGATIVE CONTROL FAILED: the sabotage changed nothing"; exit 1; }
 	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver

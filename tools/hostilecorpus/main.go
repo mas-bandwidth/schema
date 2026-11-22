@@ -75,9 +75,23 @@ func run(command, root, dir string) error {
 			}
 			return fmt.Errorf("the Go engine disagrees with the committed manifest")
 		}
+		// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the
+		// engine answered against the cases the folder registers.
+		registered, err := hostilecorpus.Registered(dir)
+		if err != nil {
+			return err
+		}
+		ledger := hostilecorpus.NewLedger(registered)
+		for _, c := range got {
+			ledger.Ran(c.Name)
+		}
+		if err := ledger.Check(); err != nil {
+			return err
+		}
 		for _, c := range cases {
 			fmt.Printf("PASS %s\t%s\t%s\t%s\n", c.Name, c.Verdict, c.Reason, c.Digest)
 		}
+		fmt.Printf("go-engine hostile-corpus ledger: %s\n", ledger.Summary())
 		fmt.Printf("%d cases: the Go engine agrees with the committed manifest\n", len(cases))
 		return nil
 	default:

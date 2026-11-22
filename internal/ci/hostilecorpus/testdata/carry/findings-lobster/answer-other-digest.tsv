@@ -1,0 +1,2 @@
+# F-079 (Lobster form): the finding records an accept under another digest; the run fails
+wire-valid	accept bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	carry control: an accept under a digest the port does not give

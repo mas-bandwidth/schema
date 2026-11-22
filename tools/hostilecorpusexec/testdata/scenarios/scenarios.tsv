@@ -1,5 +1,5 @@
 # The runner scenario corpus: TestKnownFindingCannotHideExecutionFailure runs
-# every row against the one-case manifest.tsv beside this file (the case
+# every row against the one-case corpus/manifest.tsv (with its input) below this file (the case
 # expects `refuse damaged`).
 # scenario	child_answer	budget	findings	success
 #

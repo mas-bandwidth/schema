@@ -382,6 +382,7 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 				t.Fatalf("%s (%s): the Python hostile-corpus runner failed: %v\nstderr:\n%s\nstdout:\n%s",
 					unit.schema, filepath.Base(interpreter), err, stderr, stdout)
 			}
+			answered := 0
 			for line := range strings.SplitSeq(strings.TrimRight(stdout, "\n"), "\n") {
 				if line == "" {
 					continue
@@ -390,6 +391,7 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 				if len(fields) != 4 || fields[0] != "CASE" {
 					t.Fatalf("unexpected Python hostile-corpus output line %q", line)
 				}
+				answered++
 				answer := pythonHostileAnswer{verdict: fields[2], reason: fields[3]}
 				if answer.verdict == pythonHostileAccept {
 					answer.text, err = os.ReadFile(filepath.Join(unit.dir, "answers", fields[1]))
@@ -404,6 +406,12 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 						fields[1], previous.verdict, previous.reason, answer.verdict, answer.reason)
 				}
 				answers[fields[1]] = answer
+			}
+			// each interpreter answers every case it was handed: the two
+			// merge into one map, which would hide one of them stopping early
+			if answered != len(lines) {
+				t.Fatalf("%s (%s): the Python runner was handed %d case(s) and answered %d",
+					unit.schema, filepath.Base(interpreter), len(lines), answered)
 			}
 		}
 	}
@@ -483,6 +491,13 @@ func TestPythonRunsHostileCorpus(t *testing.T) {
 		t.Fatalf("the Python port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))
 	}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Python
+	// reader answered against the cases the folder registers, per carrier.
+	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("python hostile-corpus ledger: %s", summary)
 	t.Logf("%d hostile-corpus cases across %d schemas; both pinned interpreters agree", len(cases), len(pythonHostileSchemas(cases)))
 }
 

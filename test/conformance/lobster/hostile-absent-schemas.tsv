@@ -1,0 +1,5 @@
+# THE SCHEMAS THE LOBSTER TARGET REFUSES, whose hostile-corpus cases the port
+# does not run (test/conformance/lobster/hostile --absent-schemas). One line per
+# schema: the manifest's schema path, a tab, and one line saying why. A refused
+# schema no line names fails the ledger (its cases are registered and were not
+# run), and so does a line whose schema generates or is gone from the manifest.

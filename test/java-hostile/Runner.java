@@ -799,10 +799,16 @@ public final class Runner {
             budgetMs = Long.parseLong(budgetEnv);
         }
 
-        // known findings: name<TAB>slug<TAB>input<TAB>one line
+        // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where
+        // the answer is what this port gives the case today, `accept <digest>`
+        // or `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer
+        // and no other (F-079).
         Map<String, String[]> findings = new HashMap<>();
         if (Files.exists(findingsPath)) {
-            for (String[] f : rows(findingsPath, 4)) {
+            for (String[] f : rows(findingsPath, 5)) {
+                if (!f[3].matches("accept \\S+|refuse")) {
+                    throw new IOException(findingsPath + ": a finding's answer is `accept <digest>` or `refuse`: " + String.join("\t", f));
+                }
                 findings.put(f[0], f);
             }
         }
@@ -813,6 +819,9 @@ public final class Runner {
         List<String> bad = new ArrayList<>();
         List<String> stale = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+        // name, which tools/hostileledger holds to the corpus folder.
+        List<String> ranNames = new ArrayList<>();
         for (String[] f : manifest) {
             String name = f[0];
             String carrier = f[1];
@@ -820,6 +829,7 @@ public final class Runner {
             byte[] payload = Files.readAllBytes(corpus.resolve(f[4]));
             String expected = expected(f[6], f[7], f[8]);
             String got = isolated(packetDir, name, carrier, f[2], f[3], payload, budgetMs);
+            ranNames.add(name);
             String[] finding = findings.get(name);
             if (agrees(got, expected)) {
                 if (finding != null) {
@@ -829,8 +839,12 @@ public final class Runner {
                     System.out.println("PASS " + name);
                     passed++;
                 }
-            } else if (finding != null) {
-                System.out.println("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a reader missing
+            // from the classpath), and never a different verdict or digest
+            // (F-079: a refusal under a finding for a wrong digest).
+            } else if (finding != null && (finding[3].equals("refuse") ? got.startsWith("refuse ") : got.equals(finding[3]))) {
+                System.out.println("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[4] + " (got " + got + ")");
                 carried++;
             } else {
                 System.out.println("FAIL " + name + " carrier=" + carrier + " got=" + got + " want=" + expected);
@@ -846,6 +860,10 @@ public final class Runner {
         System.out.println(
                 manifest.size() + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, "
                         + bad.size() + " unexplained, " + stale.size() + " stale");
+        for (String name : ranNames) {
+            System.out.println("hostile-ledger ran " + name);
+        }
+        System.out.println("hostile-ledger end");
         // The count line build/mustrun reads: a case is RUN when the port
         // answered it (a pass, a carried FIX-CARD or an unexplained verdict),
         // so a case that stops being answered moves the count off the one the

@@ -1,0 +1,7 @@
+# THE BITPHASE ROSTER CASES (test/verify-bitphase/cases.go): id <TAB> verdict <TAB> copy <TAB> what the case is.
+# <id>.manifest.tsv is the manifest; copy names a file whose bytes are copied over the next one, or is -.
+whole	pass	-	control: the 66 rows the oracle writes
+first-row-66-times	red:line 2 repeats valid EmptyZero valid_empty.bin	-	F-043: 66 copies of the first legal EmptyZero row read as all 66 required cases
+one-row-short	red:the required row refuse Phase63 hostile_trailbyte_p63.bin is missing	-	control for F-043: 65 rows always failed
+one-row-twice-for-another	red:is missing	-	66 rows, one of them twice in place of another
+copied-vector	red:carries the same bytes as	valid_p0_v0.bin	66 distinct rows, one vector copied over the next

@@ -935,6 +935,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := emptySelection(results, only, skip, opts.only); err != nil {
 		return false, err
 	}
+	proveRan(langs, results)
 
 	if opts.coverage != nil {
 		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
@@ -945,6 +946,46 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 	return report(w, langs, results), nil
+}
+
+// proveRan holds a run to having looked at what the manifest registers: cases
+// run equals cases registered, per leg and per surface it ran.
+//
+//   - every case a surface registers has exactly one verdict, so a scoring loop
+//     that stops early is a failure and not a smaller total;
+//   - a leg that answered no case on any surface it ran is a failure: every
+//     surface absent, or every case `.absent`, is a leg that was not run.
+//
+// A surface that registers no case at all is main's strictRows rule (the gate
+// sets it in main.go), and a run with no leg or no row is emptySelection's;
+// proveRan adds the per-leg counts those whole-run checks cannot see.
+func proveRan(langs []string, results map[string]map[string]*result) {
+	for _, l := range langs {
+		answered := 0
+		var first *result
+		for _, s := range surfaces {
+			r := results[l][s]
+			if r == nil {
+				// a surface --surfaces did not select is not run at all
+				continue
+			}
+			if first == nil {
+				first = r
+			}
+			if len(r.cases) != r.total {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"%d case(s) registered and %d given a verdict: the run stopped short of the surface", r.total, len(r.cases)))
+			}
+			for _, v := range r.cases {
+				if v != "absent" {
+					answered++
+				}
+			}
+		}
+		if answered == 0 && first != nil {
+			first.failures = append(first.failures, "the leg answered no case on any surface: every one is absent, so nothing was compared")
+		}
+	}
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker

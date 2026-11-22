@@ -89,8 +89,8 @@ func TestSchemaCsRunsHostileCorpusWiring(t *testing.T) {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) != 4 {
-			t.Fatalf("carried finding has %d fields, want 4: %q", len(f), line)
+		if len(f) != 5 {
+			t.Fatalf("carried finding has %d fields, want 5 (name, slug, input, answer, one line): %q", len(f), line)
 		}
 		input, ok := cases[f[0]]
 		if !ok {
