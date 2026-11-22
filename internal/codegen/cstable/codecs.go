@@ -9,6 +9,7 @@ package cstable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1077,10 +1078,8 @@ func enumVariantDeprecated(en *ir.Enum, idx int) bool {
 		return true
 	}
 	if idx < len(en.VariantTags) {
-		for _, tag := range en.VariantTags[idx] {
-			if tag == "deprecated" {
-				return true
-			}
+		if slices.Contains(en.VariantTags[idx], "deprecated") {
+			return true
 		}
 	}
 	return false
