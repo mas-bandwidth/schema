@@ -51,8 +51,10 @@ opendir(my $dh, "test/conformance/moo") or die "stage.pl: test/conformance/moo: 
 my @plugins = sort grep { /^[a-z][a-z0-9_]*$/ } map { /^(.*)\.moo$/ ? $1 : () } readdir($dh);
 closedir $dh;
 # main.moo is the driver and wirefuzz.moo the wire-fuzz pipe (wirefuzz-driver),
-# neither a surface module
-@plugins = grep { $_ ne "main" && $_ ne "wirefuzz" } @plugins;
+# neither a surface module; writerefusalpacket.moo is the write-refusal-packet
+# probe (writerefusalpacket_test.go), run on its own, not a surface
+# (it requires the packet's own serialize module)
+@plugins = grep { $_ ne "main" && $_ ne "wirefuzz" && $_ ne "writerefusalpacket" } @plugins;
 emit("$stage/plugins.moo",
 	"--!strict\n-- written by test/conformance/moo/stage.pl: the surface modules beside main.moo\nreturn table.freeze({" . join(", ", map { "\"$_\"" } @plugins) . "})\n");
 
