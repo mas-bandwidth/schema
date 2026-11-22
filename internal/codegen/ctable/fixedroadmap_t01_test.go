@@ -18,7 +18,9 @@ package ctable
 // reason, `layout_hash` only where §5.9 #7 names it — and memcmps it with what
 // the reader returned, so a counter that moves, a `refuse_reason` set beside
 // a refusal by name, or a stray `layout_hash` is a byte of difference. The destination
-// is poisoned 0x5A first and every byte must still be 0x5A afterwards.
+// is poisoned 0x5A first; after a refusal every row handed in (the capacity
+// argument's worth) holds its declared defaults (ruling R4) and every row past
+// the capacity is still the poison.
 
 import (
 	"bytes"
@@ -42,10 +44,14 @@ import (
 // damage is the refusal whose name is in `refuse_reason`, and a refusal by
 // name keeps `refuse_reason` zero.
 const cT01Macros = `
+static int64_t t01_cap_ = 0; /* the capacity the last load was handed */
+#define T01_LOAD( V, CAP, ... ) ( t01_cap_ = (CAP), @SNAKE@_fixed_load( V, CAP, __VA_ARGS__ ) )
 #define RESET_BACK() do { memset( back, 0x5A, sizeof( back ) ); memset( &r, 0, sizeof( r ) ); } while ( 0 )
-#define CHECK_POISON( WHO ) do { const uint8_t * p_ = (const uint8_t *) back; int64_t i_; \
-    for ( i_ = 0; i_ < (int64_t) sizeof( back ); ++i_ ) \
-        if ( p_[i_] != 0x5A ) { printf( "%s: byte %lld is 0x%02x: a refusal wrote a destination byte\n", (WHO), (long long) i_, p_[i_] ); return 1; } } while ( 0 )
+#define CHECK_POISON( WHO ) do { static probe_row_t x_[8]; int64_t k_; \
+    memset( x_, 0x5A, sizeof( x_ ) ); \
+    for ( k_ = 0; k_ < t01_cap_ && k_ < 8; ++k_ ) { PROBE_RESET( &x_[k_] ); } \
+    for ( k_ = 0; k_ < 8; ++k_ ) \
+        if ( memcmp( &back[k_], &x_[k_], sizeof( x_[k_] ) ) != 0 ) { printf( "%s: row %lld is not %s after the refusal\n", (WHO), (long long) k_, k_ < t01_cap_ ? "its declared defaults" : "the untouched poison past the capacity" ); return 1; } } while ( 0 )
 #define EXPECT_REFUSED( WHO, REASON, HASH ) do { TableReport e_; \
     memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.layout_hash = (HASH); \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
@@ -65,7 +71,7 @@ const cT01Macros = `
 func cT01Body(t *testing.T, reader, body string) string {
 	t.Helper()
 	snake := ir.RustSnake(cFixedRootName(t, cUnitOf(t, reader)))
-	return strings.NewReplacer("@LOAD@", snake+"_fixed_load", "@SNAKE@", snake).Replace(cT01Macros + body)
+	return strings.NewReplacer("@LOAD@", "T01_LOAD", "@SNAKE@", snake).Replace(cT01Macros + body)
 }
 
 // cT01Forge writes a forged file and returns its path.
