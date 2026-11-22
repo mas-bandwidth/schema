@@ -8626,6 +8626,17 @@ entries. **The rows above are the normative meaning of every op**; how a port
 lays its plan entries out in memory (offset widths, guard lanes, partitioning)
 is its own, and only the verdicts and the landed values below are compared.
 
+**A `?T` IN AN OLDER LAYOUT NEVER LANDS IN A PLAIN `T`** (ruling R2,
+2026-11-22). A lineage entry whose layout holds a field as `?T`, where this
+build declares that field as plain `T`, has no lawful plan: the load refuses
+`kind_mismatch` (recommended name) and lands nothing, in every port, and never
+drops the present byte to land the payload alone. The other direction is
+lawful: a plain `T` in the older layout, read into the `?T` this build
+declares, lands PRESENT and holds the value the writer wrote. A conforming
+lock never holds the first shape (FIXED-FORM-ALGORITHM.md §5.1 refuses it as
+"optional removed"), so only a hand-made lineage meets it, and the per-port
+table `TestRulingsR2R5R9PortRows` (#4680) holds every port to the refusal.
+
 **THE LOAD, IN ORDER.** Every fixed-form read is these steps, and every
 refusal is TOTAL: no record lands and no counter moves, and every row the
 call was handed holds its declared defaults (§6.5, THE CALLER'S VALUES AFTER
@@ -20598,6 +20609,15 @@ take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[.
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
 prefix. Everything else: copied.
+
+**A GROWN `[N]T` BOUND GIVES EACH NEW SLOT A DEFAULT ELEMENT OF ITS OWN, IN
+EVERY FORM.** Where the reader declares a wider `[N]T` than the writer did, the
+elements the writer wrote land in the first slots and each slot past them holds
+a fresh default element: a scalar at the declared default of the element, a
+table or a type at its declared defaults, a union with no arm. The message
+form, the text form and this form do the same; no slot shares a value with
+another, and no slot holds a value the writer of this build would refuse
+(F-092; rows `message-drift widenbound_msg` and `rewrite widenbound_evodoc`).
 
 ### 21.3 What an older reader does with a newer file
 
