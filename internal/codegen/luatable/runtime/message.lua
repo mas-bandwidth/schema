@@ -458,6 +458,8 @@ local function elem_rides(T, d, v)
     return not same_float(d.f32, D.cf(d, v), 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
+  elseif s == "wide" then
+    return v.lo ~= 0 or v.hi ~= 0
   end
   return true
 end
@@ -472,7 +474,19 @@ rides = function(T, f, holder)
   local v = holder[f.name]
   local s = f.shape
   if s == "table" then return rides_table(T, f.target, v) end
-  if s == "array" then return elem_rides(T, f, v) end
+  if s == "array" then
+    -- A COUNTED ARRAY [Min..N]T IS ELIDED AT ITS BIRTH VALUE (§3.3, §22.2; the
+    -- Go engine's messageElides): a plain counted field holding exactly Min
+    -- elements, each at its default (a float by its bits, a table by a body
+    -- that is its terminator alone), is not written.
+    if not f.fixed and not f.list and not f.keyed and (f.min or 0) > 0 and type(v) == "table" and #v == f.min then
+      for i = 1, #v do
+        if elem_rides(T, f.elem, v[i]) then return true end
+      end
+      return false
+    end
+    return elem_rides(T, f, v)
+  end
   if s == "union" then return (v == nil and false) or (v.tag or 0) ~= 0 end
   if s == "enum" then
     local def = f.default

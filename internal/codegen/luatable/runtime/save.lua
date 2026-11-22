@@ -174,7 +174,13 @@ local function at_default(fd, v)
   if s == "array" then
     local n = count_of(fd, x)
     if n == 0 then return true end
-    if fd.list or not fd.fixed then return false end
+    -- A COUNTED ARRAY [Min..N]T IS ELIDED AT ITS BIRTH VALUE (§3.3, §22.2; the
+    -- Go engine's encodeArray): a plain counted field holding exactly Min
+    -- elements, each at its default. A table element is judged by its written
+    -- body, in write_field.
+    local born = not fd.fixed and not fd.list and not fd.keyed and (fd.min or 0) > 0 and n == fd.min
+      and not fd.optional and not fd.required
+    if not (fd.fixed or born) then return false end
     local e = fd.elem
     local es = e.shape
     if es == "table" then return false end
@@ -450,6 +456,9 @@ write_field = function(T, ids, nodes, fd, v, w)
     else
       if not fd.required and not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
+      local born_tables = not fd.fixed and not fd.list and (fd.min or 0) > 0 and n == fd.min
+        and not fd.optional and not fd.required and fd.elem.shape == "table"
+      local born_mark = #ids.list
       -- A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of
       -- the generated element record, its plain spelling rides each element
       -- as kind 12's own L and bytes, and `total` bounds the sum of the
@@ -490,6 +499,18 @@ write_field = function(T, ids, nodes, fd, v, w)
       else
         for i = 1, n do
           if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+        end
+      end
+      if born_tables then
+        -- every element's body is its terminator alone: the body is the kind,
+        -- the count, then n times `01 00`, and the field stays off the wire
+        local want = W()
+        w_u8(want, fd.elem_kind)
+        w_leb(want, n)
+        w_raw(want, string.rep("\1\0", n))
+        if table.concat(body.parts) == table.concat(want.parts) then
+          id_rollback(ids, born_mark)
+          return true
         end
       end
       w_leb(w, body.n)
