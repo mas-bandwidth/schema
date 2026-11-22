@@ -47,7 +47,7 @@ func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 			newer := evolutionLoad(t, "test/tables/VNEW_"+vec.Row+".schema")
 			mustRefuse := want.Refused || want.Clamped > 0
 			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: vec.Root,
-				capacity: 1, fresh: mustRefuse, data: gooseCorpusFile(t, corpus, vec.File), print: print})
+				capacity: 1, poison: mustRefuse, fresh: mustRefuse, data: gooseCorpusFile(t, corpus, vec.File), print: print})
 			if mustRefuse {
 				got.refuses(t, "out_of_range", false, 0)
 				return

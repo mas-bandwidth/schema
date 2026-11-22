@@ -154,9 +154,26 @@ var evolveStrictWant = strings.Join([]string{
 // the strict read. Empty means the artifact holds the rule.
 func evolveStrictProblems(code string) []string {
 	var bad []string
-	load, ok := fixedFunctionBody(code, "LineageFixedEvolveLoad")
+	// R4: the public load is the walk plus one reset of every row handed in.
+	wrap, ok := fixedFunctionBody(code, "LineageFixedEvolveLoad")
 	if !ok {
 		return []string{"the generated module has no LineageFixedEvolveLoad"}
+	}
+	for _, s := range []string{
+		"let n = _LineageFixedEvolveLoadWalk(values, raw, report);",
+		"if n < 0 {",
+		"while j < values.len { values[j] = Lineage { .. }; j += 1; }",
+	} {
+		if !strings.Contains(wrap, s) {
+			bad = append(bad, "LineageFixedEvolveLoad is missing "+s)
+		}
+	}
+	load, ok := fixedFunctionBody(code, "_LineageFixedEvolveLoadWalk")
+	if !ok {
+		return append(bad, "the generated module has no _LineageFixedEvolveLoadWalk")
+	}
+	if strings.Contains(load, "while j <= k { values[j] = Lineage") {
+		bad = append(bad, "_LineageFixedEvolveLoadWalk still resets a prefix of the batch instead of leaving it to the refusal exit")
 	}
 	for _, s := range []string{"report.oor += _LineageFixedClamp(", "report.oor += 1"} {
 		if strings.Contains(load, s) {
@@ -165,12 +182,11 @@ func evolveStrictProblems(code string) []string {
 	}
 	for _, s := range []string{
 		"let why = _LineageFixedStrictRefuse(values[k]);",
-		"while j <= k { values[j] = Lineage { .. }; j += 1; }",
 		"return schema_rt::fixed_evolve_refuse(report, why, false);",
 		"return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false);",
 	} {
 		if !strings.Contains(load, s) {
-			bad = append(bad, "LineageFixedEvolveLoad is missing "+s)
+			bad = append(bad, "_LineageFixedEvolveLoadWalk is missing "+s)
 		}
 	}
 	return bad
@@ -244,8 +260,6 @@ func TestGooseFixedEvolveLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	code := string(files["ProbeTable.goose"])
 	const strictBlock = `let why = _LineageFixedStrictRefuse(values[k]);
             if why != 0 {
-                var j: i64 = 0;
-                while j <= k { values[j] = Lineage { .. }; j += 1; }
                 return schema_rt::fixed_evolve_refuse(report, why, false);
             }`
 	clamping := strings.ReplaceAll(code, strictBlock, "report.oor += _LineageFixedClamp(values[k]);")

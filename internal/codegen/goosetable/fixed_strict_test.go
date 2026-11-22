@@ -66,20 +66,39 @@ func fixedFunctionBody(src, name string) (string, bool) {
 func strictFixedProblems(code string) []string {
 	var bad []string
 
+	// R4 (SPEC-TABLES §6.5): TFixedLoad is the walk plus ONE reset of every row
+	// handed in (values.len, not 0..k) on a refusal; the strict refusal itself
+	// lives in the walk and no longer resets a prefix of its own.
 	load, ok := fixedFunctionBody(code, "TFixedLoad")
 	if !ok {
 		bad = append(bad, "the generated module has no TFixedLoad")
 	} else {
-		if strings.Contains(load, "report.oor += _TFixedClamp(") {
-			bad = append(bad, "TFixedLoad still clamps and counts oor instead of refusing")
-		}
 		for _, s := range []string{
-			"let why = _TFixedStrictRefuse(values[k]);",
-			"while j <= k { values[j] = T { .. }; j += 1; }",
-			"return schema_rt::fixed_refuse(report, why, false);",
+			"let n = _TFixedLoadWalk(values, data, report);",
+			"if n < 0 {",
+			"while j < values.len { values[j] = T { .. }; j += 1; }",
 		} {
 			if !strings.Contains(load, s) {
 				bad = append(bad, "TFixedLoad is missing "+s)
+			}
+		}
+	}
+	walk, ok := fixedFunctionBody(code, "_TFixedLoadWalk")
+	if !ok {
+		bad = append(bad, "the generated module has no _TFixedLoadWalk")
+	} else {
+		if strings.Contains(walk, "report.oor += _TFixedClamp(") {
+			bad = append(bad, "_TFixedLoadWalk still clamps and counts oor instead of refusing")
+		}
+		if strings.Contains(walk, "while j <= k { values[j] = T") {
+			bad = append(bad, "_TFixedLoadWalk still resets a prefix of the batch instead of leaving it to the refusal exit")
+		}
+		for _, s := range []string{
+			"let why = _TFixedStrictRefuse(values[k]);",
+			"return schema_rt::fixed_refuse(report, why, false);",
+		} {
+			if !strings.Contains(walk, s) {
+				bad = append(bad, "_TFixedLoadWalk is missing "+s)
 			}
 		}
 	}
@@ -205,8 +224,8 @@ fn main() {
 
     // 8. A non-zero dead byte refuses the whole load: the absent optional's
     // payload (NotePresent = 0, Note = 9999) and a counted array's slot past
-    // its count (Leaves[1].Active = 255) are dead, and the refusal leaves the
-    // caller's destination as it was.
+    // its count (Leaves[1].Active = 255) are dead, and the refusal leaves every
+    // row handed in at its declared defaults (R4).
     var dead: u8[>..] = [];
     copy_bytes(clean, dead);
     dead[rec1 + 15] = 0;
@@ -295,7 +314,7 @@ func TestGooseFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	code := string(files["ProbeTable.goose"])
 
 	clamping := strings.Replace(code,
-		"let why = _TFixedStrictRefuse(values[k]);\n        if why != 0 {\n            var j: i64 = 0;\n            while j <= k { values[j] = T { .. }; j += 1; }\n            return schema_rt::fixed_refuse(report, why, false);\n        }",
+		"let why = _TFixedStrictRefuse(values[k]);\n        if why != 0 {\n            return schema_rt::fixed_refuse(report, why, false);\n        }",
 		"report.oor += _TFixedClamp(values[k]);", 1)
 	if clamping == code {
 		t.Fatal("negative control: the strict-refuse block is not in the generated load")
