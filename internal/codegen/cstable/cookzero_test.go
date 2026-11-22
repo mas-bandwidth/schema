@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // AN ABSENT OPTIONAL'S PAYLOAD AND A COUNTED ARRAY'S DEAD SLOTS ARE ZERO
@@ -70,7 +71,7 @@ func TestCsCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
@@ -86,7 +87,7 @@ func TestCsCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 	}
 	wireDir := filepath.Join(root, "testdata", "conformance", "tables", "wire")
 	cookDir := filepath.Join(root, "testdata", "conformance", "tables", "cook-write")
-	cmd = exec.Command(csDotnet(), "exec", app,
+	cmd = testproc.Command(t, csDotnet(), "exec", app,
 		filepath.Join(wireDir, "keyed_config.bin"),
 		filepath.Join(wireDir, "root_full.bin"),
 		out)

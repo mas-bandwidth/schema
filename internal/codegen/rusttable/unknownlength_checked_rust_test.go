@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unknownLengthSchema = `package probe
@@ -189,12 +191,12 @@ func TestRustUnknownLengthCheckedInEveryProfile(t *testing.T) {
 			}
 			args = append(args, profile.args...)
 			args = append(args, "-o", bin, "main.rs")
-			build := exec.Command("rustc", args...)
+			build := testproc.Command(t, "rustc", args...)
 			build.Dir = dir
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("the %s probe did not build: %v\n%s", profile.name, err, out)
 			}
-			run := exec.Command(bin)
+			run := testproc.Command(t, bin)
 			run.Dir = dir
 			out, err := run.CombinedOutput()
 			lines := map[string]string{}

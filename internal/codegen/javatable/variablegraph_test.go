@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE POINTER GRAPH'S IDENTITY ON THE JAVA LEG (docs/PORTING.md M6 and M14;
@@ -111,10 +112,10 @@ func runGraphDriver(t *testing.T, javac, javaBin string, files map[string][]byte
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver",
 		filepath.Join(dir, "shared.wire"), filepath.Join(dir, "shared.json")).CombinedOutput()
 	return string(out), err == nil && strings.Contains(string(out), "ok")
 }

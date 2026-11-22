@@ -14,7 +14,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const csJsonFlagsNameOnceDir = "../../../testdata/wire/json-flags-name-once"
@@ -219,7 +220,7 @@ public static class FlagsNameOnceProbe
 	for _, r := range refs {
 		args = append(args, "-r:"+r)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -230,7 +231,7 @@ public static class FlagsNameOnceProbe
 		t.Fatal(err)
 	}
 	runArgs := append([]string{"exec", app}, inputs...)
-	run := exec.Command(csDotnet(), runArgs...)
+	run := testproc.Command(t, csDotnet(), runArgs...)
 	run.Env = csDotnetEnv(dir, dir)
 	run.Dir = dir
 	out, err := run.CombinedOutput()

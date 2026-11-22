@@ -1,0 +1,15 @@
+# The message read of a value outside its declared range (docs/SPEC-TABLES.md
+# §3.3): the writer (writer.schema, the record at another build: no range, a
+# plain float, a wider bits field) saves each value, and the reader
+# (reader.schema) loads it after the writer's announcement.
+# TestRustMessageOutOfRangeRefusedByName reads every row, holds the Go oracle
+# (tablewire.DecodeMessages) to the verdict and the generated Rust reader to
+# the same verdict.
+# case	writer_json	verdict	ticks
+#
+# verdict: read (the value is held, ticks is the first field read) or
+# out_of_range (refused by name, not as wire damage; nothing is read).
+in_range	{"ticks":5,"level":50,"temp":0.5,"flags":3}	read	5
+level_past_max	{"ticks":5,"level":150}	out_of_range	-
+temp_past_max	{"ticks":5,"temp":2.0}	out_of_range	-
+flags_past_width	{"ticks":5,"flags":200}	out_of_range	-

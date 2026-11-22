@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,6 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormBatchJava(t *testing.T) {
@@ -525,19 +526,19 @@ func runMessageBatchProbeWithin(t *testing.T, u *ir.Unit, body string, timeout t
 		t.Fatal(err)
 	}
 	args = append(args, driverPath)
-	cmd := exec.Command(javac, args...)
+	cmd := testproc.Command(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	var run *exec.Cmd
+	var run *testproc.Cmd
 	var ctx context.Context
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		run = exec.CommandContext(ctx, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+		run = testproc.CommandContext(t, ctx, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
 	} else {
-		run = exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+		run = testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
 	}
 	out, err := run.CombinedOutput()
 	if err != nil {

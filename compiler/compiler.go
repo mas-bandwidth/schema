@@ -92,8 +92,8 @@ type Compiler struct {
 	// them to stderr.
 	OnWarn func(msg string)
 
-	gens      map[string]Generator // every accepted --lang spelling
-	canonical []string             // one per registered generator, its first name
+	gens      map[string]*registration // every accepted --lang spelling
+	canonical []string                 // one per registered generator, its first name
 }
 
 // New returns a driver with every built-in generator this build carries

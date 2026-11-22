@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -313,10 +314,10 @@ func runJavaDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
 		t.Fatal(err)
 	}
 	args = append(args, driverPath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver").CombinedOutput()
 	return string(out), err
 }
 

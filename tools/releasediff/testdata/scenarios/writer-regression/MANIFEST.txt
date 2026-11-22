@@ -1,0 +1,8 @@
+# one unit, five instances; previous.tsv and new.tsv say what each compiler
+# writes for them, expect.tsv what the gate must report
+unit same tables/same
+instance s1 same Root wire/s1.bin
+instance s2 same Root wire/s2.bin
+instance s3 same Root wire/s3.bin
+instance s4 same Root wire/s4.bin
+instance s5 same Root wire/s5.bin

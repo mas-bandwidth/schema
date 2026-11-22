@@ -3,7 +3,6 @@ package gotable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
@@ -726,7 +727,7 @@ func TestPlanPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("plan path: %v\n%s", err, out)
@@ -1358,7 +1359,7 @@ func TestArgLane(t *testing.T) {
 		t.Fatal(err)
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

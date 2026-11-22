@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFromJsonKeepsUint64AboveInt64MaxJava sends the Java variable form a table
@@ -76,7 +77,7 @@ table T
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -121,7 +122,7 @@ table T
 		in.WriteString(c.json)
 		in.WriteString("\n")
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver")
 	cmd.Stdin = strings.NewReader(in.String())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
