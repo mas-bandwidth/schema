@@ -186,12 +186,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "docs only",
 			files: "docs/TUTORIAL.md",
-			want:  `no|./internal/docgate ./internal/tablepack|[]`,
+			want:  `no|./internal/docgate ./internal/tablepack ./compiler|[]`,
 		},
 		{
 			name:  "language list page",
 			files: "docs/CONTRIBUTING.md",
-			want:  `no|./internal/docgate ./internal/tablepack ./internal/languages|[]`,
+			want:  `no|./internal/docgate ./internal/tablepack ./compiler ./internal/languages|[]`,
 		},
 		{
 			name:  "broad compiler change",
@@ -218,7 +218,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "usage page",
 			files: "docs/USAGE.md",
-			want:  `no|./internal/goldens ./internal/docgate ./internal/tablepack ./internal/languages|[]`,
+			want:  `no|./internal/goldens ./internal/docgate ./internal/tablepack ./compiler ./internal/languages|[]`,
 		},
 		{
 			// a card's targets live in their own make/<lang>-<topic>.mk,
@@ -283,10 +283,14 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
 		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
-		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack`},
+		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack ./compiler`},
+		// the compiler's own page-text tests read pages the docgate rule does
+		// not name: a nested page and the rulings file
+		{"nested page", "docs/plans/strict-only.md", `[]|./compiler`},
+		{"rulings", "docs/rulings.json", `[]|./compiler`},
 		// a page that states the language list re-checks it against the registry
-		{"language list page", "docs/CONTRIBUTING.md", `[]|./internal/docgate ./internal/tablepack ./internal/languages`},
-		{"readme", "README.md", `[]|./internal/docgate ./internal/tablepack ./internal/languages`},
+		{"language list page", "docs/CONTRIBUTING.md", `[]|./internal/docgate ./internal/tablepack ./compiler ./internal/languages`},
+		{"readme", "README.md", `[]|./internal/docgate ./internal/tablepack ./compiler ./internal/languages`},
 		{"target file", "compiler/target_moo.go", `["dart","go","lua"]|./compiler ./internal/languages ./internal/fuzz`},
 		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler ./internal/fuzz`},
 		// the shared packet corpora are every lens's input

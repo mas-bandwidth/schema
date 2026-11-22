@@ -1,0 +1,32 @@
+package starlight
+
+table GunnerSettings
+{
+    sensitivity float32 = 1.0
+}
+
+table ShipConfig
+{
+    display_name string(32)
+    max_health   float32 = 100.0
+    max_speed    float32 = 500.0
+    armor        int32 = 1       | min = 0, max = 10
+    ship_type    ShipType
+    systems      SystemFlags
+    settings     ?GunnerSettings
+    tier         ?int32
+}
+
+table WeaponConfig
+{
+    damage float32 = 21.0
+    homing bool
+}
+
+table GameConfig
+{
+    friendly_fire bool
+    weapons       [..MaxWeapons]WeaponConfig
+    ships         [ShipType]ShipConfig
+    level_name    string(64)
+}

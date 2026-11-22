@@ -25,20 +25,23 @@ type exampleTool struct {
 	how  string // "compile" or "parse"
 	tool string // the program, for the missing-toolchain message
 	env  string // the environment variable that overrides it
-	args func(file, gen, root string) []string
+	// args is the command line: the example's file, the generated output,
+	// the unit's own directory (the hand headers a page keeps beside its
+	// schema files, the tutorial's `-I .`), and the repository root.
+	args func(file, gen, unit, root string) []string
 }
 
 var exampleTools = map[string]exampleTool{
-	"cpp": {"compile", "c++", "CXX", func(file, gen, root string) []string {
-		return []string{"-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", runtimeDir(root, "SERIALIZE", "serialize"), file}
+	"cpp": {"compile", "c++", "CXX", func(file, gen, unit, root string) []string {
+		return []string{"-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", unit, "-I", runtimeDir(root, "SERIALIZE", "serialize"), file}
 	}},
-	"c": {"compile", "cc", "CC", func(file, gen, root string) []string {
-		return []string{"-std=c11", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", runtimeDir(root, "SERIALIZE_C", "serialize.c"), file}
+	"c": {"compile", "cc", "CC", func(file, gen, unit, root string) []string {
+		return []string{"-std=c11", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", unit, "-I", runtimeDir(root, "SERIALIZE_C", "serialize.c"), file}
 	}},
-	"js":     {"parse", "node", "NODE", func(file, _, _ string) []string { return []string{"--check", file} }},
-	"python": {"parse", "python3", "PYTHON", func(file, _, _ string) []string { return []string{"-m", "py_compile", file} }},
-	"ruby":   {"parse", "ruby", "RUBY", func(file, _, _ string) []string { return []string{"-c", file} }},
-	"lua":    {"parse", "luac", "LUAC", func(file, _, _ string) []string { return []string{"-p", file} }},
+	"js":     {"parse", "node", "NODE", func(file, _, _, _ string) []string { return []string{"--check", file} }},
+	"python": {"parse", "python3", "PYTHON", func(file, _, _, _ string) []string { return []string{"-m", "py_compile", file} }},
+	"ruby":   {"parse", "ruby", "RUBY", func(file, _, _, _ string) []string { return []string{"-c", file} }},
+	"lua":    {"parse", "luac", "LUAC", func(file, _, _, _ string) []string { return []string{"-p", file} }},
 }
 
 // runtimeDir is where a packet example's runtime header lives: the checkout
@@ -178,7 +181,7 @@ func TestExamplesCompile(t *testing.T) {
 			if err := os.WriteFile(file, []byte(source), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(program, tool.args(file, gen, root)...)
+			cmd := exec.Command(program, tool.args(file, gen, filepath.Join(root, filepath.FromSlash(e.Unit)), root)...)
 			cmd.Dir = dir
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("%s:%d does not %s against %s: %v\n%s", e.Page, e.Line, tool.how, e.Unit, err, out)
