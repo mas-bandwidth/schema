@@ -390,8 +390,8 @@ func TestNightlyRedClassify(t *testing.T) {
 	}
 	other := sched
 	other.Conclusion, other.Path = "failure", ".github/workflows/certify.yml"
-	if got, _, _ := nightlyred.Classify(other, nil); got != nightlyred.Quiet {
-		t.Errorf("a failed certify.yml run is %s, want quiet: this announces ci-full only", got)
+	if got, why, err := nightlyred.Classify(other, nil); err != nil || got != nightlyred.Quiet {
+		t.Errorf("a failed certify.yml run is %s (%s, %v), want quiet: this announces ci-full only", got, why, err)
 	}
 	running := sched
 	running.Status = "in_progress"
