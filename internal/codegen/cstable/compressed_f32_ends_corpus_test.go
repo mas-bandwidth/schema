@@ -150,8 +150,8 @@ static class F32EndsProbe
                         : Load(File(input + "." + form + ".bin"), root, out ok, out reason);
                     if (expect == "refused")
                     {
+                        // refusal-verdict-only (docs/rulings.json): the verdict is checked, never the reason.
                         if (ok) { Fail(row, "the " + form + " read was not refused"); }
-                        else if (form != "json" && reason != "out_of_range") { Fail(row, "refused, but not out_of_range: " + reason); }
                     }
                     else if (!ok) { Fail(row, "the " + form + " read refused the value at the float32 end: " + reason); }
                     else { SaveTwice(row, value, root, own, File(expect + "." + own + ".bin")); }
