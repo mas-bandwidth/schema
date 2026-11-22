@@ -6455,6 +6455,15 @@ int surfaceWriteRefusal(String outDir, String surface) {
             answer = _catchWrite(() => tabledemo.rootConfigToJson(w).isEmpty ? -1 : 0);
           }
           break;
+        case 'tabledemo Moods':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.Moods();
+          _f2w_examples_Moods(fx, w);
+          if ('$path $vkind' != 'row[0] ordinal' || w.row.isEmpty) return 1;
+          w.row[0] = (int.parse(text) as dynamic);
+          answer = _catchWrite(() => tabledemo.moodsToJson(w).isEmpty ? -1 : 0);
+          break;
         case 'tabledemo LoadoutConfig':
           final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
           if (fx == null) return 1;
