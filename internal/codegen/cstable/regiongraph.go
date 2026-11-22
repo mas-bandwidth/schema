@@ -177,7 +177,7 @@ const tableRegionGraphSource = `
     static unsafe void RegionCycleField(ref RegionCycle c, NativeValue value, TableFieldInfo f)
     {
         if (f == null) { return; }
-        int n = f.IsArray ? Math.Max(0, RegionCount(value, f)) : 1;
+        int n = f.IsArray ? global::System.Math.Max(0, RegionCount(value, f)) : 1;
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13) { RegionCycleSlots(ref c, value.Child(f, i), f.Table); }
