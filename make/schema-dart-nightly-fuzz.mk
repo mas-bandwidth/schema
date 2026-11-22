@@ -141,7 +141,7 @@ schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fu
 	# in the last eight bytes. The count is -2 and the body never terminates,
 	# so the sabotaged open() walks the limit past the buffer.
 	@printf '\001\177\376\377\377\377\377\377\377\377' > $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds/negative-count.bin
-	@f=$$(grep -rl 'if (count < 0 || count > (data.length - 9) ~/ 8) return 2;' $(DART_NIGHTLY_FUZZ_BUILD)-nc/gen | head -1); \
+	@f=$$(grep -rl 'if (count < 0 || count > (data.length - 9) ~/ 8) return 2;' $(DART_NIGHTLY_FUZZ_BUILD)-nc/gen | sed -n 1p); \
 	if [ -z "$$f" ]; then echo "NEGATIVE CONTROL FAILED: the negative-count bound matched nothing — the emitter moved"; exit 1; fi; \
 	sed -i.bak 's@if (count < 0 || count > (data.length - 9) ~/ 8) return 2;@if (count > (data.length - 9) ~/ 8) return 2; // SABOTAGED@' "$$f" && rm -f "$$f.bak"; \
 	grep -q SABOTAGED "$$f" || { echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing"; exit 1; }

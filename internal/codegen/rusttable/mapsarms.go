@@ -536,6 +536,9 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 	fmt.Fprintf(b, "%slet count = %s;\n", ind, count)
 	fmt.Fprintf(b, "%sleb_write(&mut %s, count as u64);\n", ind, dst)
 	fmt.Fprintf(b, "%sfor (j, e) in %s.iter().take(count).enumerate() {\n", ind, x)
+	// a fixed array's compressed elements hold the float32 range on write, as
+	// a counted array's do (docs/SPEC-TABLES.md §3.3)
+	b.WriteString(rustFloatRangeAssert(f, "(*e)", ind+"    "))
 	g.emitElementWrite(b, f, "e", dst, ordinal, ind+"    ")
 	fmt.Fprintf(b, "%s}\n", ind)
 	if f.Array == ir.ArrayFixed {

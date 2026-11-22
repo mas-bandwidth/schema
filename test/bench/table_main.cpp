@@ -206,7 +206,12 @@ static bool spill( const char * path, const uint8_t * data, size_t bytes )
 static const char * const GoldenPath = "testdata/wire/bench_table.bin";
 static const char * const VariantPath = "bench/corpus/variants/bench_table.variants.bin";
 
-int main( int argc, char ** argv )
+// every record round trip and each committed-file compare is one counted
+// unit: main prints "ran N, failed M" and build/mustrun holds N to the count
+// the recipe registers
+static int g_ran = 0;
+
+static int run_all( int argc, char ** argv )
 {
     const char * mode = argc > 1 ? argv[1] : "verify";
     if ( strcmp( mode, "pin" ) != 0 && strcmp( mode, "verify" ) != 0 )
@@ -224,6 +229,7 @@ int main( int argc, char ** argv )
 
     for ( int k = 0; k < NumVariants; k++ )
     {
+        g_ran++;
         fill( instance );
 
         const int64_t measured = TableMixedMeasure( instance );
@@ -303,12 +309,14 @@ int main( int argc, char ** argv )
         fprintf( stderr, "missing %s — run `make bench-table-corpus` from the repository root\n", VariantPath );
         return 1;
     }
+    g_ran++;
     if ( golden.size() != (size_t) record || memcmp( golden.data(), corpus.data(), (size_t) record ) != 0 )
     {
         fprintf( stderr, "GOLDEN MISMATCH: %s is %zu bytes, this build produces %lld\n",
                  GoldenPath, golden.size(), (long long) record );
         return 1;
     }
+    g_ran++;
     if ( committed != corpus )
     {
         fprintf( stderr, "VARIANT CORPUS MISMATCH: %s is %zu bytes, this build produces %zu\n",
@@ -317,4 +325,12 @@ int main( int argc, char ** argv )
     }
     printf( "bench table corpus OK: %d records of %lld bytes\n", NumVariants, (long long) record );
     return 0;
+}
+
+int main( int argc, char ** argv )
+{
+    int status = run_all( argc, argv );
+    int failed = status != 0 ? 1 : 0;
+    printf( "schema_test_bench_table: ran %d, failed %d\n", g_ran, failed );
+    return ( failed != 0 || g_ran == 0 ) ? 1 : 0;
 }

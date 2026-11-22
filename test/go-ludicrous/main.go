@@ -25,19 +25,24 @@ import (
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
-var failed bool
+// Every check and checkErr call is counted: the last line this program prints
+// is "ran N, failed M", which tools/mustrun holds against the count the recipe
+// registers, so a check that stops running is red.
+var ran, failed int
 
 func check(ok bool, what string) {
+	ran++
 	if !ok {
 		fmt.Printf("FAILED: %s\n", what)
-		failed = true
+		failed++
 	}
 }
 
 func checkErr(err error, what string) {
+	ran++
 	if err != nil {
 		fmt.Printf("FAILED: %s: %v\n", what, err)
-		failed = true
+		failed++
 	}
 }
 
@@ -258,8 +263,8 @@ func main() {
 		check(ludicrous.ReadUnsignedProbe(hrs, &hOut) != nil, "a smuggled ufixed high-half offset is REJECTED")
 	}
 
-	if failed {
+	fmt.Printf("ran %d, failed %d\n", ran, failed)
+	if failed != 0 || ran == 0 {
 		os.Exit(1)
 	}
-	fmt.Println("OK")
 }

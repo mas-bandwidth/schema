@@ -430,6 +430,12 @@ static class Runner
         }
         Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, " + skipped + " skipped, "
             + bad.Count + " unexplained, " + stale.Count + " stale");
-        return bad.Count == 0 && stale.Count == 0 ? 0 : 1;
+        // The count line build/mustrun reads: a case is RUN when the port
+        // answered it (a pass or a carried FIX-CARD). A SKIP is not run, so a
+        // case that starts skipping moves the count off the one the recipe
+        // registers, and an empty manifest runs nothing and is red.
+        int ran = passed + carried + bad.Count;
+        Console.WriteLine("unity-hostile: ran " + ran + ", failed " + (bad.Count + stale.Count));
+        return bad.Count == 0 && stale.Count == 0 && ran > 0 ? 0 : 1;
     }
 }
