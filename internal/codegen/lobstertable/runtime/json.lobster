@@ -1741,6 +1741,10 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         r.bad = true
         return false
+    // a [Min..Max] count below its Min refuses as one past its Max does
+    // (docs/SPEC.md §5.1 row 3; tablewire decode count_over_bound)
+    if f.array == "counted" and placed < f.min:
+        return j_refuse(r, "count_over_bound")
     sl.count = placed
     return true
 
@@ -1803,6 +1807,10 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.pos++
             break
         return j_refuse(r, "malformed")
+    // a [Min..Max] count below its Min refuses as one past its Max does
+    // (docs/SPEC.md §5.1 row 3; tablewire decode count_over_bound)
+    if f.array == "counted" and placed < f.min:
+        return j_refuse(r, "count_over_bound")
     sl.count = placed
     return true
 
