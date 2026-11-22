@@ -1803,6 +1803,11 @@ defmodule Bench.Table do
 
       {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}

@@ -195,6 +195,16 @@ final class WireState {
 
   int mark() => ids.length;
 
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+  // table of more than 4096 entries, so a save refuses a value that needs more
+  // and never writes a file its readers refuse. Checked once, where the table
+  // is written, so an interned id a rollback undoes never refuses.
+  void checkIdBound() {
+    if (ids.length > 4096) {
+      throw StateError('id_table_full: ${ids.length} ids, past the maximum of 4096 (docs/SPEC-TABLES.md §3)');
+    }
+  }
+
   // rollback drops ids interned after mark, so an elided by-value body leaves
   // nothing in the id table (§3).
   void rollback(int m) {
@@ -294,7 +304,7 @@ final class WireState {
     if (r != null) return r;
     if (!_retainKnown.contains(id)) {
       final t = retain;
-      if (t == null || t.idUsed >= t.ids.length) {
+      if (t == null || t.idUsed >= t.ids.length || ids.length >= 4096) {
         lost = true;
         return 0;
       }
@@ -4980,6 +4990,7 @@ Uint8List fixedTableWireSave(FixedTable v) {
   fixedTableWireSaveBodyFields(w, v);
   _writeNodeTable(w);
   w.putByte(0);
+  state.checkIdBound();
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
   return Uint8List.fromList(w.buf);
