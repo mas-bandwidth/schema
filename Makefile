@@ -7049,7 +7049,11 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # recipe: once build/serialize.go/go.mod exists, a named-but-absent SERIALIZE_GO
 # still resolves SERIALIZE_GO_RUNTIME to the fetched copy, the file prerequisite
 # is up to date, and a phony target with only that prerequisite would report
-# nothing to be done.
+# nothing to be done. SERIALIZE_GO_RUNTIME is resolved when the Makefile is
+# read, so a sibling that deps-go publishes LATER in the same run (CI's
+# verify-leg jobs stage none) is linked as build/serialize.go rather than
+# leaving the rule's own target unmade; internal/ci/serializegorace_test.go
+# holds both cases.
 SERIALIZE_GO_PIN     ?= v2.1.1
 SERIALIZE_C_PIN      ?= v2.1.1
 SERIALIZE_CS_PIN     ?= v2.2.1
@@ -7163,7 +7167,11 @@ deps: serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
-	@if test -f "$(SERIALIZE_GO)/go.mod"; then :; \
+	@if test -f "$(SERIALIZE_GO)/go.mod" && test "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO)"; then :; \
+	elif test -f "$(SERIALIZE_GO)/go.mod"; then \
+		echo "tables Go versioning: the sibling runtime '$(SERIALIZE_GO)' arrived during this run (deps-go); linking $(SERIALIZE_GO_RUNTIME), the runtime this run resolved, to it"; \
+		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
+		test -f "$@" || ln -sfn "$(abspath $(SERIALIZE_GO))" "$(SERIALIZE_GO_RUNTIME)"; \
 	elif test "$(origin SERIALIZE_GO)" != "file"; then \
 		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
