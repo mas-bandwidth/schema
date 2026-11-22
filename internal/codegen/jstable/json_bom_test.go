@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A BOM is allowed exactly once at the start of a text, not by the ordinary
@@ -139,7 +140,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "bom.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "bom.mjs")
+	cmd := testproc.Command(t, node, "bom.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

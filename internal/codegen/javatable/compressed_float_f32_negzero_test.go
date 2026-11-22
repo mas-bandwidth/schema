@@ -1,8 +1,8 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,36 +23,22 @@ import (
 //     save stores +0 for it (as a scalar under a non-zero default and as a
 //     list element) and elides it under a +0 default.
 //
-// The schema is the JavaScript leg's (jstable compressed_float_negzero_f32).
-const javaCompressedSchema = `package probe
-
-table Probe
-{
-    z     float32 | min = -1, max = 1, resolution = 0.01
-    nz    float32 = 0.5 | min = -1, max = 1, resolution = 0.01
-    tenth float32 | min = 0, max = 0.1, resolution = 0.01
-    list  [..4]float32 | min = -1, max = 0.1, resolution = 0.01
-}
-`
+// The schema (the JavaScript leg's, jstable compressed_float_negzero_f32) and
+// one row per case are the committed corpus
+// testdata/compressed-float-f32/{Probe.schema,cases.tsv} (F-203); the driver
+// below runs every row under the JDK.
+const javaCompressedDir = "testdata/compressed-float-f32"
 
 const javaCompressedDriver = `package probe;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 
 public final class Driver {
     static void say(String label, String why) {
         System.out.println("CHECK " + label + (why.isEmpty() ? " ok" : " FAIL " + why));
-    }
-
-    interface Check { String run() throws Exception; }
-
-    static void check(String label, Check c) {
-        try {
-            say(label, c.run());
-        } catch (Throwable e) {
-            say(label, "threw " + e);
-        }
     }
 
     static byte[] scalar(long id, int bits) {
@@ -85,121 +71,123 @@ public final class Driver {
         return out;
     }
 
-    static ProbeVariable.Value load(byte[] wire, TableVariable.Report r) {
-        return ProbeVariable.load(wire, r);
+    static long id(String field) {
+        switch (field) {
+            case "z": return ProbeVariable.F_z;
+            case "nz": return ProbeVariable.F_nz;
+            case "tenth": return ProbeVariable.F_tenth;
+            default: throw new IllegalArgumentException("no scalar field " + field);
+        }
     }
 
-    static String lands(byte[] wire, java.util.function.Function<ProbeVariable.Value, Float> get, float want) {
+    static float get(ProbeVariable.Value v, String field) {
+        switch (field) {
+            case "z": return v.z;
+            case "nz": return v.nz;
+            case "tenth": return v.tenth;
+            case "list": return v.list.get(0);
+            default: throw new IllegalArgumentException("no field " + field);
+        }
+    }
+
+    static void set(ProbeVariable.Value v, String field, float x) {
+        switch (field) {
+            case "z": v.z = x; break;
+            case "nz": v.nz = x; break;
+            case "tenth": v.tenth = x; break;
+            case "list": v.list.add(x); break;
+            default: throw new IllegalArgumentException("no field " + field);
+        }
+    }
+
+    static int bits(String hex) { return Integer.parseUnsignedInt(hex.substring(2), 16); }
+
+    static String held(ProbeVariable.Value v, String field, String want) {
+        float got = get(v, field);
+        int gb = Float.floatToRawIntBits(got);
+        return gb == bits(want) ? "" : "landed " + got + " bits 0x" + Integer.toHexString(gb) + ", want " + want;
+    }
+
+    static String reason(String got, String want) {
+        return want.equals("-") || want.equals(got) ? "" : "refused with " + got + ", want " + want;
+    }
+
+    static String variableRead(String field, String input, String want, String why) {
+        int in = bits(input);
+        byte[] wire;
+        if (field.equals("list")) {
+            ProbeVariable.Value seed = new ProbeVariable.Value();
+            seed.list.add(SENTINEL);
+            byte[] saved = ProbeVariable.save(seed);
+            if (saved == null) { return "the save refused"; }
+            wire = plant(saved, in);
+        } else {
+            wire = scalar(id(field), in);
+        }
         TableVariable.Report r = new TableVariable.Report();
-        ProbeVariable.Value v = load(wire, r);
+        ProbeVariable.Value v = ProbeVariable.load(wire, r);
+        if (want.equals("refused")) {
+            return v == null && r.refused ? reason(r.reason, why) : "loaded=" + (v != null) + " refused=" + r.refused + " reason=" + r.reason;
+        }
         if (v == null || r.refused || r.damaged) { return "refused: " + r.reason; }
-        float got = get.apply(v);
-        return Float.floatToRawIntBits(got) == Float.floatToRawIntBits(want) ? "" : "landed " + got + " bits 0x" + Integer.toHexString(Float.floatToRawIntBits(got)) + ", want " + want;
+        return held(v, field, want);
     }
 
-    static String refuses(TableVariable.Report r, Object v, String reason) {
-        if (v == null && r.refused && reason.equals(r.reason)) { return ""; }
-        return "loaded=" + (v != null) + " refused=" + r.refused + " reason=" + r.reason;
-    }
-
-    static ProbeVariable.Value json(String text, TableVariable.Report r) {
-        return ProbeVariable.fromJson(text.getBytes(StandardCharsets.UTF_8), r);
-    }
-
-    static String jsonLands(String text, java.util.function.Function<ProbeVariable.Value, Float> get, float want) {
+    static String variableWrite(String field, String input, String want) {
+        int in = bits(input);
+        ProbeVariable.Value v = new ProbeVariable.Value();
+        set(v, field, Float.intBitsToFloat(in));
+        byte[] wire = ProbeVariable.save(v);
+        if (want.equals("refused")) { return wire == null ? "" : "the save wrote a value past max"; }
+        if (wire == null) { return "the save refused"; }
+        if (want.equals("elided")) {
+            return Arrays.equals(wire, ProbeVariable.save(new ProbeVariable.Value())) ? "" : "the save wrote the value under its default";
+        }
+        if (in == 0x80000000) {
+            for (int i = 0; i + 4 <= wire.length; i++) {
+                if (wire[i] == 0 && wire[i + 1] == 0 && wire[i + 2] == 0 && wire[i + 3] == (byte) 0x80) { return "the save stored -0's bits"; }
+            }
+        }
         TableVariable.Report r = new TableVariable.Report();
-        ProbeVariable.Value v = json(text, r);
-        if (v == null || r.refused) { return "refused: " + r.reason; }
-        float got = get.apply(v);
-        return Float.floatToRawIntBits(got) == Float.floatToRawIntBits(want) ? "" : "landed " + got + ", want " + want;
+        ProbeVariable.Value back = ProbeVariable.load(wire, r);
+        if (back == null || r.refused || r.damaged) { return "its own save refused on read: " + r.reason; }
+        return held(back, field, want);
     }
 
-    public static void main(String[] args) {
-        final float past = Math.nextUp(0.1f);
+    static String jsonRead(String field, String text, String want, String why) {
+        TableVariable.Report r = new TableVariable.Report();
+        ProbeVariable.Value v = ProbeVariable.fromJson(text.getBytes(StandardCharsets.UTF_8), r);
+        if (want.equals("refused")) {
+            return r.refused ? reason(r.reason, why) : "refused=" + r.refused + " reason=" + r.reason + " loaded=" + (v != null);
+        }
+        if (v == null || r.refused) { return "refused: " + r.reason; }
+        return held(v, field, want);
+    }
 
-        check("variable-read:negzero", () -> lands(scalar(ProbeVariable.F_z, 0x80000000), v -> v.z, 0.0f));
-        check("variable-read:negzero-nonzero-default", () -> lands(scalar(ProbeVariable.F_nz, 0x80000000), v -> v.nz, 0.0f));
-        check("variable-read:f32-end", () -> lands(scalar(ProbeVariable.F_tenth, Float.floatToRawIntBits(0.1f)), v -> v.tenth, 0.1f));
-        check("variable-read:past-end", () -> {
-            TableVariable.Report r = new TableVariable.Report();
-            return refuses(r, load(scalar(ProbeVariable.F_tenth, Float.floatToRawIntBits(past)), r), "out_of_range: Probe.tenth");
-        });
-        check("variable-read:list-negzero", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.list.add(SENTINEL);
-            byte[] wire = ProbeVariable.save(v);
-            if (wire == null) { return "the save refused"; }
-            return lands(plant(wire, 0x80000000), x -> x.list.get(0), 0.0f);
-        });
-        check("variable-read:list-past-end", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.list.add(SENTINEL);
-            byte[] wire = ProbeVariable.save(v);
-            if (wire == null) { return "the save refused"; }
-            TableVariable.Report r = new TableVariable.Report();
-            return refuses(r, load(plant(wire, Float.floatToRawIntBits(past)), r), "out_of_range: Probe.list");
-        });
-
-        check("variable-write:f32-end", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.tenth = 0.1f;
-            v.list.add(0.1f);
-            byte[] wire = ProbeVariable.save(v);
-            if (wire == null) { return "the save refused 0.1f under max = 0.1"; }
-            return lands(wire, x -> x.tenth, 0.1f);
-        });
-        check("variable-write:past-end", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.tenth = past;
-            return ProbeVariable.save(v) == null ? "" : "the save wrote a value past max";
-        });
-        check("variable-write:negzero-nonzero-default", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.nz = -0.0f;
-            byte[] wire = ProbeVariable.save(v);
-            if (wire == null) { return "the save refused"; }
-            for (int i = 0; i + 4 <= wire.length; i++) {
-                if (wire[i] == 0 && wire[i + 1] == 0 && wire[i + 2] == 0 && wire[i + 3] == (byte) 0x80) { return "the save stored -0's bits"; }
+    public static void main(String[] args) throws Exception {
+        for (String line : Files.readAllLines(Path.of(args[0]), StandardCharsets.UTF_8)) {
+            if (line.isEmpty() || line.startsWith("#")) { continue; }
+            String[] f = line.split("\t", -1);
+            String label = f[0], op = f[1], field = f[2], input = f[3], want = f[4], why = f[5];
+            try {
+                switch (op) {
+                    case "variable-read": say(label, variableRead(field, input, want, why)); break;
+                    case "variable-write": say(label, variableWrite(field, input, want)); break;
+                    case "json-read": say(label, jsonRead(field, input, want, why)); break;
+                    default: say(label, "no op " + op);
+                }
+            } catch (Throwable e) {
+                say(label, "threw " + e);
             }
-            return lands(wire, x -> x.nz, 0.0f);
-        });
-        check("variable-write:negzero-elided", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.z = -0.0f;
-            byte[] wire = ProbeVariable.save(v);
-            byte[] plain = ProbeVariable.save(new ProbeVariable.Value());
-            return Arrays.equals(wire, plain) ? "" : "a -0 under a +0 default was written";
-        });
-        check("variable-write:list-negzero", () -> {
-            ProbeVariable.Value v = new ProbeVariable.Value();
-            v.list.add(-0.0f);
-            byte[] wire = ProbeVariable.save(v);
-            if (wire == null) { return "the save refused"; }
-            for (int i = 0; i + 4 <= wire.length; i++) {
-                if (wire[i] == 0 && wire[i + 1] == 0 && wire[i + 2] == 0 && wire[i + 3] == (byte) 0x80) { return "the save stored -0's bits"; }
-            }
-            return "";
-        });
-
-        check("json-read:f32-end", () -> jsonLands("{\"tenth\":0.1}", v -> v.tenth, 0.1f));
-        check("json-read:past-end", () -> {
-            TableVariable.Report r = new TableVariable.Report();
-            ProbeVariable.Value v = json("{\"tenth\":" + past + "}", r);
-            return r.refused && ("out_of_range: tenth").equals(r.reason) ? "" : "refused=" + r.refused + " reason=" + r.reason + " loaded=" + (v != null);
-        });
-        check("json-read:negzero", () -> jsonLands("{\"z\":-0}", v -> v.z, 0.0f));
-        check("json-read:list-f32-end", () -> jsonLands("{\"list\":[0.1]}", v -> v.list.get(0), 0.1f));
-        check("json-read:list-negzero", () -> jsonLands("{\"list\":[-0]}", v -> v.list.get(0), 0.0f));
-        check("json-read:list-past-end", () -> {
-            TableVariable.Report r = new TableVariable.Report();
-            json("{\"list\":[" + past + "]}", r);
-            return r.refused && ("out_of_range: list").equals(r.reason) ? "" : "refused=" + r.refused + " reason=" + r.reason;
-        });
+        }
     }
 }
 `
 
-var javaCompressedLabels = []string{
+// javaCompressedCovers is what the committed rows must hold between them:
+// every form and operation the fix changed, each rule at the float32 end, past
+// it, and at -0, with a lawful control.
+var javaCompressedCovers = []string{
 	"variable-read:negzero", "variable-read:negzero-nonzero-default", "variable-read:f32-end",
 	"variable-read:past-end", "variable-read:list-negzero", "variable-read:list-past-end",
 	"variable-write:f32-end", "variable-write:past-end", "variable-write:negzero-nonzero-default",
@@ -209,10 +197,21 @@ var javaCompressedLabels = []string{
 }
 
 // TestJavaCompressedFloatVariableAndJson pins the emitted shape (pure) and
-// runs the probe under the JDK (gated).
+// runs every committed case under the JDK (gated).
 func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, javaCompressedSchema)
+	casesPath := filepath.Join(javaCompressedDir, "cases.tsv")
+	rows := corpusRows(t, casesPath, 6)
+	inCorpus := map[string]bool{}
+	for _, r := range rows {
+		inCorpus[r[0]] = true
+	}
+	for _, label := range javaCompressedCovers {
+		if !inCorpus[label] {
+			t.Errorf("%s has no %s row", casesPath, label)
+		}
+	}
+	u := unitFrom(t, corpusSchema(t, javaCompressedDir, "Probe.schema"))
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -238,6 +237,10 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 	t.Run("jdk", func(t *testing.T) {
 		slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 		javac, java := javaTools(t)
+		cases, err := filepath.Abs(casesPath)
+		if err != nil {
+			t.Fatal(err)
+		}
 		files["Driver.java"] = []byte(javaCompressedDriver)
 		dir := t.TempDir()
 		var sources []string
@@ -252,10 +255,10 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 		}
 		sort.Strings(sources)
 		args := append([]string{"--release", "17", "-nowarn", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
-		out, err := exec.Command(java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", dir, u.Package+".Driver", cases).CombinedOutput()
 		if err != nil {
 			t.Fatalf("java: %v\n%s", err, out)
 		}
@@ -271,9 +274,9 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 				t.Errorf("%s: %s", label, strings.TrimPrefix(verdict, "FAIL "))
 			}
 		}
-		for _, label := range javaCompressedLabels {
-			if !seen[label] {
-				t.Errorf("the probe made no %s check\n%s", label, out)
+		for _, r := range rows {
+			if !seen[r[0]] {
+				t.Errorf("the probe made no %s check\n%s", r[0], out)
 			}
 		}
 	})

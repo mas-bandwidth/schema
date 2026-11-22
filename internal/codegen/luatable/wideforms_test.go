@@ -6,7 +6,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuaWideKindsFixedAndMessageForms pins the two constant-size forms'
@@ -107,7 +108,7 @@ hexline(saved)
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestGoWideForms$", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestGoWideForms$", ".")
 	cmd.Dir = goDir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off", "GOPROXY=off")
 	if output, err := cmd.CombinedOutput(); err != nil {

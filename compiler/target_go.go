@@ -4,6 +4,11 @@ package compiler
 
 import (
 	"fmt"
+	"go/build"
+	"io"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
@@ -63,12 +68,77 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 		}
 		files[name] = data
 	}
+	if err := refuseGoConstraintNames(u, files); err != nil {
+		return nil, err
+	}
 	// every identifier takes Go's initialisms, across the packet and table
 	// files together (internal/goname)
 	if err := goname.RespellFiles(files); err != nil {
 		return nil, fmt.Errorf("respelling the generated Go: %w", err)
 	}
 	return files, nil
+}
+
+// refuseGoConstraintNames refuses an output file name the go tool reads as a
+// build constraint rather than as a name: a leading `_` or `.` drops the file
+// from the package, a `_test` suffix makes it test-only, and a `_<goos>`,
+// `_<goarch>` or `_<goos>_<goarch>` suffix limits it to that platform (the go
+// command's "Build constraints", file names). Every output is named from a
+// schema file's basename (<base>.go, <base>Table.go, ...), so the refusal
+// names the schema file to rename.
+func refuseGoConstraintNames(u *ir.Unit, files map[string][]byte) error {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		why := goConstraintName(name)
+		if why == "" {
+			continue
+		}
+		// the schema file it is named from: the longest basename it starts with
+		base := ""
+		for _, f := range u.Files {
+			if strings.HasPrefix(name, f.Base) && len(f.Base) > len(base) {
+				base = f.Base
+			}
+		}
+		if base == "" {
+			return fmt.Errorf("the Go target writes %s, and the go tool reads %s in a file name as a build constraint — a compiler bug, not a schema error", name, why)
+		}
+		return fmt.Errorf("schema file %s.schema: the Go target writes %s, and the go tool reads %s in a file name as a build constraint, so that code would not build into the package; rename the schema file", base, name, why)
+	}
+	return nil
+}
+
+// goConstraintName answers what about a .go file name the go tool reads as a
+// build constraint, or "" for a plain name, and asks go/build itself rather
+// than restating its rules. A name ending `_test.go` is test-only (go/build
+// reads that suffix off the whole name). Every other name rule — a leading `_`
+// or `.`, and the `_<goos>` / `_<goarch>` suffix read up to the first `.`,
+// with its own trailing `_test` normalization — rejects a file for some
+// platform, so the name is matched under a GOOS and GOARCH no suffix can name:
+// a plain name matches there, a constrained one does not. Only the NAME is
+// judged; the content handed to go/build is a bare package clause.
+func goConstraintName(name string) string {
+	if strings.HasSuffix(name, "_test.go") {
+		return "the _test suffix"
+	}
+	ctxt := build.Default
+	ctxt.GOOS, ctxt.GOARCH = "schemanoos", "schemanoarch"
+	ctxt.BuildTags, ctxt.ToolTags, ctxt.ReleaseTags = nil, nil, nil
+	ctxt.CgoEnabled = false
+	ctxt.JoinPath = func(elem ...string) string { return strings.Join(elem, "/") }
+	ctxt.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("package p\n")), nil
+	}
+	ok, err := ctxt.MatchFile(".", name)
+	if err != nil {
+		return "the name (" + err.Error() + ")"
+	}
+	if !ok {
+		if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
+			return "a leading " + name[:1]
+		}
+		return "a GOOS or GOARCH suffix"
+	}
+	return ""
 }
 
 // goTableLineage is the lock's lineage in the Go backend's own spelling. Nil in,

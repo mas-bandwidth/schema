@@ -22,6 +22,7 @@ fixed table FixedRoot | forms = "wire,json"
 	Small uint8 = 0
 	Unsigned uint64 = 0
 	Counted [..4]int32
+	Least [2..4]int32
 	Text string(8)
 	Bytes bytes(4)
 }
@@ -35,6 +36,7 @@ table VariableRoot | forms = "wire,json"
 	Small uint8 = 0
 	Unsigned uint64 = 0
 	Counted [..4]int32
+	Least [2..4]int32
 	Text string(8)
 	Bytes bytes(4)
 }
@@ -57,6 +59,7 @@ var writerMutations = []writerMutation{
 	{"count-above", "v.CountedCount = 5", "v.CountedCount = 5"},
 	{"count-negative", "v.CountedCount = -1", "v.CountedCount = -1"},
 	{"count-fraction", "v.CountedCount = 1.5", "v.CountedCount = 1.5"},
+	{"count-below-min", "v.LeastCount = 1", "v.LeastCount = 1"},
 	{"string-too-long", `v.Text = "123456789"`, `v.Text = "123456789"`},
 	{"bytes-over-bound", "v.BytesLength = 5", "v.BytesLength = 5"},
 	{"bytes-over-storage", "v.Bytes = buffer.create(1)\nv.BytesLength = 2", "v.Bytes = buffer.create(1)\nv.BytesLength = 2"},

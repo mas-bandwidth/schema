@@ -1,0 +1,17 @@
+# LUAU-1 (review 2026-11-21): a doc string the table generator carries into
+# a module (the unit view) is spelled in Luau's own escape syntax.
+# TestLuauStringLiteralsAreLuauSyntax generates every module for each unit,
+# loads each one under the pinned interpreter, and holds the spelling.
+# id	dir	marker
+#
+# dir: the unit's schema files.
+# marker: text of the doc a module must carry (the case still reaches a
+#         string literal).
+#
+# the defect: a rune Go's %q writes as \uXXXX, which Luau rejects (U+00AD
+# soft hyphen, U+200B zero width space; schema check refuses U+2028 and U+2029
+# in a doc line, SPEC §4.1, so no unit carries those)
+soft-hyphen	soft-hyphen	separator
+zero-width	zero-width	separator
+# the control: the same unit with a doc Go's %q and Luau spell alike
+plain	plain	separator

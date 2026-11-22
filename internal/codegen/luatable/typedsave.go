@@ -124,8 +124,17 @@ func emitTypedBody(out *strings.Builder, st *ir.Struct, used map[string]bool) {
 				slot, defaultExpr(f), id, kind, value)
 		case "float":
 			used["head"], used["float"], used["same_float"] = true, true, true
-			fmt.Fprintf(&body, "    do\n      local x = %s\n      if not same(%v, x, %s) then\n        head(w, ids, %s, %d)\n        if not wfloat(w, %v, x) then return false end\n      end\n    end\n",
-				slot, f.Type.Kind == ir.TFloat32, defaultExpr(f), id, kind, f.Type.Kind == ir.TFloat32)
+			def, norm := defaultExpr(f), ""
+			if f.HasFloatRange {
+				// a compressed float's -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
+				// fixed-compressed-negzero), its default's too, as the walk's D.cf
+				norm = "      if x == 0 then x = 0.0 end\n"
+				if f.HasDefault && f.DefFloat == 0 {
+					def = "0.0"
+				}
+			}
+			fmt.Fprintf(&body, "    do\n      local x = %s\n%s      if not same(%v, x, %s) then\n        head(w, ids, %s, %d)\n        if not wfloat(w, %v, x) then return false end\n      end\n    end\n",
+				slot, norm, f.Type.Kind == ir.TFloat32, def, id, kind, f.Type.Kind == ir.TFloat32)
 		case "string":
 			used["head"], used["leb"], used["raw"] = true, true, true
 			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n        head(w, ids, %s, 12)\n        leb(w, #x)\n        raw(w, x)\n      end\n    end\n",

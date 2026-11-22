@@ -494,9 +494,16 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		return fmt.Sprintf("if(%s, do: 1, else: 0)::unsigned-8", name)
 	case ir.TFloat32:
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
-		// this form is not optimized for bandwidth (§3.4).
+		// this form is not optimized for bandwidth (§3.4). Its -0 is written
+		// as +0 (§3.3, docs/rulings.json fixed-compressed-negzero).
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.f32_bits(R.cfloat_zero(%s))::little-unsigned-32", name)
+		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
+		if f.HasFloatRange {
+			return fmt.Sprintf("R.f64_bits(R.cfloat_zero(%s))::little-unsigned-64", name)
+		}
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
 	// AN INTEGER LEAF IS HELD TO ITS RANGE ON THE WAY OUT. The reference spends
@@ -833,11 +840,13 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	case f.Array == ir.ArrayFixed:
 		g.readElements(out, f, v, rawf("%d", f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT IS HELD HERE, to this reader's own bound, counting one
+		// THE COUNT IS HELD HERE, to this reader's own [Min, Max], counting one
 		// `out_of_range` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
+		// A count below Min is refused like one past Max (docs/SPEC.md §5.1
+		// row 3, §4.2): no writer sends it.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
-		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
+		out.stmt("c", rawf("R.clamps(c, n_%s, %d, %d)", v, f.ArrayMin, f.ArrayBound))
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
 		g.readText(out, f, v, present)

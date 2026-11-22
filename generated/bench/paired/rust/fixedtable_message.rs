@@ -125,9 +125,7 @@ pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableR
 /// kind is a kind mismatch, skipped.
 pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
     *value = fixed_table_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     loop {
@@ -135,9 +133,7 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0x7ce4fd9430e80cea => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -146,22 +142,18 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f2: {
                     if entry.kind != 13 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f2;
                     }
+                    let start = r.offset;
                     if !bench_mixed_load_message_body(r, v, report, &mut value.value) { return false; }
-                    if same_build && report.unknown == unknown_before {
-                        let mut probe3 = TableBitWriter::measure();
-                        if !bench_mixed_save_message_body(&mut probe3, &value.value) { return false; }
-                        let rides = probe3.bits > TABLE_MESSAGE_REF_BITS as u64;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
-                    }
+                    if same_build && report.unknown == unknown_before && r.offset - start <= v.ref_bits as u64 { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                 }
             }
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -225,9 +217,12 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
 /// no body of it is delivered, so the count is zero, every body read so far
 /// goes back to its declared defaults, and the reason is non_finite_float.
+/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
+/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.oor_field = "";
     report.damaged = false;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
@@ -246,6 +241,9 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
             }
             for value in values.iter_mut().take(count) {
                 *value = fixed_table_message_default();
+            }
+            if !report.oor_field.is_empty() {
+                return (0, report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }

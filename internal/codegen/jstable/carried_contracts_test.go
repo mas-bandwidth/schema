@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func runJSConstructProbe(t *testing.T, files map[string][]byte, home, script string, cases any) string {
@@ -36,7 +37,7 @@ func runJSConstructProbe(t *testing.T, files map[string][]byte, home, script str
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(script), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"), filepath.Join(dir, "cases.json"), filepath.Join(dir, home))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"), filepath.Join(dir, "cases.json"), filepath.Join(dir, home))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

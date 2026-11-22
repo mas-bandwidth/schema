@@ -1,0 +1,16 @@
+// The writer under another build: each integer ranged over the top six values
+// of its kind in three bits, so offsets 6 and 7 spell a sum past the kind (no
+// conforming writer emits them; b is announced as a uint8 and widens into the
+// reader's uint16); and s and z, which the reader does not declare and skips.
+package probe
+
+fixed table Msg
+{
+    a uint8 = 250 | min = 250, max = 255
+    b uint8 = 250 | min = 250, max = 255
+    q int64 = 9223372036854775802 | min = 9223372036854775802, max = 9223372036854775807
+    r uint64 = 18446744073709551610 | min = 18446744073709551610, max = 18446744073709551615
+    h int128 = 170141183460469231731687303715884105722 | min = 170141183460469231731687303715884105722, max = 170141183460469231731687303715884105727
+    s uint8 = 250 | min = 250, max = 255
+    z int128 = 170141183460469231731687303715884105722 | min = 170141183460469231731687303715884105722, max = 170141183460469231731687303715884105727
+}

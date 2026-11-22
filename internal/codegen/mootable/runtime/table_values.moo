@@ -491,6 +491,24 @@ function V.floatInRange(fd: any, v: any): boolean
 	return fd.flo == nil or (V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) >= 0 and V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) <= 0)
 end
 
+-- storedFloat(fd, v): the value a writer stores for v. A COMPRESSED float's
+-- -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling fixed-compressed-negzero), so
+-- every writer stores +0 for it and compares it with its default by value; a
+-- plain float is carried by its bits, and anything that is not a float
+-- pattern is returned as it is, for the writer's own refusal
+function V.storedFloat(fd: any, v: any): any
+	if fd.flo == nil then
+		return v
+	end
+	if fd.f32 then
+		return if v == 0x80000000 then 0 else v
+	end
+	if Uint64.is(v) and v[1] == 0 and v[2] == 0x80000000 then
+		return Uint64.new(0, 0)
+	end
+	return v
+end
+
 -- writeRaw(b, at, kw, signed, x): a raw value at its kind's width, little-endian
 function V.writeRaw(b: buffer, at: number, kw: number, signed: boolean, x: any)
 	if kw == 1 then

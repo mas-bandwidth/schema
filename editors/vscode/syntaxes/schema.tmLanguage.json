@@ -1,0 +1,274 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Schema",
+  "scopeName": "source.schema",
+  "fileTypes": ["schema"],
+  "comment": "TextMate grammar for .schema files (docs/SPEC.md §4, docs/SPEC-TABLES.md). Every regular expression stays inside the subset RE2 and Oniguruma share, so editors/vscode/grammar_test.go can run the grammar over the corpus in Go.",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#qualification" },
+    { "include": "#package" },
+    { "include": "#enum-like" },
+    { "include": "#fixed-table" },
+    { "include": "#declaration" },
+    { "include": "#contextual-declaration" },
+    { "include": "#const-declaration" },
+    { "include": "#keywords" },
+    { "include": "#timestamp-field" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.schema",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.schema",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.schema",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.schema",
+          "match": "\"[^\"]*\""
+        }
+      ]
+    },
+    "qualification": {
+      "comment": "A qualification section runs from | to the end of its line (SPEC §4.1, §4.2): comma-separated names, each optionally = a value.",
+      "begin": "(\\|)\\s*([A-Za-z_][A-Za-z0-9_]*)?",
+      "beginCaptures": {
+        "1": { "name": "punctuation.separator.qualification.schema" },
+        "2": { "name": "entity.other.attribute-name.schema" }
+      },
+      "end": "$",
+      "name": "meta.qualification.schema",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        {
+          "match": "(,)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.separator.comma.schema" },
+            "2": { "name": "entity.other.attribute-name.schema" }
+          }
+        },
+        { "include": "#keywords" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#punctuation" },
+        { "include": "#identifier" }
+      ]
+    },
+    "package": {
+      "match": "\\b(package)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.other.package.schema" },
+        "2": { "name": "entity.name.namespace.schema" }
+      }
+    },
+    "enum-like": {
+      "comment": "enum and flags: the body is a list of variant names (SPEC §4.2). flags is a contextual keyword, a declaration only at the start of a line at file scope.",
+      "patterns": [
+        {
+          "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "beginCaptures": {
+            "1": { "name": "storage.type.enum.schema" },
+            "2": { "name": "entity.name.type.enum.schema" }
+          },
+          "end": "\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.braces.end.schema" }
+          },
+          "name": "meta.enum.schema",
+          "patterns": [{ "include": "#variant-list" }]
+        },
+        {
+          "begin": "^(flags)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "beginCaptures": {
+            "1": { "name": "storage.type.flags.schema" },
+            "2": { "name": "entity.name.type.flags.schema" }
+          },
+          "end": "\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.braces.end.schema" }
+          },
+          "name": "meta.flags.schema",
+          "patterns": [{ "include": "#variant-list" }]
+        }
+      ]
+    },
+    "variant-list": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#qualification" },
+        { "include": "#numbers" },
+        { "include": "#punctuation" },
+        {
+          "name": "variable.other.enummember.schema",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "fixed-table": {
+      "match": "\\b(fixed)\\s+(table)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.modifier.fixed.schema" },
+        "2": { "name": "storage.type.table.schema" },
+        "3": { "name": "entity.name.type.table.schema" }
+      }
+    },
+    "declaration": {
+      "match": "\\b(type|table)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.schema" },
+        "2": { "name": "entity.name.type.schema" }
+      }
+    },
+    "contextual-declaration": {
+      "comment": "union is a contextual keyword: a declaration only at the start of a line at file scope (SPEC §4.8).",
+      "match": "^(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.union.schema" },
+        "2": { "name": "entity.name.type.union.schema" }
+      }
+    },
+    "const-declaration": {
+      "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.const.schema" },
+        "2": { "name": "entity.name.constant.schema" }
+      }
+    },
+    "timestamp-field": {
+      "comment": "timestamp is a contextual type word (SPEC §4.13): a type only in a field's type position, right after the field name. A field NAMED timestamp stays a plain identifier. A keyword at the same position wins, since #keywords comes first.",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)[ \\t]+(timestamp)\\b",
+      "captures": {
+        "2": { "name": "support.type.primitive.timestamp.schema" }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.conditional.schema",
+          "match": "\\b(if|else)\\b"
+        },
+        {
+          "name": "keyword.other.schema",
+          "match": "\\b(align|reserved)\\b"
+        },
+        {
+          "name": "storage.type.map.schema",
+          "match": "\\bmap\\b"
+        },
+        {
+          "comment": "Reserved and refused by the compiler (SPEC §4.2, §4.4, §4.12).",
+          "name": "invalid.illegal.reserved.schema",
+          "match": "\\b(message|object|switch|case|int|uint|wstring)\\b"
+        },
+        {
+          "name": "support.type.primitive.schema",
+          "match": "\\b(bool|float32|float64|string|bytes|bits|fixed|ufixed|int8|int16|int32|int64|int128|uint8|uint16|uint32|uint64|uint128)\\b"
+        },
+        {
+          "name": "storage.type.schema",
+          "match": "\\b(type|table|enum|const)\\b"
+        },
+        {
+          "name": "keyword.other.package.schema",
+          "match": "\\bpackage\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.schema",
+          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.schema",
+          "match": "\\b0[bB][01]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.schema",
+          "match": "\\b[0-9]+(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.schema",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.range.schema",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.optional.schema",
+          "match": "\\?"
+        },
+        {
+          "name": "keyword.operator.logical.schema",
+          "match": "!"
+        },
+        {
+          "name": "keyword.operator.assignment.schema",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.schema",
+          "match": "[-+*/%]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.braces.schema",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.section.parens.schema",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.section.brackets.schema",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.separator.comma.schema",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.colon.schema",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.accessor.schema",
+          "match": "\\."
+        }
+      ]
+    },
+    "identifier": {
+      "comment": "Consumes a whole identifier so that no keyword rule matches inside it.",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+    }
+  }
+}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The two required-field shapes named by the card: `| required` inside an if
@@ -183,7 +184,7 @@ var buf [256]byte
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestRequiredOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestRequiredOracle$", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

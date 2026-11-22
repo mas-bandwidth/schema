@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // viewPrelude prints the Squirrel view in one canonical, line-oriented text:
@@ -387,7 +388,7 @@ func runGoView(t *testing.T, root string, gu viewUnit) []string {
 		[]byte(fmt.Sprintf(viewGoTest, gu.unit.Package, calls.String())))
 
 	outPath := filepath.Join(dir, "view.txt")
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "120s", "-run", "^TestSquirrelViewPrint$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "120s", "-run", "^TestSquirrelViewPrint$", ".")
 	cmd.Dir = dir
 	cmd.Env = viewEnv(outPath)
 	if out, err := cmd.CombinedOutput(); err != nil {

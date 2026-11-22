@@ -1,8 +1,9 @@
 package java
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,28 +18,12 @@ import (
 // javac would translate: the doc keeps its meaning as comment text and never
 // becomes code, and a malformed escape never fails the build.
 //
-// In the texts below @ stands for a backslash and is replaced before use, so
-// this file itself holds no escape any tool could translate.
-const docEscapeSchemaAt = `package docescape
-
-/// a type doc @u000a and @@u0041 and @@@u0042 and @uuuu0043 and @u
-type T
-{
-    /// a field doc @u000a with @u002a@u002f inside
-    x uint8
-}
-
-/// a const doc @u000A
-const K = 3
-
-/// an enum doc @u
-enum E
-{
-    /// a variant doc @u0022
-    A
-    B
-}
-`
+// The schema and its doc lines are the committed corpus
+// testdata/doc-escape/{Probe.schema,cases.tsv} (F-203): one row per doc line
+// as written, beside a plain doc that is the control. In this file @ stands
+// for a backslash and is replaced before use, so this file itself holds no
+// escape any tool could translate.
+const docEscapeDir = "testdata/doc-escape"
 
 func unAt(s string) string { return strings.ReplaceAll(s, "@", "\\") }
 
@@ -47,15 +32,44 @@ func unAt(s string) string { return strings.ReplaceAll(s, "@", "\\") }
 // translates again.
 var escapedBackslash = unAt("@u005c")
 
+// docEscapeCase is one row of testdata/doc-escape/cases.tsv.
+type docEscapeCase struct{ id, doc string }
+
+func docEscapeCases(t *testing.T) []docEscapeCase {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(docEscapeDir, "cases.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []docEscapeCase
+	for n, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		id, doc, ok := strings.Cut(line, "\t")
+		if !ok || strings.Contains(doc, "\t") {
+			t.Fatalf("cases.tsv line %d: want two tab-separated fields", n+1)
+		}
+		out = append(out, docEscapeCase{id, doc})
+	}
+	if len(out) < 6 {
+		t.Fatalf("cases.tsv holds %d rows, want the five escaped docs and the plain control", len(out))
+	}
+	return out
+}
+
 func generateDocEscapeJava(t *testing.T) string {
 	t.Helper()
-	src := unAt(docEscapeSchemaAt)
-	f, errs := parser.Parse("Probe.schema", []byte(src))
+	src, err := os.ReadFile(filepath.Join(docEscapeDir, "Probe.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, errs := parser.Parse("Probe.schema", src)
 	if len(errs) != 0 {
 		t.Fatal(errs)
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
-		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: src, AST: f,
 	}})
 	if len(cerrs) != 0 {
 		t.Fatal(cerrs)
@@ -98,34 +112,37 @@ func TestDocCommentHasNoUnicodeEscape(t *testing.T) {
 			t.Errorf("doc line carries a Unicode escape javac would translate: %s", t2)
 		}
 	}
-	if docs < 5 {
-		t.Fatalf("found %d doc lines, want at least 5:\n%s", docs, src)
+	if want := len(docEscapeCases(t)); docs < want {
+		t.Fatalf("found %d doc lines, want at least %d:\n%s", docs, want, src)
 	}
 }
 
-// The escaped doc reads back as its own text: each escapedBackslash read as
-// the backslash it stands for gives the doc as written.
+// Every committed doc reads back as its own text, from a line javac reads as
+// comment: each escapedBackslash read as the backslash it stands for gives
+// the doc as written, and the line itself carries no escape javac would
+// translate.
 func TestDocCommentKeepsItsText(t *testing.T) {
 	src := generateDocEscapeJava(t)
-	for _, want := range []string{
-		unAt("// a type doc @u000a and @@u0041 and @@@u0042 and @uuuu0043 and @u"),
-		unAt("// a field doc @u000a with @u002a@u002f inside"),
-		unAt("// a variant doc @u0022"),
-	} {
-		found := false
-		for line := range strings.SplitSeq(src, "\n") {
-			if strings.TrimSpace(strings.ReplaceAll(line, escapedBackslash, "\\")) == want {
-				found = true
+	for _, c := range docEscapeCases(t) {
+		want := "// " + c.doc
+		var line string
+		for l := range strings.SplitSeq(src, "\n") {
+			if strings.TrimSpace(strings.ReplaceAll(l, escapedBackslash, "\\")) == want {
+				line = strings.TrimSpace(l)
 			}
 		}
-		if !found {
-			t.Errorf("doc not found as its own text: %s", want)
+		switch {
+		case line == "":
+			t.Errorf("%s: doc not found as its own text: %s", c.id, want)
+		case eligibleUnicodeEscape(line):
+			t.Errorf("%s: doc line carries a Unicode escape javac would translate: %s", c.id, line)
 		}
 	}
 }
 
 // The generated unit compiles with javac where a JDK is installed.
 func TestDocCommentEscapeCompiles(t *testing.T) {
+	slowtest.Gate(t, "javac")
 	javac, _ := compressedFloatJavaTools(t)
 	src := generateDocEscapeJava(t)
 	dir := t.TempDir()
@@ -133,7 +150,7 @@ func TestDocCommentEscapeCompiles(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", filepath.Join(dir, "classes"), path)
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", filepath.Join(dir, "classes"), path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}

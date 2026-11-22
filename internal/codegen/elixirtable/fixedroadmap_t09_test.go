@@ -30,7 +30,6 @@ package elixirtable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,6 +37,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t09Run writes every generated module of `u` beside one generated probe and
@@ -91,7 +92,7 @@ func t09Run(t *testing.T, u *ir.Unit, root, body string) (string, error) {
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBinary(t), args...)
+	cmd := testproc.Command(t, elixirBinary(t), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

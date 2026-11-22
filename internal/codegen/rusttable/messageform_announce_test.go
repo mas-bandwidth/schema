@@ -31,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormAnnounceRust(t *testing.T) {
@@ -287,13 +289,13 @@ func runAnnounceProbe(t *testing.T, u *announceUnit) string {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "announceprobe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = root
 	out, err := run.CombinedOutput()
 	if err != nil {

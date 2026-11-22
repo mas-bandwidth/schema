@@ -107,6 +107,13 @@ module SchemaRuntimeUnit
       value.negative? ? -FLOAT32_MAX : FLOAT32_MAX
     end
 
+    # A compressed float's declared range, compared at float32 (SPEC.md 4.6):
+    # the descriptor carries the float32 ends, and the value is rounded to
+    # float32 before it is compared.
+    def self.float_in_range?(field, value)
+      float32_round(value).between?(field.fmin, field.fmax)
+    end
+
     def self.finite_float32(value, path)
       raise InvalidValue.new(path, 'expected Float') unless value.instance_of?(Float)
       raise InvalidValue.new(path, "#{value.inspect} is not finite") unless value.finite?

@@ -166,6 +166,8 @@ build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnes
 	./bin/schema generate --lang js --out build/tables-generated-js/rt1 test/tables/RT1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/rt2 test/tables/RT2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/rt3 test/tables/RT3.schema
+	# THE SHAPES UNIT (test/tables/shapes), opted in by the driver's `list`
+	./bin/schema generate --lang js --out build/tables-generated-js/shapes test/tables/shapes
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#
@@ -1299,6 +1301,9 @@ TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
 TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
+REGISTRY_NA       += bench-tables:js goldens:js
+REGISTRY_NA_WHY.bench-tables.js := bench/tables/js/leg build generates its own unit, so the aggregate has no prerequisite to add
+REGISTRY_NA_WHY.goldens.js      := no committed table goldens; its packet goldens (testdata/golden/js) are rewritten by internal/goldens at the top of update-goldens
 
 # THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424,
 # issue #547). `eslint` is the language's authority over the generated table

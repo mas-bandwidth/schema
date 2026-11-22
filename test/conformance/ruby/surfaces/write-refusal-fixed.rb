@@ -80,7 +80,7 @@ def self.run(manifest, outdir)
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !cls.respond_to?(:fixed_save) || !pkg.respond_to?(:_s_fixed_roots)
-      RubyConformance.absent(outdir, case_name, 'fixed root not generated for ruby')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     begin

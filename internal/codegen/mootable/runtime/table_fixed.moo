@@ -915,6 +915,8 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 		end
 		buffer.writeu8(out, off, if v then 1 else 0)
 	elseif s == "float" then
+		-- a compressed float's -0 is stored as +0 (§3.3)
+		v = V.storedFloat(f, v)
 		if f.f32 then
 			if type(v) ~= "number" or v ~= math.floor(v) or v < 0 or v > 0xFFFFFFFF then
 				refuse("invalid_value", false, fieldName(named))
@@ -1016,7 +1018,8 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 		local first = 0
 		if f.array == "counted" then
 			count = if type(extra) == "table" then extra.count else 0
-			if type(count) ~= "number" or count ~= math.floor(count) or count < 0 or count > f.bound then
+			-- below its Min is refused as past its Max is (SPEC.md §5.1 row 3)
+			if type(count) ~= "number" or count ~= math.floor(count) or count < (f.min or 0) or count > f.bound then
 				refuse("invalid_value", false, fieldName(named))
 			end
 			buffer.writeu32(out, off, count)

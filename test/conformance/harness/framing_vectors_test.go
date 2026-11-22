@@ -545,6 +545,10 @@ var framingVectors = []framingVector{
 	// ---------------------------------------------------------------- T. the node table
 	// T1: one record, the pointer resolving to it.
 	{name: "node_clean", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), b(0))},
+	// F1 (IR-2): a fixed-form header (form byte 3, reserved zero, a layout hash,
+	// an empty layout) at a plain variable root refuses: a variable table has no
+	// fixed form. Its accepted form-1 twin on the same root is node_clean.
+	{name: "frame_form_three_at_variable_root", unit: "graphdemo", root: "ListNode", raw: cat(b(3, 0, 0, 0, 0, 0, 0, 0), u64(0x7b8a31b17495f6d5), b(0, 0, 0, 0))},
 	// T3: node_count 2 over one record.
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.

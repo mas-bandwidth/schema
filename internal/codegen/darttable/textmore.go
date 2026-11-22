@@ -138,18 +138,37 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject walks one skipped object's entries in text order. In a
+// pointered root the label rules apply here as everywhere (§16.7): an &node key
+// is first or it is the reserved prefix out of place; a label alone REFERS, and
+// the text must have defined it and closed that definition; a label with fields
+// DEFINES, must be new to the text, and stays open until this object closes, so
+// a later reference reads null and a second definition refuses.
+void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
+  int? opened;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    if (key is! String) throw const FormatException('kind_mismatch');
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (r.variableRoot && key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      if (entries.length == 1) {
+        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
+        return;
+      }
+      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
+      r.textLabels[label] = true;
+      opened = label;
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (opened != null) r.textLabels[opened] = false;
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -158,10 +177,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -171,13 +187,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
-    for (final entry in val.entries) {
-      final key = entry.key;
-      if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
-    }
+    _jsonSkipObject(val.entries.toList(), r);
   }
 }
 

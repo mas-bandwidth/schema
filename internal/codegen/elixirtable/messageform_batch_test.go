@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,6 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // messageBatchRow is one `message` manifest line: the file-form wire and the
@@ -603,7 +604,7 @@ Probe.run()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -631,8 +632,8 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 		t.Error("messageform.go header does not say the module reads and writes a form-2 body")
 	}
 	for _, want := range []string{
-		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
-		"for i <- 0..(n - 1)//1, into:",
+		"defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}",
+		"bytes = :binary.copy(binary_part(bin, div(off, 8), n))",
 		"defp zero_width_run(_vocab, _shape, n, r, acc, v)",
 		"if n > bits_left(r) do",
 		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
@@ -670,7 +671,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -728,24 +729,28 @@ Probe.run()
 
 func sabotageDescendingEmptyRange(t *testing.T, module []byte) []byte {
 	t.Helper()
-	const have = `  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+	const have = `  defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}
 
-  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+  # The bytes are copied out of the batch, so a delivered text never holds
+  # the whole batch alive.
+  defp take_bytes({bin, off, total}, n) when is_integer(n) and n > 0 do
     need = n * 8
 
     if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + need, total}}
+      bytes = :binary.copy(binary_part(bin, div(off, 8), n))
+      {:ok, bytes, {bin, off + need, total}}
     end
   end`
-	const restored = `  defp take_bytes({int, off, total}, n) do
+	// the old defect in the reader's present shape: the bytes taken one by
+	// one over 0..(n - 1), which for n = 0 is the descending range 0, -1
+	const restored = `  defp take_bytes({bin, off, total}, n) do
     if off + n * 8 > total do
       :error
     else
-      bytes = for i <- 0..(n - 1), into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + n * 8, total}}
+      bytes = for i <- 0..(n - 1), into: <<>>, do: binary_part(bin, div(off, 8) + i, 1)
+      {:ok, bytes, {bin, off + n * 8, total}}
     end
   end`
 	return replaceModuleOnce(t, module, have, restored, "descending empty range")
