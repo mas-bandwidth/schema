@@ -494,11 +494,11 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		return fmt.Sprintf("if(%s, do: 1, else: 0)::unsigned-8", name)
 	case ir.TFloat32:
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
-		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
-		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
-		// plain float's -0 is carried bit-exact.
+		// this form is not optimized for bandwidth (§3.4). It is HELD TO ITS
+		// RANGE AT FLOAT32 on the way out (docs/SPEC-TABLES.md §3.3), and
+		// raises past it as an integer leaf does below.
 		if f.HasFloatRange {
-			return fmt.Sprintf("R.cf32_bits(%s)::little-unsigned-32", name)
+			return fmt.Sprintf("R.f32_ranged(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
 		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
@@ -547,6 +547,13 @@ func textSlack(f *ir.Field, name string) string {
 	return fmt.Sprintf("R.text_slack(%s, %d)", name, f.Type.Size)
 }
 
+// fixedLeafRanged reports a leaf whose writer holds it to a range: a ranged
+// integer, or a compressed float32 held to the float32 nearest each declared
+// end (docs/SPEC-TABLES.md §3.3).
+func fixedLeafRanged(f *ir.Field) bool {
+	return f.HasIntRange || (f.HasFloatRange && f.Type.Kind == ir.TFloat32)
+}
+
 // rangeAttr is the module attribute one ranged leaf's DECLARED bounds ride in,
 // named for the declaration that owns the field so two types in one file cannot
 // collide. It is defined by emitRangeAttrs before any helper that uses it.
@@ -569,7 +576,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 				return
 			}
 		}
-		if !f.HasIntRange {
+		if !fixedLeafRanged(f) {
 			return
 		}
 		g.owner = owner
@@ -579,6 +586,9 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 		}
 		seen[name] = true
 		lo, hi := fixedRangeOf(f)
+		if flo, fhi, ok := fixedFloatRangeOf(f); ok && f.Type.Kind == ir.TFloat32 {
+			lo, hi = flo, fhi
+		}
 		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
 		// the pair breaks where the formatter breaks it: the second bound
 		// aligned under the first, inside the brace that opened the tuple.
@@ -592,7 +602,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 	// spells a bound under the union's own name.
 	for _, u := range unions {
 		for _, v := range u.Variants {
-			if v.F != nil && v.F.HasIntRange {
+			if v.F != nil && fixedLeafRanged(v.F) {
 				one(ir.RustSnake(u.Name), v.F)
 			}
 		}

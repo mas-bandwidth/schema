@@ -234,8 +234,18 @@ fixed table T
   check(r0.q == 0.0, "the lower bound does not round-trip: #{inspect(r0.q)}")
   {:ok, [r1], _} = @@LOAD@@(@@SAVE@@([%Probe.T{q: 1.0}]))
   check(r1.q == 1.0, "the upper bound does not round-trip: #{inspect(r1.q)}")
-  {:error, why2, _rep2} = @@LOAD@@(@@SAVE@@([%Probe.T{q: 2.0}]))
-  check(why2 in [:out_of_range, :invalid_value], "a value above max refuses the whole read: #{inspect(why2)}")`)
+  # A VALUE ABOVE MAX IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md §3.3):
+  # the fixed write raises before a byte is made, as it does for a ranged
+  # integer; the reader's own refusal of such a file is the corpus's
+  # read_fixed_past_max row (TestElixirCompressedF32EndsCorpus).
+  raised =
+    try do
+      @@SAVE@@([%Probe.T{q: 2.0}])
+      false
+    rescue
+      e in ArgumentError -> String.starts_with?(Exception.message(e), "out_of_range")
+    end
+  check(raised, "a value above max is written")`)
 }
 
 // t09SignedFixed holds signed-fixed-point to §3.4: a `fixed(I, F)` field is its

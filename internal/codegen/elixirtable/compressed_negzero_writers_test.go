@@ -90,15 +90,19 @@ func TestElixirCompressedFloatStoresAreGuarded(t *testing.T) {
 	}
 
 	// THE FIXED SAVE: every compressed cell (a, z, xs, ys, ks and the arm v)
-	// rides cf32_bits, and only the plain p rides f32_bits.
+	// rides f32_ranged, whose store is cf32_bits, and only the plain p rides
+	// f32_bits.
 	fixed := string(files["ProbeFixed.ex"])
-	if got := strings.Count(fixed, "R.cf32_bits("); got != 6 {
-		t.Errorf("ProbeFixed.ex: %d compressed stores through cf32_bits, want 6 (a, z, xs, ys, ks, pick.v)", got)
+	if got := strings.Count(fixed, "R.f32_ranged("); got != 6 {
+		t.Errorf("ProbeFixed.ex: %d compressed stores through f32_ranged, want 6 (a, z, xs, ys, ks, pick.v)", got)
 	}
 	if got := strings.Count(fixed, "R.f32_bits("); got != 1 || !strings.Contains(fixed, "R.f32_bits(v_p)") {
 		t.Errorf("ProbeFixed.ex: %d stores through f32_bits, want exactly the plain float's (v_p)", got)
 	}
 	runtime := string(files["FixedRuntime.ex"])
+	if !strings.Contains(runtime, "def f32_ranged(value, {lo, hi}) do\n    bits = cf32_bits(value)\n") {
+		t.Error("FixedRuntime.ex: f32_ranged does not store through cf32_bits")
+	}
 	if !strings.Contains(runtime, "def cf32_bits(value) when is_float(value) and value == 0.0, do: 0") ||
 		!strings.Contains(runtime, "def cf64_bits(value) when is_float(value) and value == 0.0, do: 0") {
 		t.Error("FixedRuntime.ex does not store a compressed float's -0 as +0 (cf32_bits, cf64_bits)")
