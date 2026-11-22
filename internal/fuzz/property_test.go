@@ -171,23 +171,14 @@ func TestProtocolIdIsStable(t *testing.T) {
 // keeps changing its own output makes "run fmt" an unstable operation and
 // turns every commit into a diff fight. Checked over the whole corpus.
 func TestFormatIsIdempotent(t *testing.T) {
-	for _, dir := range []string{"../../examples", "../../examples128"} {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		if len(entries) == 0 {
-			t.Fatal("entries is empty: the loop below would check nothing")
-		}
-		for _, e := range entries {
-			if e.IsDir() || filepath.Ext(e.Name()) != ".schema" {
-				continue
-			}
-			path := filepath.Join(dir, e.Name())
-			src, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
+	// corpusUnits refuses a missing or empty corpus and an unreadable file:
+	// skipping one used to let this test pass formatting nothing (F-048).
+	formatted := 0
+	for dir, files := range corpusUnits(t) {
+		for _, f := range files {
+			path := filepath.Join(dir, f.Name)
+			src := f.Bytes
+			formatted++
 			once, err := format.Format(path, src)
 			if err != nil {
 				t.Fatalf("%s: format failed: %v", path, err)
@@ -200,6 +191,9 @@ func TestFormatIsIdempotent(t *testing.T) {
 				t.Errorf("%s: formatting is NOT idempotent — fmt(fmt(x)) != fmt(x)", path)
 			}
 		}
+	}
+	if formatted == 0 {
+		t.Fatal("formatted no .schema file: idempotence was checked over nothing")
 	}
 }
 

@@ -143,6 +143,22 @@ func subtest(t *testing.T) { t.Error("always") }`, nil},
 		t.Run("a", func(t *testing.T) { tc.check(t) })
 	}
 }`, nil},
+	{"1 Error on a plain error is not a failure", `func TestErrString(t *testing.T) {
+	e := errors.New("x")
+	_ = e.Error()
+}`, []string{"1a TestErrString"}},
+	{"1 Fatal on a value that is not the test", `type logger struct{}
+func (logger) Fatal(args ...any) {}
+func TestLogger(t *testing.T) { var l logger; l.Fatal("x") }`, []string{"1a TestLogger"}},
+	{"1 honest: a field holding the test", `type harness struct{ t *testing.T }
+func (h *harness) check(n int) { if n != 1 { h.t.Fatal("no") } }
+func TestField(t *testing.T) { h := &harness{t: t}; h.check(1) }`, nil},
+	{"1 honest: a struct embedding the test", `type env struct{ *testing.T }
+func TestEmbedded(t *testing.T) { e := env{t}; if 1+1 != 2 { e.Fatal("no") } }`, nil},
+	{"1 honest: an alias of the test", `func TestAlias(t *testing.T) { tt := t; if 1+1 != 2 { tt.Error("no") } }`, nil},
+	{"1 honest: an interface declaring Fatalf", `type fataler interface{ Fatalf(string, ...any) }
+func need(f fataler, ok bool) { if !ok { f.Fatalf("no") } }
+func TestIface(t *testing.T) { need(t, true) }`, nil},
 
 	// ---- class 2 ----
 	{"2 directory listing", `func TestDir(t *testing.T) {

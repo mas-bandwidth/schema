@@ -33,6 +33,8 @@ type pkgDir struct {
 	funcs   map[string][]*ast.FuncDecl
 	methods map[string][]*ast.FuncDecl
 	vars    map[string]ast.Expr // package-level var or const -> its initializer (nil when it has none)
+	tfields map[string]bool     // struct fields that hold the test (a *testing.T field, or one embedded)
+	ttypes  map[string]bool     // named types whose values carry t.Error and friends: a struct embedding the test, an interface declaring them
 }
 
 // A tree is the parsed repository: every directory holding a _test.go file,
@@ -151,7 +153,7 @@ func (t *tree) load(dir string) (*pkgDir, error) {
 		t.mu.Unlock()
 		return p, nil
 	}
-	p := &pkgDir{dir: dir, funcs: map[string][]*ast.FuncDecl{}, methods: map[string][]*ast.FuncDecl{}, vars: map[string]ast.Expr{}}
+	p := &pkgDir{dir: dir, funcs: map[string][]*ast.FuncDecl{}, methods: map[string][]*ast.FuncDecl{}, vars: map[string]ast.Expr{}, tfields: map[string]bool{}, ttypes: map[string]bool{}}
 	t.pkgs[dir] = p
 	t.mu.Unlock()
 
@@ -219,6 +221,7 @@ func (t *tree) load(dir string) (*pkgDir, error) {
 		if sf.isTest {
 			t.testFiles++
 		}
+		p.noteTestHolders(sf.ast)
 		for _, d := range sf.ast.Decls {
 			switch d := d.(type) {
 			case *ast.FuncDecl:
@@ -312,4 +315,70 @@ func (t *tree) pos(n ast.Node) (string, int) {
 		rel = p.Filename
 	}
 	return filepath.ToSlash(rel), p.Line
+}
+
+// noteTestHolders records what in one file holds the test, wherever it is
+// declared (top level, inside a function, an anonymous struct of a table): a
+// struct field of a testing type, named or embedded, goes in tfields; a named
+// struct that embeds the test, or a named interface that declares a failure
+// method, goes in ttypes. A call of Error, Fatal and friends counts as failing
+// the test only on a receiver that holds it.
+func (p *pkgDir) noteTestHolders(f *ast.File) {
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.TypeSpec:
+			if holdsTest(n.Type) {
+				p.ttypes[n.Name.Name] = true
+			}
+		case *ast.StructType:
+			for _, fd := range n.Fields.List {
+				if !isTestingType(fd.Type) {
+					continue
+				}
+				if len(fd.Names) == 0 {
+					p.tfields[embeddedName(fd.Type)] = true
+				}
+				for _, id := range fd.Names {
+					p.tfields[id.Name] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+// holdsTest reports whether values of the type expression carry the test's
+// failure methods: a struct embedding a testing type, or an interface that
+// embeds one or declares Error, Fatal and friends.
+func holdsTest(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.StructType:
+		for _, fd := range e.Fields.List {
+			if len(fd.Names) == 0 && isTestingType(fd.Type) {
+				return true
+			}
+		}
+	case *ast.InterfaceType:
+		for _, m := range e.Methods.List {
+			if len(m.Names) == 0 && isTestingType(m.Type) {
+				return true
+			}
+			for _, id := range m.Names {
+				if failMethods[id.Name] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func embeddedName(e ast.Expr) string {
+	if st, ok := e.(*ast.StarExpr); ok {
+		e = st.X
+	}
+	if sel, ok := e.(*ast.SelectorExpr); ok {
+		return sel.Sel.Name
+	}
+	return ""
 }

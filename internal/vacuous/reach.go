@@ -58,18 +58,20 @@ func (a *analyzer) scopeOf(d *ast.FuncDecl) *scope {
 	}
 	s := &scope{file: a.t.declAt[d], decl: d, closures: map[string]*ast.FuncLit{}, tnames: map[string]bool{"t": true, "tb": true}}
 	a.scopes[d] = s
-	addParams := func(ft *ast.FuncType) {
-		if ft.Params == nil {
+	addFields := func(fl *ast.FieldList) {
+		if fl == nil {
 			return
 		}
-		for _, f := range ft.Params.List {
-			if isTestingType(f.Type) {
+		for _, f := range fl.List {
+			if s.holdsTestType(f.Type) {
 				for _, n := range f.Names {
 					s.tnames[n.Name] = true
 				}
 			}
 		}
 	}
+	addParams := func(ft *ast.FuncType) { addFields(ft.Params) }
+	addFields(d.Recv)
 	addParams(d.Type)
 	if d.Body == nil {
 		return s
@@ -87,9 +89,20 @@ func (a *analyzer) scopeOf(d *ast.FuncDecl) *scope {
 				if lit, ok := n.Rhs[i].(*ast.FuncLit); ok {
 					s.closures[id.Name] = lit
 				}
+				if s.holdsTestValue(n.Rhs[i]) {
+					s.tnames[id.Name] = true
+				}
 			}
 		case *ast.ValueSpec:
+			if n.Type != nil && s.holdsTestType(n.Type) {
+				for _, id := range n.Names {
+					s.tnames[id.Name] = true
+				}
+			}
 			for i, id := range n.Names {
+				if i < len(n.Values) && s.holdsTestValue(n.Values[i]) {
+					s.tnames[id.Name] = true
+				}
 				if i < len(n.Values) {
 					if lit, ok := n.Values[i].(*ast.FuncLit); ok {
 						s.closures[id.Name] = lit
@@ -175,20 +188,71 @@ func rootIdent(e ast.Expr) *ast.Ident {
 	}
 }
 
+// holdsTestType reports whether a declared type carries the test's failure
+// methods: a testing type, a type of this package that embeds one or is an
+// interface declaring them, or an interface literal that does.
+func (s *scope) holdsTestType(e ast.Expr) bool {
+	if isTestingType(e) || holdsTest(e) {
+		return true
+	}
+	if st, ok := e.(*ast.StarExpr); ok {
+		e = st.X
+	}
+	id, ok := e.(*ast.Ident)
+	return ok && s.file.pkg.ttypes[id.Name]
+}
+
+// holdsTestValue reports whether an expression's value holds the test: the
+// test itself or an alias of it, a field holding it, or a composite literal of
+// a type that embeds it.
+func (s *scope) holdsTestValue(e ast.Expr) bool {
+	if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		e = u.X
+	}
+	if cl, ok := e.(*ast.CompositeLit); ok {
+		return cl.Type != nil && s.holdsTestType(cl.Type)
+	}
+	return s.testRecv(e)
+}
+
+// testRecv reports whether e, the receiver of a call, holds the test: a
+// testing parameter or an alias of one, or a field declared to hold it. A
+// method named Error or Fatal on anything else (an error value, a logger) is
+// not a failure of the test.
+func (s *scope) testRecv(e ast.Expr) bool {
+	for {
+		p, ok := e.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		e = p.X
+	}
+	switch x := e.(type) {
+	case *ast.Ident:
+		if _, isPkg := s.file.imports[x.Name]; isPkg {
+			return false
+		}
+		return s.tnames[x.Name]
+	case *ast.SelectorExpr:
+		if id, ok := x.X.(*ast.Ident); ok {
+			if _, isPkg := s.file.imports[id.Name]; isPkg {
+				return false
+			}
+		}
+		return s.file.pkg.tfields[x.Sel.Name]
+	}
+	return false
+}
+
 // directFail reports whether call is itself a failure: t.Error and friends on
-// anything that is not an imported package, panic, os.Exit, log.Fatal.
+// a receiver that holds the test, panic, os.Exit, log.Fatal.
 func (a *analyzer) directFail(s *scope, call *ast.CallExpr) bool {
 	if a.strict {
 		sel, ok := call.Fun.(*ast.SelectorExpr)
 		if !ok {
 			return false
 		}
-		if x, ok := sel.X.(*ast.Ident); ok {
-			if _, isPkg := s.file.imports[x.Name]; isPkg {
-				return false
-			}
-		}
-		return failMethods[sel.Sel.Name]
+		return failMethods[sel.Sel.Name] && s.testRecv(sel.X)
 	}
 	return directFail(s, call)
 }
@@ -210,7 +274,7 @@ func directFail(s *scope, call *ast.CallExpr) bool {
 				return false
 			}
 		}
-		return failMethods[name]
+		return failMethods[name] && s.testRecv(fun.X)
 	}
 	return false
 }
