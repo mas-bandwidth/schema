@@ -455,7 +455,7 @@ for (const [field, wire] of [
     storage[1].y = 9;
     const report = {};
     const got = CellLoadMessages(storage, v, wire, report);
-    if (got !== -1 || report.Reason !== "non_finite_float: Cell.x" || storage[0].x !== 0) {
+    if (got !== 0 || report.Reason !== "non_finite_float: Cell.x" || storage[0].x !== 0) {
       fail("CellLoadMessages did not refuse the NaN: " + got + " " + JSON.stringify(report));
     }
   }

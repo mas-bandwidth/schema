@@ -1,0 +1,29 @@
+// Probe.schema — a compressed float's declared range on the fixed-form
+// writers (docs/SPEC-TABLES.md §3.3, §3.4): a value outside [min, max] is a
+// writer's contract breach and the save refuses it, in every shape a
+// compressed float takes in a fixed record; a value inside it, the bounds
+// included, is written. cases.tsv beside it names the rows.
+//
+// `a` is a compressed float32 leaf, `xs` an array of them, `ys` a counted
+// array, `ks` an enum-keyed array, `pick` a union whose set arm is
+// compressed, and `p` a PLAIN float, which declares no range and writes
+// any finite value (the control).
+package crw
+
+enum Level { Low, High }
+
+union Pick
+{
+    v float32 | min = 0, max = 0.1, resolution = 0.01
+    n uint8
+}
+
+fixed table Fix
+{
+    a    float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
+    xs   [2]float32 | min = 0, max = 0.1, resolution = 0.01
+    ys   [..3]float32 | min = 0, max = 0.1, resolution = 0.01
+    ks   [Level]float32 | min = 0, max = 0.1, resolution = 0.01
+    pick Pick
+    p    float32
+}

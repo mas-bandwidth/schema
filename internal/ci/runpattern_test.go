@@ -24,6 +24,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -246,7 +248,7 @@ func makefileSet(root string) ([]string, error) {
 			if pattern == "" || strings.Contains(pattern, "$") {
 				return nil, fmt.Errorf("include line %q carries a variable this reader does not expand", trimmed)
 			}
-			matches, err := filepath.Glob(filepath.Join(root, pattern))
+			matches, err := provesran.Glob(filepath.Join(root, pattern))
 			if err != nil {
 				return nil, err
 			}

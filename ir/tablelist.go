@@ -7,13 +7,17 @@
 // COUNT the value decides.
 package ir
 
-import "sort"
+import (
+	"iter"
+	"slices"
+	"sort"
+)
 
 // IsList reports a `[]T` field — an UNBOUNDED ARRAY
 // (docs/SPEC-TABLES.md §2.9).
 func (f *Field) IsList() bool { return f != nil && f.Array == ArrayList }
 
-// ListFieldVerbs is the SURFACE an unbounded array claims on the table that
+// listFieldVerbs is the SURFACE an unbounded array claims on the table that
 // declares it (docs/SPEC-TABLES.md §2.9, §11): `<Table><Field>` followed by
 // each of these. There is no entry type and no lookup, so the list is the
 // three calls a builder needs and nothing beside them.
@@ -22,7 +26,18 @@ func (f *Field) IsList() bool { return f != nil && f.Array == ArrayList }
 // §11 already follows for the map's surface and the block form's row
 // accessors: a name free today must not become a collision the day a backend
 // emits it.
-var ListFieldVerbs = []string{"Add", "Each", "Erase"}
+//
+// It is unexported so that no importer can change what the checker claims;
+// [AllListFieldVerbs] reads it and [ListFieldVerbs] is the copy.
+var listFieldVerbs = []string{"Add", "Each", "Erase"}
+
+// ListFieldVerbs enumerates the unbounded-array surface (docs/SPEC-TABLES.md
+// §2.9, §11). It is a COPY: editing it changes nothing the checker claims.
+var ListFieldVerbs = slices.Clone(listFieldVerbs)
+
+// AllListFieldVerbs yields the unbounded-array surface the checker claims, in
+// order (docs/SPEC-TABLES.md §2.9, §11).
+func AllListFieldVerbs() iter.Seq[string] { return slices.Values(listFieldVerbs) }
 
 // ListFields lists the unbounded arrays an author WROTE, as `Table.field`,
 // sorted — the names a backend that does not carry the construct puts in its

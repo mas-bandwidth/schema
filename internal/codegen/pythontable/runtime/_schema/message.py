@@ -645,6 +645,10 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         except UnicodeDecodeError:
             raise Refused("wire_damaged", "message text is not UTF-8") from None
     if shape.kind == 14:
+        # bytes(N) and [..N]uint8 are one kind (SPEC-TABLES §3.3): any other
+        # announced element kind is a kind mismatch, as an array's is below.
+        if fd.codec == "bytes" and shape.element != 6:
+            raise Refused("kind_mismatch", "message bytes element kind changed")
         count = shape.minimum + reader.get((shape.maximum - shape.minimum).bit_length())
         if count > shape.maximum:
             raise Refused("wire_damaged", "message count exceeds announced bound")
@@ -752,6 +756,9 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
     if type(value) is float and getattr(fd, "float_range", False):
         if value < fd.fmin or value > fd.fmax:
             raise Refused("out_of_range", fd.name)
+        if value == 0:
+            # A compressed float's -0 is +0 (SPEC-TABLES §3.3), whatever the peer announced.
+            return 0.0
     return value
 
 

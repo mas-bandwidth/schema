@@ -4,7 +4,7 @@ package luautable_test
 // message-form/luau and retain-unknown/luau): LoadMessages and LoadRetain
 // are the strict reads, the plain names that hold the whole-value-or-refusal
 // rule (docs/SPEC-TABLES.md §6.5). LoadMessages refuses a damaged batch whole
-// (count -1, no bodies, malformed); LoadRetain refuses a damaged wire whole
+// (count 0, no bodies, malformed); LoadRetain refuses a damaged wire whole
 // (nil value, no records). Each is held by a positive read and by a negative
 // control that sabotages the emitted runtime so the refusal stops holding.
 
@@ -106,7 +106,7 @@ func TestLuauVtMessageRetainCells(t *testing.T) {
 			t.Fatalf("LoadMessages refused a clean batch: %s", out)
 		}
 		out = messageMainWith(t, dir, mods, row.root, "LoadMessages", ann, damaged)
-		if !strings.HasPrefix(out, "count -1 malformed true") {
+		if !strings.HasPrefix(out, "count 0 malformed true") {
 			t.Fatalf("LoadMessages handed back bodies of a damaged batch: %s", out)
 		}
 	})
@@ -157,11 +157,28 @@ func TestLuauVtMessageRetainCellsNegativeControl(t *testing.T) {
 		dir, mods, files := buildMessageUnit(t, units[conn.unit])
 
 		out := messageMainWith(t, dir, mods, row.root, "LoadMessages", ann, damaged)
-		if !strings.HasPrefix(out, "count -1 malformed true") {
+		if out != "count 0 malformed true" {
 			t.Fatalf("control needs a clean whole-batch refusal: %s", out)
 		}
+		// Every refused batch answers 0 (docs/SPEC-TABLES.md §3.3), and the
+		// walk read already discards a damaged batch, so the strict line is
+		// held in two steps: first the walk's discard is sabotaged to hand
+		// back its partial bodies, and the strict line alone still answers 0;
+		// then the strict line is sabotaged too, and the partial bodies show.
 		src := string(files["schema_message.luau"])
-		const anchor = "if rep.malformed then rep.reason = \"wire_damaged\"; return -1, {} end"
+		const walkAnchor = "if malformed then\n\t\treport.malformed = true\n\t\treturn 0, {}\n"
+		if strings.Count(src, walkAnchor) != 1 {
+			t.Fatalf("the message walk-discard anchor appears %d times, want exactly once", strings.Count(src, walkAnchor))
+		}
+		src = strings.Replace(src, walkAnchor, "if malformed then\n\t\treport.malformed = true\n\t\treturn got, bodies\n", 1)
+		if err := os.WriteFile(filepath.Join(dir, "schema_message.luau"), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out = messageMainWith(t, dir, mods, row.root, "LoadMessages", ann, damaged)
+		if out != "count 0 malformed true" {
+			t.Fatalf("the strict line did not hold the refusal alone: %s", out)
+		}
+		const anchor = "if rep.malformed then rep.reason = \"wire_damaged\"; return 0, {} end"
 		if strings.Count(src, anchor) != 1 {
 			t.Fatalf("the message strict-refusal anchor appears %d times, want exactly once", strings.Count(src, anchor))
 		}
@@ -170,7 +187,7 @@ func TestLuauVtMessageRetainCellsNegativeControl(t *testing.T) {
 			t.Fatal(err)
 		}
 		out = messageMainWith(t, dir, mods, row.root, "LoadMessages", ann, damaged)
-		if strings.HasPrefix(out, "count -1 malformed true") {
+		if strings.HasPrefix(out, "count 0 malformed true") {
 			t.Fatalf("the sabotage did not expose partial bodies: %s", out)
 		}
 	})

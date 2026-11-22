@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // tableLeg names a make leg whose evidence is load-bearing for a port, and the
@@ -43,7 +45,7 @@ func makeSourceText(t *testing.T, root string) string {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}

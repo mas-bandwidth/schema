@@ -39,3 +39,23 @@ def run(manifest, outdir):
         message.announce_read(vocab, read_bytes(conn[4]))
         values = message.load_messages(cls, vocab, read_bytes(wire))
         write_bytes(outdir, case, message.save_messages(cls, values))
+    # message-batch <case> <connection> <root> <wire>: load with room for every
+    # body and answer the count load_messages returned (docs/SPEC-TABLES.md
+    # §3.3; FORMAT.md, `message-batch`). The Python read raises Refused rather
+    # than returning a count, so a refused batch counts 0.
+    for row in entries(manifest, "message-batch"):
+        case, connection, root, wire = row[1:5]
+        conn = connections[connection]
+        package = unit_package(conn[2])
+        cls = root_class(conn[2], root)
+        message = getattr(getattr(package, "_schema", None), "_message_unit", None)
+        if package is None or cls is None or message is None:
+            absent(outdir, case, "message form is not emitted for this root")
+            continue
+        vocab = message.MessageVocabulary()
+        message.announce_read(vocab, read_bytes(conn[4]))
+        try:
+            count = len(message.load_messages(cls, vocab, read_bytes(wire), 256))
+        except package.Refused:
+            count = 0
+        write_bytes(outdir, case, f"count {count}\n".encode())

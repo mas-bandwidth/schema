@@ -15,7 +15,8 @@ import (
 
 // TestPythonForm1ArrayPresentMinimum uses a checked older writer for each wire.
 // A present counted array must meet the reader minimum; absence and fixed
-// array growth remain legal.
+// array growth remain legal, and an absent counted array reads as its birth,
+// Min elements at their defaults (SPEC.md §4.2), as the engine's model does.
 func TestPythonForm1ArrayPresentMinimum(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
@@ -67,7 +68,7 @@ else:
     assert mode != "refuse", "accepted under/over bound"
     if mode == "read2": assert len(value.items)==2 and value.items[0].n==7
     if mode == "read4": assert len(value.items)==4 and value.items[0].n==7
-    if mode == "absent": assert value.items == []
+    if mode == "absent": assert len(value.items) == 2 and all(item.n == 0 for item in value.items) and value.items[0] is not value.items[1]
     if mode == "absent_pointer": assert value.items == [None,None]
     if mode == "fixed3": assert len(value.items)==3 and value.items[0].n==7 and value.items[1:] == [None,None]
 print("ok")

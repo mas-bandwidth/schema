@@ -69,6 +69,10 @@ typedef struct ConformanceCodec
        `measure` / `save`. */
     int64_t ( *measure_variable )( const void * value );
     int64_t ( *save_variable )( const void * value, uint8_t * buffer, int64_t capacity );
+    /* A MESSAGE-BATCH ROW (FORMAT.md, `message-batch`): the count load_messages
+       returned into storage for 256 bodies, -1 for a refused announcement.
+       NULL for a variable root, which has no message form. */
+    int64_t ( *message_count )( const uint8_t * announcement, int64_t announcement_bytes, const uint8_t * wire, int64_t bytes );
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
