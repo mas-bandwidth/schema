@@ -1004,7 +1004,11 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 		cond = messageStoredDefaultCond(f, mem)
 	}
 	checkFixedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer)
-	if cond != "" || checkFixedRides {
+	// A STORED BIRTH VALUE IS DAMAGE at this build's own shape (docs/SPEC-TABLES.md
+	// §22.2, §3.3): a [Min..N]T holding Min default elements elides, so a
+	// writer of this build never spells it; messageRides is that elision
+	checkCountedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.BornCount() > 0
+	if cond != "" || checkFixedRides || checkCountedRides {
 		g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
 	}
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
@@ -1015,6 +1019,9 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	case checkFixedRides:
 		rides := g.messageRides(f, mem, ind)
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
+	case checkCountedRides:
+		rides := g.messageRides(f, mem, ind)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
 	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))

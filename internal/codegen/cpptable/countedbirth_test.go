@@ -76,6 +76,26 @@ static std::string variable( bool live )
     return hex( out, n );
 }
 
+// a batch of one record, read back at this build's own announcement
+static bool load( const uint8_t * p, int64_t n, FixRoot & into )
+{
+    TableMessageEntry entries[kTableMessageEntriesHere];
+    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
+    if ( !AnnounceRead( vocabulary, kTableAnnounce, kTableAnnounceBytes, NULL ) ) { return false; }
+    TableReport report;
+    int64_t count = 1;
+    return FixRootLoadMessages( &into, &count, vocabulary, p, n, &report ) && count == 1;
+}
+
+// the written batch of a value, raw
+static int64_t save( const FixRoot & value, uint8_t * out, int64_t capacity )
+{
+    TableReport report;
+    const int64_t n = FixRootMeasureMessages( &value, 1, &report );
+    if ( n < 0 || n > capacity || FixRootSaveMessages( &value, 1, out, n, &report ) != n ) { return -1; }
+    return n;
+}
+
 // a failed write check (assert) exits 3, so the test can tell it from a crash
 extern "C" void on_abort( int ) { std::_Exit( 3 ); }
 
@@ -105,6 +125,19 @@ int main( int argc, char ** argv )
     // count Min with one live element rides
     fixed.few[1] = 7;
     CHECK( message( fixed ) == "0200010000003800000000" );
+    // A STORED BIRTH VALUE IS REFUSED (§22.2, §3.3): this build's writer never
+    // spells it, so the live batch with its 7 cleared (byte 6, 0x38 -> 0x00) is
+    // a forged count-Min, all-default array; the live batch itself loads
+    {
+        uint8_t wire[64];
+        const int64_t n = save( fixed, wire, (int64_t) sizeof( wire ) );
+        CHECK( n == 11 && wire[6] == 0x38 );
+        FixRoot back;
+        CHECK( load( wire, n, back ) && back.few_count == 2 && back.few[1] == 7 );
+        wire[6] = 0x00;
+        FixRoot forged;
+        CHECK( !load( wire, n, forged ) );
+    }
     CHECK( variable( true ) == "01010e0a0402000000000700000000198ceafe187dc6dc0100000000000000" );
 
     // Min+1 default elements ride

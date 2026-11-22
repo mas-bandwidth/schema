@@ -4896,6 +4896,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 9;
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
+        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
@@ -4916,6 +4917,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           }
           value.entitiesCount = keep;
         }
+        let _born_value_entities = value.entitiesCount === 1;
+        for (let _bornAt_value_entities = 0; _born_value_entities && _bornAt_value_entities < 1; _bornAt_value_entities++) {
+          const _msgProbe11 = new TableBitWriter(null, true);
+          if (!MixedEntitySaveMessageBody(_msgProbe11, value.entities[_bornAt_value_entities])) { return false; }
+          if ((_msgProbe11.Bits > TableMessageRefBitsHere)) { _born_value_entities = false; }
+        }
+        if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && Number(entry.Shape.Min) === 1 && Number(entry.Shape.Max) === 8 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !((value.entitiesCount > 0 && !_born_value_entities))) { r.Report.Damaged = true; return false; }
         if (widened) { r.Report.Widened++; }
         break;
       }

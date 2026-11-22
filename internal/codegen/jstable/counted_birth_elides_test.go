@@ -44,7 +44,8 @@ func countedBirthModule(t *testing.T, u *ir.Unit, marker string) string {
 	return ""
 }
 
-const countedBirthProbe = `import * as F from "./%s.js";
+const countedBirthProbe = `import * as H from "./%s.js";
+import * as F from "./%s.js";
 import * as M from "./%s.js";
 import * as V from "./%s.js";
 
@@ -79,6 +80,25 @@ console.log("var_birth " + hex(V.VarSave(v)));
 console.log("retain_birth " + retain(v));
 f.few[1] = 7;
 console.log("msg_live " + msg(f));
+// A STORED BIRTH VALUE IS REFUSED (§22.2, §3.3): this build's writer never
+// spells it, so the live batch with its 7 cleared (byte 6, 0x38 -> 0x00) is a
+// forged count-Min, all-default array; the live batch itself loads
+{
+  const voc = new H.TableVocabulary();
+  voc.Init(new Array(H.TableMessageEntriesHere));
+  const ann = new Uint8Array(H.AnnounceMeasure());
+  H.Announce(ann);
+  if (!H.AnnounceRead(voc, ann, {})) { throw new Error("AnnounceRead"); }
+  const rep = {};
+  const n = M.RootMeasureMessages([f], rep);
+  const w = new Uint8Array(n);
+  if (M.RootSaveMessages([f], w, rep) !== n) { throw new Error("SaveMessages"); }
+  const back = [new H.Root()];
+  console.log("load_live " + M.RootLoadMessages(back, voc, w, {}) + "," + back[0].fewCount + "," + back[0].few[1]);
+  console.log("forge_byte " + w[6]);
+  w[6] = 0;
+  console.log("load_forged " + M.RootLoadMessages([new H.Root()], voc, w, {}));
+}
 r.few[1] = 7;
 console.log("root_live " + hex(V.RootSave(r)));
 const lrep = new V.TableVariableReport();
@@ -128,6 +148,9 @@ func countedBirthWant(t *testing.T, u *ir.Unit) map[string]string {
 	}
 	want["json_birth"] = want["root_birth"]
 	want["json_live"] = want["root_live"]
+	want["load_live"] = "1,2,7"
+	want["forge_byte"] = "56"
+	want["load_forged"] = "0"
 	if want["msg_birth"] != "020000" || len(want["root_birth"]) != 20 {
 		t.Fatalf("the reference moved: message %s, variable %s (want 020000 and 10 bytes)", want["msg_birth"], want["root_birth"])
 	}
@@ -142,6 +165,7 @@ func TestJSCountedBirthElides(t *testing.T) {
 	u := loadSchemaString(t, "counted_birth.schema", countedBirthSchema)
 	want := countedBirthWant(t, u)
 	probe := fmt.Sprintf(countedBirthProbe,
+		messageHomeBase(u),
 		countedBirthModule(t, u, "export function RootFixedWriteBody("),
 		messageRootBase(u, findTable(t, u, "Root")),
 		countedBirthModule(t, u, "export function VarSaveRetain("),

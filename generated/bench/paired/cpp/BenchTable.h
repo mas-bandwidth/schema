@@ -15867,6 +15867,25 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     value.entities_count = kept;
                 }
+                if ( same_shape )
+                {
+                    bool rides_entities = value.entities_count > 0;
+                    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+                    {
+                        rides_entities = false;
+                        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+                        {
+                            const int64_t birth_bits = MixedEntityMeasureMessageBody( 0, value.entities[birth_i] );
+                            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere;
+                            if ( !birth_default ) { rides_entities = true; }
+                        }
+                    }
+                    if ( !rides_entities )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                }
                 break;
             }
             case 0xee639cad45b1994cull: // stats
