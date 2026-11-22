@@ -104,3 +104,35 @@ fixed table ProfileConfig
     has_loadout bool
     loadout     LoadoutConfig
 }
+
+// THREE SPEC RULES the conformance rows sp-count-min-*, sp-f32-bound-* and
+// sp-enum-elem-* read through every leg (docs/SPEC.md section 4.2, 4.6;
+// docs/SPEC-TABLES.md section 3.3, 16.2, 2.13).
+//
+// CountedMin: a counted array below its minimum A refuses; from A to B it
+// reads. FloatBound: a compressed float32 is held at float32 against ends held
+// at float32, so max = 0.1 admits the float32 0.1 and refuses the float32 one
+// step past it. Moods: an array element naming a deprecated variant reads as
+// the ELEMENT default, None.
+
+enum Mood
+{
+    Calm
+    Old | deprecated
+    Fierce
+}
+
+fixed table CountedMin
+{
+    few [2..5]uint32
+}
+
+fixed table FloatBound
+{
+    level float32 = 0.0 | min = 0.0, max = 0.1, resolution = 0.01
+}
+
+fixed table Moods
+{
+    row [..4]Mood
+}
