@@ -2201,6 +2201,11 @@ func TableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	return raw + uint64(s.Min), ok
 }
 
+// tableMessageOverMax is a count past the ANNOUNCED max, which its bits can
+// spell and no conforming writer emits (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3); a read
+// shape's max is never negative, and the guard says so.
+func TableMessageOverMax(n uint64, s TableMessageShape) bool { return s.Max < 0 || n > uint64(s.Max) }
+
 // field is set where the payload is a FIELD's own, an unknown field of a body:
 // a conforming writer elides a None union field, so an explicit arm reference
 // 0 there is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), while an array element's and a
@@ -2523,4 +2528,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x4e4feeb39a842c8a
+const Version uint64 = 0x3af2702a313e2e51

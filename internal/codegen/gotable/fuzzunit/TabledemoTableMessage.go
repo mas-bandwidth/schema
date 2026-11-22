@@ -296,8 +296,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
 	nodeSeen := false
-	twice := func() bool {
-		s := v.Entries[:count]
+	twice := func(s []TableMessageEntry) bool {
 		slices.SortFunc(s, func(a, b TableMessageEntry) int {
 			return slices.Compare(words[a.Shape.Min:a.Shape.Max], words[b.Shape.Min:b.Shape.Max])
 		})
@@ -310,7 +309,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	}
 	for src.Offset < int64(len(words)) {
 		if count >= int64(len(v.Entries)) {
-			if twice() {
+			if twice(v.Entries[:count]) {
 				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -330,7 +329,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		v.Entries[count] = e
 		count++
 	}
-	if twice() {
+	if twice(v.Entries[:count]) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
