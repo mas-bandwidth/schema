@@ -2460,7 +2460,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
-- **Rust**: 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build
+- **Rust**: 1–4 debug wherever the value rides (a field, an optional, an array element or count, a `bytes(N)` length, a union arm's payload, a keyed slot), a count past `Max` clamped for the storage in every build; 8 debug for a `string(N)`'s zero byte (unbounded text refuses it every build; ill-formed UTF-8 is unrepresentable in a Rust `String`); 7 every build; 5–6 unrepresentable (native enums); 9 unchecked; 10 every build
 
 - **Java**: 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build
 
