@@ -17,7 +17,7 @@ func elixirTableUnitRepeats(mk string) ([]string, bool) {
 	}
 	seen := map[string]int{}
 	var repeats []string
-	for _, field := range strings.Fields(strings.ReplaceAll(m[1], "\\\n", " ")) {
+	for field := range strings.FieldsSeq(strings.ReplaceAll(m[1], "\\\n", " ")) {
 		name, _, _ := strings.Cut(field, ":")
 		seen[name]++
 		if seen[name] == 2 {
