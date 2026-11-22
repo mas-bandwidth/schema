@@ -710,12 +710,14 @@ var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
 const modulePath = "github.com/mas-bandwidth/schema/v2"
 
 // The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`,
-// or the same over `go list ./dir/...`.
+// or the same over `go list ./dir/...`, optionally with one `-skip '<re>'`
+// before the substitution: the tests it matches earn no credit there, because
+// a step of their own runs them.
 // A filter is a literal with an optional trailing `$` (no other regular
 // expression syntax), so its basic-regex meaning to grep and its meaning here
 // are the same: a substring, or with `$` a suffix, of the import path.
 var (
-	ciComplement     = regexp.MustCompile(`^go test (?:-timeout 0 )?\$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
+	ciComplement     = regexp.MustCompile(`^go test (?:-timeout 0 )?(?:-skip '([^'\s]+)' )?\$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
 	ciComplementDrop = regexp.MustCompile(`grep -v ['"]([A-Za-z0-9_/-]+\$?)['"]`)
 )
 var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)
@@ -748,12 +750,16 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 	// drops. Its package selection cannot be inferred from a substring in
 	// another argument.
 	if m := ciComplement.FindStringSubmatch(cmd); m != nil {
-		base := strings.TrimSuffix(strings.TrimSuffix(m[1], "..."), "/")
+		skip := m[1]
+		base := strings.TrimSuffix(strings.TrimSuffix(m[2], "..."), "/")
 		var drops []string
-		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[2], -1) {
+		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[3], -1) {
 			drops = append(drops, f[1])
 		}
 		return func(pkg, test string) bool {
+			if skip != "" && matchesRun(skip, test) {
+				return false
+			}
 			if base != "." && pkg != base && !strings.HasPrefix(pkg, base+"/") {
 				return false
 			}
@@ -805,8 +811,15 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 				return nil, false, false
 			}
 			skip, i = value, next
-		case field == "-count=1", field == "-v", field == "-json":
+		case field == "-count=1", field == "-v", field == "-json", field == "-timeout=0":
 			// These options do not remove selected tests.
+		case field == "-timeout":
+			// Only an unlimited timeout (a nightly has no time limit) is part of
+			// the grammar; it selects nothing away.
+			if i+1 >= len(fields) || fields[i+1] != "0" {
+				return nil, false, false
+			}
+			i++
 		default:
 			// Unknown options, redirections, substitutions and command separators all
 			// fail this package grammar. In particular -list does not earn credit.

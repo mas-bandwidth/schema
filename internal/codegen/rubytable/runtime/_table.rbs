@@ -188,7 +188,7 @@
     def self.cook_text_entry: (untyped, untyped) -> untyped
     def self.cook_union_field: (untyped) -> untyped
     def self.cook_write_record: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?inherited_inactive: untyped) -> untyped
-    def self.cook_write_scalar: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.cook_write_scalar: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
     def self.count_json_graph: (untyped, untyped, untyped, untyped) -> untyped
     def self.count_json_value: (untyped, untyped, untyped, untyped, untyped) -> untyped
     def self.crc32c: (untyped) -> untyped
