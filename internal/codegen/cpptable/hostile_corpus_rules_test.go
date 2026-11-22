@@ -296,7 +296,7 @@ func TestCppWritersAssertARangedFloatInsideItsRange(t *testing.T) {
 		}
 	}
 	admits := hostileFunction(t, src, "inline bool FixedRangedFixedWriteAdmits(")
-	const check = "bad |= (int) ( value.tenth < 0.0f ) | (int) ( value.tenth > 0.1f );"
+	const check = "bad |= (int) ( TableFloatFinite( value.tenth ) && ( value.tenth < 0.0f || value.tenth > 0.1f ) );"
 	if !strings.Contains(admits, check) {
 		t.Fatalf("the fixed write check does not hold row 10: no %q in\n%s", check, admits)
 	}

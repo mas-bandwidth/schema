@@ -1058,11 +1058,6 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 // write contract (docs/SPEC.md §5.1), which in this assert leg is a debug
 // assert, against the float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
-	if !f.Required && f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
-		g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)\n",
-			ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
-		return
-	}
 	if !f.Required {
 		g.emitWriteContractAssert(f, expr, ind)
 		return

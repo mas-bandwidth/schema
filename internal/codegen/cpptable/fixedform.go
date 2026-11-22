@@ -1567,10 +1567,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// A FLOAT'S RANGE IS ROW 10 of the write contract (docs/SPEC.md §5.1),
 		// which every writer holds, the message form's included: the ends
 		// alone, a float32's compared at float32. A -0 is not a violation;
-		// the writer stores +0 for it.
-		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+		// the writer stores +0 for it. A NaN or an infinity is row 7's,
+		// refused in every build after this assert, so the range is tested
+		// on a finite value only.
+		g.fixedWriteFloatRange(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case g.fixedWriteCheck && f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
+		g.fixedWriteFloatRange(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
 		// an unranged float has no row of the write contract to hold
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
@@ -1604,6 +1606,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 }
 
 // fixedClampBoth is a two-ended clamp: the select, then the count as an add.
+// fixedWriteFloatRange is the fixed write check's row 10 (docs/SPEC.md
+// §5.1) on one ranged float: a finite value past either end fails the check.
+func (g *tableGen) fixedWriteFloatRange(expr, lo, hi, ind string) {
+	g.pf("%sbad |= (int) ( TableFloatFinite( %s ) && ( %s < %s || %s > %s ) );\n", ind, expr, expr, lo, expr, hi)
+}
+
 func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	// THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
 	// meant: clang reads a bitwise operator between two comparisons as a
