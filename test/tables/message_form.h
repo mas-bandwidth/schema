@@ -988,8 +988,9 @@ static void test_message_form_pad()
 // ---- THE MASK'S WIDTH (docs/SPEC-TABLES.md §3.3, §4) -----------------------
 //
 // A `flags` field of three variants: three bits on the message wire, eight
-// bytes in a file. A file carrying a bit above W preserves it across a file
-// round trip; passing a mask wider than W to message save is caller error.
+// bytes in a file. A load of a mask with a bit at or above W refuses
+// out_of_range on both table forms, and every save holds the mask to W with a
+// debug assert (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH).
 
 static void test_message_form_mask_width()
 {
@@ -1015,19 +1016,72 @@ static void test_message_form_mask_width()
     const int64_t masked_file = tabledemo::LoadoutConfigMeasure( masked );
     CHECK( masked_file - plain_file == 1 + 1 + 8 + 8 ); // the header, the raw u64, and the trailer entry the new id costs
 
-    // A BIT ABOVE W survives a FILE round trip (on the message wire, passing a
-    // mask wider than W is caller error per docs/rulings.json message-flags-width-is-caller-error)
-    tabledemo::LoadoutConfig appended;
-    tabledemo::LoadoutConfigReset( appended );
-    appended.perks = ( 1u << 3 ) | 1u; // a fourth bit no variant names, beside Shielded
-    static uint8_t file[4096];
-    const int64_t file_bytes = tabledemo::LoadoutConfigSave( appended, file, sizeof( file ) );
-    CHECK( file_bytes > 0 );
-    pin_table_golden( "loadout_appended_bit", file, file_bytes );
-    tabledemo::LoadoutConfig from_file;
-    tabledemo::LoadoutConfigReset( from_file );
-    CHECK( tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) && !report.damaged );
-    CHECK( from_file.perks == ( ( 1u << 3 ) | 1u ) ); // the file kept the appended bit
+    // A BIT AT OR ABOVE W REFUSES THE LOAD (docs/SPEC-TABLES.md §4, A TABLE
+    // LOAD HOLDS A MASK TO ITS WIDTH): the newer reader reads old data, never
+    // the other way. Each file is this build own save of a legal mask with ONE
+    // byte moved: two saves that differ only in the mask locate its low byte,
+    // and bit 3 there is what a newer build that appended a fourth variant
+    // writes. The twin, the same bytes before the move, reads.
+    tabledemo::LoadoutConfig five;
+    tabledemo::LoadoutConfigReset( five );
+    five.perks = 5;
+    tabledemo::LoadoutConfig six;
+    tabledemo::LoadoutConfigReset( six );
+    six.perks = 6;
+    {
+        static uint8_t file[4096];
+        static uint8_t other[4096];
+        const int64_t file_bytes = tabledemo::LoadoutConfigSave( five, file, sizeof( file ) );
+        CHECK( file_bytes > 0 && tabledemo::LoadoutConfigSave( six, other, sizeof( other ) ) == file_bytes );
+        int64_t mask_at = -1;
+        for ( int64_t i = 0; i < file_bytes; i++ )
+        {
+            if ( file[i] != other[i] ) { CHECK( mask_at < 0 ); mask_at = i; }
+        }
+        CHECK( mask_at >= 0 && file[mask_at] == 5 );
+        tabledemo::LoadoutConfig from_file;
+        tabledemo::LoadoutConfigReset( from_file );
+        CHECK( tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) && !report.refused );
+        CHECK( from_file.perks == 5 );
+        file[mask_at] = (uint8_t) ( ( 1u << 3 ) | 5u ); // a fourth bit no variant names
+        tabledemo::LoadoutConfigReset( from_file );
+        CHECK( !tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) );
+        CHECK( report.refused && !report.damaged && report.refuse_reason == tabledemo::out_of_range );
+    }
+    {
+        static uint8_t record[8192];
+        static uint8_t other[8192];
+        static tabledemo::TableFixedEntry plan[4096];
+        const int64_t record_bytes = tabledemo::LoadoutConfigFixedMeasure( 1 );
+        CHECK( record_bytes > 0 && record_bytes <= (int64_t) sizeof( record ) );
+        CHECK( tabledemo::LoadoutConfigFixedSave( &five, 1, record, record_bytes ) == record_bytes );
+        CHECK( tabledemo::LoadoutConfigFixedSave( &six, 1, other, record_bytes ) == record_bytes );
+        int64_t mask_at = -1;
+        for ( int64_t i = 0; i < record_bytes; i++ )
+        {
+            if ( record[i] != other[i] ) { CHECK( mask_at < 0 ); mask_at = i; }
+        }
+        CHECK( mask_at >= 0 && record[mask_at] == 5 );
+        tabledemo::LoadoutConfig back;
+        tabledemo::LoadoutConfigReset( back );
+        CHECK( tabledemo::LoadoutConfigFixedLoad( &back, 1, record, record_bytes, plan, 4096, NULL, &report ) == 1 && !report.refused );
+        CHECK( back.perks == 5 );
+        record[mask_at] = (uint8_t) ( ( 1u << 3 ) | 5u );
+        tabledemo::LoadoutConfigReset( back );
+        CHECK( tabledemo::LoadoutConfigFixedLoad( &back, 1, record, record_bytes, plan, 4096, NULL, &report ) < 0 );
+        CHECK( report.refused && !report.damaged && report.refuse_reason == tabledemo::out_of_range );
+    }
+#ifndef NDEBUG
+    // AND NO SAVE WRITES ONE: the writer holds the mask to W, a debug assert
+    // in this assert leg (docs/SPEC.md §5.1), so a same-build round trip never
+    // writes what its own reader refuses
+    tabledemo::LoadoutConfig past;
+    tabledemo::LoadoutConfigReset( past );
+    past.perks = ( 1u << 3 ) | 1u;
+    static uint8_t scratch[4096];
+    expect_storage_assert( "flags bit past W (variable save)", [&] { (void) tabledemo::LoadoutConfigSave( past, scratch, sizeof( scratch ) ); } );
+    expect_storage_assert( "flags bit past W (fixed save)", [&] { (void) tabledemo::LoadoutConfigFixedSave( &past, 1, scratch, sizeof( scratch ) ); } );
+#endif
 }
 
 // ---- THE ANNOUNCEMENT'S TWO STRICT CHECKS, AND ITS TOLERANCE ---------------

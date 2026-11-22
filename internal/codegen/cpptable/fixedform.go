@@ -1535,6 +1535,23 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
 			return
+		case *ir.Flags:
+			// A MASK BIT AT OR ABOVE W, THE WIDTH THIS READER DECLARES, refuses
+			// the load out_of_range and lands only the bits below W
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH);
+			// the write check holds the writer to the same W, so a same-build
+			// round trip never writes what its own reader refuses. A 64-bit W
+			// has no bit above it.
+			if r.WireBits >= 64 {
+				return
+			}
+			if g.fixedCheck {
+				g.pf("%sbad |= (int) ( ( (uint64_t) %s >> %d ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)\n", ind, expr, r.WireBits)
+				return
+			}
+			g.pf("%sif ( ( (uint64_t) %s >> %d ) != 0 ) { %s &= 0x%xull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)\n",
+				ind, expr, r.WireBits, expr, (uint64(1)<<uint(r.WireBits))-1)
+			return
 		case *ir.Enum:
 			// AN ORDINAL PAST THE ENUM'S TOP VALUE is not a variant this
 			// generation cannot name — it is a number the enum cannot hold at
@@ -1819,7 +1836,9 @@ func (g *tableGen) emitFixedCountMin(f *ir.Field, count, ind string) {
 	g.pf("%sif ( %s < %d ) { oor_count++; } // a count below the declared Min (§5.1 row 3)\n", ind, count, f.ArrayMin)
 }
 
-// fixedClampNeeded is ir.TableFixedClampNeeded with one bound more: a counted
+// fixedClampNeeded is ir.TableFixedClampNeeded with two bounds more: a flags
+// mask narrower than 64 bits is held to its W (docs/SPEC-TABLES.md §4, A TABLE
+// LOAD HOLDS A MASK TO ITS WIDTH; fixedMinCountElement asks it), and a counted
 // array whose declared minimum is above zero holds its stored count to
 // [Min, N] in the same straight-line pass (docs/SPEC.md §5.1 row 3), the C
 // leg's rule (internal/codegen/ctable/fixedform.go).
@@ -1878,6 +1897,9 @@ func fixedMinCountElement(f *ir.Field, seen map[string]bool) bool {
 	switch r := f.Type.Ref.(type) {
 	case *ir.Struct:
 		return fixedMinCountIn(r, seen)
+	case *ir.Flags:
+		// a mask narrower than 64 bits is held to its W (docs/SPEC-TABLES.md §4)
+		return r.WireBits < 64
 	case *ir.Union:
 		for _, v := range r.Variants {
 			if v.F != nil && fixedMinCountField(v.F, seen) {

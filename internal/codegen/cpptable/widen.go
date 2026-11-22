@@ -356,6 +356,7 @@ func (g *tableGen) emitWidenedScalarChecked(f *ir.Field, declared int, kindExpr,
 		g.emitIfActions(ind, g.fieldIsDefault(f, "decoded_v"), onTrunc...)
 	}
 	g.emitScalarClamps(f, width, signed, ind)
+	g.emitFlagsWidthClamp(f, "decoded_v", "r.report->", ind)
 	g.pf("%s%s = decoded_v;\n", ind, lvalue)
 }
 
