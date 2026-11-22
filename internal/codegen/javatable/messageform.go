@@ -2771,6 +2771,14 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 				maxLit = (uint64(1) << uint(f.Type.Width)) - 1
 				hasRange = true
 			}
+			if fl, ok := f.Type.Ref.(*ir.Flags); ok && !hasRange && fl.WireBits < 64 {
+				// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md
+				// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces
+				// a wider mask, and each value is held to this reader's own W
+				minLit = 0
+				maxLit = (uint64(1) << uint(fl.WireBits)) - 1
+				hasRange = true
+			}
 			bitsWidth := 0
 			if f.Type.Kind == ir.TBits {
 				bitsWidth = f.Type.Width

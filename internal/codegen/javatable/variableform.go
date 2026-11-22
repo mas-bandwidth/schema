@@ -6455,6 +6455,9 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                    else if (kind == 8) { if (r.has(4)) { v.%s = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
 			fmt.Fprintf(b, "                    else if (kind == 7) { if (r.has(2)) { v.%s = r.get16(); report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
 			fmt.Fprintf(b, "                    else { if (r.has(1)) { v.%s = r.get8(); report.widened++; } else { report.damaged = true; r.fail = true; } }\n", m)
+			if held := javaFlagsHeld(f, "v."+m); held != "" {
+				fmt.Fprintf(b, "                    if (!r.fail) { %s}\n", held)
+			}
 			b.WriteString("                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
@@ -6536,7 +6539,8 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 		case *ir.Flags:
 			// a WIDENED element kind (§4) is read at ITS width, not the
 			// declared mask's: one u8 element is one byte on the wire
-			fmt.Fprintf(b, "int ew = ek == 6 ? 1 : ek == 7 ? 2 : ek == 8 ? 4 : 8; %s{ for (long i = 0; i < n; i++) { if (ar.has(ew)) { %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("ew"), place("ar.unsigned(ew)"))
+			// and is held to W like a scalar mask (javaFlagsHeld)
+			fmt.Fprintf(b, "int ew = ek == 6 ? 1 : ek == 7 ? 2 : ek == 8 ? 4 : 8; %s{ for (long i = 0; i < n; i++) { if (ar.has(ew)) { long fe = ar.unsigned(ew); %s%s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("ew"), javaFlagsHeld(f, "fe"), place("fe"))
 		}
 	}
 }
@@ -7194,4 +7198,16 @@ func shiftLines(s string, n int) string {
 		lines[i] = l[cut:]
 	}
 	return strings.Join(lines, "")
+}
+
+// javaFlagsHeld is the read's refusal of a flags mask bit at or above the
+// reader's W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
+// flags append at the end, so old data never carries one, and an old reader
+// does not read new data. It is "" when W is 64 and every bit is in width.
+func javaFlagsHeld(f *ir.Field, expr string) string {
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || f.Type.Kind != ir.TNamed || fl.WireBits >= 64 {
+		return ""
+	}
+	return fmt.Sprintf("if ((%s >>> %d) != 0L) { report.refuse(\"out_of_range\"); } ", expr, fl.WireBits)
 }
