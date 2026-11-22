@@ -7,6 +7,14 @@
 # a disagreement no FIX-CARD names (or a FIX-CARD whose case has gone green).
 #
 # usage: elixir test/elixir-hostile/runner.exs <corpus-dir> <ebin-dir> [packet-dir]
+#        elixir test/elixir-hostile/runner.exs --scorer <scorer-outcomes.tsv>
+#
+# A refusal conforms on its verdict alone (docs/rulings.json
+# refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the port gives
+# it is printed on a FAIL line as its diagnostic and never compared. --scorer
+# grades the shared scorer outcome cases
+# (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+# expected_answer and agrees the corpus run uses.
 #
 # A carrier maps to the port's public reader:
 #   text              <Unit>.Table.from_json/2
@@ -40,6 +48,73 @@
 # raise there is the case's answer too (a clean refusal is not). Cases run one
 # at a time: the budget is wall-clock, and parallel cases sharing the bench
 # would charge each other's time.
+
+# The manifest's answer for a case, and whether a port's answer conforms to it:
+# a refusal on its verdict alone (refusal-verdict-only), an accept on its
+# digest. A raise, a throw, a death or a budget overrun is never a refusal.
+expected_answer = fn verdict, want_reason, want_digest ->
+  if verdict == "accept", do: {:accept, want_digest}, else: {:refuse, want_reason}
+end
+
+agrees = fn
+  {:refuse, _}, {:refuse, _} -> true
+  got, expected -> got == expected
+end
+
+# Each row of the shared scorer fixture: the expected verdict, reference
+# diagnostic and accepted SHA-256 make the manifest's answer; the worker reply
+# makes the port's (a refusal with the name it gives or none, an accept of the
+# text body's digest, or a worker that exits). agrees must pass exactly the
+# rows whose scorer exit is 0.
+case System.argv() do
+  ["--scorer", path] ->
+    rows =
+      path
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+      |> Enum.map(&String.split(&1, "\t"))
+
+    wrong =
+      Enum.count(rows, fn row ->
+        [name, verdict, want_reason, want_digest, reply, body, scorer_exit] =
+          case row do
+            [_, _, _, _, _, _, _] -> row
+            _ -> raise "#{path}: row has #{length(row)} fields, want 7: #{Enum.join(row, "\t")}"
+          end
+
+        got =
+          cond do
+            reply == "refuse" or String.starts_with?(reply, "refuse ") ->
+              {:refuse, reply |> String.replace_prefix("refuse", "") |> String.trim_leading()}
+
+            reply == "accept text" ->
+              text = if body == "-", do: "", else: body
+              {:accept, :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)}
+
+            reply == "exit" ->
+              {:died, {:exit_status, 3}}
+
+            true ->
+              raise "#{path}: #{name}: unknown worker reply #{reply}"
+          end
+
+        pass = agrees.(got, expected_answer.(verdict, want_reason, want_digest))
+
+        if pass != (scorer_exit == "0") do
+          IO.puts("SCORER #{name}: graded #{if pass, do: "pass", else: "fail"}, the fixture says scorer exit #{scorer_exit}")
+          true
+        else
+          false
+        end
+      end)
+
+    IO.puts("elixir scorer outcomes: #{length(rows)} cases, #{length(rows) - wrong} graded as the fixture says, #{wrong} wrong")
+    System.halt(if wrong == 0 and rows != [], do: 0, else: 1)
+
+  _ ->
+    :ok
+end
 
 [corpus, ebin | rest] = System.argv()
 Code.prepend_path(ebin)
@@ -459,12 +534,12 @@ end
 {passed, carried, bad, stale} =
   Enum.reduce(manifest, {0, 0, [], []}, fn [name, carrier, schema, table, input, _prov, verdict, want_reason, want_digest], {p, c, bad, stale} ->
     payload = File.read!(Path.join(corpus, input))
-    expected = if verdict == "accept", do: {:accept, want_digest}, else: {:refuse, want_reason}
+    expected = expected_answer.(verdict, want_reason, want_digest)
 
     got = isolated.(carrier, schema, table, payload)
 
     cond do
-      got == expected ->
+      agrees.(got, expected) ->
         case Map.pop(findings, name) do
           {nil, _rest} ->
             {p + 1, c, bad, stale}
@@ -500,6 +575,12 @@ stale = stale ++ orphans
 
 IO.puts("#{length(manifest)} cases: #{passed} pass, #{carried} carried as FIX-CARD, #{length(bad)} unexplained, #{length(stale)} stale")
 
-if bad != [] or stale != [] do
+# One unit per manifest case. tools/mustrun holds the count to the one the
+# recipe registers for the committed corpus, so an emptied or shortened
+# manifest is red.
+failed = length(bad) + length(stale)
+IO.puts("ran #{length(manifest)}, failed #{failed}")
+
+if failed != 0 or manifest == [] do
   System.halt(1)
 end

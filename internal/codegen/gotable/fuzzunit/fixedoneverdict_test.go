@@ -23,8 +23,14 @@ func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
 	slowtest.Gate(t, "every byte value of every fixed root")
 	t.Parallel()
 	c := compiler.New()
-	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
-	u, _ := c.Load(paths)
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := tabletext.NewModel(u)
 	for _, target := range fixedTargets {
 		root := m.Lookup(target.name)

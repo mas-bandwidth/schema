@@ -14,7 +14,11 @@ func TestOneSidedRangeRefusedOffGo(t *testing.T) {
 	c := New()
 	src := "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n    b uint16 | max = 9\n}\n"
 	u := unitFromSource(t, src)
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryOneSidedRange) {
 			if err != nil {

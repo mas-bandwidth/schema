@@ -228,10 +228,13 @@ tables-java-generated-fresh: bin/schema
 	./bin/schema generate --lang java --out $(JAVA_FRESH)/gen tables/lists > /dev/null
 	rm -rf $(JAVA_FRESH)/gen && ./bin/schema generate --lang java --out $(JAVA_FRESH)/gen $(JAVA_FRESH)/wide > /dev/null
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_FRESH)/classes $(JAVA_FRESH)/gen/*.java
-	@missing=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
-		grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //' | \
-		while read d; do $(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
-			grep -q "rm -rf $$d && " || echo $$d; done); \
+	@# The stamp's plan is read once, and every reader takes all of its input:
+	@# under pipefail `make -n | grep -q` let make die of SIGPIPE and every unit
+	@# read as missing (the F-067 shape). Zero generate lines is red too.
+	@plan=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null); \
+	dirs=$$(printf '%s\n' "$$plan" | grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //'); \
+	if [ -z "$$dirs" ]; then echo "tables-java-generated-fresh: the stamp's plan has no generate line"; exit 1; fi; \
+	missing=$$(for d in $$dirs; do printf '%s\n' "$$plan" | grep -F "rm -rf $$d && " >/dev/null || echo $$d; done); \
 	if [ -n "$$missing" ]; then echo "tables-java-generated-fresh: generated without being emptied first: $$missing"; exit 1; fi
 	@echo 'tables-java-generated-fresh: a unit regenerated as a wide-kind unit compiles, and every unit directory is emptied before its generate'
 
@@ -399,7 +402,7 @@ JAVA_FORMAT_STYLE ?= --aosp
 # jar answers "Unable to access jarfile .../google-java-format-1.37.0-all-deps.jar",
 # which carries the version in its path. The first draft of this probe passed
 # on exactly that, so the missing-formatter control plants that case.
-java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -qx 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)'
+java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -x 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)' >/dev/null
 # deferred, so test-java's own JAVA_REQUIRE_FORMATTER (below) reaches the gate
 JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
 
@@ -1194,7 +1197,7 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 # supplies that type and this leg needs no C++ serialize checkout to produce
 # the oracle.
 JAVA_FIXEDFORM_CORPUS := build/java-fixedform-corpus
-build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk
+build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf $(JAVA_FIXEDFORM_CORPUS)
 	@mkdir -p $(JAVA_FIXEDFORM_CORPUS)
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
@@ -2138,7 +2141,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 # has no budget for them (see that target). Then the packet tests, with and
 # without -ea.
 .PHONY: test-java
-test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-standalone
 	$(MAKE) tables-java-zero-cost
@@ -2155,10 +2158,10 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-message-batch
 	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
 	$(MAKE) tables-java-variable-class
-	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
-	cd test/java && $(JAVA) -cp ../../build/java-test Main
-	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
-	cd test/java-ludicrous && $(JAVA) -cp ../../build/java-test-ludicrous Main
+	cd test/java && ../../$(MUSTRUN) -name test-java-ea -count 866 -- $(JAVA) -ea -cp ../../build/java-test Main
+	cd test/java && ../../$(MUSTRUN) -name test-java -count 860 -- $(JAVA) -cp ../../build/java-test Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous-ea -count 48 -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count 47 -- $(JAVA) -cp ../../build/java-test-ludicrous Main
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
@@ -2307,8 +2310,8 @@ build/cards-java-facade/.stamp: cards-java-generate \
 	@touch $@
 
 .PHONY: cards-java-test
-cards-java-test: build/cards-java-facade/.stamp
-	$(JAVA) -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -cp build/cards-java-facade CardsTest
+cards-java-test: build/mustrun build/cards-java-facade/.stamp
+	$(MUSTRUN) -name cards-java-test -count 7 -- $(JAVA) -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -cp build/cards-java-facade CardsTest
 
 .PHONY: cards-java-conformance
 cards-java-conformance: build/conformance-harness build/cards-java-facade/.stamp
@@ -2601,11 +2604,11 @@ build/packet-end/java/.stamp: bin/schema test/packet-end/End.schema make/java.mk
 	@touch $@
 
 .PHONY: packet-end-java packet-end-java-negative-control
-packet-end-java: build/packet-end/java/.stamp
+packet-end-java: build/mustrun build/packet-end/java/.stamp
 	@mkdir -p build/packet-end/java/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-end/java/classes build/packet-end/java/gen/*.java test/packet-end/java/Main.java
-	$(JAVA) -ea -cp build/packet-end/java/classes Main testdata/wire/packet-end
-	$(JAVA) -cp build/packet-end/java/classes Main testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-java-ea -count 3 -- $(JAVA) -ea -cp build/packet-end/java/classes Main testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-java -count 3 -- $(JAVA) -cp build/packet-end/java/classes Main testdata/wire/packet-end
 
 packet-end-java-negative-control: packet-end-java
 	@mkdir -p build/packet-end/java-negative

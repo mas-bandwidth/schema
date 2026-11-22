@@ -36,7 +36,7 @@ squirrel-ludicrous-negative-control: toolchain-squirrel build/squirrel-ludicrous
 		echo 'NEGATIVE CONTROL FAILED: a flipped ludicrous_state golden passed the Squirrel ludicrous program'; exit 1; fi
 	@grep -Fq 'FAILED: wire golden ludicrous_state:' build/squirrel-ludicrous-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the Squirrel ludicrous program failed for another reason'; cat build/squirrel-ludicrous-negative/log; exit 1; }
-	@if grep '^FAILED: ' build/squirrel-ludicrous-negative/log | grep -Fvq 'FAILED: wire golden ludicrous_state:'; then \
+	@if grep '^FAILED: ' build/squirrel-ludicrous-negative/log | grep -Fv 'FAILED: wire golden ludicrous_state:' >/dev/null; then \
 		cat build/squirrel-ludicrous-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the flipped golden went red'; exit 1; fi
 	@if grep -qx 'OK' build/squirrel-ludicrous-negative/log; then \
 		cat build/squirrel-ludicrous-negative/log; echo 'NEGATIVE CONTROL FAILED: the program printed OK over a flipped golden'; exit 1; fi

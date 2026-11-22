@@ -133,7 +133,11 @@ func TestTableRuntimeNamesAreClaimedMoo(t *testing.T) {
 			t.Errorf("the moo table surface emits %s and internal/tablenames does not register it for moo", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Moo) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Moo)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Moo) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the moo backend defines %s, but nothing emitted names it", name)
 		}

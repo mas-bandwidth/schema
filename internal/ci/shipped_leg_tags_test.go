@@ -150,6 +150,9 @@ func TestShippedLegTagGateSeesWhatItRefuses(t *testing.T) {
 		tracked = append(tracked, path)
 	}
 	got := shippedLegTagOffenders(t, root, tracked)
+	if len(got) == 0 {
+		t.Fatal("the gate refused nothing in a tree planted with five shipped-leg tags: it would pass over every offender")
+	}
 	want := []string{
 		".github/workflows/x.yml:2: schema_leg_" + "goose",
 		"compiler/target_x.go:1: schema_leg_" + "moo",

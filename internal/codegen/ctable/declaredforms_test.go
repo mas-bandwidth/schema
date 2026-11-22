@@ -3,7 +3,6 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -67,6 +66,9 @@ fixed table Fox { x int32 }
 	if cHasFormFile(decl, "Block.h") || cHasFormFile(decl, "Block.c") {
 		t.Fatalf("a wire-only table emitted a block form file: %v", cKeysOf(decl))
 	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
+	}
 	for name, data := range decl {
 		src := string(data)
 		for _, forbidden := range []string{
@@ -121,10 +123,7 @@ fixed table FoxAll
 		}
 	}
 
-	cc, err := exec.LookPath("cc")
-	if err != nil {
-		return
-	}
+	cc := slowtest.Tool(t, "cc")
 	dir := t.TempDir()
 	var sources []string
 	var header string

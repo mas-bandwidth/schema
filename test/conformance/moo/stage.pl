@@ -51,8 +51,9 @@ opendir(my $dh, "test/conformance/moo") or die "stage.pl: test/conformance/moo: 
 my @plugins = sort grep { /^[a-z][a-z0-9_]*$/ } map { /^(.*)\.moo$/ ? $1 : () } readdir($dh);
 closedir $dh;
 # main.moo is the driver and wirefuzz.moo the wire-fuzz pipe (wirefuzz-driver),
-# neither a surface module
-@plugins = grep { $_ ne "main" && $_ ne "wirefuzz" } @plugins;
+# neither a surface module; writerefusalpacket.moo is the standalone probe of
+# writerefusalpacket_test.go (its own stage, its own ./serialize), so it is not one either
+@plugins = grep { $_ ne "main" && $_ ne "wirefuzz" && $_ ne "writerefusalpacket" } @plugins;
 emit("$stage/plugins.moo",
 	"--!strict\n-- written by test/conformance/moo/stage.pl: the surface modules beside main.moo\nreturn table.freeze({" . join(", ", map { "\"$_\"" } @plugins) . "})\n");
 
@@ -79,7 +80,7 @@ my %kinds = (
 	"framing"       => ["framing"],
 	"retain"        => ["retain"],
 	"retain-save"   => ["retain"],
-	"message"       => ["connection", "message"],
+	"message"       => ["connection", "message", "message-batch"],
 	"json-hostile"  => ["json-hostile"],
 	"cook"          => ["cook"],
 	"cook-foreign"  => ["cook"],

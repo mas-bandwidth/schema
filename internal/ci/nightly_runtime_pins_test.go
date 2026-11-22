@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // Nightly must qualify the same runtime releases as the merge and release gates.
@@ -27,6 +29,9 @@ func TestNightlyRuntimePinsMatchMergeAndRelease(t *testing.T) {
 	want := read("ci-full.yml")
 	for _, name := range []string{"ci-fast.yml", "certify.yml", "leg.yml", "nightly-conformance.yml"} {
 		got := read(name)
+		if len(want) == 0 {
+			t.Fatal("want is empty: the loop below would check nothing")
+		}
 		for runtime, pin := range want {
 			if got[runtime] != pin {
 				t.Errorf("%s: %s=%s, merge gate requires %s", name, runtime, got[runtime], pin)
@@ -60,7 +65,7 @@ func TestNightlyHarnessIncludesEveryOptionalTarget(t *testing.T) {
 			t.Errorf("%s names HARNESS_TAGS; the nightly harness takes no tag list", name)
 		}
 	}
-	ports, err := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json"))
+	ports, err := provesran.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,11 +76,11 @@ func TestNightlyHarnessIncludesEveryOptionalTarget(t *testing.T) {
 	for _, port := range ports {
 		nightly[filepath.Base(filepath.Dir(port))] = true
 	}
-	paths, err := filepath.Glob(filepath.Join(root, "compiler", "carries_*.go"))
+	paths, err := provesran.Glob(filepath.Join(root, "compiler", "carries_*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	admissions, err := filepath.Glob(filepath.Join(root, "test", "conformance", "harness", "implementation_*.go"))
+	admissions, err := provesran.Glob(filepath.Join(root, "test", "conformance", "harness", "implementation_*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

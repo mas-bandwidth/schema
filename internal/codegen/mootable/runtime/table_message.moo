@@ -566,7 +566,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0, strict = false }
 end
 
 local function resetReport(report: any)
@@ -578,6 +578,8 @@ local function resetReport(report: any)
 	report.widened = 0
 	report.nonFinite = 0
 	report.nonFiniteField = nil
+	report.remote = nil
+	report.own = nil
 end
 
 MS.resetReport = resetReport
@@ -592,6 +594,21 @@ end
 -- whatever the buffer would hold (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
 -- CHECK; docs/LAYERS/1-framing.md F6)
 local ID_TABLE_BOUND = 4096
+
+-- homeBuild is this unit's own build version, the eight little-endian bytes
+-- MS.unit reads off the unit's announcement: what a strict announcement read
+-- compares the peer's against (§3.3).
+local homeBuild: string? = nil
+
+-- buildVersionValue is a build version's eight bytes as the unsigned 64-bit
+-- value a strict refusal names.
+local function buildVersionValue(bytes: string?): any
+	if bytes == nil then
+		return nil
+	end
+	local b = buffer.fromstring(bytes)
+	return Uint64.new(buffer.readu32(b, 0), buffer.readu32(b, 4))
+end
 
 local function announceRead(v: any, data: buffer, report: any): boolean
 	local len = buffer.len(data)
@@ -722,6 +739,15 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		report.damaged = true
 		return false
 	end
+	-- STRICT MODE IS OPT-IN (§3.3): with v.strict set, an announcement whose
+	-- build version is not this unit's own is refused build_version_mismatch,
+	-- sets no vocabulary, keeps the peer's build version and names both
+	-- versions as Uint64 values in report.remote and report.own.
+	if v.strict and version ~= homeBuild then
+		report.remote = buildVersionValue(version)
+		report.own = buildVersionValue(homeBuild)
+		return refuse(report, "build_version_mismatch")
+	end
 	local wb = words :: buffer
 	local we = buffer.len(wb)
 	local entries = {}
@@ -809,7 +835,9 @@ function MS.unit(bytes: string): buffer
 	local rep: any = {}
 	resetReport(rep)
 	homeBytes = bytes
-	if not announceRead(v, buffer.fromstring(bytes), rep) then
+	local read = announceRead(v, buffer.fromstring(bytes), rep)
+	homeBuild = v.buildVersion
+	if not read then
 		-- a unit whose closure announces a kind the message form does not
 		-- spell: the Go engine refuses that announcement too, and this build's
 		-- writer has no vocabulary to write with, which writeBatch names
@@ -1094,6 +1122,42 @@ local function elemDefault(e: any, x: any): boolean
 	return false
 end
 
+-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+-- §22.2 [M..N]T row, the Go engine's messageElides): a plain counted field
+-- holding exactly its minimum count of elements, each off the wire (a float
+-- by its bits, a table by a body that is its terminator alone), is not
+-- written. A present optional rides before this is asked.
+local function bornElides(c: any, fd: any, val: any, n: number): boolean
+	local min = fd.min or 0
+	if min <= 0 or n ~= min or fd.required == true then
+		return false
+	end
+	local e = fd.e
+	if e.s ~= "tab" then
+		for i = 1, n do
+			if not elemDefault(e, elemAt(val, i)) then
+				return false
+			end
+		end
+		return true
+	end
+	local w = c.w
+	for i = 1, n do
+		local x = elemAt(val, i)
+		if type(x) ~= "table" then
+			return false
+		end
+		local st = w.n
+		local ok = encodeBody(c, S.lookup(e.t), x)
+		local empty = ok and w.n - st == c.refBits
+		truncate(w, st)
+		if not empty then
+			return false
+		end
+	end
+	return true
+end
+
 local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
 	local shape = entry.shape
 	local e = fd.e
@@ -1212,7 +1276,7 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		end
 		if fd.array == "counted" then
 			local n = liveCount(fd, v, val)
-			if n == 0 then
+			if n == 0 or bornElides(c, fd, val, n) then
 				return true
 			end
 			wref(c, entry.slot)
@@ -2331,10 +2395,11 @@ end
 
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
--- -1 with report.reason is a refusal (newer_form, no_vocabulary,
--- integrity_mismatch, kind_mismatch, out_of_range, count_over_bound,
--- length_over_bound; non_finite_float answers 0); a count above capacity is
--- batch_too_large and returns the wire's M. Damage anywhere discards the
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (docs/SPEC-TABLES.md §3.3): every refusal answers 0 with report.reason
+-- (newer_form, no_vocabulary, integrity_mismatch, kind_mismatch,
+-- out_of_range, count_over_bound, length_over_bound, non_finite_float, and
+-- batch_too_large for a count above capacity). Damage anywhere discards the
 -- whole batch: zero bodies, no values, with report.damaged set (§4). Every
 -- refusal returns no values: the whole batch or nothing.
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
@@ -2348,14 +2413,14 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if buffer.readu8(data, 0) ~= 2 then
 		refuse(rep, "newer_form")
-		return -1, {}
+		return 0, {}
 	end
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local n = len
 		if n < 6 or buffer.readu32(data, n - 4) ~= V.crc32c(data, n - 4) then
 			rep.damaged = true
 			rep.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		local body = buffer.create(n - 4)
 		buffer.copy(body, 0, data, 0, n - 4)
@@ -2364,7 +2429,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if v == nil or not v.announced then
 		refuse(rep, "no_vocabulary")
-		return -1, {}
+		return 0, {}
 	end
 	if home == nil then
 		error("schema: this build has no message vocabulary: its announcement carries a kind the message form does not spell (docs/SPEC-TABLES.md §3.3)")
@@ -2378,7 +2443,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	local count = raw + 1
 	if count > capacity then
 		refuse(rep, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	-- the batch's announced build version against this build's own (the unit's
 	-- announcement, registered by MS.unit)
@@ -2397,7 +2462,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	if t.refusal ~= nil then
 		rep.damaged = false
 		refuse(rep, t.refusal)
-		return -1, {}
+		return 0, {}
 	end
 	if not whole then
 		rep.damaged = true

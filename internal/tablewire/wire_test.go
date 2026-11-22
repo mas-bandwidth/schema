@@ -466,7 +466,11 @@ func TestVariableRootRidesTheWire(t *testing.T) {
 	}
 	m := tabletext.NewModel(u)
 	variable := ir.VariableTables(u)
-	for _, name := range m.Roots() {
+	allRoots := m.Roots()
+	if len(allRoots) == 0 {
+		t.Fatal("m.Roots() is empty: the loop below would check nothing")
+	}
+	for _, name := range allRoots {
 		if !variable[name] {
 			continue
 		}

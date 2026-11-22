@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -270,7 +271,7 @@ func blockBanner(u *ir.Unit, f *ir.File) string {
 
 func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
 	var h strings.Builder
-	guard := "SCHEMA_" + strings.ToUpper(u.Package) + "_" + strings.ToUpper(f.Base) + "BLOCK_H"
+	guard := ccommon.HeaderGuard(u.Package, f.Base, "block")
 	h.WriteString(blockBanner(u, f))
 	h.WriteString("\n")
 	h.WriteString("   NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")

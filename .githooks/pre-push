@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# pre-push: in an agent clone, refuse a push that carries a commit whose author
+# or committer is not rowan-claude. Wired in by 'make setup' (git config
+# core.hooksPath .githooks); 'make deps' runs it.
+#
+# An agent clone is one whose 'git config user.email' is the rowan-claude noreply
+# address. In every other clone this hook does nothing, so maintainers and outside
+# contributors are unaffected; the CAA check on GitHub still covers them.
+#
+# Checked range, per pushed ref: <remote sha>..<local sha>, or origin/main..<local
+# sha> for a new branch (the same commits as @{u}..HEAD / origin/main..HEAD).
+set -u
+login=rowan-claude
+email=305107455+rowan-claude@users.noreply.github.com
+
+[ "$(git config user.email)" = "$email" ] || exit 0
+
+ok() { # name, email
+  [ "$1" = "Rowan Claude" ] && [ "$2" = "$email" ]
+}
+
+zero=0000000000000000000000000000000000000000
+bad=
+while read -r lref lsha rref rsha; do
+  [ -z "${lsha:-}" ] && continue
+  [ "$lsha" = "$zero" ] && continue
+  if [ "$rsha" = "$zero" ]; then
+    if git rev-parse -q --verify origin/main >/dev/null; then
+      range=(origin/main.."$lsha")
+    else
+      range=("$lsha" --not --remotes)
+    fi
+  else
+    range=("$rsha".."$lsha")
+  fi
+  while IFS=$'\t' read -r sha an ae cn ce; do
+    if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then
+      bad+="  ${sha:0:12}  author $an <$ae>  committer $cn <$ce>"$'\n'
+    fi
+  done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "${range[@]}")
+done
+
+if [ -n "$bad" ]; then
+  {
+    echo "pre-push: refused. This is an agent clone ($login); these commits have another author or committer:"
+    printf '%s' "$bad"
+    echo "Fix: git rebase -r --exec 'git commit --amend --no-edit --reset-author' origin/main"
+  } >&2
+  exit 1
+fi
+exit 0

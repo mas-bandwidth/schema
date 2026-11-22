@@ -755,6 +755,23 @@ static int surface_message(const char * out)
   free(answer);free(message);free(announcement);
   if(!ok){fprintf(stderr,"message %s failed: refused=%d unknown=%d\n",f->field[1],report.refused,report.unknown);return 1;}
  }
+ /* message-batch <case> <connection> <root> <wire>: load with room for every
+    body and answer the count load_messages returned (docs/SPEC-TABLES.md §3.3;
+    FORMAT.md, `message-batch`) */
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;const Line * connection=NULL;const ConformanceCodec * codec;
+  uint8_t * announcement,*wire;size_t an,n;int64_t count;char answer[64];
+  if(strcmp(f->field[0],"message-batch")!=0)continue;
+  for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
+  if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec||!codec->message_count)return 1;
+  announcement=slurp(connection->field[4],&an);wire=slurp(f->field[4],&n);
+  if(!announcement||!wire){free(announcement);free(wire);return 1;}
+  count=codec->message_count(announcement,(int64_t)an,wire,(int64_t)n);
+  free(wire);free(announcement);
+  if(count<0){fprintf(stderr,"message-batch %s: the announcement was refused\n",f->field[1]);return 1;}
+  snprintf(answer,sizeof(answer),"count %lld\n",(long long)count);
+  if(!spill(out,f->field[1],answer,strlen(answer)))return 1;
+ }
  return 0;
 }
 

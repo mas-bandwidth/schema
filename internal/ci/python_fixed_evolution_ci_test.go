@@ -233,6 +233,9 @@ func TestPythonFixedEvolutionCICoverage(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := regexp.MustCompile(aggregate)
+			if len(listed) == 0 {
+				t.Fatal("listed is empty: the loop below would check nothing")
+			}
 			for _, name := range listed {
 				if a.MatchString(name) && re.MatchString(name) {
 					t.Fatalf("%s still selected automatically", name)

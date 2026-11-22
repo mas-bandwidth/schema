@@ -96,7 +96,15 @@ static class Program
             }
             passed++;
         }
-        Console.WriteLine("packet write text C#: " + passed + " passed, " + failed + " failed");
+        // the count line build/mustrun holds to the registered count: a case
+        // file that lost its rows runs nothing and is red
+        int ran = passed + failed;
+        if (ran == 0)
+        {
+            Console.WriteLine("FAILED: no cases in " + args[0]);
+            failed++;
+        }
+        Console.WriteLine("packet write text C#: ran " + ran + ", failed " + failed);
         return failed == 0 ? 0 : 1;
     }
 }

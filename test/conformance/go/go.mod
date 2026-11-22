@@ -85,6 +85,15 @@ require tblfixedevo v0.0.0
 
 replace tblfixedevo => ../../../build/tables-generated-go/fixedevo
 
+// R19's committed pair (rows/R19_test.go): one lineage, two generations
+require tblr19old v0.0.0
+
+replace tblr19old => ../../../build/tables-generated-go-r19/old
+
+require tblr19new v0.0.0
+
+replace tblr19new => ../../../build/tables-generated-go-r19/new
+
 require messagedemo v0.0.0
 
 replace messagedemo => ../../../build/tables-generated-go/messages

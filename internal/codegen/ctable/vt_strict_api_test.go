@@ -114,6 +114,9 @@ func TestCVariableTestsStrictApi(t *testing.T) {
 	// the retired spellings.
 	files := generate(t, vtStrictSchema)
 	var header strings.Builder
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, data := range files {
 		for _, f := range vtStrictFindings("generated "+name, string(data)) {
 			t.Error(f)

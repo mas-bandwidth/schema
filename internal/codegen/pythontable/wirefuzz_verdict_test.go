@@ -178,8 +178,12 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 		return strings.Fields(string(out))
 	}
 	want := fmt.Sprintf("wire-fuzz partition has %d rows, want %d", 8*wireFuzzCIShards, 12*wireFuzzCIShards)
-	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != want {
-		t.Fatalf("partition fault escaped: %q", issue)
+	issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list"))
+	if issue == "" {
+		t.Fatal("NEGATIVE CONTROL FAILED: the partition check accepted a make fragment with the retain arm removed")
+	}
+	if issue != want {
+		t.Fatalf("the partition check named the wrong gap: %q, want %q", issue, want)
 	}
 }
 

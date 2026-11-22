@@ -21,7 +21,7 @@ interface SerializeStream {
   serializeFloat(ref: { value: number }): boolean;
   serializeDouble(ref: { value: number }): boolean;
   serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;
-  serializeBytes(data: Uint8Array): boolean;
+  serializeBytes(data: globalThis.Uint8Array): boolean;
   serializeAlign(): boolean;
 }
 
@@ -39,7 +39,7 @@ export declare class BenchPacket {
   y: number;
   z: number;
   big: bigint;
-  blob: Uint8Array;
+  blob: globalThis.Uint8Array;
 }
 export declare const BenchPacketMaxBits: number;
 export declare const BenchPacketMaxBytes: number;
@@ -84,7 +84,7 @@ export declare function ZeroBenchBits(value: BenchBits): void;
 export declare function WriteBenchBits(stream: SerializeStream, value: BenchBits): boolean;
 export declare function ReadBenchBits(stream: SerializeStream, value: BenchBits): boolean;
 
-export declare const MixedWeapon: Readonly<{
+export declare const MixedWeapon: globalThis.Readonly<{
   None: 0;
   Fists: 1;
   Pistol: 2;
@@ -187,7 +187,7 @@ export declare function ZeroMixedPickupEvent(value: MixedPickupEvent): void;
 export declare function WriteMixedPickupEvent(stream: SerializeStream, value: MixedPickupEvent): boolean;
 export declare function ReadMixedPickupEvent(stream: SerializeStream, value: MixedPickupEvent): boolean;
 
-export declare const MixedEventType: Readonly<{
+export declare const MixedEventType: globalThis.Readonly<{
   None: 0;
   Hit: 1;
   Chat: 2;
@@ -223,10 +223,10 @@ export declare class BenchMixed {
   stats: MixedStat[];
   statsCount: number;
   gameEvent: MixedEvent;
-  loadout: Uint8Array;
-  playerName: Uint8Array;
+  loadout: globalThis.Uint8Array;
+  playerName: globalThis.Uint8Array;
   playerNameLength: number;
-  payload: Uint8Array;
+  payload: globalThis.Uint8Array;
   payloadLength: number;
   aimX: number;
   aimY: number;

@@ -43,6 +43,9 @@ function readCases() {
     const line = raw.trim();
     if (line === "" || line.startsWith("#")) continue;
     const f = line.split(/\s+/);
+    if (f[3] !== "written" && f[3] !== "refused") {
+      throw new Error(`cases.txt: ${f[0]}: verdict "${f[3]}" is neither written nor refused`);
+    }
     cases.push({
       name: f[0],
       type: f[1],
@@ -137,7 +140,9 @@ const tiers = [
   { name: "flat", write: writeFlat, read: readFlat },
 ];
 
-for (const c of [...readCases(), ...ownCases]) {
+const sharedCases = readCases();
+if (sharedCases.length === 0) fail("the shared case list is empty");
+for (const c of [...sharedCases, ...ownCases]) {
   for (const tier of tiers) {
     let wire;
     try {
@@ -225,5 +230,9 @@ for (const tier of shapeTiers) {
   }
 }
 
+// One unit per case (shared, own, and the two lawful plus the refused shapes):
+// tools/mustrun holds the count to the one the recipe registers, so an emptied
+// or shortened cases.txt is red.
+const ran = sharedCases.length + ownCases.length + 2 + shapeCases.length;
+console.log(`packet write bare integer JavaScript, ${mode} build: ran ${ran}, failed ${failures}`);
 if (failures !== 0) process.exit(1);
-console.log(`packet write bare integer JavaScript: ${mode} build, every case holds in the runtime and flat tiers`);

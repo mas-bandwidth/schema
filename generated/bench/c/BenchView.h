@@ -101,6 +101,11 @@ typedef struct bench_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -295,6 +300,21 @@ static SCHEMA_UNUSED int bench_table_bits_finite32( uint32_t bits ) { return ( b
 static SCHEMA_UNUSED int bench_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int bench_table_float_finite( float f ) { return bench_table_bits_finite32( bench_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int bench_table_double_finite( double d ) { return bench_table_bits_finite64( bench_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t bench_table_stored_float_bits( float f )
+{
+    uint32_t b = bench_table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+static SCHEMA_UNUSED uint64_t bench_table_stored_double_bits( double d )
+{
+    uint64_t b = bench_table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -520,7 +540,7 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
         int32_t i;
         for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; }
     }
-    value->entities_count = 0;
+    value->entities_count = 1;
     bench_mixed_stat_reset( &value->stats[0] );
     {
         int32_t i;

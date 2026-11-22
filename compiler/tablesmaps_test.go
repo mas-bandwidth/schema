@@ -138,7 +138,11 @@ func TestMapsAreLegal(t *testing.T) {
 func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if slices.Contains(mapTargets, target) {
@@ -212,7 +216,11 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 		t.Fatalf("MapFields = %v for a map-free unit", got)
 	}
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		if _, err := c.Generate(u, target, Options{}); err != nil && strings.Contains(err.Error(), "map") {
 			t.Errorf("--lang %s refused a map-free unit over maps: %v", target, err)
 		}

@@ -205,8 +205,8 @@ the pin's own source, the VM and compiler linked as the CLI links them).
 | each mutant the leg diverged on, replayed alone | `tables-moo-wire-fuzz-pinned`, `test/conformance/moo/wire-fuzz-pinned.txt` |
 | a string frame past its body not counted malformed goes red | `tables-moo-wire-fuzz-negative-control` |
 | both arms on seeds 1-3 at the release count | `tables-wire-fuzz-release-moo` (make/wire-fuzz-release.mk), in `tables-moo-release` |
-
-The shared hostile corpus (`internal/ci/hostilecorpus`) has no moo row yet.
+| the shared hostile corpus (`internal/ci/hostilecorpus`): every manifest input through the generated reader, a refusal on its verdict alone, an accept on its decoded-value digest | `schema-moo-runs-hostile-corpus` (in `test-moo`; `TestSchemaMooRunsHostileCorpus`) |
+| a text-reader bug planted in the emitted `json.moo` turns exactly the text accepts red | `schema-moo-runs-hostile-corpus-negative-control` (`TestSchemaMooRunsHostileCorpusPlantedReader`) |
 
 ## THE LAYERS
 

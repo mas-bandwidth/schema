@@ -245,8 +245,13 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
 	case f.CountedOnWire():
-		g.storageAssert("    ", "value."+name+"_count", f.ArrayBound)
-		g.pf("    if ( value.%s_count > 0 )\n    {\n", name)
+		g.countAssert("    ", f)
+		g.emitCountedRides(f, "    ", func(expr, ind string) {
+			// the message form's probe: a body of the zero reference alone
+			g.pf("%sconst int64_t birth_bits = %s;\n", ind, g.msgMeasureCall(f.Type.Name, "0", expr))
+			g.pf("%sconst bool birth_default = birth_bits >= 0 && birth_bits <= %s; // a refused body rides, and the write refuses it\n", ind, msgRefBits)
+		})
+		g.pf("    if ( rides_%s )\n    {\n", name)
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
 		g.pf("    }\n")
@@ -473,7 +478,10 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 	case tkBool:
 		g.pf("%sw.put( %s ? 1 : 0, 1 );\n", ind, expr)
 	case tkF64:
-		g.pf("%sw.put( table_double_to_bits( %s ), 64 );\n", ind, expr)
+		// a ranged float64 rides whole, and its -0 as +0 (§3.3,
+		// fixed-compressed-negzero); a compressed float32 is quantized below,
+		// where -0 is the index of 0
+		g.pf("%sw.put( %s( %s ), 64 );\n", ind, storedFloatBits(f, "table_double_to_bits"), expr)
 	case tkF32:
 		if shape.Packing == ir.TableMessageQuantized {
 			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the

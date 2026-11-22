@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_BENCH_BENCHTABLE_H
-#define SCHEMA_BENCH_BENCHTABLE_H
+#ifndef SCHEMA_BENCH_Bench_table_h
+#define SCHEMA_BENCH_Bench_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -126,6 +126,11 @@ typedef struct bench_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -394,7 +399,7 @@ static SCHEMA_UNUSED uint64_t bench_table_writer_id( bench_table_writer_t * w, u
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count == 80 )
+    if ( v->count >= 80 )
     {
         w->overflow = 1;
         return 0;
@@ -1250,7 +1255,8 @@ enum
     SCHEMA_BENCH_TABLE_NO_VOCABULARY = 3,
     SCHEMA_BENCH_TABLE_SECOND_ANNOUNCEMENT = 4,
     SCHEMA_BENCH_TABLE_VOCABULARY_TOO_LARGE = 5,
-    SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE = 6
+    SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE = 6,
+    SCHEMA_BENCH_TABLE_BUILD_VERSION_MISMATCH = 22
 };
 #endif
 /* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
@@ -3571,6 +3577,21 @@ static SCHEMA_UNUSED int bench_table_bits_finite32( uint32_t bits ) { return ( b
 static SCHEMA_UNUSED int bench_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int bench_table_float_finite( float f ) { return bench_table_bits_finite32( bench_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int bench_table_double_finite( double d ) { return bench_table_bits_finite64( bench_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t bench_table_stored_float_bits( float f )
+{
+    uint32_t b = bench_table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+static SCHEMA_UNUSED uint64_t bench_table_stored_double_bits( double d )
+{
+    uint64_t b = bench_table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -4194,6 +4215,11 @@ typedef struct bench_table_vocabulary_t
     uint64_t build_version;
     int announced, refused;
     int64_t max_bytes;
+    /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+    int strict;
 } bench_table_vocabulary_t;
 #ifndef SCHEMA_BENCH_TABLE_MESSAGE_REASONS
 #define SCHEMA_BENCH_TABLE_MESSAGE_REASONS
@@ -4202,7 +4228,8 @@ enum
     SCHEMA_BENCH_TABLE_NO_VOCABULARY = 3,
     SCHEMA_BENCH_TABLE_SECOND_ANNOUNCEMENT = 4,
     SCHEMA_BENCH_TABLE_VOCABULARY_TOO_LARGE = 5,
-    SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE = 6
+    SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE = 6,
+    SCHEMA_BENCH_TABLE_BUILD_VERSION_MISMATCH = 22
 };
 #endif
 static SCHEMA_UNUSED bench_table_vocabulary_t bench_table_vocabulary( bench_table_message_entry_t * storage, int64_t capacity )
@@ -4418,6 +4445,17 @@ static SCHEMA_UNUSED int bench_table_announce_once( bench_table_vocabulary_t * v
         if ( !bench_table_reader_skip_checked( &r, kind, 0 ) ) goto damaged;
     }
     if ( seen_version != 1 || seen_words != 1 || r.offset != r.size || next_ref - 1 != r.id_count ) goto damaged;
+    /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+    if ( v->strict && v->build_version != SCHEMA_BENCH_BUILD_VERSION_VALUE )
+    {
+        report->refused = 1;
+        report->reason = SCHEMA_BENCH_TABLE_BUILD_VERSION_MISMATCH;
+        report->build_version_remote = v->build_version;
+        report->build_version_own = SCHEMA_BENCH_BUILD_VERSION_VALUE;
+        return 0;
+    }
     while ( at < words_bytes )
     {
         bench_table_message_entry_t * entry;
@@ -4870,7 +4908,7 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
         int32_t i;
         for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; }
     }
-    value->entities_count = 0;
+    value->entities_count = 1;
     bench_mixed_stat_reset( &value->stats[0] );
     {
         int32_t i;
@@ -5232,6 +5270,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* entity_id */
         if ( !( value->entity_id == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 11, 0x23fcfd6678e36712ull, 7 );
             bench_table_writer_put16( w, (uint16_t) ( value->entity_id ) );
         }
@@ -5239,6 +5282,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_x */
         if ( !( value->pos_x == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 65, 0xcb4b37357667310eull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->pos_x ) );
         }
@@ -5246,6 +5294,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_y */
         if ( !( value->pos_y == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 66, 0xcb4b3835766732c1ull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->pos_y ) );
         }
@@ -5253,6 +5306,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_z */
         if ( !( value->pos_z == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 64, 0xcb4b353576672da8ull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->pos_z ) );
         }
@@ -5260,6 +5318,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* yaw */
         if ( !( value->yaw == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 58, 0xb54d8e19798e16e8ull, 7 );
             bench_table_writer_put16( w, (uint16_t) ( value->yaw ) );
         }
@@ -5267,6 +5330,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pitch */
         if ( !( value->pitch == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 22, 0x53a9f665a90cc1b1ull, 7 );
             bench_table_writer_put16( w, (uint16_t) ( value->pitch ) );
         }
@@ -5274,6 +5342,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_x */
         if ( !( value->vel_x == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 27, 0x6cede6b6eb60ee67ull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->vel_x ) );
         }
@@ -5281,6 +5354,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_y */
         if ( !( value->vel_y == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 26, 0x6cede5b6eb60ecb4ull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->vel_y ) );
         }
@@ -5288,6 +5366,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_z */
         if ( !( value->vel_z == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 28, 0x6cede8b6eb60f1cdull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->vel_z ) );
         }
@@ -5295,6 +5378,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* health */
         if ( !( value->health == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 37, 0x7f69d4b5288ba9cfull, 4 );
             bench_table_writer_put32( w, (uint32_t) ( value->health ) );
         }
@@ -5302,6 +5390,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* weapon */
         if ( !( value->weapon == BENCH_MIXED_WEAPON_NONE ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 52, 0xa0b610205f2c6e01ull, 30 );
             switch ( value->weapon )
             {
@@ -5329,6 +5422,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* damage */
         if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 36, 0x7f6308be8ab37fc0ull, 9 );
             bench_table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
@@ -5336,6 +5434,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* moving */
         if ( !( value->moving == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 5, 0x11a44fc1d1243da7ull, 1 );
             bench_table_writer_put8( w, value->moving ? 1 : 0 );
         }
@@ -5343,6 +5446,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* firing */
         if ( !( value->firing == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->offset = 2;
+                return 1;
+            }
             bench_table_writer_header_at( w, 32, 0x7674cfd19b9031caull, 1 );
             bench_table_writer_put8( w, value->firing ? 1 : 0 );
         }
@@ -6594,6 +6702,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* entity_id */
         if ( !( value->entity_id == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 31, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->entity_id ) - UINT64_C( 0 ), 12 );
         }
@@ -6601,6 +6714,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* pos_x */
         if ( !( value->pos_x == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 32, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->pos_x ) - UINT64_C( 18446744073709535233 ), 15 );
         }
@@ -6608,6 +6726,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* pos_y */
         if ( !( value->pos_y == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 33, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->pos_y ) - UINT64_C( 18446744073709535233 ), 15 );
         }
@@ -6615,6 +6738,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* pos_z */
         if ( !( value->pos_z == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 34, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->pos_z ) - UINT64_C( 18446744073709535233 ), 15 );
         }
@@ -6622,6 +6750,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* yaw */
         if ( !( value->yaw == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 35, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->yaw ) - UINT64_C( 0 ), 9 );
         }
@@ -6629,6 +6762,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* pitch */
         if ( !( value->pitch == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 36, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->pitch ) - UINT64_C( 0 ), 9 );
         }
@@ -6636,6 +6774,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* vel_x */
         if ( !( value->vel_x == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 37, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->vel_x ) - UINT64_C( 18446744073709549568 ), 12 );
         }
@@ -6643,6 +6786,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* vel_y */
         if ( !( value->vel_y == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 38, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->vel_y ) - UINT64_C( 18446744073709549568 ), 12 );
         }
@@ -6650,6 +6798,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* vel_z */
         if ( !( value->vel_z == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 39, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->vel_z ) - UINT64_C( 18446744073709549568 ), 12 );
         }
@@ -6657,6 +6810,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* health */
         if ( !( value->health == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 40, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, (uint64_t) ( value->health ) - UINT64_C( 0 ), 10 );
         }
@@ -6664,6 +6822,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* weapon */
         if ( !( value->weapon == BENCH_MIXED_WEAPON_NONE ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 41, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             switch ( value->weapon )
             {
@@ -6722,6 +6885,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* damage */
         if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 42, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             schema_assert( ( (uint64_t) ( value->damage ) >> 8 ) == 0 );
             /* message flags domain, debug only (§5.1) */
@@ -6731,6 +6899,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* moving */
         if ( !( value->moving == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 43, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, value->moving ? 1 : 0, 1 );
         }
@@ -6738,6 +6911,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body( bench_table_bit_w
     { /* firing */
         if ( !( value->firing == 0 ) )
         {
+            if ( w->check_default )
+            {
+                w->bits = BENCH_K_TABLE_MESSAGE_REF_BITS_HERE + 1;
+                return 1;
+            }
             bench_table_bit_put( w, 44, BENCH_K_TABLE_MESSAGE_REF_BITS_HERE );
             bench_table_bit_put( w, value->firing ? 1 : 0, 1 );
         }
@@ -7473,9 +7651,9 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_messages( bench_mixed_entity_t 
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -7974,9 +8152,9 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_messages( bench_mixed_stat_t * va
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -8772,9 +8950,9 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_messages( bench_mixed_hit_ev
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -9321,9 +9499,9 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_messages( bench_mixed_chat_
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -9870,9 +10048,9 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages( bench_mixed_pic
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -9902,7 +10080,7 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages( bench_mixed_pic
 }
 static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_entities_( bench_table_writer_t * w, const bench_bench_mixed_t * value, int64_t * element_sizes )
 {
-    schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
+    schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     int32_t i;
     bench_table_writer_put8( w, 13 );
     bench_table_writer_leb( w, (uint64_t) value->entities_count );
@@ -10129,8 +10307,24 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         }
     }
     { /* entities */
-        schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
-        if ( value->entities_count > 0 )
+        schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+        int rides = value->entities_count > 0;
+        if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
+        {
+            int32_t i;
+            rides = 0;
+            for ( i = 0; i < 1; i++ )
+            {
+                bench_table_writer_t slot_probe = bench_table_writer_probe( w );
+                slot_probe.check_default = 1;
+                if ( !bench_mixed_entity_save_body( &slot_probe, &value->entities[i] ) ) { return 0; }
+                bench_table_writer_rewind( &slot_probe );
+                if ( slot_probe.offset == 1 ) { continue; }
+                rides = 1;
+                break;
+            }
+        }
+        if ( rides )
         {
             if ( w->check_default )
             {
@@ -10289,7 +10483,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             }
             bench_table_writer_header_at( w, 72, 0xdbaf7be5e24296c9ull, 10 );
             if ( !bench_table_float_finite( value->aim_x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_x ) );
+            schema_assert( !( value->aim_x < -1.0f ) && !( value->aim_x > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_x ) );
         }
     }
     { /* aim_y */
@@ -10302,7 +10497,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             }
             bench_table_writer_header_at( w, 71, 0xdbaf7ae5e2429516ull, 10 );
             if ( !bench_table_float_finite( value->aim_y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_y ) );
+            schema_assert( !( value->aim_y < -1.0f ) && !( value->aim_y > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_y ) );
         }
     }
     { /* aim_z */
@@ -10315,7 +10511,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             }
             bench_table_writer_header_at( w, 70, 0xdbaf79e5e2429363ull, 10 );
             if ( !bench_table_float_finite( value->aim_z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_z ) );
+            schema_assert( !( value->aim_z < -1.0f ) && !( value->aim_z > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_z ) );
         }
     }
     { /* recoil */
@@ -12605,8 +12802,26 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body( bench_table_bit_wr
         }
     }
     { /* entities */
-        schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
-        if ( value->entities_count > 0 )
+        schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+        int rides = value->entities_count > 0;
+        if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
+        {
+            int32_t i;
+            rides = 0;
+            for ( i = 0; i < 1; i++ )
+            {
+                bench_table_bit_writer_t probe = *w;
+                probe.buffer = NULL;
+                probe.capacity = INT64_MAX;
+                probe.bits = 0;
+                probe.check_default = 1;
+                if ( !bench_mixed_entity_save_message_body( &probe, &value->entities[i] ) ) return 0;
+                if ( probe.bits == BENCH_K_TABLE_MESSAGE_REF_BITS_HERE ) continue;
+                rides = 1;
+                break;
+            }
+        }
+        if ( rides )
         {
             if ( w->check_default )
             {
@@ -14209,9 +14424,9 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_messages( bench_bench_mixed_t * 
     *count = 0;
     bodies = bench_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -14453,9 +14668,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     schema_assert( value->payload_length >= 0 && value->payload_length <= 16 ); /* the declared length is the bound (§3.4) */
     bench_table_fixed_put32( b + 1145, (uint32_t) value->payload_length );
     memcpy( b + 1149, value->payload, (size_t) ( value->payload_length ) );
-    bench_table_fixed_putf32( b + 1165, value->aim_x );
-    bench_table_fixed_putf32( b + 1169, value->aim_y );
-    bench_table_fixed_putf32( b + 1173, value->aim_z );
+    bench_table_fixed_put32( b + 1165, bench_table_stored_float_bits( value->aim_x ) );
+    bench_table_fixed_put32( b + 1169, bench_table_stored_float_bits( value->aim_y ) );
+    bench_table_fixed_put32( b + 1173, bench_table_stored_float_bits( value->aim_z ) );
     bench_table_fixed_putf32( b + 1177, value->recoil );
     bench_table_fixed_putf64( b + 1181, value->drift );
     bench_table_fixed_put128_u( b + 1189, value->wide_key );
@@ -14728,6 +14943,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     {
         ( *damaged )++;
     }
+    ( *out_of_range ) += (int) ( bench_table_float_finite( value->aim_x ) && ( value->aim_x < -1.0f || value->aim_x > 1.0f ) );
+    ( *out_of_range ) += (int) ( bench_table_float_finite( value->aim_y ) && ( value->aim_y < -1.0f || value->aim_y > 1.0f ) );
+    ( *out_of_range ) += (int) ( bench_table_float_finite( value->aim_z ) && ( value->aim_z < -1.0f || value->aim_z > 1.0f ) );
     ( *out_of_range ) += (int) ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
     ( *out_of_range ) += ( value->ping > 64000 );
     /* bits(24) width clamp */
@@ -14928,24 +15146,12 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_( struct bench_table
     bench_table_cook_put( at + 1248 + 16, (uint32_t) value->player_name_length, 4, order );
     bench_table_cook_bytes( at + 1268, value->payload, value->payload_length, 16 );
     bench_table_cook_put( at + 1268 + 16, (uint32_t) value->payload_length, 4, order );
-    {
-        uint32_t bits;
-        memcpy( &bits, &value->aim_x, 4 );
-        if ( !bench_table_bits_finite32( bits ) ) { return 0; }
-        bench_table_cook_put( at + 1288, bits, 4, order );
-    }
-    {
-        uint32_t bits;
-        memcpy( &bits, &value->aim_y, 4 );
-        if ( !bench_table_bits_finite32( bits ) ) { return 0; }
-        bench_table_cook_put( at + 1292, bits, 4, order );
-    }
-    {
-        uint32_t bits;
-        memcpy( &bits, &value->aim_z, 4 );
-        if ( !bench_table_bits_finite32( bits ) ) { return 0; }
-        bench_table_cook_put( at + 1296, bits, 4, order );
-    }
+    if ( !bench_table_bits_finite32( bench_table_stored_float_bits( value->aim_x ) ) ) { return 0; }
+    bench_table_cook_put( at + 1288, bench_table_stored_float_bits( value->aim_x ), 4, order );
+    if ( !bench_table_bits_finite32( bench_table_stored_float_bits( value->aim_y ) ) ) { return 0; }
+    bench_table_cook_put( at + 1292, bench_table_stored_float_bits( value->aim_y ), 4, order );
+    if ( !bench_table_bits_finite32( bench_table_stored_float_bits( value->aim_z ) ) ) { return 0; }
+    bench_table_cook_put( at + 1296, bench_table_stored_float_bits( value->aim_z ), 4, order );
     {
         uint32_t bits;
         memcpy( &bits, &value->recoil, 4 );
@@ -15231,4 +15437,4 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_to_json( const bench_bench_mixed_
 }
 #endif
 
-#endif /* SCHEMA_BENCH_BENCHTABLE_H */
+#endif /* SCHEMA_BENCH_Bench_table_h */

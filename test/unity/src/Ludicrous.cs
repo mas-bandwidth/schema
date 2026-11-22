@@ -27,11 +27,20 @@ static class LudicrousSuite
     static bool failed;
     static string wireDir;
 
+    // every Check is one counted unit: Main prints "ran N, failed M" and
+    // build/mustrun holds N to the count the recipe registers
+    static int ran;
+    static int failures;
+    public static int Ran => ran;
+    public static int Failures => failures;
+
     static void Check(bool ok, string what)
     {
+        ran++;
         if (!ok)
         {
             Console.WriteLine("FAILED: " + what);
+            failures++;
             failed = true;
         }
     }

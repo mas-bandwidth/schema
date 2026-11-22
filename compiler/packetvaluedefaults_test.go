@@ -41,7 +41,11 @@ type Holder
 func TestPacketValueDefaultsCarriers(t *testing.T) {
 	u := unitFromSource(t, packetValueDefaultsUnit)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if target == "cpp" || target == "cs" || target == "go" || target == "c" || target == "rust" || target == "java" || target == "js" || target == "dart" || target == "elixir" || target == "goose" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" || target == "python" || target == "ruby" || target == "squirrel" || target == "unity" {
@@ -68,7 +72,11 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 // scaffold), and that its list of carriers names every built-in, Lua and
 // Python included.
 func TestPacketValueDefaultsEveryBuiltinCarries(t *testing.T) {
-	for _, target := range New().Targets() {
+	targets := New().Targets()
+	if len(targets) == 0 {
+		t.Fatal("New().Targets() is empty: the loops below would check nothing")
+	}
+	for _, target := range targets {
 		if !slices.Contains(packetValueDefaultTargets, target) {
 			t.Errorf("built-in target %s is not a registered packet value-default carrier", target)
 		}
@@ -77,7 +85,7 @@ func TestPacketValueDefaultsEveryBuiltinCarries(t *testing.T) {
 	if err == nil {
 		t.Fatal("an unregistered leg was not refused")
 	}
-	for _, target := range New().Targets() {
+	for _, target := range targets {
 		if !strings.Contains(err.Error(), "--lang "+target+",") && !strings.Contains(err.Error(), "--lang "+target+" ") {
 			t.Errorf("the refusal's carriers omit %s: %v", target, err)
 		}

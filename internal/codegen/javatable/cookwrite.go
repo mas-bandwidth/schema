@@ -42,6 +42,7 @@ public final class TableCookWrite {
         final boolean text;
         final long id;
         long offset;
+        boolean open; // its descent is in progress: a reference to it is a cycle
         long extent; // a record's node extent: its lists' and maps' arrays (§7.6)
         Node(java.lang.Object value, TableCookInfo info) {
             this.value = value; this.info = info; this.blob = null;
@@ -177,7 +178,13 @@ public final class TableCookWrite {
 
     // §7.6 numbering: first visit owns the node; a repeated edge reuses it.
     private static void add(Plan p, java.lang.Object value, TableCookInfo info) throws java.lang.ReflectiveOperationException {
-        if (value == null || p.index.containsKey(value)) { return; }
+        if (value == null) { return; }
+        Node seen = p.index.get(value);
+        if (seen != null) {
+            // a reference to a node whose descent is still open closes a cycle (SPEC-TABLES.md §7.6)
+            if (seen.open) { throw new DataCycle(); }
+            return;
+        }
         Node n;
         if (info != null) {
             n = new Node(value, info);
@@ -190,7 +197,11 @@ public final class TableCookWrite {
         }
         p.index.put(value, n);
         p.nodes.add(n);
-        if (info != null) { discover(p, value, info); }
+        if (info != null) {
+            n.open = true;
+            discover(p, value, info);
+            n.open = false;
+        }
     }
 
     private static void discover(Plan p, java.lang.Object value, TableCookInfo info)
@@ -418,6 +429,11 @@ public final class TableCookWrite {
      * infinity (docs/SPEC-TABLES.md §3.3), which no cook carries.
      */
     public static Plan plan(java.lang.Object root, TableCookInfo info, boolean[] nonFinite) {
+        return plan(root, info, nonFinite, null);
+    }
+
+    /** plan, and cycle[0] turns true when the pointer graph is cyclic: data_cycle, refused in every build. */
+    public static Plan plan(java.lang.Object root, TableCookInfo info, boolean[] nonFinite, boolean[] cycle) {
         if (root == null || info == null) { return null; }
         try {
             Plan p = new Plan();
@@ -447,11 +463,23 @@ public final class TableCookWrite {
                 if (n.info != null) { record(p, null, 0, 64L + n.offset, n.value, n.info); }
             }
             return p;
+        } catch (DataCycle ex) {
+            if (cycle != null) { cycle[0] = true; }
+            return null;
         } catch (NonFiniteFloat ex) {
             if (nonFinite != null) { nonFinite[0] = true; }
             return null;
         } catch (java.lang.ReflectiveOperationException | java.lang.RuntimeException ex) {
             return null;
+        }
+    }
+
+    /** a pointer graph that reaches a node still being walked: the plan's data_cycle refusal. */
+    static final class DataCycle extends java.lang.IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+
+        DataCycle() {
+            super("data_cycle", null);
         }
     }
 
@@ -468,7 +496,7 @@ public final class TableCookWrite {
         if (out != null) { TableBytes.put(out, (int) at, value, width, order == BIG); }
     }
 
-    private static long bits(java.lang.Object source, TableCookStorage storage, int width) {
+    private static long bits(java.lang.Object source, TableCookStorage storage, int width, boolean compressed) {
         if (source == null) { return 0; }
         if (storage == TableCookStorage.BOOL) { return java.lang.Boolean.TRUE.equals(source) ? 1 : 0; }
         if (storage == TableCookStorage.FLOAT) {
@@ -479,6 +507,8 @@ public final class TableCookWrite {
                     : java.lang.Double.doubleToRawLongBits(((java.lang.Number) source).doubleValue());
             long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
             if ((raw & exponent) == exponent) { throw new NonFiniteFloat(); }
+            // a COMPRESSED float's -0 is cooked as +0 (fixed-compressed-negzero)
+            if (compressed && raw == (width == 4 ? 0x80000000L : 0x8000000000000000L)) { return 0; }
             return raw;
         }
         if (source instanceof java.lang.Character) { return ((java.lang.Character) source).charValue(); }
@@ -512,7 +542,7 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            put(out, order, at, bits(source, f.storage, f.elemSize, f.compressed), f.elemSize);
         }
     }
 

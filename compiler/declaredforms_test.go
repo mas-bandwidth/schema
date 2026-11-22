@@ -12,7 +12,11 @@ func TestDeclaredFormsRefusedByOtherTargets(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package probe\ntable Zeta | forms = \"wire\"\n{\n    x int32\n}\ntable Alpha | forms = \"wire\"\n{\n    x int32\n}\n")
 	c := New()
-	for _, lang := range c.Targets() {
+	targets := c.Targets()
+	if len(targets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range targets {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryForms) {
 			if err != nil {

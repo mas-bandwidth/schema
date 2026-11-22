@@ -1,0 +1,9 @@
+package decls
+
+enum Mode { One, Two }
+
+table Holder
+{
+    m Mode
+    c int32
+}

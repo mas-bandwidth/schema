@@ -193,8 +193,11 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := repoRoot(t)
+	cited := 0
 	for _, c := range cases {
-		for _, src := range hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs) {
+		allCitedSources := hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs)
+		for _, src := range allCitedSources {
+			cited++
 			p := filepath.Join(root, filepath.FromSlash(src))
 			fi, err := os.Stat(p)
 			if err != nil {
@@ -203,6 +206,9 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 				t.Errorf("%s: source %s is not a regular file", c.Name, p)
 			}
 		}
+	}
+	if cited == 0 {
+		t.Fatal("no corpus case cites a source file: the existence check above checked nothing")
 	}
 	for _, u := range hostilecorpus.Uncovered(root, hostilecorpus.SourceDirs, cases) {
 		t.Errorf("source %s is cited by no corpus case: the all-seed/vector claim is not protected", u)

@@ -8,6 +8,14 @@
 // disagreement no FIX-CARD names (or a FIX-CARD whose case has gone green).
 //
 // usage: cshostile <corpus-dir> <known-findings.tsv>
+//        cshostile --scorer <scorer-outcomes.tsv>
+//
+// A refusal conforms on its verdict alone (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the port gives
+// it is printed on a FAIL line as its diagnostic and never compared. --scorer
+// grades the shared scorer outcome cases
+// (tools/hostilecorpusexec/testdata/scorer-outcomes.tsv) through the same
+// H.Want and H.Agrees the corpus run uses.
 //
 // A stack overflow cannot be caught in .NET and ends the process, so every
 // case runs in a pooled worker process (cshostile --worker): the parent hands
@@ -53,7 +61,7 @@ static class H
     // A named refusal is its reason, a failed read with no name is the
     // corpus's `damaged`, and a clean read answers null so the caller goes on to digest the value. The port
     // names a refusal and may follow the name with detail (non_finite_float:
-    // ShipEntry.health); the name is the reason the corpus compares.
+    // ShipEntry.health); the name is the port's diagnostic, never compared.
     static readonly System.Collections.Generic.HashSet<string> Named = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
     {
         "newer_form", "message_form_as_file", "no_vocabulary", "second_announcement",
@@ -102,9 +110,31 @@ static class H
     }
 
     // Two reads of one input must agree; when they do not, both are named.
+    // Two refusals agree whatever each names.
     internal static string Both(string a, string got, string b, string other)
     {
-        return got == other ? got : a + ": " + got + "; " + b + ": " + other;
+        return Agrees(got, other) ? got : a + ": " + got + "; " + b + ": " + other;
+    }
+
+    internal static bool Refused(string answer)
+    {
+        return answer == "refuse" || answer.StartsWith("refuse ", StringComparison.Ordinal);
+    }
+
+    // The manifest's answer for a case. A packet refusal is named
+    // packet_refused (ports name packet refusals differently).
+    internal static string Want(string verdict, string carrier, string reason, string digest)
+    {
+        return verdict == "accept" ? Accept(digest) : Refuse(carrier == "packet" ? "packet_refused" : reason);
+    }
+
+    // Whether a port's answer conforms to the manifest's: a refusal on its
+    // verdict alone (refusal-verdict-only), an accept on its digest. An error,
+    // a crash or a hang is never a refusal.
+    internal static bool Agrees(string got, string want)
+    {
+        if (Refused(got) && Refused(want)) { return true; }
+        return got == want;
     }
 }
 
@@ -115,12 +145,42 @@ static class Runner
     static int Main(string[] args)
     {
         if (args.Length == 2 && args[0] == "--worker") { return Worker(args[1]); }
+        if (args.Length == 2 && args[0] == "--scorer") { return Scorer(args[1]); }
         if (args.Length != 2)
         {
             Console.Error.WriteLine("usage: cshostile <corpus-dir> <known-findings.tsv>");
             return 2;
         }
         return Parent(args[0], args[1]);
+    }
+
+    // ---- the scorer's own outcome cases ----
+
+    // Each row of the shared fixture: the expected verdict, reference
+    // diagnostic and accepted SHA-256 make the manifest's answer; the worker
+    // reply makes the port's (a refusal with the name it gives or none, an
+    // accept of the text body's digest, or a worker that exits). H.Agrees must
+    // pass exactly the rows whose scorer exit is 0.
+    static int Scorer(string path)
+    {
+        List<string[]> rows = Rows(path, 7);
+        int wrong = 0;
+        foreach (string[] f in rows)
+        {
+            string reply = f[4], got;
+            if (reply == "refuse" || reply.StartsWith("refuse ", StringComparison.Ordinal)) { got = reply; }
+            else if (reply == "accept text") { got = H.Accept(H.Sha(Encoding.UTF8.GetBytes(f[5] == "-" ? "" : f[5]))); }
+            else if (reply == "exit") { got = "crashed: the worker exited with code 3"; }
+            else { Console.Error.WriteLine(path + ": " + f[0] + ": unknown worker reply " + reply); return 2; }
+            bool pass = H.Agrees(got, H.Want(f[1], "text", f[2], f[3]));
+            if (pass != (f[6] == "0"))
+            {
+                Console.WriteLine("SCORER " + f[0] + ": graded " + (pass ? "pass" : "fail") + ", the fixture says scorer exit " + f[6]);
+                wrong++;
+            }
+        }
+        Console.WriteLine("cs scorer outcomes: " + rows.Count + " cases, " + (rows.Count - wrong) + " graded as the fixture says, " + wrong + " wrong");
+        return wrong == 0 && rows.Count > 0 ? 0 : 1;
     }
 
     // ---- the worker: one case per stdin line, one verdict per stdout line ----
@@ -321,9 +381,7 @@ static class Runner
         var stale = new List<string>();
         foreach (Case c in cases)
         {
-            // A packet refusal compares by verdict only: ports name packet
-            // refusals differently, so the runner names them all packet_refused.
-            string want = c.Verdict == "accept" ? H.Accept(c.Digest) : H.Refuse(c.Carrier == "packet" ? "packet_refused" : c.Reason);
+            string want = H.Want(c.Verdict, c.Carrier, c.Reason, c.Digest);
             findings.TryGetValue(c.Name, out string[] finding);
             if (c.Got.StartsWith("skip: ", StringComparison.Ordinal))
             {
@@ -338,7 +396,7 @@ static class Runner
                     skipped++;
                 }
             }
-            else if (c.Got == want)
+            else if (H.Agrees(c.Got, want))
             {
                 if (finding != null)
                 {
@@ -372,6 +430,12 @@ static class Runner
         }
         Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, " + skipped + " skipped, "
             + bad.Count + " unexplained, " + stale.Count + " stale");
-        return bad.Count == 0 && stale.Count == 0 ? 0 : 1;
+        // The count line build/mustrun reads: a case is RUN when the port
+        // answered it (a pass or a carried FIX-CARD). A SKIP is not run, so a
+        // case that starts skipping moves the count off the one the recipe
+        // registers, and an empty manifest runs nothing and is red.
+        int ran = passed + carried + bad.Count;
+        Console.WriteLine("cs-hostile: ran " + ran + ", failed " + (bad.Count + stale.Count));
+        return bad.Count == 0 && stale.Count == 0 && ran > 0 ? 0 : 1;
     }
 }

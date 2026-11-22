@@ -33,7 +33,7 @@ lua-ludicrous-negative-control: toolchain-lua build/lua-ludicrous/.stamp
 		echo 'NEGATIVE CONTROL FAILED: a flipped ludicrous_state golden passed the Lua ludicrous program'; exit 1; fi
 	@grep -Fq 'FAILED: wire golden ludicrous_state:' build/lua-ludicrous-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the Lua ludicrous program failed for another reason'; cat build/lua-ludicrous-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/lua-ludicrous-negative/log | grep -Fvq 'FAILED: wire golden ludicrous_state:'; then \
+	@if grep -F 'FAILED: ' build/lua-ludicrous-negative/log | grep -Fv 'FAILED: wire golden ludicrous_state:' >/dev/null; then \
 		cat build/lua-ludicrous-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the flipped golden went red'; exit 1; fi
 	@echo 'lua ludicrous negative control: a flipped C++-pinned golden byte fails exactly that golden'
 

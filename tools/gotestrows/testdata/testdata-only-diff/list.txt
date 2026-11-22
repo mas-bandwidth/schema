@@ -1,0 +1,6 @@
+github.com/mas-bandwidth/schema/v2/tools/releasetargets|fmt||
+github.com/mas-bandwidth/schema/v2/tools/releasetargets.test|fmt github.com/mas-bandwidth/schema/v2/tools/releasetargets testing||
+github.com/mas-bandwidth/schema/v2/internal/ci|fmt||
+github.com/mas-bandwidth/schema/v2/internal/ci.test|fmt github.com/mas-bandwidth/schema/v2/internal/ci testing||
+github.com/mas-bandwidth/schema/v2/internal/goldens|fmt||
+github.com/mas-bandwidth/schema/v2/ir|fmt||

@@ -324,6 +324,9 @@ func TestFuzzPipelineDrivesEveryTarget(t *testing.T) {
 			t.Errorf("%s.Generate on the minimal unit: %v", b.name, err)
 			continue
 		}
+		if len(first) == 0 {
+			t.Fatalf("%s.Generate on the minimal unit emitted no file: the loop below would check nothing", b.name)
+		}
 		for i := 1; i < 12; i++ {
 			again, err := b.generate(u)
 			if err != nil {

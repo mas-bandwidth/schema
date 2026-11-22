@@ -86,6 +86,13 @@ var versionRows = []versionRow{
     check(values[0].vals[i].x == 7 && values[0].vals[i].y == 9,
         'slot $i past the old bound is not the ELEMENT default: '
         '${values[0].vals[i].x} ${values[0].vals[i].y}');
+  }
+  // F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  check(values[0].ints.length == 8 && values[0].octet.length == 8,
+      'a grown scalar array is not its new bound');
+  for (var i = 0; i < 8; i++) {
+    check(values[0].ints[i] == (i < 4 ? -800 - i : 0) && values[0].octet[i] == (i < 4 ? 200 + i : 0),
+        'scalar slot $i: ${values[0].ints[i]} ${values[0].octet[i]}');
   }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
@@ -415,8 +422,8 @@ func fixedCorpus(t *testing.T) string {
 		// read and says so; but `make tables-dart-versioning` builds the corpus
 		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
 		// missing file means the build did not do what the target says it did.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -435,8 +442,8 @@ func dartBinary(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dart); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Dart SDK is not at %s: %v", dart, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the Dart SDK is not at %s: %v", dart, err)
 		}
 		t.Skip("the Dart SDK is not unpacked in dist/: see make/dart.mk")
 	}

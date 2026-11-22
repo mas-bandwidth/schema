@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var (
@@ -74,7 +76,7 @@ func repoRoot(t *testing.T) string {
 // a failure rather than a pass: a gate over nothing proves nothing.
 func workflows(t *testing.T, root string) map[string]string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,11 +243,19 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 	}
 
 	// And no workflow keeps a version of its own.
-	for name, data := range workflows(t, root) {
+	allWorkflows := workflows(t, root)
+	if len(allWorkflows) == 0 {
+		t.Fatal("workflows(t, root) is empty: the loop below would check nothing")
+	}
+	for name, data := range allWorkflows {
 		if strings.Contains(data, "setup-dotnet@") && !strings.Contains(data, "cat "+dotnetPinFile) {
 			t.Errorf("%s installs the .NET SDK without reading %s", name, dotnetPinFile)
 		}
-		for _, l := range lines(name, data) {
+		allLines := lines(name, data)
+		if len(allLines) == 0 {
+			t.Fatal("lines(name, data) is empty: the loop below would check nothing")
+		}
+		for _, l := range allLines {
 			if !strings.HasPrefix(l.text, "dotnet-version:") {
 				continue
 			}
@@ -292,7 +302,7 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -330,6 +340,9 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	sort.Strings(names)
 	t.Logf("packages the make sources run: %s", strings.Join(names, " "))
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, pkg := range names {
 		dir := strings.TrimPrefix(pkg, "./")
 		tracked := gitLsFiles(t, root, dir)
@@ -1442,6 +1455,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:roadmap-truth",
+		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",

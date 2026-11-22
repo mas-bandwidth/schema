@@ -116,7 +116,7 @@ func TestEveryCompilerTargetRebuildsOnWhatItEmbeds(t *testing.T) {
 	}
 	mk := exec.Command("make", "-pq", "--no-print-directory", "build/schema-squirrel")
 	mk.Dir = root
-	db, _ := mk.Output() // -q exits non-zero when out of date; the database is printed either way
+	db := makeQueryOutput(t, mk) // -q exits non-zero when out of date; the database is printed either way
 	targets := compilerTargets(string(db))
 	for _, want := range []string{"bin/schema", "build/schema-squirrel", "build/schema-python", "build/schema-ruby", "build/schema-moo"} {
 		if _, ok := targets[want]; !ok {

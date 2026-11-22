@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -105,19 +106,38 @@ func TestNewLegZigFixturePasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The scaffold is a package of this module (it imports internal packages
+	// such as genheader), so it is compiled where it would land, at
+	// internal/codegen/zig, through -overlay: the files live in the test's
+	// temporary directory and nothing is written into the tree.
 	dir := t.TempDir()
+	replace := map[string]string{}
 	for _, name := range []string{"internal/codegen/zig/zig.go", "internal/codegen/zig/zig_test.go"} {
-		if err := os.WriteFile(filepath.Join(dir, filepath.Base(name)), files[name], 0o644); err != nil {
+		file := filepath.Join(dir, filepath.Base(name))
+		if err := os.WriteFile(file, files[name], 0o644); err != nil {
 			t.Fatal(err)
 		}
+		replace[filepath.Join(root, filepath.FromSlash(name))] = file
 	}
-	mod := "module newleg_zig_fixture\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + root + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
+	overlay, err := json.Marshal(map[string]map[string]string{"Replace": replace})
+	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
+	overlayPath := filepath.Join(dir, "overlay.json")
+	if err := os.WriteFile(overlayPath, overlay, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The directory does not exist on disk, so vet (which runs in it) is off
+	// and the test binary is built here and run from the temporary directory.
+	bin := filepath.Join(dir, "zig.test")
+	build := testproc.Command(t, "go", "test", "-c", "-vet=off", "-overlay", overlayPath, "-o", bin, "./internal/codegen/zig")
+	build.Dir = root
+	build.Env = append(os.Environ(), "GOWORK=off")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go test -c the zig fixture: %v\n%s", err, out)
+	}
+	cmd := testproc.Command(t, bin, "-test.count=1")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go test the zig fixture: %v\n%s", err, out)
 	}

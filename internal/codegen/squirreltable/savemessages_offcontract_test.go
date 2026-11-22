@@ -194,8 +194,17 @@ func TestSquirrelSaveMessagesRefusesOffContract(t *testing.T) {
 		if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 			t.Fatal(err)
 		}
+		// a row whose off-contract value has no Go spelling carries no goOff;
+		// the Go leg must still have refused some
+		refusals := 0
+		defer func() {
+			if refusals == 0 {
+				t.Errorf("the Go engine was handed no off-contract value across %d rows: nothing was refused", len(rows))
+			}
+		}()
 		for _, r := range rows {
 			if r.goOff != nil {
+				refusals++
 				inst := model.New(st)
 				r.goOff(t, model, inst)
 				if out, err := tablewire.EncodeMessage(model, inst); err == nil || out != nil {
@@ -299,6 +308,9 @@ local probe = function(key, v, same) {
 	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", nil)), "\n"), "\n") {
 		key, _, _ := strings.Cut(line, " ")
 		got[key] = line
+	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
 	}
 	for _, r := range rows {
 		for _, key := range []string{"off:" + r.name, "ok:" + r.name} {

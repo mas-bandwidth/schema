@@ -495,7 +495,11 @@ table Holder
 			"../../tables/stream", "../../tables/blobs",
 		} {
 			m, _ := load(t, dir)
-			for _, name := range m.Roots() {
+			allRoots := m.Roots()
+			if len(allRoots) == 0 {
+				t.Fatal("m.Roots() is empty: the loop below would check nothing")
+			}
+			for _, name := range allRoots {
 				st := m.Lookup(name)
 				if st == nil {
 					continue

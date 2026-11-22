@@ -101,7 +101,11 @@ func TestValueDefaultsGateNegativeControls(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := New()
-		for _, target := range c.Targets() {
+		targets := c.Targets()
+		if len(targets) == 0 {
+			t.Fatal("c.Targets() is empty: the loop below would check nothing")
+		}
+		for _, target := range targets {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil || len(files) == 0 {
 				t.Errorf("%s emits no packet files for the control: %v", target, err)

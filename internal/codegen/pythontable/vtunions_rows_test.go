@@ -443,20 +443,40 @@ var vtUnionControls = []struct {
 
 // TestPythonVtUnionsRowsControlsCoverEveryCase requires every case and
 // construct of every row to be named by some control, so no row is held only
-// by a gate that cannot go red.
+// by a gate that cannot go red, and every row a control names to be a real
+// row: TestPythonVtUnionsRowsNegativeControl plants a control only on the
+// rows of vtUnionRows, so a misspelt row key is never planted and never red.
 func TestPythonVtUnionsRowsControlsCoverEveryCase(t *testing.T) {
 	t.Parallel()
+	rows := map[string]bool{}
 	for _, r := range vtUnionRows {
+		rows[r.row] = true
 		named := map[string]bool{}
 		for _, ctl := range vtUnionControls {
 			for _, name := range ctl.red[r.row] {
 				named[name] = true
 			}
 		}
+		var unnamed []string
 		for _, name := range slices.Concat(r.cases, r.constructs) {
 			if !named[name] {
-				t.Errorf("%s: no control names %s", r.row, name)
+				unnamed = append(unnamed, name)
 			}
+		}
+		if len(unnamed) > 0 {
+			t.Errorf("%s: no control names %s", r.row, strings.Join(unnamed, ", "))
+		}
+	}
+	for _, ctl := range vtUnionControls {
+		var stray []string
+		for row := range ctl.red {
+			if !rows[row] {
+				stray = append(stray, row)
+			}
+		}
+		slices.Sort(stray)
+		if len(stray) > 0 {
+			t.Errorf("control %s names rows that are not in vtUnionRows: %s", ctl.name, strings.Join(stray, ", "))
 		}
 	}
 }
@@ -483,6 +503,9 @@ func TestPythonVtUnionsRowsNegativeControl(t *testing.T) {
 					if !strings.Contains(joined, name+" (") {
 						t.Errorf("NEGATIVE CONTROL FAILED: %s left %s green on %s; findings:\n%s", ctl.name, name, r.row, joined)
 					}
+				}
+				if len(fails) == 0 {
+					t.Fatal("fails is empty: the loop below would check nothing")
 				}
 				for _, f := range fails {
 					if strings.Contains(f, "did not run to its end") {

@@ -1,0 +1,8 @@
+package fixture
+
+enum Team { Red, Blue }
+
+table Save
+{
+    points [Team]int32 | min = 0, max = 50
+}

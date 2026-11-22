@@ -66,6 +66,9 @@ func TestSpecWriteRefusalPerLegTableStands(t *testing.T) {
 	}
 	// A leg the ruling does not place is skipped here: today that is Lobster,
 	// whose mechanism is placed separately.
+	if len(builds) == 0 {
+		t.Fatal("builds is empty: the loop below would check nothing")
+	}
 	for leg := range builds {
 		if !listed[leg] && leg != "Lobster" {
 			t.Errorf("§5.1's idiom table carries %s, which `write-refusal` places in neither list", leg)

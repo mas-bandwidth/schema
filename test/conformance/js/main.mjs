@@ -580,11 +580,11 @@ const messageRows = [
   ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
   ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsTable.js", "packetunions/PacketUnionsTable.js"],
+  ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
 ];
 
 const messageFuzzRows = [
   ...messageRows,
-  ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
   ["tblvarevo2", "EvoMsg", "varevo2/Tblvarevo2Table.js", "varevo2/VarEvo2Table.js"],
   ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoTable.js", "fixedevo/FixedEvoTable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoTable.js", "examples/TablesTable.js"],
@@ -667,6 +667,27 @@ async function surfaceMessage(lines, outDir) {
     const buffer = new Uint8Array(size);
     if (saveMessages(body, buffer, report) !== size) { fail(f[1] + ": message save " + JSON.stringify(report)); }
     writeFileSync(join(outDir, f[1]), buffer);
+  }
+  // message-batch <case> <connection> <root> <wire>: load with room for every
+  // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
+  // FORMAT.md, `message-batch`).
+  for (const f of kind(lines, "message-batch")) {
+    const conn = connections.find((c) => c[1] === f[2]);
+    if (conn === undefined) { fail("message-batch " + f[1] + " names no connection " + f[2]); }
+    const row = messageRow(conn[2], f[3]);
+    if (row === null) { fail(f[1] + ": no message row for " + conn[2] + "." + f[3]); }
+    const runtime = await load(row[2]);
+    const unit = await load(row[3]);
+    const loadMessages = unit[f[3] + "LoadMessages"];
+    if (loadMessages === undefined) { fail(f[1] + ": no LoadMessages for " + f[3]); }
+    const vocabulary = new runtime.TableVocabulary();
+    vocabulary.Init(new Array(Math.max(runtime.TableMessageEntriesHere, 4096)));
+    if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), {})) {
+      fail(f[1] + ": the announcement was refused: " + conn[4]);
+    }
+    const values = Array.from({ length: 256 }, () => new runtime[f[3]]());
+    const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[4])), {});
+    writeFileSync(join(outDir, f[1]), "count " + count + "\n");
   }
 }
 

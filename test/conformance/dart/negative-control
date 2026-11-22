@@ -121,6 +121,7 @@ go run ./tools/sabotage -name "$sabotage" -out "$out/emitter.gotext" "internal/c
 printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/emitter.gotext"}}\n' "$root" "$emitter" "$root" "$out" > "$out/overlay.json"
 go build -overlay="$out/overlay.json" -o "$out/schema" ./cmd/schema
 
+pids=
 for pair in \
     examples:tables/examples pointers:tables/pointers blobs:tables/blobs \
     lists:tables/lists maps:tables/maps messages:tables/messages widelist:tables/widelist \
@@ -139,13 +140,24 @@ for pair in \
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null &
+    pids="$pids $!"
 done
 for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema fixedevo:test/tables/fixedevo varevo3:test/tables/varevo/VarEvo3.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart-scalars/$unit" "$input" >/dev/null &
+    pids="$pids $!"
 done
-wait
+# every generator waited on by its pid (F-068): a bare wait returned 0 when
+# one failed, and a unit it never wrote reached the driver build
+failed=0
+for p in $pids; do
+    wait "$p" || failed=1
+done
+if [ "$failed" -ne 0 ]; then
+    echo "negative control: a sabotaged generator failed" >&2
+    exit 1
+fi
 
 # the sabotage must have reached generated code, or the control is vacuous
 if ! grep -rqF "$marker" "$out/build/tables-generated-dart"; then

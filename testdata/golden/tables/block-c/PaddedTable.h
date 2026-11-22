@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_BLOCKDEMO_PADDEDTABLE_H
-#define SCHEMA_BLOCKDEMO_PADDEDTABLE_H
+#ifndef SCHEMA_BLOCKDEMO_Padded_table_h
+#define SCHEMA_BLOCKDEMO_Padded_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -123,6 +123,11 @@ typedef struct blockdemo_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -391,7 +396,7 @@ static SCHEMA_UNUSED uint64_t blockdemo_table_writer_id( blockdemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count == 89 )
+    if ( v->count >= 89 )
     {
         w->overflow = 1;
         return 0;
@@ -1272,7 +1277,8 @@ enum
     SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY = 3,
     SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT = 4,
     SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE = 5,
-    SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE = 6
+    SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE = 6,
+    SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH = 22
 };
 #endif
 /* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
@@ -3544,6 +3550,21 @@ static SCHEMA_UNUSED int blockdemo_table_bits_finite32( uint32_t bits ) { return
 static SCHEMA_UNUSED int blockdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int blockdemo_table_float_finite( float f ) { return blockdemo_table_bits_finite32( blockdemo_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int blockdemo_table_double_finite( double d ) { return blockdemo_table_bits_finite64( blockdemo_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t blockdemo_table_stored_float_bits( float f )
+{
+    uint32_t b = blockdemo_table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+static SCHEMA_UNUSED uint64_t blockdemo_table_stored_double_bits( double d )
+{
+    uint64_t b = blockdemo_table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -4167,6 +4188,11 @@ typedef struct blockdemo_table_vocabulary_t
     uint64_t build_version;
     int announced, refused;
     int64_t max_bytes;
+    /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+    int strict;
 } blockdemo_table_vocabulary_t;
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE_REASONS
@@ -4175,7 +4201,8 @@ enum
     SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY = 3,
     SCHEMA_BLOCKDEMO_TABLE_SECOND_ANNOUNCEMENT = 4,
     SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE = 5,
-    SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE = 6
+    SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE = 6,
+    SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH = 22
 };
 #endif
 static SCHEMA_UNUSED blockdemo_table_vocabulary_t blockdemo_table_vocabulary( blockdemo_table_message_entry_t * storage, int64_t capacity )
@@ -4391,6 +4418,17 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once( blockdemo_table_vocabula
         if ( !blockdemo_table_reader_skip_checked( &r, kind, 0 ) ) goto damaged;
     }
     if ( seen_version != 1 || seen_words != 1 || r.offset != r.size || next_ref - 1 != r.id_count ) goto damaged;
+    /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+    if ( v->strict && v->build_version != SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE )
+    {
+        report->refused = 1;
+        report->reason = SCHEMA_BLOCKDEMO_TABLE_BUILD_VERSION_MISMATCH;
+        report->build_version_remote = v->build_version;
+        report->build_version_own = SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
+        return 0;
+    }
     while ( at < words_bytes )
     {
         blockdemo_table_message_entry_t * entry;
@@ -6275,9 +6313,9 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_messages( blockdemo_padded_ro
     *count = 0;
     bodies = blockdemo_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -7095,9 +7133,9 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_messages( blockdemo_padded_
     *count = 0;
     bodies = blockdemo_table_message_open( &r, vocabulary, buffer, bytes, report );
     if ( bodies < 0 ) return 0;
+    /* a refused batch returns a count of 0, the storage untouched (§3.3) */
     if ( bodies > capacity )
     {
-        *count = bodies;
         report->refused = 1;
         report->reason = SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
         return 0;
@@ -7821,15 +7859,21 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_row_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash )
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash )
         {
             report->refused = 1;
             report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
             return -1;
         }
+    }
+    for ( k = 0; k < count; ++k )
+    {
+        int32_t rec_widened = report->widened;
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -9635,15 +9679,21 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_frame_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
     for ( k = 0; k < count; ++k )
     {
-        int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash )
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash )
         {
             report->refused = 1;
             report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
             return -1;
         }
+    }
+    for ( k = 0; k < count; ++k )
+    {
+        int32_t rec_widened = report->widened;
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -10036,4 +10086,4 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_to_json( const blockdemo_pad
 }
 #endif
 
-#endif /* SCHEMA_BLOCKDEMO_PADDEDTABLE_H */
+#endif /* SCHEMA_BLOCKDEMO_Padded_table_h */

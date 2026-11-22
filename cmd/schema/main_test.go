@@ -204,6 +204,9 @@ func TestUnformattedAndFormattedUnitsAgree(t *testing.T) {
 		}
 	}
 
+	if len(targets) == 0 {
+		t.Fatal("compiler.New().Targets() is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		wantDir := filepath.Join(work, "want", target)
 		gotDir := filepath.Join(work, "got", target)
@@ -338,6 +341,9 @@ func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
 	t.Parallel()
 	// every registered target: go and python honor the flag, every other
 	// target refuses it by presence; the flag's absence is honored everywhere.
+	if len(targets) == 0 {
+		t.Fatal("compiler.New().Targets() is empty: the loop below would check nothing")
+	}
 	for _, lang := range targets {
 		err := refuseSurfaceForTarget(true, lang)
 		if lang == "go" || lang == "python" {

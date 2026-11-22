@@ -306,6 +306,9 @@ func TestImplementationIntegrityCRC32C(t *testing.T) {
 	}
 	// Each changed byte is real input damage. A checksum check that accepts
 	// every trailer (or one which never runs) fails these controls.
+	if len(sealed) == 0 {
+		t.Fatal("sealed is empty: the loop below would check nothing")
+	}
 	for i := range sealed {
 		damaged := append([]byte(nil), sealed...)
 		damaged[i] ^= 1
@@ -429,7 +432,11 @@ func TestEveryTargetImplementationUsesAllRequiredConstructs(t *testing.T) {
 		if !registered && !strings.Contains(problems, lang+": implementation registration is missing") {
 			t.Fatalf("unregistered %s disappeared from acceptance", lang)
 		}
-		for _, feature := range compiler.CarryConstructs() {
+		allCarryConstructs := compiler.CarryConstructs()
+		if len(allCarryConstructs) == 0 {
+			t.Fatal("compiler.CarryConstructs() is empty: the loop below would check nothing")
+		}
+		for _, feature := range allCarryConstructs {
 			if !slices.Contains(have, feature) && !strings.Contains(problems, lang+": required Schema construct "+feature+" is not implemented") {
 				t.Fatalf("unclaimed %s/%s disappeared from acceptance", lang, feature)
 			}

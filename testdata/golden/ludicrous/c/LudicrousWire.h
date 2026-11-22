@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package ludicrous — protocol id 0xd2ded2cc8a482aa1 */
 
-#ifndef SCHEMA_LUDICROUS_LUDICROUSWIRE_H
-#define SCHEMA_LUDICROUS_LUDICROUSWIRE_H
+#ifndef SCHEMA_LUDICROUS_Ludicrous_wire_h
+#define SCHEMA_LUDICROUS_Ludicrous_wire_h
 
 #include "Ludicrous.h"
 #include <string.h>   /* memset, strlen */
@@ -669,4 +669,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_quat( seriali
 }
 #endif
 
-#endif /* SCHEMA_LUDICROUS_LUDICROUSWIRE_H */
+#endif /* SCHEMA_LUDICROUS_Ludicrous_wire_h */

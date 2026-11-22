@@ -17,7 +17,11 @@ func TestTargetLuaCarriesFormsDeclaration(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package probe\ntable Shape | forms = \"wire\"\n{\n    x int32\n}\n")
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		files, err := c.Generate(u, target, nil)
 		if target == "lua" || target == "go" {
 			if err != nil || len(files) == 0 {

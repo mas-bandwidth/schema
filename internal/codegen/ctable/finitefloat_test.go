@@ -384,7 +384,7 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, _ := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if rest, ok := strings.CutPrefix(line, "FAIL: "); ok {
@@ -393,6 +393,12 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 	}
 	if cCarries(string(output), "ERROR: AddressSanitizer") || cCarries(string(output), "runtime error:") {
 		t.Fatalf("the probe tripped a sanitizer:\n%s", output)
+	}
+	// The probe exits failures != 0, so a non-zero exit with no FAIL line (a
+	// crash, a kill at the deadline) or a FAIL line with a clean exit is a
+	// probe that did not run to its verdict.
+	if (runErr != nil) != (len(fails) != 0) {
+		t.Fatalf("the probe's exit (%v) disagrees with its %d FAIL lines:\n%s", runErr, len(fails), output)
 	}
 	return fails, string(output)
 }

@@ -657,6 +657,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\t_writeNodeTable(w);\n")
 	g.pf("\tfor (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }\n")
 	g.pf("\tw.putByte(0);\n")
+	g.pf("\tstate.checkIdBound();\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
 	if st.Integrity != "" {

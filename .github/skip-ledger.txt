@@ -1,0 +1,161 @@
+# .github/skip-ledger.txt — THE SKIP LEDGER: every reason a test in this tree
+# may skip for, and the class of lane that is meant to satisfy it.
+#
+#   skip <class> <regexp>
+#
+# A skipped test exits 0, so a lane can go green having run nothing. Two
+# readers hold the tree to this file (internal/skipledger):
+#
+#   * internal/ci (TestEverySkipInTheTreeNamesALedgerReason) reads every
+#     t.Skip in the source. A skip with no reason, or a reason no line here
+#     matches, is red at the pull request that writes it. A format verb reads
+#     as X there, so write a pattern on the reason's fixed words.
+#   * tools/gotestreport -skips reads every skip in a lane's `go test -json`
+#     record, after the lane ran. A skip with no reason, a reason no line
+#     matches, or a reason whose class the lane -provides is red: "no Elixir"
+#     in the lane that installs Elixir, SCHEMA_SLOW in a make target that
+#     sets SCHEMA_SLOW=1.
+#
+# The first matching line wins, so a narrow line goes above a broad one. A
+# class is a claim about lanes: before adding one, say below which lane
+# provides it. Adding a line here never makes a test run; it only says which
+# lane is wrong when the test does not.
+#
+# MEASURED 2026-11-21 on main 8f82586f98 (hetzner2, `go test -json ./...`, no
+# SCHEMA_SLOW, which is what the go-test-touched rows run between them): of
+# 18,367 tests, 6,759 skip. 6,504 are `slow`, 203 `corpus`, 38 `retired`, 7
+# `built`, 6 `env`, 1 `helper`. None gave no reason.
+
+# slow: internal/slowtest.Gate. Provided by every lane that sets
+# SCHEMA_SLOW=1 (ci-full.yml's go-test rows, the make leg gates,
+# test/slowgate/proof).
+skip slow ^SCHEMA_SLOW(: | is unset)
+
+# short: the test is too heavy for -short. Provided by every lane that runs
+# without -short.
+skip short ^-short: 
+
+# tool:<name>: the test needs a toolchain it did not find. Provided by the
+# lane that installs that toolchain. Where a second condition rides along
+# (SCHEMA_REQUIRE_CORPUS is unset), the toolchain is still the reason.
+skip tool:rust-32bit 32-bit target
+skip tool:rust ^rustc (is )?not on PATH
+skip tool:rust ^no cargo (toolchain|on PATH)
+skip tool:c++ no c\+\+ on PATH
+skip tool:c++ ^c\+\+( unavailable| is not on PATH)?(:| and) 
+skip tool:c++ clang\+\+
+skip tool:c++ ^generated C\+\+ (execution|inclusion) requires
+skip tool:c++ ^the generated C\+\+ reader is built with
+skip tool:c++ (^no|requires a|: no) C\+\+ compiler
+skip tool:cc no cc on PATH
+skip tool:cc ^generated C (execution|compilation|syntax check) requires cc
+skip tool:cc ^cc( unavailable| not found| is not on PATH)?(: |$)
+skip tool:cc ^(requires C compiler|no C compiler on PATH)$
+skip tool:cc ^the C compiler .* is absent
+skip tool:cc ^the generated C reader is built with cc
+skip tool:dotnet ^dotnet (unavailable|not found)
+skip tool:dotnet ^no (dotnet on PATH|Roslyn csc\.dll|\.NET ref pack)
+skip tool:dotnet ^Unity toolchain unavailable
+skip tool:java javac|^java not on PATH|no JDK
+skip tool:node ^no node (toolchain|on PATH)
+skip tool:eslint ^eslint unavailable
+skip tool:dart ^no Dart toolchain
+skip tool:dart ^the Dart SDK is not unpacked
+skip tool:elixir ^no (Elixir|elixirc):
+skip tool:make (requires|shells out to|reads) (the )?make\b
+skip tool:make ^no make on PATH
+skip tool:git shells out to git
+skip tool:sh ^no sh on PATH
+skip tool:sbcl ^sbcl not installed
+skip tool:go ^go: 
+
+# sibling: a serialize runtime checkout is not staged beside the tree.
+# Provided by every lane that clones the sibling runtimes at their pins.
+skip sibling ^serialize(\.(h|c|cs|js|rs))?\b.*(not staged|not found|not installed|unavailable|not at)
+skip sibling ^named as not run: (the sibling serialize|serialize\.c)
+skip sibling ^no serialize\.(js|rs) runtime
+skip sibling ^the C# runtime checkout is not at
+
+# corpus: the C++ reference's fixed-form corpus (build/fixedform-corpus) is
+# not built. Provided by every lane that builds it first (make
+# tables-fixedform-corpus; SCHEMA_REQUIRE_CORPUS=1 turns the skip into a
+# failure there). It is also a failure wherever CI is set and the slow half was
+# asked for (SCHEMA_SLOW=1; slowtest.CorpusRequired), so the skip survives only
+# on a developer's machine and in a default run.
+skip corpus (byte oracle|corpus|oracle) is (not built|absent)
+skip corpus ^no fixed-form corpus at
+skip corpus ^fixedform[- ]corpus (not built|unavailable)
+skip corpus ^the tree carries no corpus manifest
+
+# built: the test reads an artifact a make target builds. Provided by the
+# lane that runs that target.
+skip built ^run make \S+ to build
+skip built is written by `make tables-lists`
+skip built is not built: (run )?make 
+
+# env: the test runs only when a make target or a person sets its variable.
+# Provided by the lane that sets it.
+skip env ^set SCHEMA_[A-Z0-9_]+
+skip env ^certify tier: set SCHEMA_CERTIFY_INT32_MAX=1
+skip env ^SCHEMA_MOO_FIXED_BENCH unset
+skip env requires CARDS_UPDATE_(FIXTURE|CORPUS)=1$
+skip env runs? under make tables-cs-fixed-roadmap$
+
+# nightly: a campaign too long for a commit. Provided by the nightly workflow
+# that runs it.
+skip nightly nightly (only|campaign)
+
+# tag: the test is for another build-tag configuration. Provided by the lane
+# that builds under that tag (ci-full.yml's leg-tagged job).
+skip tag ^this build registers .* the pages state the default build$
+
+# platform: the host cannot do what the test needs (symlinks, POSIX modes, a
+# Linux-only signal). Provided by every Linux lane.
+skip platform symlink
+skip platform POSIX
+skip platform on Linux( only)?$
+skip platform ^Linux CI artifact contract$
+skip platform ^platform has no kernel address-space ceiling$
+
+# root: the test proves nothing as root. Provided by a lane that does not run
+# as root.
+skip root ^root writes (through|into) a read-only (directory|file)
+
+# volume:aliases: the test needs a volume that takes two spellings of a name
+# (a case fold, a Unicode normalization) for one entry, as APFS on macOS
+# does. Provided by no CI lane today: every Linux lane keeps the spellings
+# apart, so these tests run on macOS hosts only (the Studio, the macOS
+# benches). Their controls, which need the spellings kept apart, are
+# platform skips above and run on every Linux lane.
+skip volume:aliases ^this (volume|file system) keeps .+ apart, so 
+
+# helper: a helper-process entry point, run by the test that names it.
+# Provided by no lane: it skips whenever go test runs it directly.
+skip helper TestGooseDieWithParent
+skip helper ^helper for Test
+
+# inapplicable: a table-driven test's row does not apply to this case.
+# Provided by no lane.
+skip inapplicable ^§3\.3 is a fixed table's
+skip inapplicable ^the tool writes no cook for
+skip inapplicable ^the Lua table backend does not generate this unit
+skip inapplicable ^the pointers corpus declares no variable-length root$
+skip inapplicable ^reference (refuses the wire|has no cook)
+skip inapplicable ^no fixed/ufixed root field over seeds
+skip inapplicable ^docs/SPEC-TABLES\.md §3\.4 does not list
+skip inapplicable ^a sibling C\+\+ serialize checkout at .* resolves SERIALIZE
+skip inapplicable records with no capacity \(schema-fixedproof-x1's row\)
+
+# retired, unported: THE TEST RUNS IN NO LANE. Each names the document that
+# owes it. Provided by no lane: these lines are the count of what is owed,
+# not a permission (38 retired tests on 2026-11-21).
+skip retired re-pin as a verdict: docs/plans/strict-only\.md$
+skip retired ^retired by docs/
+skip retired ^the wide-text unit is retired$
+skip unported ^UNPORTED
+
+# tool:other: a toolchain named only at run time ("<tool>: exec: ... not
+# found"). Last, so every named toolchain above is matched first.
+skip tool:other executable file not found
+skip tool:other ^(building a multi-byte-point locale requires localedef|the ps_AF locale source is not installed|localedef could not build the locale)
+skip tool:other ^(\S+ is not on PATH|no \S+ on PATH|none of .* is on PATH|\S+ unavailable)(: |$)

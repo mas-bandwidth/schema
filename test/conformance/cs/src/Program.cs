@@ -77,6 +77,9 @@ static partial class Program
         public Func<object, long> CookMeasure;
         public Func<object, byte[], bool, bool> Cook;
         public Func<byte[], byte[], Report, object> MessageLoad;
+        // MessageBatchCount loads one batch with room for every body and answers
+        // the count LoadMessages returned (a `message-batch` row, SPEC-TABLES §3.3).
+        public Func<byte[], byte[], int> MessageBatchCount;
         public Func<object, long> MessageMeasure;
         public Func<object, byte[], long> MessageSave;
         public byte[] Announcement;
@@ -743,6 +746,16 @@ static partial class Program
             byte[] bytes = new byte[checked((int)size)];
             if (codec.MessageSave(value, bytes) != size) { return 1; }
             File.WriteAllBytes(Path.Combine(outDir, f[1]), bytes);
+        }
+        // message-batch <case> <connection> <root> <wire>: the count
+        // LoadMessages returned with room for every body (FORMAT.md)
+        foreach (string[] f in Kind("message-batch"))
+        {
+            string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
+            Codec codec = Find(connection[2], f[3]);
+            if (codec == null || codec.MessageBatchCount == null) { Console.Error.WriteLine("driver: no message-batch codec for " + connection[2] + "." + f[3]); return 1; }
+            int count = codec.MessageBatchCount(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[4]));
+            File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
         }
         return 0;
     }
@@ -1713,6 +1726,14 @@ static partial class Program
                 int cnt = 0;
                 if (!inner.Refused && !inner.Damaged) { bool ok = (int)Backenddemo.Schema.StorePurchaseLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
                 Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageBatchCount = (announcement, bytes) =>
+            {
+                var vocabulary = new Backenddemo.TableVocabulary();
+                Backenddemo.Schema.AnnounceRead(vocabulary, announcement, new Backenddemo.TableReport());
+                var values = new Backenddemo.StorePurchase[256]; for (int i = 0; i < values.Length; i++) { values[i] = new Backenddemo.StorePurchase(); }
+                Backenddemo.Schema.StorePurchaseLoadMessages(values, bytes, vocabulary, new Backenddemo.TableReport(), out int cnt);
+                return cnt;
             };
             c.MessageMeasure = value => value is Backenddemo.StorePurchase[] batch ? Backenddemo.Schema.StorePurchaseMeasureMessages(batch) : Backenddemo.Schema.StorePurchaseMeasureMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value });
             c.MessageSave = (value, bytes) => value is Backenddemo.StorePurchase[] batch ? Backenddemo.Schema.StorePurchaseSaveMessages(batch, bytes) : Backenddemo.Schema.StorePurchaseSaveMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value }, bytes);

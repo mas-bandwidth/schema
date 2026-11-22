@@ -25,7 +25,11 @@ func TestLuaCookRead(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
-	for _, row := range manifestRows(t, manifest, "instance") {
+	rows := manifestRows(t, manifest, "instance")
+	if len(rows) == 0 {
+		t.Fatal("the manifest names no instance row: no cook was read")
+	}
+	for _, row := range rows {
 		t.Run(row.caseName, func(t *testing.T) {
 			t.Parallel()
 			var paths []string

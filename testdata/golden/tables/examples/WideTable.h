@@ -155,6 +155,9 @@ enum TableRefuseReason : int32_t
 constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+// STRICT MODE's one refusal (§3.3): a strict vocabulary's announcement whose
+// build version is not this unit's own. The report carries both versions.
+constexpr TableRefuseReason build_version_mismatch = (TableRefuseReason) 0x20000003; // a strict announcement whose build version is not this unit's own
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -215,6 +218,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason no_vocabulary = ::tabledemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::tabledemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::tabledemo::vocabulary_too_large;
+    static constexpr TableRefuseReason build_version_mismatch = ::tabledemo::build_version_mismatch;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -277,6 +281,11 @@ struct TableReport
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on reason build_version_mismatch, the peer's announced build version
+    // (remote) and this unit's own (own). Zero on every other path.
+    uint64_t build_version_remote = 0;
+    uint64_t build_version_own = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
@@ -646,6 +655,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 155;
     static const int32_t kBuckets = 512;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -689,7 +701,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -3963,6 +3975,11 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
+    // once by the FIRST AnnounceRead and never after. Set, an announcement
+    // whose build version is not this unit's own is refused as
+    // build_version_mismatch and sets no vocabulary.
+    bool strict = false;
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -4157,6 +4174,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
         to->damaged = true;
+        return false;
+    }
+    // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // The unit's own build version is spelled here as the literal BuildVersion
+    // holds, because the cook runtime that declares BuildVersion follows this one.
+    if ( vocabulary.strict && version != 0x3684616af27a45c9ull )
+    {
+        to->refused = true;
+        to->reason = build_version_mismatch;
+        to->build_version_remote = version;
+        to->build_version_own = 0x3684616af27a45c9ull;
         return false;
     }
 
@@ -4851,6 +4880,13 @@ inline uint64_t table_double_to_bits( double d )
 // never written, and measure answers -1 for it as save answers false
 inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
 inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
+// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (§3.3; docs/rulings.json
+// fixed-compressed-negzero): the bits every writer stores for a compressed
+// float, the +0 bits for its -0 and the bits as held for any other value. A
+// plain float never comes here: its -0 is a value and rides bit-exact. The Go
+// oracle is internal/tabletext's StoredFloat.
+inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -9419,7 +9455,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -9452,7 +9492,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -10830,7 +10870,7 @@ inline void WideBlobReset( WideBlob & value )
     memset( value.payload, 0, sizeof( value.payload ) );
     value.payload_length = 0;
     memset( value.samples, 0, sizeof( value.samples ) );
-    value.samples_count = 0;
+    value.samples_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value );
@@ -10875,7 +10915,8 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -10915,7 +10956,8 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
         w.raw( value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -11372,7 +11414,8 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += (int64_t) value.payload_length * 8;
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         bits += kTableMessageRefBitsHere;
         bits += 17;
@@ -11405,7 +11448,8 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.putbytes( (const uint8_t *) value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         w.put( 103, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.samples_count ) - 0, 17 );
@@ -11788,9 +11832,9 @@ inline int64_t WideBlobSaveMessages( const WideBlob * values, int64_t count, uin
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -11809,8 +11853,7 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -11852,7 +11895,8 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -11885,7 +11929,8 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
         w.raw( value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;

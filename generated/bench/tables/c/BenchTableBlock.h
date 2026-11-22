@@ -14,8 +14,8 @@
    many there are and how far apart they sit — and then those rows, each array
    at a fixed pitch. The other side reads those three facts and points. */
 
-#ifndef SCHEMA_BENCHTABLE_BENCHTABLEBLOCK_H
-#define SCHEMA_BENCHTABLE_BENCHTABLEBLOCK_H
+#ifndef SCHEMA_BENCHTABLE_BenchTable_block_h
+#define SCHEMA_BENCHTABLE_BenchTable_block_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -677,4 +677,4 @@ static SCHEMA_UNUSED int benchtable_table_stat_block_open_const( benchtable_tabl
 }
 #endif
 
-#endif /* SCHEMA_BENCHTABLE_BENCHTABLEBLOCK_H */
+#endif /* SCHEMA_BENCHTABLE_BenchTable_block_h */

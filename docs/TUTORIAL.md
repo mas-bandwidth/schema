@@ -3758,7 +3758,7 @@ fact per line, made to be read in a diff. Here is the part of it that covers
 `ShipConfig` and the flags it now carries:
 
 ```
-schema-tables-baseline 7
+schema-tables-baseline 10
 package starlight
 
 table ShipConfig
@@ -3792,7 +3792,7 @@ closure against it.
 
 ```
 $ schema check .
-tables.baseline: ShipConfig.max_health: specified default 100.0 -> 120.0 — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: ShipConfig.max_health: specified default 100.0 -> 120.0 — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
 schema: 1 error(s)
 ```
 
@@ -3801,9 +3801,9 @@ Autopilot }`, and the refusal names every moved bit:
 
 ```
 $ schema check .
-tables.baseline: flags SystemFlags: variant Cloak moved from bit 1 to bit 2 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
-tables.baseline: flags SystemFlags: variant WarpDrive moved from bit 2 to bit 3 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
-tables.baseline: flags SystemFlags: variant Autopilot moved from bit 3 to bit 4 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags SystemFlags: variant Cloak moved from bit 1 to bit 2 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags SystemFlags: variant WarpDrive moved from bit 2 to bit 3 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
+tables.baseline: flags SystemFlags: variant Autopilot moved from bit 3 to bit 4 — every stored file's bits are remapped, and nothing on the wire says so — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason "..." (docs/SPEC-TABLES.md §18)
 schema: 3 error(s)
 ```
 

@@ -19,6 +19,7 @@ package compiler
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func gooseLineageCorpus(t *testing.T) string {
 		}
 	}
 	why := fmt.Sprintf("the C++ reference's byte oracle is not built: make tables-fixedform-corpus (%v)", err)
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+	if slowtest.CorpusRequired() {
 		t.Fatal(why)
 	}
 	t.Skip(why)

@@ -8,11 +8,21 @@
    <name>_from_json or <name>_to_json; a project that reads neither the
    descriptors nor a text still gets the whole wire from the header. */
 
+#if !defined( _WIN32 ) && !defined( __APPLE__ ) && !defined( _POSIX_C_SOURCE )
+#define _POSIX_C_SOURCE 200809L /* uselocale, newlocale: numbers convert in the "C" locale */
+#endif
+#if defined( __APPLE__ ) && !defined( _DARWIN_C_SOURCE )
+#define _DARWIN_C_SOURCE 1
+#endif
+
 #include "FixedTableTable.h"
 
 #include <stdio.h>  /* the text form: number formatting */
 #include <stdlib.h> /* the text form: exact number conversion */
-#include <locale.h> /* the text form: the runtime's decimal point */
+#include <locale.h> /* the text form: numbers convert in the "C" locale */
+#if defined( __APPLE__ )
+#include <xlocale.h> /* newlocale, uselocale */
+#endif
 
 #include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
 #ifndef schema_assert
@@ -52,20 +62,65 @@
    the digits the converter is handed. */
 #define BENCH_K_TABLE_JSON_MAX_NUMBER 800
 
-/* The decimal point the C runtime is CURRENTLY using. Number conversion is
-   the one locale-sensitive corner of the grammar — JSON's point is always
-   '.', the runtime's is whatever the program set — so every number crosses
-   this one character on the way out and on the way back in. Nothing else in
-   the walk consults the locale. */
-static SCHEMA_UNUSED char bench_table_json_decimal_point( void )
+/* Number conversion is the one locale-sensitive corner of the grammar: JSON's
+   point is always '.', the runtime's is whatever the program set, and it may
+   be more than one byte. The walk never reads that setting and never swaps
+   bytes of a number's text. Each conversion runs with THIS THREAD's locale
+   switched to the "C" locale for the call and restored after it, so a number
+   reads and writes the same under any locale the program set, and another
+   thread's locale (or the global one) is never touched. */
+#if defined( _WIN32 )
+static SCHEMA_UNUSED _locale_t bench_table_json_c_locale( void )
 {
-    const struct lconv * conv = localeconv();
-    if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
-    {
-        return conv->decimal_point[0];
-    }
-    return '.';
+    static _locale_t c = NULL;
+    if ( c == NULL ) { c = _create_locale( LC_ALL, "C" ); }
+    return c;
 }
+static SCHEMA_UNUSED double bench_table_json_strtod( const char * text ) { return _strtod_l( text, NULL, bench_table_json_c_locale() ); }
+static SCHEMA_UNUSED float bench_table_json_strtof( const char * text ) { return _strtof_l( text, NULL, bench_table_json_c_locale() ); }
+static SCHEMA_UNUSED int bench_table_json_format_g( char * text, size_t size, int digits, double value )
+{
+    return _snprintf_l( text, size, "%.*g", bench_table_json_c_locale(), digits, value );
+}
+#else
+static SCHEMA_UNUSED locale_t bench_table_json_c_locale( void )
+{
+    static locale_t c = (locale_t) 0;
+    if ( c == (locale_t) 0 ) { c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 ); }
+    return c;
+}
+/* the previous locale of the calling thread, or 0 when it was not switched */
+static SCHEMA_UNUSED locale_t bench_table_json_c_begin( void )
+{
+    const locale_t c = bench_table_json_c_locale();
+    return c == (locale_t) 0 ? (locale_t) 0 : uselocale( c );
+}
+static SCHEMA_UNUSED void bench_table_json_c_end( locale_t previous )
+{
+    if ( previous != (locale_t) 0 ) { uselocale( previous ); }
+}
+static SCHEMA_UNUSED double bench_table_json_strtod( const char * text )
+{
+    const locale_t previous = bench_table_json_c_begin();
+    const double value = strtod( text, NULL );
+    bench_table_json_c_end( previous );
+    return value;
+}
+static SCHEMA_UNUSED float bench_table_json_strtof( const char * text )
+{
+    const locale_t previous = bench_table_json_c_begin();
+    const float value = strtof( text, NULL );
+    bench_table_json_c_end( previous );
+    return value;
+}
+static SCHEMA_UNUSED int bench_table_json_format_g( char * text, size_t size, int digits, double value )
+{
+    const locale_t previous = bench_table_json_c_begin();
+    const int length = snprintf( text, size, "%.*g", digits, value );
+    bench_table_json_c_end( previous );
+    return length;
+}
+#endif
 
 /* ---- storage access: the descriptors give an offset and a width, and the
    ---- storage is the HOST's, so every load and store goes through a width
@@ -827,31 +882,19 @@ static SCHEMA_UNUSED int bench_table_json_write_float( bench_table_json_out_t * 
     int high = single ? 9 : 17;
     int length = 0;
     int digits;
-    char point;
     if ( !bench_table_json_finite( value ) ) { return 0; }
     for ( digits = low;; digits++ )
     {
-        length = snprintf( text, sizeof( text ), "%.*g", digits, value );
+        length = bench_table_json_format_g( text, sizeof( text ), digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
         if ( digits >= high ) { break; }
-        /* the round-trip check runs BEFORE the decimal point is normalised:
-           the token still carries whatever point snprintf just produced */
         if ( single )
         {
-            if ( (double) strtof( text, NULL ) == value ) { break; }
+            if ( (double) bench_table_json_strtof( text ) == value ) { break; }
         }
         else
         {
-            if ( strtod( text, NULL ) == value ) { break; }
-        }
-    }
-    point = bench_table_json_decimal_point();
-    if ( point != '.' )
-    {
-        int i;
-        for ( i = 0; i < length; i++ )
-        {
-            if ( text[i] == point ) { text[i] = '.'; }
+            if ( bench_table_json_strtod( text ) == value ) { break; }
         }
     }
     bench_table_json_raw( out, text, length );
@@ -1096,15 +1139,24 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
         case 10:
         {
             float v = 0.0f;
+            uint32_t bits = 0;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return 0; }
+            /* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+               §3.3; docs/rulings.json fixed-compressed-negzero), tested on the
+               bits so a NaN still reaches the writer's refusal */
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x80000000u ) { v = 0.0f; }
             return bench_table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
+            uint64_t bits = 0;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return 0; }
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x8000000000000000ull ) { v = 0.0; } /* a compressed float's -0 is written as +0 (§3.3) */
             return bench_table_json_write_float( out, v, 0 );
         }
         case 36:
@@ -1896,28 +1948,18 @@ static SCHEMA_UNUSED int bench_table_json_integer_token( const char * text, int6
     return 1;
 }
 
-/* the token's exact double, through the runtime's own converter — which
-   speaks the LOCALE's decimal point, so the token crosses back over that
-   character on its way in. A token too long to copy whole is handed over as
+/* the token's exact double, through the runtime's own converter run in the
+   "C" locale (table_json_strtod), so the token's '.' is read as written. A token too long to copy whole is handed over as
    the same value, [-]0.<significant digits>e<exponent>: leading zeros move
    the exponent, digits past kTableJsonMaxNumber - 32 are folded into it, and
    a non-zero one among them leaves one sticky digit behind. */
 static SCHEMA_UNUSED double bench_table_json_token_double( const char * token, int64_t length, int single )
 {
     char work[BENCH_K_TABLE_JSON_MAX_NUMBER];
-    char point = bench_table_json_decimal_point();
     if ( length < (int64_t) sizeof( work ) )
     {
         memcpy( work, token, (size_t) length );
         work[length] = 0;
-        if ( point != '.' )
-        {
-            int64_t i;
-            for ( i = 0; i < length; i++ )
-            {
-                if ( work[i] == '.' ) { work[i] = point; }
-            }
-        }
     }
     else
     {
@@ -1935,7 +1977,7 @@ static SCHEMA_UNUSED double bench_table_json_token_double( const char * token, i
             i++;
         }
         work[n++] = '0';
-        work[n++] = point;
+        work[n++] = '.';
         for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
         {
             const char c = token[i];
@@ -1987,8 +2029,8 @@ static SCHEMA_UNUSED double bench_table_json_token_double( const char * token, i
         if ( exponent < -99999 ) { exponent = -99999; }
         snprintf( work + n, sizeof( work ) - (size_t) n, "e%d", (int) exponent );
     }
-    if ( single ) { return (double) strtof( work, NULL ); }
-    return strtod( work, NULL );
+    if ( single ) { return (double) bench_table_json_strtof( work ); }
+    return bench_table_json_strtod( work );
 }
 
 /* the token's exact integer, parsed digit by digit so no width and no
@@ -2054,7 +2096,8 @@ static SCHEMA_UNUSED int64_t bench_table_json_token_integer( const char * token,
 
 #ifdef SCHEMA_BENCH_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth );
-static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key );
+static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, char close, uint64_t * opened );
+static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t label );
 #else
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth )
 {
@@ -2064,11 +2107,41 @@ static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * 
     in->bad = 1;
     return 0;
 }
-static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key )
+static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, char close, uint64_t * opened )
 {
-    (void) key;
-    in->bad = 1;
-    return 0;
+    /* no pointer, so no label table: the prefix is still held to its grammar (a
+       well-formed first &node), and the value is skipped whole */
+    uint64_t value = 0;
+    (void) close;
+    (void) opened;
+    if ( strcmp( key, "&node" ) != 0 )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    bench_table_json_space( in );
+    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    while ( in->pos < in->size && in->text[in->pos] >= '0' && in->text[in->pos] <= '9' )
+    {
+        uint64_t digit = (uint64_t) ( in->text[in->pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        value = value * 10 + digit;
+        in->pos++;
+    }
+    return 1;
+}
+static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t label )
+{
+    (void) in;
+    (void) label;
 }
 #endif
 
@@ -2191,6 +2264,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
+    uint64_t opened = 0; /* the label this object defines, open until it closes */
     if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH )
     {
         in->bad = 1;
@@ -2204,6 +2278,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
         if ( c == close )
         {
             in->pos++;
+            if ( opened != 0 ) { bench_table_json_skipped_close( in, opened ); }
             return 1;
         }
         if ( c == 0 )
@@ -2242,14 +2317,14 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
             added = bench_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL )
+            if ( key[0] == '&' )
             {
                 if ( !first )
                 {
                     in->bad = 1;
                     return 0;
                 }
-                if ( !bench_table_json_skipped_ampersand( in, key ) ) { return 0; }
+                if ( !bench_table_json_skipped_ampersand( in, key, close, &opened ) ) { return 0; }
                 consumed = 1;
             }
         }
@@ -2264,6 +2339,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
         if ( c == close )
         {
             in->pos++;
+            if ( opened != 0 ) { bench_table_json_skipped_close( in, opened ); }
             return 1;
         }
         in->bad = 1;

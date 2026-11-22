@@ -18,8 +18,9 @@ import (
 
 // Construction starts a positive-minimum count at that minimum (SPEC 4.2),
 // recursively through table closures. Go and the reference engine use that rule
-// for absent fields and reset; the other leg controls retain their current
-// construction behavior. Fixed files use legal positive counts and form 3;
+// for absent fields and reset, as do C# since CS-5 (76e232e769) and the C and
+// C++ controls since #4564; an unused slot past the count keeps its
+// constructed value. Fixed files use legal positive counts and form 3;
 // unused form-3 array slots remain zero slack.
 func TestTableClosureCountDefaults(t *testing.T) {
 	t.Parallel()
@@ -175,7 +176,7 @@ int main(void) {
 #endif
  REPORT_RESET(report);
  CHECK(LEAF_LOAD(leaf,empty,sizeof(empty),&report));
- CHECK(leaf.values_count == 0 && leaf.marker == 7);
+ CHECK(leaf.values_count == 1 && leaf.marker == 7);
  for(int i=0;i<8;i++) {
   const int populated = !(i&1);
   const uint8_t *wire = populated ? full : minimal;
@@ -191,10 +192,10 @@ int main(void) {
   CHECK(MEASURE(value)==size && SAVE(value,saved,sizeof(saved))==size && !memcmp(saved,wire,(size_t)size));
  }
  RESET(value);
- CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0 && value.payload.rows[1].marker==7);
+ CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[1].values_count==1 && value.payload.rows[1].marker==7);
  REPORT_RESET(report);
  CHECK(JSON(value,"{}",2,&report) && CLEAN_JSON(report));
- CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0);
+ CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[1].values_count==1);
 #ifdef __cplusplus
  // The same reset serves message loads and public file-open failure paths.
  TableMessageEntry entries[kTableMessageEntriesHere];
@@ -207,11 +208,11 @@ int main(void) {
  int64_t count=1;
  value.payload=Payload();
  CHECK(RootLoadMessages(&value,&count,vocabulary,message,message_bytes,&report) && count==1);
- CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[0].values_count==1 && value.payload.rows[1].values_count==0);
+ CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[0].values_count==1 && value.payload.rows[1].values_count==1);
  CHECK(RootSaveMessages(&value,1,saved,sizeof(saved),&report)==message_bytes && !memcmp(saved,message,(size_t)message_bytes));
  value.payload=Payload();
  CHECK(!RootLoad(value,empty,0,&report) && report.damaged && report.refuse_reason == wire_damaged);
- CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0);
+ CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1);
 #endif
  return 0;
 }
@@ -253,7 +254,7 @@ class Program {
   byte[] empty={@EMPTY@},full={@FULL@},minimal={@MINIMAL@};
   var plan=new TableFixedEntry[4096];
   var value=new Root();var leaf=new Leaf();var report=new TableReport();
-  Check(Schema.LeafLoad(leaf,empty,report)&&leaf.ValuesCount==0&&leaf.Marker==7);
+  Check(Schema.LeafLoad(leaf,empty,report)&&leaf.ValuesCount==1&&leaf.Marker==7);
   for(int i=0;i<8;i++) {
    bool populated=i%2==0;var wire=populated?full:minimal;report=new TableReport();
    var loaded=new Root[]{new Root()};
@@ -264,8 +265,8 @@ class Program {
    var saved=new byte[wire.Length];
    Check(Schema.RootFixedMeasure(1)==wire.Length&&Schema.RootFixedSave(value,saved)==wire.Length&&saved.AsSpan().SequenceEqual(wire));
   }
-  Schema.TableReset(value);Check(value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0&&value.Payload.Rows[1].Marker==7);
-  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0);
+  Schema.TableReset(value);Check(value.Payload.Leaf.ValuesCount==1&&value.Payload.RowsCount==1&&value.Payload.Rows[1].ValuesCount==1&&value.Payload.Rows[1].Marker==7);
+  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&value.Payload.Leaf.ValuesCount==1&&value.Payload.RowsCount==1&&value.Payload.Rows[1].ValuesCount==1);
  }
 }
 `

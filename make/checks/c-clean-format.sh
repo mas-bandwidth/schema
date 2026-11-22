@@ -40,7 +40,7 @@ rm -rf "$work" && mkdir -p "$work"
 for tree in "$@"; do
 	[ -d "$tree" ] || { echo "tables-c-clean: $tree is not a directory, so nothing under it was checked"; exit 1; }
 	find "$tree" \( -name '*.h' -o -name '*.c' \) > "$OUT/c-format-tree.txt" || { echo "tables-c-clean: $tree could not be listed"; exit 1; }
-	[ -s "$OUT/c-format-tree.txt" ] || { echo "tables-c-clean: no generated C under $tree"; exit 1; }
+	[ -s "$OUT/c-format-tree.txt" ] || { echo "tables-c-clean: no .h or .c file under $tree; nothing was held to clang-format"; exit 1; }
 	cat "$OUT/c-format-tree.txt" >> "$OUT/c-format-files.txt"
 done
 sort -u -o "$OUT/c-format-files.txt" "$OUT/c-format-files.txt"
@@ -92,7 +92,7 @@ done < "$OUT/c-format-results.txt"
 grep -v '^#' "$allow" | grep . | while IFS= read -r f; do
 	grep -Fxq -- "$f" "$OUT/c-format-files.txt" && continue
 	if [ -f "$f" ]; then
-		echo "tables-c-clean: $f is listed in $allow but lies outside the trees scanned ($*) — remove its line"
+		echo "tables-c-clean: $f is listed in $allow but is under none of the trees this gate scans ($*) — remove its line, or scan its tree"
 	else
 		echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"
 	fi

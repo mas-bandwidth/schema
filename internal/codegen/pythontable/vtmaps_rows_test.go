@@ -75,6 +75,8 @@ var pythonVTMapRows = []string{
 	"varevo_v3_rollback",
 	"varevo_2hop_v3_origin",
 	"varevo_v3_default_containers",
+	"fixed_array_rides_default",
+	"fixed_array_rides_live",
 	"varevo_v1_as_v2",
 	"varevo_v1_as_v3",
 	"varevo_v1_ping_as_v3",
