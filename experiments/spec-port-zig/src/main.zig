@@ -378,6 +378,12 @@ fn setPath(a: Allocator, s: *value.Struct, path: []const u8, kind: []const u8, v
                         slot = slot.opt.?;
                     }
                 },
+                .keyed => |kt| {
+                    // an enum-keyed array indexed by slot: `[i]` is the (i+1)-th variant
+                    if (i >= slot.keyed.len) return error.NoPath;
+                    slot = &slot.keyed[i];
+                    ty = kt.elem;
+                },
                 .map => |mt| {
                     if (i >= slot.map.len) return error.NoPath;
                     wire.sortEntries(mt.key, slot.map);
