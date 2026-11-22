@@ -1034,7 +1034,24 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			local born = fd.min or 0
 			if not required then
 				if n == 0 then return true end
-				if n == born and fd.e.s ~= "tab" then
+				if n == born and fd.e.s == "tab" then
+					-- A COUNTED ARRAY OF TABLES AT ITS BIRTH (§22.2,
+					-- tablewire encodeArray): every element's body the
+					-- terminator alone elides the field; the probe's ids are
+					-- undone either way, so a riding array interns as before
+					local m = mark(c.ids)
+					local all = true
+					for i = 1, n do
+						local b = body_of(c, St.lookup(fd.e.t), elem_at(val, i))
+						if b == nil then
+							rollback(c.ids, m)
+							return false
+						end
+						if b.n > 1 then all = false; break end
+					end
+					rollback(c.ids, m)
+					if all then return true end
+				elseif n == born then
 					local lens = v[fd.slot .. "Length"]
 					local all = true
 					for i = 1, n do
@@ -1165,6 +1182,9 @@ local function walk(d: any, v: any, count: boolean, outIndex: { [any]: number }?
 		w_sub(w, p)
 	end
 	w_u8(w, 0) -- the root body ends at its own zero reference
+	-- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+	-- than 4096 entries, so the writer refuses a value that needs more.
+	if #c.ids.list > 4096 then return nil, { name = "id_table_over_bound" } end
 	-- THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
 	for _, id in c.ids.list do w_int(w, id) end
 	w_int(w, integer.create(#c.ids.list))

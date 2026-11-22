@@ -6649,6 +6649,27 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# THE SUITE RUN ALONE (docs/SPEC-CONFORMANCE.md): one driver, no other language.
+# `make conformance` builds every leg first; a new port written from the spec
+# has no sibling checkouts and no other legs. This builds ONLY the harness (Go)
+# and runs every surface against the one driver named. Expected answers come
+# from the committed manifests and goldens under testdata/conformance, never
+# from another leg: a substituted registry has no reference leg, so no other
+# driver is asked anything. The driver is the port's own and is built by the
+# caller beforehand. CARDS_DRIVER (optional) also runs the cards corpus.
+#
+#   make conformance-port DRIVER=path/to/driver NAME=clisp [CARDS_DRIVER='cmd']
+.PHONY: conformance-port
+conformance-port: build/conformance-harness
+	@test -n "$(DRIVER)" || { echo "conformance-port: DRIVER=<command> is required (docs/SPEC-CONFORMANCE.md)"; exit 2; }
+	@test -n "$(NAME)" || { echo "conformance-port: NAME=<language> is required"; exit 2; }
+	@test "$(NAME)" != cpp || { echo "conformance-port: NAME=cpp is the reference leg's name; pick the port's own"; exit 2; }
+	@mkdir -p build/conformance-port-$(NAME)
+	@printf '%s %s\n' '$(NAME)' '$(DRIVER)' > build/conformance-port-$(NAME)/drivers.txt
+	./build/conformance-harness run --drivers build/conformance-port-$(NAME)/drivers.txt \
+		--work build/conformance-port-$(NAME)/work
+	$(if $(CARDS_DRIVER),./build/conformance-harness cards --corpus tables/cards/conformance --driver '$(CARDS_DRIVER)' --require $(CARDS_REQUIRE))
+
 # A separate four-case whole-text entry gate, not four new global corpus rows.
 # The caller builds the selected driver first; nightly already has that build.
 CONFORMANCE_BOM_LANG ?= cpp
@@ -7232,8 +7253,14 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push, active only in agent clones:
+# it refuses a push whose author or committer is not rowan-claude). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push guards agent clones)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:

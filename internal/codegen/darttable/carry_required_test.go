@@ -100,7 +100,7 @@ table Shapes {
 		{"KeyedSlots", `{}`, "values", 0}, {"KeyedSlots", `{"values":{}}`, "", 0},
 		{"Exact", `{}`, "ver", 0}, {"Exact", `{"ver":7}`, "", 0},
 	} {
-		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);}on FormatException catch(e){reason=e.message.toString();}
+		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);reason=r.missingFields.isNotEmpty?r.reason:'';}on FormatException catch(e){reason='threw: '+e.message.toString();}
 check(reason==%q,%q);}
 `, dartName(tc.root), tc.input, func() string {
 			if tc.missing != "" {
@@ -306,7 +306,7 @@ final retained=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireRepor
 check(rr.reason==r.reason,'retained Required');
 if(r.refused){check(v.a==0&&v.b==0&&v.c==0&&back.a==0&&back.b==0&&back.c==0&&retained.used==0,'refused read discards values and retained data');}
 else{check(hex(w.rootWireSave(v))==hex(wire)&&hex(w.rootWireSaveRetain(back,retained,w.TableWireReport()))==hex(wire),'independent pin save');}
-final jr=w.TableTextReport();var textReason='ok';try{final parsed=w.rootFromJson(%q,jr);check(hex(w.rootWireSave(parsed))==hex(wire),'JSON pin');}on FormatException catch(e){textReason=e.message.toString();}
+final jr=w.TableTextReport();var textReason='ok';try{final parsed=w.rootFromJson(%q,jr);if(jr.refused){textReason=jr.reason;}else{check(hex(w.rootWireSave(parsed))==hex(wire),'JSON pin');}}on FormatException catch(e){textReason='threw: '+e.message.toString();}
 check(textReason==%q,'JSON required pin');
 }
 `, hex.EncodeToString(wire), reason, tc.name, string(input), reason)

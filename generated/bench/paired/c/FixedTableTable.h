@@ -365,7 +365,7 @@ static SCHEMA_UNUSED uint64_t bench_table_writer_id( bench_table_writer_t * w, u
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==80) { w->overflow=1; return 0; }
+    if(v->count>=80) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; bench_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -4963,11 +4963,8 @@ static SCHEMA_UNUSED int64_t schema_bench_fixed_table_fixed_load_walk_( bench_fi
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        bench_fixed_table_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { bench_fixed_table_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]

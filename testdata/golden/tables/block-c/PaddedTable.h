@@ -361,7 +361,7 @@ static SCHEMA_UNUSED uint64_t blockdemo_table_writer_id( blockdemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==89) { w->overflow=1; return 0; }
+    if(v->count>=89) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; blockdemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -5338,7 +5338,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_message_body(blockdemo_tabl
  }
  { /* rows */
  schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
- if(value->rows_count>0) {
+ if(value->rows_count > 0) {
   blockdemo_table_bit_put(w,3,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
   blockdemo_table_bit_put(w,(uint64_t)value->rows_count-0,7);

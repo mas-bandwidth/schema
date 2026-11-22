@@ -920,9 +920,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
 		g.pf("    %s( &defaults );\n", g.api(st.Name, "reset"))
 	} else {
-		g.pf("    if ( fill_count > 0 )\n    {\n")
-		g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
-		g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
+		// the image is zeroed on every read, so no compiler sees it reach the
+		// fill run uninitialised (gcc -Wmaybe-uninitialized on a fixed array
+		// of records); only the Reset is skipped where nothing is prefilled
+		g.pf("    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
+		g.pf("    if ( fill_count > 0 ) { %s( &defaults ); }\n", g.api(st.Name, "reset"))
 	}
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	if finite {

@@ -511,6 +511,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
 	if fixedStructNeedsValueCheck(st) {
 		g.needHome(st.Name + "FixedCheckBody")
+		g.needHome(st.Name + "FixedFromText")
 	}
 
 	g.emitMessageVerbs(st)
@@ -698,6 +699,34 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.ElidesAtBirth() {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. Each element is judged as a field of its
+			// own: a float by its bits, an enum or a union by the zero
+			// reference, a table by a body that is its terminator alone.
+			// the names come from the member's expression, never the shared
+			// counters, so the rest of the emitted function is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, mem)
+			iv := "_bornAt_" + tag
+			v := "_born_" + tag
+			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
+			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
+			// whatever the element's test declares lives inside this loop's
+			// block, so its counter is given back after
+			seq := g.probeSeq
+			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
+			g.probeSeq = seq
+			g.pf("%s  if (%s) { %s = false; }\n", ind, cond, v)
+			g.pf("%s}\n", ind)
+			return "(" + mem + "Count > 0 && !" + v + ")"
+		}
 		return mem + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
@@ -982,7 +1011,11 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 		cond = messageStoredDefaultCond(f, mem)
 	}
 	checkFixedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer)
-	if cond != "" || checkFixedRides {
+	// A STORED BIRTH VALUE IS DAMAGE at this build's own shape (docs/SPEC-TABLES.md
+	// §22.2, §3.3): a [Min..N]T holding Min default elements elides, so a
+	// writer of this build never spells it; messageRides is that elision
+	checkCountedRides := cond == "" && f.KeyEnum == "" && f.ElidesAtBirth()
+	if cond != "" || checkFixedRides || checkCountedRides {
 		g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
 	}
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
@@ -993,6 +1026,9 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	case checkFixedRides:
 		rides := g.messageRides(f, mem, ind)
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && globalThis.Number(entry.Shape.Min) === %d && globalThis.Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
+	case checkCountedRides:
+		rides := g.messageRides(f, mem, ind)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && globalThis.Number(entry.Shape.Min) === %d && globalThis.Number(entry.Shape.Max) === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
 	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
@@ -1316,13 +1352,31 @@ func (g *fixedModule) emitMessageCheck(st *ir.Struct) {
 	if !fixedStructNeedsValueCheck(st) {
 		return
 	}
+	// A VALUE A TEXT READ PLACED is the variable class's (a live-length array
+	// for a counted one, an enum's name): the preflight refuses it as the fixed
+	// class's value, so it is read into the fixed storage once and held to the
+	// same preflight (docs/SPEC-TABLES.md §3.3, §16). The caller's own array is
+	// never written; a value already in the fixed form costs the one preflight.
+	g.pf("  let vals = values;\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] !== null && values[i] !== undefined && !%sFixedCheckBody(values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("    let value = values[i];\n")
+	g.pf("    if (value !== null && value !== undefined && !%sFixedCheckBody(value)) {\n", st.Name)
+	g.pf("      value = %sFixedFromText(value, new %s());\n", st.Name, st.Name)
+	g.pf("      if (!%sFixedCheckBody(value)) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("      if (vals === values) { vals = values.slice(); }\n")
+	g.pf("      vals[i] = value;\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
 }
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	// vn names the batch the bodies are written from: the converted copy when the
+	// preflight can convert a text-placed value, the caller's own otherwise.
+	vn := "values"
+	if fixedStructNeedsValueCheck(st) {
+		vn = "vals"
+	}
 	if st.Integrity != "" {
 		g.needHome("TableIntegrityHolds", "TableIntegritySeal", "TableMessageOpenDamaged")
 	}
@@ -1336,7 +1390,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.emitMessageCheck(st)
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -1364,7 +1418,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
 	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")

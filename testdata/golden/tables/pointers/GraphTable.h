@@ -658,6 +658,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 47;
     static const int32_t kBuckets = 128;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -701,7 +704,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -7972,7 +7975,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -8005,7 +8012,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -9603,7 +9610,7 @@ inline void SceneReset( Scene & value )
     {
         LayerReset( value.layers[i] );
     }
-    value.layers_count = 0;
+    value.layers_count = 0; // born at Min (docs/SPEC.md §4.2)
     MetaReset( value.meta );
 }
 
@@ -12075,7 +12082,8 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -12171,7 +12179,8 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -22539,7 +22548,8 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -22636,7 +22646,8 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;

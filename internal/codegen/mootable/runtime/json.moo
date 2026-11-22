@@ -1876,21 +1876,6 @@ end
 
 local skipValue: (Reader, number) -> boolean
 
-local function skippedAmpersand(r: Reader, key: string): boolean
-	local graph = r.graph
-	if graph == nil or key ~= "&node" then
-		return false
-	end
-	local label = scanLabel(r)
-	if label == nil then
-		return false
-	end
-	if graph[label] == nil then
-		graph[label] = { open = false, node = nil, t = nil }
-	end
-	return true
-end
-
 local function skipContainer(r: Reader, close: number, depth: number): boolean
 	if depth > MAX_DEPTH then
 		r.bad = true
@@ -1901,10 +1886,14 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	-- a skipped object's keys are held to the layer's rule too: a repeated
 	-- key refuses in every object of the text (§16.2, §16.12)
 	local keys: { [string]: boolean }? = nil
+	local definition: any = nil -- the label entry this object defines, open until it closes
 	while true do
 		local c = peek(r)
 		if c == close then
 			r.pos += 1
+			if definition ~= nil then
+				definition.open = false
+			end
 			return true
 		end
 		if c == 0 then
@@ -1930,22 +1919,56 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 			else
 				keys[key] = true
 			end
-			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
-				if not first or not skippedAmpersand(r, key) then
+			if #key > 0 and string.byte(key, 1) == 38 then
+				-- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+				-- must name a definition already closed; fields after one must
+				-- follow a label not yet defined, and the definition is open until
+				-- this object closes. What the reader does not place is the value.
+				if not first or key ~= "&node" then
 					r.bad = true
 					return false
 				end
 				first = false
+				local label = scanLabel(r)
+				if label == nil then
+					return false
+				end
 				c = peek(r)
-				if c == 44 then
-					r.pos += 1
-					resumed = true
-				elseif c == close then
-					r.pos += 1
-					return true
-				else
+				if c ~= close and c ~= 44 then
 					r.bad = true
 					return false
+				end
+				if r.graph == nil then
+					-- a unit with no pointer has no label table: the prefix is
+					-- still held to its grammar, and the value is skipped whole
+					r.pos += 1
+					if c == close then
+						return true
+					end
+					resumed = true
+				else
+				if c == 44 then
+					r.pos += 1
+					c = peek(r)
+				end
+				local graph = r.graph
+				local entry = graph[label]
+				local bare = c == close
+				if bare ~= (entry ~= nil) then
+					r.bad = true
+					return false
+				end
+				if bare then
+					if entry.open then
+						r.bad = true
+						return false
+					end
+					r.pos += 1
+					return true
+				end
+				definition = { open = true, node = nil, t = nil }
+				graph[label] = definition
+				resumed = true
 				end
 			end
 		end
@@ -1959,6 +1982,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				r.pos += 1
 			elseif c == close then
 				r.pos += 1
+				if definition ~= nil then
+					definition.open = false
+				end
 				return true
 			else
 				r.bad = true

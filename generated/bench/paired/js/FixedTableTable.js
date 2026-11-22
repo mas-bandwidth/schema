@@ -25,7 +25,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedFromText, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -552,12 +552,19 @@ export function FixedTableMeasureMessages(values, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -569,14 +576,21 @@ export function FixedTableSaveMessages(values, buffer, report) {
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   if (buffer.length < 2) { return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }

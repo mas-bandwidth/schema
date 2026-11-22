@@ -147,11 +147,9 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List buffer", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
-	if st.Integrity != "" {
-		g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
-	} else {
-		g.pf("  if (buffer.length < 2) return -1;\n")
-	}
+	// MEASURE FIRST, as Go's SaveMessages does: a batch that refuses, or that does not
+	// fit the buffer, answers -1 before the first byte lands (docs/SPEC-TABLES.md §3.3).
+	g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
 	g.pf("  buffer[0] = 2;\n  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {
 		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2, need - 4));\n")
@@ -453,7 +451,7 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 		return "keyedPresent > 0"
 	}
 	if f.Array == ir.ArrayCounted {
-		if f.BornCount() > 0 && !f.Required {
+		if f.ElidesAtBirth() {
 			elem := messageElementField(f)
 			g.pf("%svar arrayRides = %sCount != %d;\n", ind, expr, f.BornCount())
 			g.pf("%sif (!arrayRides) {\n", ind)
