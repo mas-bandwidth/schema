@@ -174,7 +174,7 @@ func mooLiteral(s string) string {
 func TestGooseDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "sh, awk and perl (it runs the Goose conformance driver)")
-	dir, manifest, out := priorTree(t, "goose", "main.goose")
+	dir, manifest, out := priorTree(t, "goose", "main.goose", "unit.goose")
 	// the driver runs the program once per unit the surface's lines name, in
 	// the unit's generated directory beside the glue it writes there
 	if err := os.WriteFile(manifest, []byte("unit tblprior x.schema\n"+priorManifest), 0o644); err != nil {
