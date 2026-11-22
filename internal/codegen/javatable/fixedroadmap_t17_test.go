@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // java/W6: THE PLAN IS PARTITIONED UNGUARDED-FIRST (docs/FIXED-FORM-ALGORITHM.md
@@ -64,10 +65,10 @@ fixed table Root
 		}
 		args := append([]string{"--release", "17", "-d", classes}, pkgSrc...)
 		args = append(args, filepath.Join(src, "T17.java"))
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("W6: javac: %v\n%s", err, out)
 		}
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes, "T17").CombinedOutput()
+		out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "T17").CombinedOutput()
 		if err != nil {
 			t.Fatalf("W6: java: %v\n%s", err, out)
 		}

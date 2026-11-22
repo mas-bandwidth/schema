@@ -715,6 +715,9 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- a count below the reader's Min is off its declaration (docs/SPEC.md
+		-- §5.1 row 3), refused as the Go engine refuses it
+		if count < (f.min or 0) then error(refuse("count_over_bound"), 0) end
 		-- slots past the live count are dead, up to the writer's bound; the
 		-- remainder past floor(capacity) is not part of that span
 		if we.size > 0 then
@@ -853,11 +856,15 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		if n.kind == 10 then
 			local bits = doubleToF32(v)
 			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
-			bounds(f, v, { widened = 0 }, nil)
+			-- the declared range is compared at float32 (docs/SPEC.md §4.6),
+			-- and a ranged float's -0 rides as +0 (docs/SPEC-TABLES.md §3.3)
+			bounds(f, f32ToDouble(bits), { widened = 0 }, nil)
+			if f.lo ~= nil and v == 0 then bits = 0 end
 			buffer.writeu32(buf, off, bits)
 		else
 			if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end
 			bounds(f, v, { widened = 0 }, nil)
+			if f.lo ~= nil and v == 0 then v = 0 end
 			buffer.writef64(buf, off, v)
 		end
 	elseif f.s == "enum" then

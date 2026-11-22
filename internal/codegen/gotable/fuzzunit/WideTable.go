@@ -115,10 +115,10 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					payload1.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -156,10 +156,10 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					payload4.Put16(uint16(value.Samples[i]))
 					pairs++
 				}
-				if payload4.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				if payload4.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -284,7 +284,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Payload[i] = byte(v)
+						value.Payload[i] = byte(v & 0xff)
 					}
 				}
 				value.PayloadLength = int32(count)
@@ -333,7 +333,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Samples[i] = uint16(v)
+						value.Samples[i] = uint16(v & 0xffff)
 					}
 				}
 				value.SamplesCount = int32(count)
@@ -487,10 +487,10 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					payload1.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -528,10 +528,10 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					payload4.Put16(uint16(value.Samples[i]))
 					pairs++
 				}
-				if payload4.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				if payload4.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -659,7 +659,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Payload[i] = byte(v)
+						value.Payload[i] = byte(v & 0xff)
 					}
 				}
 				value.PayloadLength = int32(count)
@@ -709,7 +709,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Samples[i] = uint16(v)
+						value.Samples[i] = uint16(v & 0xffff)
 					}
 				}
 				value.SamplesCount = int32(count)

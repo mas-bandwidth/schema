@@ -114,10 +114,13 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 			echo "luacheck-lua: $$u refused: $$(head -1 $(LUA_LUACHECK_CORPUS)/$$key.refused)"; \
 		fi; \
 	done; \
-	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"
+	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"; \
+	[ $$ok -gt 0 ] || { echo "luacheck-lua corpus: no unit generated, so the gate would lint nothing"; exit 1; }
 	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique
 	@find $(LUA_LUACHECK_CORPUS) -name '*.lua' -print0 | sort -z | \
 		python3 tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_CORPUS)/unique
+	@[ -n "$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' | head -1)" ] || \
+		{ echo "luacheck-lua corpus: $(LUA_LUACHECK_CORPUS)/unique holds no .lua file, so the gate would lint nothing"; exit 1; }
 	@touch $@
 
 # THE GATE. One run over the whole generated corpus and the runtime emitted
@@ -195,6 +198,7 @@ dist-stylua:
 .PHONY: tables-lua-format
 tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 	@files="$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' ! -name '*-serialize*.lua' | sort)"; \
+	[ -n "$$files" ] || { echo "tables-lua-format: no generated .lua file under $(LUA_LUACHECK_CORPUS)/unique; nothing was checked"; exit 1; }; \
 	n=$$(printf '%s\n' "$$files" | wc -l | tr -d ' '); \
 	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check $$files; then \
 		echo "tables-lua-format: the generated Lua above is not what StyLua $(STYLUA_VERSION) writes ($(STYLUA_CONFIG)); fix the generator"; \

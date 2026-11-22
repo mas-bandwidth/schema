@@ -213,7 +213,7 @@ func GenerateView(u *ir.Unit) (map[string][]byte, error) {
 
 func emitUnitView(tpl []byte, u *ir.Unit) []byte {
 	var b strings.Builder
-	fmt.Fprintf(&b, "local manifest: any = table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, fmt.Sprintf("%016x", u.ProtocolId))
+	luau.Fprintf(&b, "local manifest: any = table.freeze({\n\tpackage = %q,\n\tprotocol_id = %q,\n", u.Package, luau.Sprintf("%016x", u.ProtocolId))
 	writeUnitConstants(&b, u)
 	writeUnitVocabularies(&b, u)
 	writeUnitDeclarations(&b, u)
@@ -240,7 +240,7 @@ func writeUnitConstants(b *strings.Builder, u *ir.Unit) {
 				integer = int64(c.Int.Uint64())
 			}
 		}
-		fmt.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%.17g,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), c.Float, fmt.Sprintf("%016x", real), c.Doc)
+		luau.Fprintf(b, "\t\t{name=%q,file=%q,storage=%q,is_float=%v,int_value=%q,float_value=%.17g,real_bits=%q,doc=%q,tags=", n, unitViewFile(u, n), c.Storage, c.IsFloat, fmt.Sprint(integer), c.Float, luau.Sprintf("%016x", real), c.Doc)
 		writeUnitTags(b, c.Tags)
 		b.WriteString("},\n")
 	}
@@ -257,7 +257,7 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 	b.WriteString("\tenums = {\n")
 	for _, n := range enums {
 		e := u.Enums[n]
-		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(e.Max), e.StorageBits, unitViewDescriptor(u, n), e.Doc)
+		luau.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(e.Max), e.StorageBits, unitViewDescriptor(u, n), e.Doc)
 		writeUnitTags(b, e.Tags)
 		b.WriteString(",variants={{name=\"None\",value=\"0\",id=\"0000000000000000\",doc=\"\",tags={}}")
 		for i, v := range e.Variants {
@@ -266,7 +266,7 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 				id = ir.TableWireId(e.VariantWireName(i))
 			}
 			b.WriteString(",")
-			fmt.Fprintf(b, "{name=%q,value=%q,id=%q,doc=%q,tags=", v, fmt.Sprint(i+1), fmt.Sprintf("%016x", id), e.VariantDocs[i])
+			luau.Fprintf(b, "{name=%q,value=%q,id=%q,doc=%q,tags=", v, fmt.Sprint(i+1), luau.Sprintf("%016x", id), e.VariantDocs[i])
 			writeUnitTags(b, e.VariantTags[i])
 			b.WriteString("}")
 		}
@@ -288,14 +288,14 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 				break
 			}
 		}
-		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(len(f.Variants)-1), bits, unitViewDescriptor(u, n), f.Doc)
+		luau.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(len(f.Variants)-1), bits, unitViewDescriptor(u, n), f.Doc)
 		writeUnitTags(b, f.Tags)
 		b.WriteString(",variants={")
 		for i, v := range f.Variants {
 			if i > 0 {
 				b.WriteString(",")
 			}
-			fmt.Fprintf(b, "{name=%q,bit=%d,doc=%q,tags=", v, i, f.VariantDocs[i])
+			luau.Fprintf(b, "{name=%q,bit=%d,doc=%q,tags=", v, i, f.VariantDocs[i])
 			writeUnitTags(b, f.VariantTags[i])
 			b.WriteString("}")
 		}
@@ -316,7 +316,7 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 	b.WriteString("\tunions = {\n")
 	for _, n := range names {
 		un := unions[n]
-		fmt.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(un.Max), un.StorageBits, unitViewDescriptor(u, n), un.Doc)
+		luau.Fprintf(b, "\t\t{name=%q,file=%q,max=%q,bits=%d,descriptor=%s,doc=%q,tags=", n, unitViewFile(u, n), fmt.Sprint(un.Max), un.StorageBits, unitViewDescriptor(u, n), un.Doc)
 		writeUnitTags(b, un.Tags)
 		b.WriteString(",arms={{name=\"None\",tag=0,id=\"0000000000000000\",payload=\"-\",record=\"no\",field=\"no\",kind=\"-\",bound=\"-\",overlay=\"-\",doc=\"\",tags={}}")
 		for i, a := range un.Variants {
@@ -336,7 +336,7 @@ func writeUnitVocabularies(b *strings.Builder, u *ir.Unit) {
 					overlay = "0"
 				}
 			}
-			fmt.Fprintf(b, "{name=%q,tag=%d,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, i+1, fmt.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
+			luau.Fprintf(b, "{name=%q,tag=%d,id=%q,payload=%q,record=%q,field=%q,kind=%q,bound=%q,overlay=%q,doc=%q,tags=", a.Name, i+1, luau.Sprintf("%016x", id), payload, record, field, kind, bound, overlay, a.Doc)
 			writeUnitTags(b, a.Tags)
 			b.WriteString("}")
 		}
@@ -356,7 +356,7 @@ func writeUnitDeclarations(b *strings.Builder, u *ir.Unit) {
 		fmt.Fprintf(b, "\t%s = {\n", set.name)
 		for _, st := range set.decls {
 			module := unitViewDescriptor(u, st.Name)
-			fmt.Fprintf(b, "\t\t{name=%q,file=%q,doc=%q,tags=", st.Name, unitViewFile(u, st.Name), st.Doc)
+			luau.Fprintf(b, "\t\t{name=%q,file=%q,doc=%q,tags=", st.Name, unitViewFile(u, st.Name), st.Doc)
 			writeUnitTags(b, st.Tags)
 			fmt.Fprintf(b, ",descriptor=%s,fields={", module)
 			outside := !st.IsTable && !closure[st.Name]
@@ -368,7 +368,7 @@ func writeUnitDeclarations(b *strings.Builder, u *ir.Unit) {
 				if outside {
 					json, id = "-", 0
 				}
-				fmt.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), fmt.Sprintf("%016x", id), f.Type.Optional, f.Doc)
+				luau.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), luau.Sprintf("%016x", id), f.Type.Optional, f.Doc)
 				writeUnitTags(b, f.Tags)
 				b.WriteString("}")
 			}
@@ -384,7 +384,7 @@ func writeUnitTags(b *strings.Builder, tags []string) {
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(b, "%q", t)
+		luau.Fprintf(b, "%q", t)
 	}
 	b.WriteString("}")
 }
@@ -400,7 +400,7 @@ func unitViewDescriptor(u *ir.Unit, name string) string {
 	if u.Enums[name] == nil && u.Flags[name] == nil && (u.Tables[name] != nil || closure(u)[name] || u.TableUnions[name] != nil) {
 		module = base + "Table"
 	}
-	return fmt.Sprintf("require(%q)[%q]", "./"+module, name+"Descriptor")
+	return luau.Sprintf("require(%q)[%q]", "./"+module, name+"Descriptor")
 }
 func unitUnionHeld(un *ir.Union, u *ir.Unit) bool {
 	types, tables := unitViewDeclarations(u)
@@ -709,7 +709,7 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 	}
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
-		placeable = append(placeable, fmt.Sprintf("%q", r.Name))
+		placeable = append(placeable, luau.Sprintf("%q", r.Name))
 		requireHome(g, r.Name)
 	}
 	sort.Strings(placeable)
@@ -846,7 +846,7 @@ func guardLua(pairs [][2]any) string {
 	}
 	parts := make([]string, 0, len(pairs))
 	for _, p := range pairs {
-		parts = append(parts, fmt.Sprintf("{%q, %v}", p[0].(string), p[1].(bool)))
+		parts = append(parts, luau.Sprintf("{%q, %v}", p[0].(string), p[1].(bool)))
 	}
 	return "guard = { " + strings.Join(parts, ", ") + " }"
 }
@@ -871,15 +871,15 @@ func guardLua(pairs [][2]any) string {
 func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) string {
 	var b strings.Builder
 	if wire {
-		fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
+		luau.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
 			luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))), f.Name, ir.GoExportName(f.Name),
 			ir.TableFieldJsonKey(f), ordinal, ir.TableWireFieldKind(f))
 	} else {
-		fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, o = %d, k = %d, ",
+		luau.Fprintf(&b, "{ id = %s, name = %q, slot = %q, o = %d, k = %d, ",
 			luau.IntegerLit(new(big.Int)), f.Name, ir.GoExportName(f.Name), ordinal, ir.TableWireFieldKind(f))
 	}
 	if f.Type.Optional {
-		fmt.Fprintf(&b, "present = %q, ", ir.GoExportName(f.Name+"_present"))
+		luau.Fprintf(&b, "present = %q, ", ir.GoExportName(f.Name+"_present"))
 	}
 	if f.Required {
 		b.WriteString("required = true, ")
@@ -902,7 +902,7 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 		// §8.1): unbounded = true beside bound = 0; it is not the §2.13.1
 		// Unbounded (text) column.
 		requireHome(g, f.MapEntry.Name)
-		fmt.Fprintf(&b, "s = \"map\", t = %q, ek = %d, bound = 0, unbounded = true }", f.MapEntry.Name, ir.TableWireElemKind(f))
+		luau.Fprintf(&b, "s = \"map\", t = %q, ek = %d, bound = 0, unbounded = true }", f.MapEntry.Name, ir.TableWireElemKind(f))
 	case f.Array != ir.ArrayNone:
 		array := map[ir.ArrayKind]string{ir.ArrayFixed: "fixed", ir.ArrayCounted: "counted", ir.ArrayList: "list"}[f.Array]
 		if f.KeyEnum != "" {
@@ -921,10 +921,10 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 			unbounded += ", optText = true"
 		}
 		if f.KeyEnumRef != nil {
-			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s%s, e = %s }",
+			luau.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s%s, e = %s }",
 				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef, wire), unbounded, elemDesc(g, f, wire))
 		} else {
-			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s, e = %s }",
+			luau.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s, e = %s }",
 				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elemDesc(g, f, wire))
 		}
 	default:
@@ -962,19 +962,19 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 		return "s = \"bblob\""
 	case t.Pointer:
 		requireHome(g, t.Name)
-		return fmt.Sprintf("s = \"ptr\", t = %q", t.Name)
+		return luau.Sprintf("s = \"ptr\", t = %q", t.Name)
 	case t.TextUnbounded():
 		return "s = \"text\""
 	case t.Kind == ir.TString:
 		d := ""
 		if def {
-			d = fmt.Sprintf(", def = %q", string(f.DefBytes))
+			d = luau.Sprintf(", def = %q", string(f.DefBytes))
 		}
 		return fmt.Sprintf("s = \"str\", bound = %d%s", t.Size, d)
 	case t.Kind == ir.TBytes:
 		d := ""
 		if def {
-			d = fmt.Sprintf(", def = %q", string(f.DefBytes))
+			d = luau.Sprintf(", def = %q", string(f.DefBytes))
 		}
 		return fmt.Sprintf("s = \"bytes\", bound = %d, ek = %d%s", t.Size, ir.TableKindU8, d)
 	case t.Kind == ir.TBool:
@@ -986,7 +986,13 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 		var parts []string
 		parts = append(parts, "s = \"float\"", fmt.Sprintf("f32 = %v", t.Kind == ir.TFloat32))
 		if f.HasFloatRange {
-			parts = append(parts, fmt.Sprintf("lo = %s, hi = %s, res = %s", luau.FormatFloat(f.FMin), luau.FormatFloat(f.FMax), luau.FormatFloat(f.Resolution)))
+			lo, hi := luau.FormatFloat(f.FMin), luau.FormatFloat(f.FMax)
+			if t.Kind == ir.TFloat32 {
+				// a float32 range is the float32 the declaration names, compared
+				// at float32 (docs/SPEC.md §4.6): 0.1f, not the double 0.1
+				lo, hi = luau.FormatFloat32(f.FMin), luau.FormatFloat32(f.FMax)
+			}
+			parts = append(parts, fmt.Sprintf("lo = %s, hi = %s, res = %s", lo, hi, luau.FormatFloat(f.Resolution)))
 		}
 		if def {
 			parts = append(parts, "def = "+g.Slots(f)[0].Init)
@@ -995,7 +1001,7 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 	case t.Kind == ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
-			s := fmt.Sprintf("s = \"enum\", t = %q, vs = %s", r.Name, enumVariants(r, wire))
+			s := luau.Sprintf("s = \"enum\", t = %q, vs = %s", r.Name, enumVariants(r, wire))
 			if def {
 				s += ", def = " + g.Slots(f)[0].Init
 			}
@@ -1007,10 +1013,10 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 			return intDesc(g, f, def) + ", flags = " + flagNames(r)
 		case *ir.Union:
 			requireHome(g, r.Name)
-			return fmt.Sprintf("s = \"union\", t = %q", r.Name)
+			return luau.Sprintf("s = \"union\", t = %q", r.Name)
 		case *ir.Struct:
 			requireHome(g, r.Name)
-			return fmt.Sprintf("s = \"tab\", t = %q", r.Name)
+			return luau.Sprintf("s = \"tab\", t = %q", r.Name)
 		}
 	}
 	return intDesc(g, f, def)
@@ -1020,7 +1026,7 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 func flagNames(fl *ir.Flags) string {
 	parts := make([]string, len(fl.Variants))
 	for i, v := range fl.Variants {
-		parts[i] = fmt.Sprintf("%q", v)
+		parts[i] = luau.Sprintf("%q", v)
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
@@ -1035,7 +1041,7 @@ func enumVariants(e *ir.Enum, wire bool) string {
 		if wire {
 			id = luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(e.VariantWireName(i))))
 		}
-		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], id, deprecated)
+		parts[i] = luau.Sprintf("{ %q, %s, %v }", e.Variants[i], id, deprecated)
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
@@ -1055,7 +1061,7 @@ func intDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	case 8:
 		dom = "integer"
 	}
-	parts := []string{"s = \"int\"", fmt.Sprintf("kw = %d", kw), fmt.Sprintf("signed = %v", ir.TableKindSigned(kind)), fmt.Sprintf("dom = %q", dom)}
+	parts := []string{"s = \"int\"", luau.Sprintf("kw = %d", kw), luau.Sprintf("signed = %v", ir.TableKindSigned(kind)), luau.Sprintf("dom = %q", dom)}
 	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
 		parts = append(parts, "lo = "+boundLit(dom, f.IntMin), "hi = "+boundLit(dom, f.IntMax))
 	}

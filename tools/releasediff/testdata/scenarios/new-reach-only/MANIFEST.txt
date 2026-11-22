@@ -1,0 +1,5 @@
+# the control beside writer-regression: the same shape with no regression
+unit same tables/same
+instance s2 same Root wire/s2.bin
+instance s4 same Root wire/s4.bin
+instance s5 same Root wire/s5.bin

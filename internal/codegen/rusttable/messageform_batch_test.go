@@ -45,6 +45,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormBatchRust(t *testing.T) {
@@ -200,6 +202,9 @@ func TestMessageFormBatchRust(t *testing.T) {
 		// per-language diagnostics.
 		var rep tabletext.Report
 		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
+		// A value the newer range cannot hold is refused BY NAME as
+		// out_of_range (§3.3); any other refusal is damage.
+		wantOOR := !ok && tablewire.RefusalReason(err) == tablewire.ReasonOutOfRange
 		var upgraded []byte
 		if ok {
 			if err != nil || count != len(olds) {
@@ -231,12 +236,14 @@ func TestMessageFormBatchRust(t *testing.T) {
             let measured = card_measure_messages(&values[..count], &mut mrep);
             same = wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT;
         }
-        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && lrep.damaged };
+        let want_oor = %t;
+        let refusal = if want_oor { lrep.refused && !lrep.damaged && matches!(lrep.reason, TableReason::OutOfRange) } else { lrep.damaged };
+        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && refusal };
         say("upgrade", announced && verdict && same,
-            format!("announced={announced} ok={ok} want_ok={want_ok} count={count} same={same} report={lrep:?}"));
+            format!("announced={announced} ok={ok} want_ok={want_ok} want_oor={want_oor} count={count} same={same} report={lrep:?}"));
     }
 `, len(announce), rustBytes(announce), len(wire), rustBytes(wire), len(upgraded), rustBytes(upgraded),
-			len(olds), ok, len(olds))
+			len(olds), ok, wantOOR, len(olds))
 		out := runMessageBatchProbe(t, newer, main)
 		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
 			t.Fatalf("the newer Rust reader does not upgrade the older batch as the oracle does: %s", line)
@@ -417,12 +424,12 @@ fn main() {
 	}
 	bin := filepath.Join(dir, "batchprobe")
 	args := append(rustcHostLinker(), "--edition", "2024", "-o", bin, "main.rs")
-	cmd := exec.Command("rustc", args...)
+	cmd := testproc.Command(t, "rustc", args...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {

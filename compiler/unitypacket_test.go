@@ -2,12 +2,13 @@ package compiler
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUnityPacketWireGoldens compiles the Unity dialect (C# 9, netstandard2.1)
@@ -27,7 +28,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(t.TempDir(), "schema")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/schema")
+	build := testproc.Command(t, "go", "build", "-o", bin, "./cmd/schema")
 	build.Dir = abs
 	build.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOPROXY=off")
 	if out, err := build.CombinedOutput(); err != nil {
@@ -59,7 +60,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	ludDir := filepath.Join(t.TempDir(), "unity-ludicrous")
 	generate := func(out, src string) {
 		t.Helper()
-		cmd := exec.Command(bin, "generate", "--lang", "unity", "--out", out, src)
+		cmd := testproc.Command(t, bin, "generate", "--lang", "unity", "--out", out, src)
 		cmd.Dir = abs
 		if msg, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generate %s: %v\n%s", src, err, msg)
@@ -82,7 +83,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	run := func(dir string) (string, error) {
 		t.Helper()
 		outDir := filepath.Join(t.TempDir(), "bin")
-		cmd := exec.Command(dotnet, "build", filepath.Join(abs, "test/unity/unitytest.csproj"),
+		cmd := testproc.Command(t, dotnet, "build", filepath.Join(abs, "test/unity/unitytest.csproj"),
 			"-c", "Debug", "-o", outDir, "--nologo", "-v", "q",
 			"-p:UnityGeneratedDir="+dir,
 			"-p:UnityLudicrousDir="+ludDir,
@@ -98,7 +99,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 		if err != nil {
 			return string(msg), err
 		}
-		runCmd := exec.Command(dotnet, filepath.Join(outDir, "unitytest.dll"))
+		runCmd := testproc.Command(t, dotnet, filepath.Join(outDir, "unitytest.dll"))
 		runCmd.Dir = filepath.Join(abs, "test/unity")
 		runCmd.Env = cmd.Env
 		msg, err = runCmd.CombinedOutput()

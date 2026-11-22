@@ -13,6 +13,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormHeldCSharp asserts, one subtest per clause, the refusals and
@@ -169,7 +171,7 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	}
 	args = append(args, sources...)
 	args = append(args, held)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	compileOut, compileErr := compile.CombinedOutput()
 	if compileErr != nil {
@@ -179,7 +181,7 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(dir, "csmsgheld.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	return append(compileOut, runOut...), runErr

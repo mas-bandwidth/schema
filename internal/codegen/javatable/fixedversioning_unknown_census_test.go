@@ -15,11 +15,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedVersioningUnknownCensus(t *testing.T) {
@@ -94,10 +95,10 @@ public final class %[1]s {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, path).CombinedOutput(); err != nil {
 		t.Fatalf("javac %s: %v\n%s", class, err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class, file).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, class, file).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", class, err, out)
 	}
