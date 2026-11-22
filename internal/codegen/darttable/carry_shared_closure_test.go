@@ -123,7 +123,7 @@ func TestDartRequiredNestedGuardsSharedClosure(t *testing.T) {
 			if ok || !r.Refused {
 				t.Fatalf("independent missing row%d: %+v", i, r)
 			}
-			fmt.Fprintf(&b, `{final r=w.TableTextReport();var refused=false;try{w.%sFromJson(%q,r);}on FormatException{refused=true;}
+			fmt.Fprintf(&b, `{final r=w.TableTextReport();var refused=false;try{w.%sFromJson(%q,r);refused=r.refused;}on FormatException{refused=false;}
 check(refused&&r.missingFields==%q,'nested guard missing %d');}
 `, fn, tc.Input, tc.Missing, i)
 			continue
