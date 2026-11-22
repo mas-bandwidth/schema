@@ -1163,16 +1163,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\treturn -1, TableRefuseInvalidValue\n}\n\n")
 
 	// THE PLAIN NAME IS THE READ, AND IT IS THE ONLY READ (docs/SPEC-TABLES.md §6.5).
-	g.pf("// %sFixedLoad is the fixed-form read (docs/SPEC-TABLES.md §3.4, §6.5): the record count,\n", st.Name)
-	g.pf("// or -1 with every value handed in reset to its declared defaults. A supplied report receives this\n")
-	g.pf("// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).\n")
+	g.pf("// %sFixedLoad is the fixed-form read (docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with\n", st.Name)
+	g.pf("// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).\n")
 	// R4 (docs/SPEC-TABLES.md §6.5): EVERY row handed in holds its declared
 	// default after ANY refusal, the header's and the layout's as much as a
 	// record's, so the one reset is on the walk's refusal exit.
-	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
-	g.pf("\tn := fixedLoadWalk%s(values, data, plan, report)\n", st.Name)
-	g.pf("\tif n < 0 {\n\t\tfor j := range values {\n\t\t\t%sReset(&values[j])\n\t\t}\n\t}\n\treturn n\n}\n\n", st.Name)
-	g.pf("func fixedLoadWalk%s(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
+	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {\n", st.Name, st.Name)
+	g.pf("\tdefer tableResetIf(func() bool { return fixedN < 0 }, values, %sReset)\n", st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.

@@ -1891,6 +1891,11 @@ func tableRefused(r *TableReport) {
 	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
 	r.firstUse = tableFirstUse{}
 }
+func tableResetIf[T any](refused func() bool, values []T, reset func(*T)) {
+	for j := 0; j < len(values) && refused(); j++ {
+		reset(&values[j])
+	}
+}
 
 func (r *TableReader) meetFirstUse(ref uint64) {
 	if r.Report != nil {
@@ -8828,20 +8833,10 @@ func TableEntityFixedSaveReason(values []TableEntity, buffer []byte) (int64, err
 	return -1, TableRefuseInvalidValue
 }
 
-// TableEntityFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkTableEntity(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			TableEntityReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkTableEntity(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// TableEntityFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, TableEntityReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -9096,20 +9091,10 @@ func TableStatFixedSaveReason(values []TableStat, buffer []byte) (int64, error) 
 	return -1, TableRefuseInvalidValue
 }
 
-// TableStatFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkTableStat(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			TableStatReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkTableStat(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// TableStatFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, TableStatReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -9589,20 +9574,10 @@ func TableMixedFixedSaveReason(values []TableMixed, buffer []byte) (int64, error
 	return -1, TableRefuseInvalidValue
 }
 
-// TableMixedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkTableMixed(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			TableMixedReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkTableMixed(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// TableMixedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, TableMixedReset)
 	if report == nil {
 		var local TableReport
 		report = &local

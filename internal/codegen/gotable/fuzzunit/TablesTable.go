@@ -7158,20 +7158,10 @@ func RootConfigFixedSaveReason(values []RootConfig, buffer []byte) (int64, error
 	return -1, TableRefuseInvalidValue
 }
 
-// RootConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkRootConfig(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			RootConfigReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkRootConfig(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RootConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RootConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -7491,20 +7481,10 @@ func WeaponConfigFixedSaveReason(values []WeaponConfig, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// WeaponConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkWeaponConfig(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			WeaponConfigReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkWeaponConfig(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// WeaponConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, WeaponConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -7955,20 +7935,10 @@ func LoadoutConfigFixedSaveReason(values []LoadoutConfig, buffer []byte) (int64,
 	return -1, TableRefuseInvalidValue
 }
 
-// LoadoutConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkLoadoutConfig(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			LoadoutConfigReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkLoadoutConfig(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// LoadoutConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, LoadoutConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -8476,20 +8446,10 @@ func ProfileConfigFixedSaveReason(values []ProfileConfig, buffer []byte) (int64,
 	return -1, TableRefuseInvalidValue
 }
 
-// ProfileConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkProfileConfig(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			ProfileConfigReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkProfileConfig(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// ProfileConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, ProfileConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local

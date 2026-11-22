@@ -2014,11 +2014,7 @@ func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, 
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				TableEntityReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, TableEntityReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -2285,11 +2281,7 @@ func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				TableStatReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, TableStatReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -4459,11 +4451,7 @@ func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				TableMixedReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, TableMixedReset)
 	}()
 	if count < 0 {
 		return 0, false

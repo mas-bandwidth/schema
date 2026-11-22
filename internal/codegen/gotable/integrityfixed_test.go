@@ -139,7 +139,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		src := strings.Join(sortedSources(generate(t, integrityFixedSchema)), "")
 		// the trailer check lives in the tolerant read the strict plain
 		// ReadingFixedLoad reads through (docs/SPEC-TABLES.md §6.5)
-		load := funcSource(src, "func fixedLoadWalkReading(")
+		load := funcSource(src, "func ReadingFixedLoad(")
 		if !strings.Contains(load, "tableIntegrityHolds(data)") || !strings.Contains(load, `"integrity_mismatch"`) {
 			t.Errorf("ReadingFixedLoadTolerant does not check the trailer:\n%s", load)
 		}
@@ -150,7 +150,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		if !strings.Contains(funcSource(src, "func ReadingFixedSave("), "tableIntegritySeal") {
 			t.Error("ReadingFixedSave does not seal the trailer")
 		}
-		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func fixedLoadWalkPlainReading(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
+		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
 		if strings.Contains(plain, "tableIntegrity") {
 			t.Error("a keyless fixed table's surface carries the trailer")
 		}

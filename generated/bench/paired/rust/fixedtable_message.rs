@@ -246,8 +246,8 @@ fn fixed_table_load_messages_walk(values: &mut [FixedTableRow], vocabulary: &Tab
         return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
     let mut r = TableBitReader::new(&data[2..]);
-    for i in 0..count {
-        if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
+    for value in values.iter_mut().take(count) {
+        if !fixed_table_load_message_body(&mut r, vocabulary, report, value) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
                 return (0, report.refuse(TableReason::NonFiniteFloat));
             }

@@ -1301,11 +1301,7 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				RangedSignedReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, RangedSignedReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -2608,11 +2604,7 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				RangedUnsignedReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, RangedUnsignedReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -3140,11 +3132,7 @@ func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				RangedWidthsReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, RangedWidthsReset)
 	}()
 	if count < 0 {
 		return 0, false

@@ -379,11 +379,7 @@ func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data [
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				WideBlobReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, WideBlobReset)
 	}()
 	if count < 0 {
 		return 0, false

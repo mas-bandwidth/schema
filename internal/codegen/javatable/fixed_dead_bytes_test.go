@@ -408,18 +408,6 @@ func parseDeadSave(line string) (match bool, written, file int) {
 	return match, written, file
 }
 
-func mapsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
-}
-
 func deadBytesProbe(pkg, root string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `import java.lang.reflect.*;

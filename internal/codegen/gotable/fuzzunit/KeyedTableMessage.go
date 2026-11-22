@@ -295,11 +295,7 @@ func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				TeamConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, TeamConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -559,11 +555,7 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				GunnerConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, GunnerConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -865,11 +857,7 @@ func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				TurretConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, TurretConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1272,11 +1260,7 @@ func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				HullConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, HullConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1730,11 +1714,7 @@ func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, 
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				KeyedConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, KeyedConfigReset)
 	}()
 	if count < 0 {
 		return 0, false

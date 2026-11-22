@@ -364,11 +364,7 @@ func RootConfigLoadMessages(values []RootConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				RootConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, RootConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -956,11 +952,7 @@ func WeaponConfigLoadMessages(values []WeaponConfig, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				WeaponConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, WeaponConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1576,11 +1568,7 @@ func LoadoutConfigLoadMessages(values []LoadoutConfig, vocabulary *TableVocabula
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				LoadoutConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, LoadoutConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -2577,11 +2565,7 @@ func ProfileConfigLoadMessages(values []ProfileConfig, vocabulary *TableVocabula
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				ProfileConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, ProfileConfigReset)
 	}()
 	if count < 0 {
 		return 0, false

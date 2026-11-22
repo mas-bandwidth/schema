@@ -5079,20 +5079,10 @@ func RangedSignedFixedSaveReason(values []RangedSigned, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedSignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkRangedSigned(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			RangedSignedReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkRangedSigned(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedSignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedSignedReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -5465,20 +5455,10 @@ func RangedUnsignedFixedSaveReason(values []RangedUnsigned, buffer []byte) (int6
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedUnsignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkRangedUnsigned(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			RangedUnsignedReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkRangedUnsigned(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedUnsignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedUnsignedReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -5785,20 +5765,10 @@ func RangedWidthsFixedSaveReason(values []RangedWidths, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedWidthsFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value handed in reset to its declared defaults. A supplied report receives this
-// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).
-func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	n := fixedLoadWalkRangedWidths(values, data, plan, report)
-	if n < 0 {
-		for j := range values {
-			RangedWidthsReset(&values[j])
-		}
-	}
-	return n
-}
-
-func fixedLoadWalkRangedWidths(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedWidthsFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedWidthsReset)
 	if report == nil {
 		var local TableReport
 		report = &local

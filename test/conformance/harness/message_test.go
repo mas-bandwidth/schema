@@ -597,7 +597,7 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 // caller's capacity on the read side refuses by name with the returned count
 // reading 0 ("A refused batch returns a count of `0`, as every refused batch
 // does; a caller that needs room reads the wire's `M` itself") and nothing
-// decoded, the storage exactly as the caller handed it in, and damage anywhere
+// decoded, every value handed in at its declared default (R4), and damage anywhere
 // in a batch delivers no body (§4). Red if a leg writes consecutive batches,
 // decodes a body before refusing on capacity, reports any count but 0 for a
 // refused batch, or delivers any body of the damaged batch.
@@ -649,8 +649,8 @@ func TestTheFiveAnswers(t *testing.T) {
 			t.Errorf("256 into 8: MessageCount reads %d (%v), not the wire's 256 a caller sizes its storage from", n, err)
 		}
 		for i := range eight {
-			if got := instU64(t, eight[i], "client_build"); got != 17 {
-				t.Errorf("256 into 8: slot %d holds %d after the refusal, not the 17 it held: the storage was touched", i, got)
+			if got := instU64(t, eight[i], "client_build"); got != 0 {
+				t.Errorf("256 into 8: slot %d holds %d after the refusal, not its declared default 0 (ruling R4: every value handed in is reset after any refusal)", i, got)
 			}
 		}
 		// and the recovery is one call with capacity at or above it

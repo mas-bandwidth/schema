@@ -283,4 +283,9 @@ func tableRefused(r *TableReport) {
  r.Unknown,r.Widened,r.Retained,r.RetainLost=0,0,0,0
  r.firstUse=tableFirstUse{}
 }
+func tableResetIf[T any](refused func() bool, values []T, reset func(*T)) {
+ for j := 0; j < len(values) && refused(); j++ {
+  reset(&values[j])
+ }
+}
 `

@@ -54,7 +54,7 @@ func r7IdentityLaneIsAnIndexComparison(t *testing.T, schema string) {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func fixedLoadWalkPoint(")
+	load := funcSource(body, "func PointFixedLoad(")
 	if load == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}

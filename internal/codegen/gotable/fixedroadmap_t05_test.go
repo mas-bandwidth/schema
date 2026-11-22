@@ -292,7 +292,7 @@ fixed table T {
 	if err != nil {
 		t.Fatalf("t05: Generate: %v", err)
 	}
-	load := funcSource(tableFile(files), "func fixedLoadWalkT(")
+	load := funcSource(tableFile(files), "func TFixedLoad(")
 	if load == "" {
 		t.Fatal("t05: the module carries no TFixedLoad")
 	}

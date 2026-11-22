@@ -1755,6 +1755,12 @@ func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenV
 	return r, verdict
 }
 
+func tableResetIf[T any](refused func() bool, values []T, reset func(*T)) {
+	for j := 0; j < len(values) && refused(); j++ {
+		reset(&values[j])
+	}
+}
+
 func (r *TableReader) meetFirstUse(ref uint64) {
 	if r.Report != nil {
 		tableFirstUseMeet(r.Report, ref)

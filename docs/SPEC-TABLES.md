@@ -14360,7 +14360,7 @@ in build version (§20.5).
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
   FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch
-  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  FixedLoadWalk  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
   FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown

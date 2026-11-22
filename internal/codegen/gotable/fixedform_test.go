@@ -64,7 +64,7 @@ fixed table Point {
 	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	fixedLoad := funcSource(body, "func fixedLoadWalkPoint(")
+	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -122,7 +122,7 @@ fixed table Point {
 	if !strings.Contains(load, "data[0] == 1") || !strings.Contains(load, "TableRefusePreviousForm") {
 		t.Error("PointLoad of a DECLARED fixed table must refuse a form-1 file as previous_form before it decodes")
 	}
-	fixedLoad := funcSource(body, "func fixedLoadWalkPoint(")
+	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if !strings.Contains(fixedLoad, "TableRefusePreviousForm.Error()") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
@@ -1819,7 +1819,7 @@ fixed table Cfg {
 	if !strings.Contains(clampBody, "if value.NotePresent") {
 		t.Error("an absent optional's payload must not be held to a bound")
 	}
-	load := funcSource(body, "func fixedLoadWalkCfg(")
+	load := funcSource(body, "func CfgFixedLoad(")
 	if !strings.Contains(load, "if !CfgFixedBounds(&values[k : k+1][0]) {") {
 		t.Error("FixedLoad must call the storage pass after the run, both paths")
 	}

@@ -172,11 +172,7 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				FixedTableReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, FixedTableReset)
 	}()
 	if count < 0 {
 		return 0, false

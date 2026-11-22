@@ -244,11 +244,7 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				ArchiveConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, ArchiveConfigReset)
 	}()
 	if count < 0 {
 		return 0, false

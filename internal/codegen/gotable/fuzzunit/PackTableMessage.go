@@ -356,11 +356,7 @@ func GunnerSettingsLoadMessages(values []GunnerSettings, vocabulary *TableVocabu
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				GunnerSettingsReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, GunnerSettingsReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -858,11 +854,7 @@ func ShipEntryLoadMessages(values []ShipEntry, vocabulary *TableVocabulary, data
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				ShipEntryReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, ShipEntryReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1326,11 +1318,7 @@ func GlobalSettingsLoadMessages(values []GlobalSettings, vocabulary *TableVocabu
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				GlobalSettingsReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, GlobalSettingsReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1922,11 +1910,7 @@ func PackConfigLoadMessages(values []PackConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
-		if !ok {
-			for j := range values {
-				PackConfigReset(&values[j])
-			}
-		}
+		tableResetIf(func() bool { return !ok }, values, PackConfigReset)
 	}()
 	if count < 0 {
 		return 0, false

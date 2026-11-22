@@ -4737,7 +4737,7 @@ var tableGeneratedVerbs = []string{
 	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
 	// and the plain load's package plan buffer, which the form-3 read passes
 	// to <Name>FixedLoad (docs/SPEC-TABLES.md §3.4)
-	"FixedReadPlan",
+	"FixedReadPlan", "FixedLoadWalk",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the
