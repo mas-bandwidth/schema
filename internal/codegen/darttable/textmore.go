@@ -1056,7 +1056,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("_jsonBoolField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg)
+		return jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg))
 	case enumRef(f) != nil:
 		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:

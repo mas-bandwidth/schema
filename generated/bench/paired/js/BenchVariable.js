@@ -2087,7 +2087,10 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
 // Refuse a writer until the caller supplies a value in the declared range.
 function TableVariableRequiredValue(d, value) {
   if (!d.req || (d.s !== "int" && d.s !== "float")) { return true; }
-  return d.lo === null || (value >= d.lo && value <= d.hi);
+  if (d.lo === null) { return true; }
+  // a float32 is narrowed first: THE RANGE IS HELD AT FLOAT32 (§3.3)
+  const x = d.s === "float" && d.f32 ? Math.fround(value) : value;
+  return x >= d.lo && x <= d.hi;
 }
 
 // Presence is checked per body, after guards have their final values. A wire
@@ -4390,11 +4393,6 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       let x = Number(n.tok);
       // a magnitude the format cannot hold is the wrong shape for the kind
       if (!Number.isFinite(x)) { report.mismatch++; return true; }
-      let ranged = false;
-      if (d.lo !== null) {
-        if (x < d.lo) { x = d.lo; ranged = true; report.oor++; }
-        else if (x > d.hi) { x = d.hi; ranged = true; report.oor++; }
-      }
       if (d.f32) {
         // ONE correctly-rounded conversion at the field's own width
         // (internal/tabletext read.go placeFloat, strconv.ParseFloat(tok, 32);
@@ -4403,8 +4401,17 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // a float32 rounding midpoint — the band between FLT_MAX and the
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
-        x = ranged ? Math.fround(x) : TableVariableF32OfToken(n.tok, x);
-        if (!Number.isFinite(x)) { report.mismatch++; return true; }
+        const y = TableVariableF32OfToken(n.tok, x);
+        if (Number.isFinite(y)) { x = y; }
+        // past FLT_MAX is past either end of a compressed float, which the
+        // range below clamps and counts; an unranged float32 cannot hold it
+        else if (d.lo === null) { report.mismatch++; return true; }
+      }
+      // THE RANGE IS HELD AT FLOAT32 (§3.3): the value is narrowed first, and
+      // a float32's ends are the float32 nearest each declared end
+      if (d.lo !== null) {
+        if (x < d.lo) { x = d.lo; report.oor++; }
+        else if (x > d.hi) { x = d.hi; report.oor++; }
       }
       holder[key] = x;
       return true;

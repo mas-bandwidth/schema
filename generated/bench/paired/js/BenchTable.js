@@ -2769,11 +2769,11 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.payloadLength !== "number" || !Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { return false; }
   if (value.payload.length < value.payloadLength) { return false; }
   if (typeof value.aimX !== "number" || !Number.isFinite(Math.fround(value.aimX))) { return false; }
-  if (value.aimX < -1 || value.aimX > 1) { return false; }
+  if (Math.fround(value.aimX) < -1 || Math.fround(value.aimX) > 1) { return false; }
   if (typeof value.aimY !== "number" || !Number.isFinite(Math.fround(value.aimY))) { return false; }
-  if (value.aimY < -1 || value.aimY > 1) { return false; }
+  if (Math.fround(value.aimY) < -1 || Math.fround(value.aimY) > 1) { return false; }
   if (typeof value.aimZ !== "number" || !Number.isFinite(Math.fround(value.aimZ))) { return false; }
-  if (value.aimZ < -1 || value.aimZ > 1) { return false; }
+  if (Math.fround(value.aimZ) < -1 || Math.fround(value.aimZ) > 1) { return false; }
   if (typeof value.recoil !== "number" || !Number.isFinite(Math.fround(value.recoil))) { return false; }
   if (typeof value.drift !== "number" || !Number.isFinite(value.drift)) { return false; }
   if (typeof value.wideKey !== "bigint") { return false; }
