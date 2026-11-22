@@ -351,6 +351,18 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
     }
   }
   if(state.bad||state.at!=bodyEnd||state.nextRef!=ids.len()+1||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+  // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with v.Strict set, an
+  // announcement whose build version is not the unit's own is refused
+  // build_version_mismatch, sets no vocabulary, keeps the peer's build
+  // version and names both versions in report.remote and report.own.
+  if(("Strict" in v)&&v.Strict){
+    local own=_M.BuildVersion(T.TableMessageAnnouncement);
+    if(build!=own){
+      setSlot(v,"BuildVersion",build);
+      if(report!=null){setSlot(report,"remote",build);setSlot(report,"own",own);}
+      return refuseAnnouncement(v,report,"build_version_mismatch");
+    }
+  }
   local parsed=parseVocabulary(words);
   if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   if(parsed[0].len()>maxEntries){v.BuildVersion<-build;return refuseAnnouncement(v,report,"vocabulary_too_large");}

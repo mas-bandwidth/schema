@@ -72,8 +72,15 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	}
 	sort.Strings(names)
 	decls := &decls{kind: map[string]kind{}, hooks: map[string]bool{}}
+	inHeader := map[string]bool{}
 	for _, name := range names {
-		decls.merge(declared(string(files[name])))
+		d := declared(string(files[name]))
+		decls.merge(d)
+		if strings.HasSuffix(name, ".h") {
+			for n := range d.all() {
+				inHeader[n] = true
+			}
+		}
 	}
 	// SCHEMA_ and schema_ are the generator's own (SPEC §6.3), so a name
 	// under them is the unit's even where the unit only TESTS it — an
@@ -97,7 +104,7 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	}
 	sort.Strings(keys)
 	for _, n := range keys {
-		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") {
+		if shared[n] || decls.hooks[n] || strings.HasPrefix(n, "__") || featureMacro(n) && !inHeader[n] {
 			continue
 		}
 		q, ok := qualify(n, decls.kind[n], pkg)
@@ -114,6 +121,14 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 		rename[n] = q
 	}
 	return rename, nil
+}
+
+// featureMacro: a feature-test macro (_POSIX_C_SOURCE, _DARWIN_C_SOURCE, ...)
+// a unit's .c file defines ahead of its first include. The C library reads it
+// by its own name, so it is never respelled; a name a HEADER declares is a
+// schema's own declaration and is qualified like any other.
+func featureMacro(n string) bool {
+	return len(n) > 1 && n[0] == '_' && n[1] >= 'A' && n[1] <= 'Z'
 }
 
 type kind int
