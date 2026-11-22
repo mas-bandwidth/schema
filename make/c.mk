@@ -2462,7 +2462,7 @@ packet-write-refusal-c-negative-control: packet-write-refusal-c
 		echo 'NEGATIVE CONTROL FAILED: C packet Write without the ranged-integer assert passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-write-refusal scalar_high: expected debug assert' build/packet-write-refusal/c-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on scalar_high'; cat build/packet-write-refusal/c-negative/log; exit 1; }
-	@if grep '^FAILED: ' build/packet-write-refusal/c-negative/log | grep -Fvq -e 'scalar_high:' -e 'scalar_low:' -e 'const_wrong:' -e 'reserved_wrong:'; then \
+	@if grep '^FAILED: ' build/packet-write-refusal/c-negative/log | grep -Fv -e 'scalar_high:' -e 'scalar_low:' -e 'const_wrong:' -e 'reserved_wrong:' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a case other than the ranged-integer rows went red'; cat build/packet-write-refusal/c-negative/log; exit 1; fi
 	@grep -Fm1 'FAILED: packet-write-refusal scalar_high:' build/packet-write-refusal/c-negative/log
 	@echo 'C packet Write refusal negative control: removing the ranged-integer assert fails exactly the ranged-integer rows'
