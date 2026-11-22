@@ -756,21 +756,42 @@ internal static class Program
         return string.Join(",", parts);
     }
 
+    // one counted unit per test function: Main prints "ran N, failed M" and
+    // build/mustrun holds N to the count the recipe registers
+    private static int _testsRan;
+    private static int _testsFailed;
+
+    private static void Run(Action test)
+    {
+        bool failedBefore = _failed;
+        _failed = false;
+        _testsRan++;
+        test();
+        if (_failed)
+        {
+            _testsFailed++;
+        }
+        _failed = _failed || failedBefore;
+    }
+
     private static int Main()
     {
-        TestCardRoundTripsThePopulatedFixture();
-        TestCardBoundsRefuseBeforePublishing();
-        TestParseRenderMatchesGo();
-        TestUpgradeMatchesGo();
-        TestTaskHashFramesLogicalFields();
-        TestFieldEditLeavesTheTaskHashAlone();
-        TestViewWalksEveryField();
+        Run(TestCardRoundTripsThePopulatedFixture);
+        Run(TestCardBoundsRefuseBeforePublishing);
+        Run(TestParseRenderMatchesGo);
+        Run(TestUpgradeMatchesGo);
+        Run(TestTaskHashFramesLogicalFields);
+        Run(TestFieldEditLeavesTheTaskHashAlone);
+        Run(TestViewWalksEveryField);
         if (_failed)
         {
             Console.WriteLine("cards tests: FAILED");
-            return 1;
         }
-        Console.WriteLine("cards tests: all checks passed");
-        return 0;
+        else
+        {
+            Console.WriteLine("cards tests: all checks passed");
+        }
+        Console.WriteLine("cards-cs-test: ran " + _testsRan + ", failed " + _testsFailed);
+        return (_failed || _testsRan == 0) ? 1 : 0;
     }
 }

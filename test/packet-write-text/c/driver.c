@@ -149,6 +149,9 @@ int main( int argc, char ** argv )
         }
         else { fprintf( stderr, "invalid verdict for %s\n", loaded[i].name ); return 1; }
     }
-    puts( "packet-write-text C: all shared cases passed" );
-    return 0;
+    /* the count line build/mustrun holds to the registered count: a case file
+       that lost its rows runs nothing and is red */
+    if ( count == 0 ) { fprintf( stderr, "FAILED: packet-write-text: no cases in %s\n", argv[1] ); }
+    printf( "packet-write-text C: ran %d, failed %d\n", count, count == 0 ? 1 : 0 );
+    return count == 0 ? 1 : 0;
 }
