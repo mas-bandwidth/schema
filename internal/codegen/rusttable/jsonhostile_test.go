@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsonHostileTextRefusalsRust pins the two §16.3 refusals the Rust JSON
@@ -67,12 +69,12 @@ func TestJsonHostileTextRefusalsRust(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build (modules %v): %v\n%s", mods, err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
 	}

@@ -32,7 +32,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,6 +42,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const keyedProbeSchema = `package probe
@@ -225,11 +226,11 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 		t.Fatal(err)
 	}
 	args = append(args, driver)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: the generated keyed accessor does not compile beside the driver: %v\n%s", err, out)
 	}
 	for _, mode := range []string{"-da", "-ea"} {
-		out, err := exec.Command(javaBin, mode, "-cp", classes, "probe.Driver").CombinedOutput()
+		out, err := testproc.Command(t, javaBin, mode, "-cp", classes, "probe.Driver").CombinedOutput()
 		checks := 0
 		sc := bufio.NewScanner(strings.NewReader(string(out)))
 		for sc.Scan() {
@@ -721,7 +722,7 @@ func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string
 		}
 		args = append(args, p)
 	}
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac %s: %v\n%s", dir, err, out)
 	}
 	return classes
@@ -732,7 +733,7 @@ func keyedRun(t *testing.T, javaBin, classes, pkg string, args ...string) (map[s
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	cmd := exec.Command(javaBin, append([]string{"-ea", "-cp", classes, pkg + ".KeyedWireDriver"}, args...)...)
+	cmd := testproc.Command(t, javaBin, append([]string{"-ea", "-cp", classes, pkg + ".KeyedWireDriver"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s %v: %v\n%s", classes, args, err, out)

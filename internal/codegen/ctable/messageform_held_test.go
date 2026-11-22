@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormHeldC asserts, one subtest per clause, the refusals and
@@ -690,14 +692,14 @@ func (b *cMessageUnitBuilds) of(t *testing.T, name string, u *ir.Unit) *cMessage
 		b.by[name] = build
 	}
 	b.mu.Unlock()
-	build.once.Do(func() { build.err = build.compile(u) })
+	build.once.Do(func() { build.err = build.compile(t, u) })
 	if build.err != nil {
 		t.Fatal(build.err)
 	}
 	return build
 }
 
-func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
+func (b *cMessageUnitBuild) compile(t testing.TB, u *ir.Unit) error {
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		return fmt.Errorf("C message conformance requires cc")
@@ -741,7 +743,7 @@ func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
 			args = append(args, "-I", serDir)
 		}
 		args = append(args, "-c", filepath.Join(b.dir, name), "-o", obj)
-		if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 			return fmt.Errorf("compile %s: %w\n%s", name, err, out)
 		}
 		b.objs = append(b.objs, obj)
@@ -776,10 +778,10 @@ func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
 	args = append(args, main)
 	args = append(args, build.objs...)
 	args = append(args, "-lm", "-o", binary)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(binary).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, binary).CombinedOutput(); err != nil {
 		t.Fatalf("§3.3 reference bytes differ: %v\n%s", err, out)
 	}
 }

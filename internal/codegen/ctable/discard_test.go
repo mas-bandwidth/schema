@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4; Glenn, 2026-10-31:
@@ -285,7 +287,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 		opt = "-O0" // a control is run once and thrown away (make/c.mk TABLES_CFLAGS_CONTROL)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", opt, "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -293,12 +295,12 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, runErr := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if rest, ok := strings.CutPrefix(line, "FAIL: "); ok {
@@ -407,7 +409,7 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -415,12 +417,12 @@ int main( void )
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return string(output), fmt.Errorf("compile: %w", err)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe"))
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	output, err := cmd.CombinedOutput()
 	return string(output), err
@@ -856,14 +858,14 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"), "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if output, err := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, output)
 	}
 }

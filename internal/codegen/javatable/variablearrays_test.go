@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUnboundedArraysRoundTripJava carries the unbounded scalar/string/enum/
@@ -62,10 +63,10 @@ table T
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver").CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver").CombinedOutput(); err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	} else if !strings.Contains(string(out), "ok") {
 		t.Fatalf("driver: %s", out)

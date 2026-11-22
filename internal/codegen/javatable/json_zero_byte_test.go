@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const javaJsonZeroByteSchema = `package probe
@@ -110,7 +111,7 @@ func TestJavaJsonWriterRefusesZeroByte(t *testing.T) {
 	}
 	sources = append(sources, probe)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	run := func(assertions bool, mode string) ([]byte, error) {
@@ -119,7 +120,7 @@ func TestJavaJsonWriterRefusesZeroByte(t *testing.T) {
 			args = append(args, "-ea")
 		}
 		args = append(args, "probe.ZeroByteProbe", mode)
-		return exec.Command(javaBin, args...).CombinedOutput()
+		return testproc.Command(t, javaBin, args...).CombinedOutput()
 	}
 	if out, err := run(true, "assert"); err != nil {
 		t.Fatalf("debug writer did not assert: %v\n%s", err, out)

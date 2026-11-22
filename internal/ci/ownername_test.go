@@ -67,11 +67,13 @@ func TestOwnerName(t *testing.T) {
 	if linesScanned == 0 {
 		t.Fatal("the scanned files hold no lines; the maintainer-name check read nothing")
 	}
-	// AGENTS.md, docs/SPEC.md and internal/ci cite rulings by key today
-	// (write-refusal, tables-finite-only, agents-md-alone, ...): a citation
-	// pattern that matches none of them has stopped checking the keys.
+	// the fixed pages are always in the set, so scanned alone cannot fall to
+	// zero; what can is the count of citations the pattern still reads
 	if citations == 0 {
-		t.Fatal("no docs/rulings.json citation matched in the scanned files; the key check checked nothing")
+		t.Fatalf("%d files scanned and no docs/rulings.json citation read; the citation pattern no longer matches how the tree cites a ruling", scanned)
+	}
+	if !citationKey.MatchString("docs/rulings.json, `strict-only-read`") || !citationKey.MatchString("(docs/rulings.json strict-only-read)") {
+		t.Fatal("the citation pattern does not read the two spellings the tree uses")
 	}
 }
 

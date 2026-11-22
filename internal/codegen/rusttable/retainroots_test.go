@@ -20,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRetainsAndWidensOnEveryRootRust holds the Rust leg's retention and
@@ -403,7 +405,7 @@ func rustcBuild(t *testing.T, dir string) string {
 
 	t.Helper()
 	bin := filepath.Join(dir, "driver")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated Rust did not build: %v\n%s", err, out)
@@ -434,7 +436,7 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -658,7 +660,7 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := rustcBuild(t, dir)
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Stdin = bytes.NewReader(wire)
 	out, err := cmd.Output()
 	if err != nil {

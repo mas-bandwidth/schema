@@ -45,6 +45,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // csTextDifferentialSchema is the Go leg's float-only unit: a float32, a
@@ -271,7 +273,7 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 	args = append(args, filepath.Join(dir, "ProbeMain.cs"))
 	args = append(args, genFiles...)
 	env := append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
-	build := exec.Command(tc.dotnet, args...)
+	build := testproc.Command(t, tc.dotnet, args...)
 	build.Dir = dir
 	build.Env = env
 	if b, err := build.CombinedOutput(); err != nil {
@@ -287,7 +289,7 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(tc.dotnet, "exec", filepath.Join(dir, "app.dll"), out,
+	run := testproc.Command(t, tc.dotnet, "exec", filepath.Join(dir, "app.dll"), out,
 		strconv.FormatUint(csTextDifferentialSeed, 10), strconv.Itoa(csTextDifferentialN))
 	run.Dir = dir
 	run.Env = env

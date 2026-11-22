@@ -1,0 +1,13 @@
+[
+  {"id": "newleg-template", "files": ["compiler/newleg.go"], "newleg": "yes", "note": "the scaffold's templates themselves"},
+  {"id": "newleg-test", "files": ["cmd/schema/newleg_test.go"], "newleg": "yes", "note": "the fixture test's own file"},
+  {"id": "genheader-source", "files": ["internal/codegen/genheader/genheader.go"], "newleg": "yes", "note": "#4428's change: a package the emitter template imports"},
+  {"id": "ir-source", "files": ["ir/binarydepth.go"], "newleg": "yes", "note": "a package every template imports"},
+  {"id": "scanner-source", "files": ["internal/scanner/scanner.go"], "newleg": "yes", "note": "a package in the import closure of ir, named by no template"},
+  {"id": "mixed-diff", "files": ["README.md", "internal/codegen/genheader/genheader.go"], "newleg": "yes", "note": "one selecting file among others"},
+  {"id": "unrelated-docs", "files": ["README.md"], "newleg": "no", "note": "control: documentation"},
+  {"id": "unrelated-compiler-file", "files": ["compiler/target_lua.go"], "newleg": "no", "note": "control: another file of the compiler package"},
+  {"id": "unrelated-codegen", "files": ["internal/codegen/rusttable/rusttable.go"], "newleg": "no", "note": "control: an emitter outside the scaffold's imports"},
+  {"id": "test-only-in-closure", "files": ["internal/scanner/scanner_test.go"], "newleg": "no", "note": "control: a test file cannot change what the scaffold compiles against"},
+  {"id": "cmd-schema-other", "files": ["cmd/schema/main.go"], "newleg": "no", "note": "control: the CLI outside the scaffold"}
+]

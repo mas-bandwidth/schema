@@ -1,0 +1,9 @@
+# what the previous release does: an encoding it does not list, it refuses
+name	v3.0.2
+id	examples	0x1
+id	tables/same	0x3
+packet	examples	01
+pack	s2	variable	02
+pack	s4	variable	04
+pack	s4	message	14
+pack	s5	message	15

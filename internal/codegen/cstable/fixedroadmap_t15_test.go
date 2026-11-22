@@ -18,13 +18,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t15RunCS generates the fixture's C# — the packet form, which declares the arm
@@ -88,7 +89,7 @@ func t15RunCS(t *testing.T, schemaSrc, body string) {
 	for _, r := range refs {
 		args = append(args, "-r:"+r)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
@@ -97,7 +98,7 @@ func t15RunCS(t *testing.T, schemaSrc, body string) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(csDotnet(), "exec", filepath.Join(dir, "probe.dll"))
+	run := testproc.Command(t, csDotnet(), "exec", filepath.Join(dir, "probe.dll"))
 	run.Env = csDotnetEnv(dir, dir)
 	out, err := run.CombinedOutput()
 	if err != nil || strings.Contains(string(out), "FAIL ") || !strings.Contains(string(out), "PROBE OK") {

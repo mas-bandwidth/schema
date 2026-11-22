@@ -62,6 +62,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // headerProbeWideFields is the nested table's field count. It is above 127 on
@@ -577,10 +579,10 @@ func headerProbeCompileRun(t *testing.T, cxx, runtime, dir, name, source string)
 		"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
 		"-ffp-contract=off", "-I", dir, "-I", runtime, main, "-o", bin,
 	}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile %s: %v\n%s", name, err, out)
 	}
-	return exec.Command(bin).CombinedOutput()
+	return testproc.Command(t, bin).CombinedOutput()
 }
 
 // headerProbeSame reports the first line that moved, which is the line whose

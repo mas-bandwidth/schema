@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCommentedTextForm is Aspect 14's Go gate: the textform surface emits
@@ -124,7 +125,7 @@ func runTextFormUnit(t *testing.T, schema string, tests map[string]string) {
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated text-form unit: %v\n%s", err, out)

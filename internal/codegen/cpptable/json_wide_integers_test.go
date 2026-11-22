@@ -21,6 +21,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const (
@@ -337,7 +339,7 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 	exe := filepath.Join(src, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-fsanitize=undefined", "-fno-sanitize-recover=undefined", "-I" + src, "-I" + shim, probe}, sources...)
 	args = append(args, "-o", exe)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
 	outDir := filepath.Join(src, "out")
@@ -346,7 +348,7 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe)
+	cmd := testproc.CommandContext(t, ctx, exe)
 	cmd.Env = append(os.Environ(), "SCHEMA_JSON_INTEGERS_DIR="+outDir)
 	probeOut, err := cmd.CombinedOutput()
 	if err != nil {

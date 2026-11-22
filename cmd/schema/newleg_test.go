@@ -111,7 +111,15 @@ func TestNewLegZigWritesSkeletonAndFixturePasses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mod := "module newleg_zig_fixture\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n"
+	// The fixture module carries the import path the scaffold has in the
+	// repository, internal/codegen/zig. The skeleton imports the compiler's
+	// internal packages (internal/codegen/genheader since #4428), and Go allows
+	// that only to a package whose path lies under the module root: under any
+	// other module path the fixture fails with "use of internal package ... not
+	// allowed" although the scaffold is right where new-leg puts it. The
+	// replaced repository has no internal/codegen/zig, so the path is the
+	// fixture's alone.
+	mod := "module github.com/mas-bandwidth/schema/v2/internal/codegen/zig\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + repo + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +275,7 @@ func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool)
 		}
 		rel, _ := filepath.Rel(from, p)
 		if info.IsDir() {
-			if info.Name() == "testdata" {
+			if info.Name() == "testdata" && !embedsTestdata(t, filepath.Dir(p)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -281,6 +289,31 @@ func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool)
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// embedsTestdata reports whether a non-test Go source in dir embeds its
+// testdata directory (internal/modulemove/pincorpus does): that package does
+// not build without it, so the copy keeps it, and every other testdata stays
+// behind.
+func embedsTestdata(t *testing.T, dir string) bool {
+	t.Helper()
+	sources, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range sources {
+		if strings.HasSuffix(src, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "\n//go:embed testdata") {
+			return true
+		}
+	}
+	return false
 }
 
 func copyScaffoldFile(t *testing.T, from, to string) {

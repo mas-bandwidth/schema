@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // vtCellsInternalScopedFiles lists the variable-table C test files in
@@ -249,16 +251,16 @@ func runVtCellsFilesProbe(t *testing.T, files map[string][]byte, body string) (s
 	}
 	bin := filepath.Join(dir, "probe")
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, mainC)
 	args = append(args, sources...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return string(out), fmt.Errorf("compile: %w", err)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin)
+	cmd := testproc.CommandContext(t, ctx, bin)
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -653,14 +655,14 @@ func runFixedHeaderProbe(t *testing.T, files map[string][]byte, body string) (st
 	}
 	bin := filepath.Join(dir, "probe")
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, mainC, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return string(out), fmt.Errorf("compile: %w", err)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin)
+	cmd := testproc.CommandContext(t, ctx, bin)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

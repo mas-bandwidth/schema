@@ -40,13 +40,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppRunCapability generates the leg's fixed-form headers for `schema`, writes
@@ -161,11 +162,11 @@ int main( void )
 	args = append(args, flags...)
 	args = append(args, includeArgs(includes)...)
 	args = append(args, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // includeArgs is one `-I<dir>` per extra include directory, in the order given.

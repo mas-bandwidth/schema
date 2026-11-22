@@ -467,6 +467,11 @@ func checkNames(u *ir.Unit) error {
 	for _, name := range names {
 		st := u.Tables[name]
 		for _, f := range st.Fields {
+			// a member named java obscures the java package every platform
+			// type in generated Java is named from, in its class (JLS §6.4.2)
+			if javaName(f.Name) == javapkt.PackageRoot || varMember(f) == javapkt.PackageRoot {
+				return fmt.Errorf("field %s of table %s maps to the Java identifier %q, which obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename it", f.Name, name, javapkt.PackageRoot)
+			}
 			// A reserved spelling is refused ONLY for a fixed table, whose raw
 			// member() the fixed/block/cook forms emit unchanged. A variable
 			// table's codec escapes it (varMember, the card's `_new` -> `new_`),

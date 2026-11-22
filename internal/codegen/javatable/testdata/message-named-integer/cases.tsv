@@ -1,0 +1,34 @@
+# The message form, rules 1 and 3 (F-203; docs/SPEC-TABLES.md 3.3;
+# review-owed/cross-leg/message-form). The reader is reader.schema; each row
+# is one message batch of Msg after writer.schema's announcement, which ranges
+# a and b over [250, 255], c over [2^64 - 6, 2^64 - 1] and d over
+# [2^63 - 6, 2^63 - 1], each offset in three bits, so an offset can spell a
+# value past the announced kind; and adds a union field u the reader does not
+# declare.
+#
+# Rule 1: an integer read by name is base plus offset taken exactly and held
+# to the announced kind, never wrapped: 257 announced as a uint8 is refused in
+# a uint8 and in the uint16 it widens into; a uint64 or int64 base near its
+# edge plus an offset past it is refused, not landed wrapped round.
+# Rule 3: a union field the reader skips, written with arm reference 0, is
+# refused; a lawful arm there is skipped and counted unknown.
+#
+# batch: the fields in body order, each name:offset, or u:arm:value for the
+#        union field at that arm, or u:0 for arm reference 0
+# want: refused, or the name=value pairs the read holds (unknown= counts the
+#       skipped fields)
+#
+# id	batch	want
+a-lawful-255	a:5	a=255
+a-256-past-uint8	a:6	refused
+a-257-past-uint8	a:7	refused
+b-lawful-255-widened	b:5	b=255
+b-257-past-announced-uint8	b:7	refused
+c-lawful-max	c:5	c=18446744073709551615
+c-past-uint64-not-wrapped	c:7	refused
+d-lawful-max	d:5	d=9223372036854775807
+d-past-int64-not-wrapped	d:7	refused
+u-arm-pid	u:pid:5	unknown=1
+u-arm-note	u:note:9	unknown=1
+u-arm-zero-at-field	u:0	refused
+twin-fields	a:0 b:1	a=250 b=251

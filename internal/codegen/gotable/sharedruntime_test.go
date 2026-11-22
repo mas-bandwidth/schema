@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // sharedRuntimeDir is the checked-in shared package, relative to this package.
@@ -173,7 +174,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 	}
 	// not behind slowtest.Gate: the card's gate names this test and requires it
 	// to RUN, and it compiles two small units, as runGenerated does.
-	cmd := exec.Command("go", "test", "-count=1", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -182,7 +183,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 	// go vet's full set, which go test does not run: an adopter's go vet ./...
 	// reads the generated unit too (its composites check refuses an unkeyed
 	// literal of a struct type another package declares)
-	vet := exec.Command("go", "vet", ".")
+	vet := testproc.Command(t, "go", "vet", ".")
 	vet.Dir = dir
 	if vout, err := vet.CombinedOutput(); err != nil {
 		return string(out) + string(vout), fmt.Errorf("go vet: %w", err)

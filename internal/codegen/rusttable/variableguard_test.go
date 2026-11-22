@@ -12,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestGuardCondsComposeTheBranchTreeRust pins how a guarded field's Rust
@@ -156,7 +158,7 @@ fn main() {
 		if c.name == "guard_false_resting_set" && bytes.Contains(wantText, []byte(`"resting"`)) {
 			t.Fatalf("the oracle writes a false-guarded key, so the witness proves nothing: %s", wantText)
 		}
-		cmd := exec.Command(bin)
+		cmd := testproc.Command(t, bin)
 		cmd.Stdin = strings.NewReader(c.text)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr

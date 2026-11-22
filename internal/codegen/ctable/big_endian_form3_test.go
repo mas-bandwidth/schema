@@ -32,6 +32,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const bigEndianForm3Schema = `package probe
@@ -177,7 +179,7 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O1"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -185,12 +187,12 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, runErr := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.HasPrefix(line, "FAIL: ") {

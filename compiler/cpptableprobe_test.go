@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // runCppTableProbe writes the emitted sources and one driver beside them,
@@ -40,12 +42,12 @@ func runCppTableProbe(t *testing.T, files map[string][]byte, source string) {
 		}
 	}
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, bin).CombinedOutput(); err != nil {
+	if out, err := testproc.CommandContext(t, ctx, bin).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, out)
 	}
 }

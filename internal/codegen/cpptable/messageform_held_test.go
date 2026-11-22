@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -32,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppHeldRun generates the leg's C++ for the unit, compiles a probe against
@@ -146,11 +147,11 @@ int main( void )
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + native, "-I" + serialize, filepath.Join(outDir, "probe.cpp")}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(outDir, "probe"))
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // cppHeldProbe is cppHeldRun over a single-file unit.
@@ -738,10 +739,10 @@ fixed table Root {
 	bin := filepath.Join(dir, "probe_asan")
 	args := []string{"-std=c++17", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir,
 		filepath.Join(dir, "main.cpp"), filepath.Join(dir, "ProbeBlock.cpp"), filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile asan: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("run asan: %v\n%s", err, out)
 	}
 }
