@@ -662,6 +662,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 60;
     static const int32_t kBuckets = 128;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -705,7 +708,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -8064,7 +8067,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -8097,7 +8104,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -11192,7 +11199,7 @@ inline void BoundedReset( Bounded & value )
     {
         UnitReset( value.items[i] );
     }
-    value.items_count = 0;
+    value.items_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.tag = 0;
 }
 
@@ -11801,7 +11808,8 @@ inline int64_t BoundedMeasureBody( TableIds & ids, const Bounded & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -11829,7 +11837,8 @@ inline int64_t BoundedMeasure( const Bounded & value )
 LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, const Bounded & value )
 {
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -12183,7 +12192,8 @@ inline int64_t BoundedMeasureMessageBody( int64_t at, const Bounded & value )
 {
     int64_t bits = 0;
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -12210,7 +12220,8 @@ inline int64_t BoundedMeasureMessageBody( int64_t at, const Bounded & value )
 inline bool BoundedSaveMessageBody( TableBitWriter & w, const Bounded & value )
 {
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         w.put( 1, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.items_count ) - 0, 4 );
@@ -15161,7 +15172,8 @@ inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & v
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -15182,7 +15194,8 @@ inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & v
 LISTDEMO_TABLE_INLINE bool BoundedSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Bounded & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.items_count > 0 )
+    bool rides_items = value.items_count > 0;
+    if ( rides_items )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;

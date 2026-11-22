@@ -515,15 +515,24 @@ def _array_is_default(fd: FieldDesc, value: Any) -> bool:
     A fixed array of a declared type writes every element, because position is
     identity there; a fixed array of any other element elides when every
     element is at its zero, parity with the reader's prefill; a counted or
-    unbounded one elides only when it is empty, exactly as the engine's writer
-    does.
+    unbounded one elides when it is empty, and a counted one with a positive
+    minimum at its birth value instead: exactly its minimum count with every
+    element at its default (a table element whose body is its terminator
+    alone), as the engine's writer does (internal/tablewire encodeArray and
+    messageElides, docs/SPEC-TABLES.md §22.2). A count below that minimum is
+    never a default: the writer goes on to refuse it.
     """
     if fd.array_kind == 1:  # [N]T
         element = fd.element
         if fd.elem_kind == 13 or element is None:
             return False
         return all(element.is_default(item) for item in value)
-    return len(value) == 0
+    if fd.array_kind != 2 or fd.array_min <= 0:
+        return len(value) == 0
+    if len(value) != fd.array_min:
+        return False
+    element = fd.element
+    return element is not None and all(element.is_default(item) for item in value)
 
 
 def _float32_is_default(fd: FieldDesc, value: Any) -> bool:

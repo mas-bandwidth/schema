@@ -1,5 +1,7 @@
 # schema — specification
 
+> **Conformance:** the test cases a correct implementation must pass, and how they are run and judged, are the normative [conformance addendum](SPEC-CONFORMANCE.md).
+
 This document is the normative reference for the schema language, its wire
 encodings, and the code its compiler generates. Where the compiler and this
 document disagree, one of them is a bug (see VERSIONING.md).

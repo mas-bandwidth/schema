@@ -881,7 +881,7 @@ module SchemaRuntimeUnit
     # ranged is the field's float_range: a compressed float's -0 is stored as
     # +0 (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero),
     # and a plain float's -0 rides bit-exact
-    def self.cook_write_scalar(buf, at, width, codec, val, signed, big, ranged = false)
+    def self.cook_write_scalar(buf, at, width, codec, val, signed, big, ranged: false)
       case codec
       when 'float32'
         r = float32_round(ranged && val.zero? ? 0.0 : val)
@@ -905,7 +905,7 @@ module SchemaRuntimeUnit
           buf.setbyte(at, cur ? 1 : 0)
         when 'int', 'enum', 'float32', 'float64'
           width = fd.pieces[0][1]
-          cook_write_scalar(buf, at, width, fd.codec, cur, fd.lo.negative?, big, fd.float_range)
+          cook_write_scalar(buf, at, width, fd.codec, cur, fd.lo.negative?, big, ranged: fd.float_range)
         when 'string', 'bytes'
           raw = fd.codec == 'string' ? cur.b : cur
           if fd.codec == 'string' && fd.pieces.length == 1
@@ -930,7 +930,7 @@ module SchemaRuntimeUnit
             stride = fd.pieces[0][1] / fd.bound
             cur.each_with_index do |item, pos|
               cook_write_scalar(buf, at + (pos * stride), stride, fd.elem_codec, item, fd.lo.negative?, big,
-                                fd.float_range)
+                                ranged: fd.float_range)
             end
             buf[base + fd.pieces[1][0], 4] = pack_int_order(cur.length, 4, big, true) if fd.array_kind == 2
           elsif [1, 2].include?(fd.array_kind) && %w[table string text_optional].include?(fd.elem_codec)
@@ -961,7 +961,7 @@ module SchemaRuntimeUnit
                 else
                   signed = fd.elem ? fd.elem.lo.negative? : fd.lo.negative?
                   ranged = fd.elem ? fd.elem.float_range : fd.float_range
-                  cook_write_scalar(buf, elem_at, fd.elem_size, fd.elem_codec, item, signed, big, ranged)
+                  cook_write_scalar(buf, elem_at, fd.elem_size, fd.elem_codec, item, signed, big, ranged: ranged)
                 end
               end
             end
@@ -972,7 +972,7 @@ module SchemaRuntimeUnit
           if %w[bool int enum float32 float64].include?(fd.elem.codec)
             vals.each_with_index do |item, pos|
               cook_write_scalar(buf, at + (pos * stride), stride, fd.elem.codec, item, fd.elem.lo.negative?, big,
-                                fd.elem.float_range)
+                                ranged: fd.elem.float_range)
             end
           elsif fd.elem.codec == 'table'
             target = by_name(fd.target)

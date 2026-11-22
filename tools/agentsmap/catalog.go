@@ -208,6 +208,7 @@ var catalog = []Entry{
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
+	e("tools/gotestrun", "go test wrapper: refuses a run in which no test ran or passed", "go test ./tools/gotestrun", "make test-run PKG=./pkg RUN='^TestX$'"),
 	e("tools/mustrun", "harness wrapper: exit status plus a registered ran N count", "go test ./tools/mustrun", "build/mustrun -name X -count N -- cmd"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
