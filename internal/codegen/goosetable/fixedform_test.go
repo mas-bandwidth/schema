@@ -559,6 +559,15 @@ func (m *fixedImage) elem(f *ir.Field) {
 		case *ir.Enum:
 			m.put(m.next()%uint64(r.Max+1), ir.TableFixedStorageBytes(t))
 			return
+		case *ir.Flags:
+			// a mask is held to its wire width W: a bit at or above W is
+			// refused on the read (docs/SPEC-TABLES.md §4, R17)
+			v := m.next()
+			if r.WireBits < 64 {
+				v &= uint64(1)<<uint(r.WireBits) - 1
+			}
+			m.put(v, ir.TableFixedStorageBytes(t))
+			return
 		}
 	}
 	if f.HasFloatRange {

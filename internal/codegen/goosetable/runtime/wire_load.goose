@@ -684,6 +684,10 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         let max = ((1 as u64) << (d.bits as! u64)) - 1;
         if (value as! u64) > max { value = max as! i64; rep.oor += 1; }
     }
+    // A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+    // (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+    // scalarAt): a mask widened from a narrower unsigned kind is held the same way
+    if d.mw > 0 && d.mw < 64 && ((value as! u64) >> (d.mw as! u64)) != 0 { rep.oor += 1; }
     out.bits = i128_of(value);
     return true;
 }
