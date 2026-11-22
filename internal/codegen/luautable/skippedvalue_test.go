@@ -95,7 +95,7 @@ local announced = M.AnnounceRead(v, inputs.announcement, rep)
 		case "json":
 			fmt.Fprintf(&src, "do local r = report(); local value = J.FromJson(\"Root\", inputs.%s, r); print(\"%d \" .. ((value ~= nil and not r.malformed) and \"read\" or \"refused\")) end\n", name, i)
 		case "message":
-			fmt.Fprintf(&src, "do local r = report(); local count = M.LoadMessages(v, \"Root\", inputs.%s, 256, r); print(\"%d \" .. ((count >= 0 and not r.malformed) and \"read\" or \"refused\")) end\n", name, i)
+			fmt.Fprintf(&src, "do local r = report(); local count = M.LoadMessages(v, \"Root\", inputs.%s, 256, r); print(\"%d \" .. ((count > 0 and not r.malformed) and \"read\" or \"refused\")) end\n", name, i)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(genDir, "main.luau"), []byte(src.String()), 0o644); err != nil {

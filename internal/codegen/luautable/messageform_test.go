@@ -153,7 +153,7 @@ local report = { malformed = false, verdict = 0, reason = "", unknown = 0 }
 if not M.AnnounceRead(v, inputs.ann, report) then print("announce_fail") return end
 local count, bodies = M.%s(v, %q, inputs.batch, 256, report)
 print("count " .. tostring(count) .. " malformed " .. tostring(report.malformed))
-if count < 0 then return end
+if count <= 0 then return end
 local out, n = M.SaveMessages(v, %q, bodies, report)
 if out == nil then print("save_fail") return end
 print(hex(out))
@@ -319,7 +319,7 @@ func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}
 	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)
-	if !strings.HasPrefix(out, "count -1 malformed true") {
+	if out != "count 0 malformed true" {
 		t.Fatalf("the plain batch read handed back a body of a damaged batch: %q", out)
 	}
 }

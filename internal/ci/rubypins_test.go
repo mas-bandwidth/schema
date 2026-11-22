@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestRubyPins holds the Ruby leg's toolchain pins, its analyzer lock and its
@@ -250,7 +252,7 @@ func TestRubyPins(t *testing.T) {
 		".github/actions/ruby/*.yml",
 		".github/workflows/ruby-leg.yml",
 	} {
-		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		matches, err := provesran.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			t.Fatal(err)
 		}

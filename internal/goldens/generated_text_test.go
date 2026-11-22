@@ -40,6 +40,9 @@ func textUnits(t *testing.T) []string {
 			units = append(units, dir)
 		}
 	}
+	if len(units) == 2 {
+		t.Fatal("no unit under tables/ holds a schema file: the table units moved, and every test over textUnits would read the two packet corpora alone")
+	}
 	return units
 }
 

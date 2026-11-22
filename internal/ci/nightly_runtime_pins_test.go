@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // Nightly must qualify the same runtime releases as the merge and release gates.
@@ -51,7 +53,7 @@ func TestNightlyHarnessIncludesEveryOptionalTarget(t *testing.T) {
 	for tag := range strings.SplitSeq(strings.TrimSpace(row[1]), ",") {
 		tags[tag] = true
 	}
-	paths, err := filepath.Glob(filepath.Join(root, "compiler", "carries_*.go"))
+	paths, err := provesran.Glob(filepath.Join(root, "compiler", "carries_*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

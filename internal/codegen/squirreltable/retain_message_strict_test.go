@@ -336,7 +336,7 @@ foreach (c in cases) {
   outBad[0].X = 111; outBad[1].X = 222; outBad[2].X = 333;
   local brep = {};
   local nBad = To.WireMsgLoadMessages(outBad, vocab, badBatch, brep);
-  local badBatchOk = nBad == -1 && brep.refused && brep.reason == "out_of_range" &&
+  local badBatchOk = nBad == 0 && brep.refused && brep.reason == "out_of_range" &&
     outBad[0].C.N == 0 && outBad[0].X == 0 && outBad[1].C.N == 0 && outBad[1].X == 0 && outBad[2].X == 333;
   print("msg_batch_oor:" + badBatchOk + ":" + nBad + ":" + outBad[0].X + "," + outBad[1].X + "," + outBad[2].X + "\n");
 }
@@ -401,7 +401,7 @@ func TestSquirrelRetainOnMessageForm(t *testing.T) {
 		"strict_form2_on_retain": "strict_form2_on_retain:true:0:0",
 		"strict_fixed_retain":    "strict_fixed_retain:true:0:0",
 		"msg_batch_clean":        "msg_batch_clean:true:2:4",
-		"msg_batch_oor":          "msg_batch_oor:true:-1:0,0,333",
+		"msg_batch_oor":          "msg_batch_oor:true:0:0,0,333",
 	}
 	for k, want := range wantExact {
 		if got := normal[k]; got != want {

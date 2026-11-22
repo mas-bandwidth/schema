@@ -169,7 +169,7 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 				t.Errorf("%s: %s", name, goBenchFirstDiff(committed, emitted[name]))
 			}
 		}
-		walked := 0
+		committed := 0
 		err := filepath.WalkDir(filepath.Join(root, tree), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -181,7 +181,7 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			walked++
+			committed++
 			if _, ok := emitted[rel]; !ok {
 				t.Errorf("%s: committed .go file the compiler does not emit", rel)
 			}
@@ -190,8 +190,8 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tree, err)
 		}
-		if walked == 0 {
-			t.Fatalf("walked %s and checked no committed .go file", tree)
+		if committed == 0 {
+			t.Errorf("%s: the walk found no committed .go file, so no stale file could have been seen", tree)
 		}
 	}
 	t.Logf("three Go bench trees compared with the in-process compiler")

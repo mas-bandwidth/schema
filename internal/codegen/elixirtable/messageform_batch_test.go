@@ -119,7 +119,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
 	// 2.2 "no_vocabulary; batch_too_large on the write side (M above 256, -1
 	// with the reason) and the read side (M above capacity, refused before
-	// decoding, count set to M)."
+	// decoding, a count of 0)."
 	t.Run("refusals", func(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
@@ -135,9 +135,10 @@ func TestMessageFormBatchElixir(t *testing.T) {
     check({:error, :batch_too_large} == M.save_messages(vocab, []), "save accepted an empty batch")
     check({:error, :batch_too_large} == M.measure_messages(vocab, []), "measure accepted an empty batch")
 
-    # "The reader sets the returned count to the wire's M before it returns the
-    # refusal" (docs/SPEC-TABLES.md §3.3): the batch <<2, 1>> names two bodies.
-    check({:error, :batch_too_large, 2} == M.load_messages(vocab, <<2, 1>>, 1), "load past capacity did not set the count to M")
+    # "A refused batch returns a count of 0, as every refused batch does; a
+    # caller that needs room reads the wire's M itself" (docs/SPEC-TABLES.md
+    # §3.3): the batch <<2, 1>> names two bodies, and the refusal carries 0.
+    check({:error, :batch_too_large, 0} == M.load_messages(vocab, <<2, 1>>, 1), "load past capacity did not return a count of 0")
 `
 		out, err := runMessageProbe(t, u, ann, body)
 		if err != nil {

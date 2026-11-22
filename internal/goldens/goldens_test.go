@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -73,9 +74,7 @@ func TestCorpusIsCanonical(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(entries) == 0 {
-			t.Fatal("entries is empty: the loop below would check nothing")
-		}
+		checked := 0
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
 				continue
@@ -89,9 +88,13 @@ func TestCorpusIsCanonical(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", p, err)
 			}
+			checked++
 			if string(out) != string(data) {
 				t.Errorf("%s is not formatter-canonical — run: make fmt", p)
 			}
+		}
+		if checked == 0 {
+			t.Fatalf("%s holds no .schema file: the corpus moved, and the fmt-drift gate formatted nothing", dir)
 		}
 	}
 }
@@ -582,21 +585,21 @@ func TestGoldenTableSource(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			files := generate(t, u, unit.target, nil)
 			dir := filepath.Join(tableGoldenDir, unit.name)
-			entries, err := os.ReadDir(dir)
+			pinned, problems, err := tablePins(dir, files)
 			if err != nil && (!*update || !os.IsNotExist(err)) {
 				t.Fatal(err)
 			}
-			pinned := map[string][]byte{}
-			for _, e := range entries {
-				if e.IsDir() {
-					continue
-				}
-				got, ok := files[e.Name()]
-				if !ok {
-					t.Errorf("%s pins %s and the %s target no longer emits it for %s — a pinned file the emitter dropped is stop-the-line, not a stale pin", dir, e.Name(), unit.target, unit.dir)
-					continue
-				}
-				pinned[e.Name()] = got
+			if pinned == nil {
+				// -update over a directory that is gone: it is written below
+				pinned, problems = map[string][]byte{}, nil
+			}
+			if *update {
+				// -update writes every pin the writer rule names, so a directory
+				// that pinned nothing is repaired, not a problem
+				problems = slices.DeleteFunc(problems, func(p string) bool { return strings.Contains(p, "pins no file the target emits") })
+			}
+			for _, p := range problems {
+				t.Errorf("%s (the %s target, for %s)", p, unit.target, unit.dir)
 			}
 			// The other way: every emitted file the writer rule pins is on
 			// disk. Without this a deleted pin leaves the listing shorter
@@ -614,6 +617,85 @@ func TestGoldenTableSource(t *testing.T) {
 			}
 			pinDir(t, dir, pinned)
 		})
+	}
+}
+
+// tablePins places every entry of one golden directory: a file the target
+// emits is a pin to compare, and everything else is a problem by name. A
+// pinned file the emitter dropped is one; so is a SUBDIRECTORY, because the
+// comparison is of the directory's own files and a pin moved under one is
+// compared with nothing (all 26 pins of the maps unit, moved to maps/nested,
+// passed with zero comparisons); and so is a directory that pins no file at
+// all. The count that matters is the pins compared, taken after the loop, not
+// the entries listed before it.
+func tablePins(dir string, emitted map[string][]byte) (pinned map[string][]byte, problems []string, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	pinned = map[string][]byte{}
+	for _, e := range entries {
+		if e.IsDir() {
+			problems = append(problems, fmt.Sprintf("%s holds the directory %s: a golden directory pins its own files, and a pin under a subdirectory is compared with nothing", dir, e.Name()))
+			continue
+		}
+		got, ok := emitted[e.Name()]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("%s pins %s and the target no longer emits it — a pinned file the emitter dropped is stop-the-line, not a stale pin", dir, e.Name()))
+			continue
+		}
+		pinned[e.Name()] = got
+	}
+	if len(pinned) == 0 {
+		problems = append(problems, fmt.Sprintf("%s pins no file the target emits: a unit that compares nothing proves nothing", dir))
+	}
+	return pinned, problems, nil
+}
+
+// TestTablePinsPlacesEveryEntry is the negative control of tablePins: the
+// original layout is clean, and an empty directory, pins moved under a
+// subdirectory, a stray subdirectory beside real pins and a pin the emitter
+// dropped are each named.
+func TestTablePinsPlacesEveryEntry(t *testing.T) {
+	t.Parallel()
+	emitted := map[string][]byte{"ATable.h": []byte("a"), "BTable.h": []byte("b")}
+	for name, tc := range map[string]struct {
+		files    []string
+		pins     int
+		problems []string
+	}{
+		"the original layout":             {[]string{"ATable.h", "BTable.h"}, 2, nil},
+		"an empty directory":              {nil, 0, []string{"pins no file the target emits"}},
+		"every pin under a subdirectory":  {[]string{"nested/ATable.h", "nested/BTable.h"}, 0, []string{"holds the directory nested", "pins no file the target emits"}},
+		"a subdirectory beside real pins": {[]string{"ATable.h", "nested/BTable.h"}, 1, []string{"holds the directory nested"}},
+		"a pin the emitter dropped":       {[]string{"ATable.h", "GoneTable.h"}, 1, []string{"pins GoneTable.h and the target no longer emits it"}},
+	} {
+		dir := t.TempDir()
+		for _, rel := range tc.files {
+			path := filepath.Join(dir, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pinned, problems, err := tablePins(dir, emitted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pinned) != tc.pins {
+			t.Errorf("%s: %d pins to compare, want %d", name, len(pinned), tc.pins)
+		}
+		if len(problems) != len(tc.problems) {
+			t.Errorf("%s: problems = %q, want %d", name, problems, len(tc.problems))
+			continue
+		}
+		for i, want := range tc.problems {
+			if !strings.Contains(problems[i], want) {
+				t.Errorf("%s: problem %d = %q, want it to say %q", name, i, problems[i], want)
+			}
+		}
 	}
 }
 

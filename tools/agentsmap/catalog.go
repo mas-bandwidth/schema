@@ -32,6 +32,7 @@ func page(path, purpose, guard, command string) Entry {
 // catalog is the map. Top-level directories must all appear; a Page directory's
 // immediate child directories must all appear.
 var catalog = []Entry{
+	e(".claude-plugin", "plugin marketplace entry for skills/", "none", "none"),
 	e(".github", "CI workflows", "go test ./internal/ci", "make test"),
 	page("bench", "cross-language serialize bench", "go test ./bench/corpus", "bench/run.sh"),
 	e("cmd", "schema CLI", "go test ./cmd/schema", "go test ./cmd/schema"),
@@ -88,6 +89,7 @@ var catalog = []Entry{
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
 	page("internal/codegen", "per-language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
+	e("internal/execref", "os/exec references resolved by binding, for the child-process policies", "go test ./internal/execref", "go test ./internal/execref"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
@@ -104,7 +106,9 @@ var catalog = []Entry{
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/pathid", "where a path lands, by the file system's identity", "go test ./internal/pathid", "go test ./internal/pathid"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
+	e("internal/runmatch", "go test -run selection, as Go matches it", "go test ./internal/runmatch", "go test ./internal/runmatch"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
 	e("internal/skipledger", "skip ledger: every reason a test may skip for", "go test ./internal/skipledger", "go test ./internal/ci -run Skip"),

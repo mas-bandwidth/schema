@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var (
@@ -74,7 +76,7 @@ func repoRoot(t *testing.T) string {
 // a failure rather than a pass: a gate over nothing proves nothing.
 func workflows(t *testing.T, root string) map[string]string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +302,7 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}

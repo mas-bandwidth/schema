@@ -1,0 +1,12 @@
+package fixture
+
+import (
+	"context"
+	"os/exec"
+	"testing"
+)
+
+func TestDirectCall(t *testing.T) {
+	_ = exec.Command("luau", "-v").Run()
+	_ = exec.CommandContext(context.Background(), "luau", "-v").Run()
+}

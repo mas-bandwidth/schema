@@ -253,8 +253,8 @@ func TestMessageFormBatchRust(t *testing.T) {
 	// 4. THE BATCH's REFUSALS AND ITS DAMAGE RULES (§3.3), each by name:
 	// "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (MeasureMessages
 	// and SaveMessages both, -1), "`M` ABOVE THE CALLER'S CAPACITY ON THE READ
-	// SIDE IS A REFUSAL BY NAME ... The reader sets the returned count to the
-	// wire's `M`", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
+	// SIDE IS A REFUSAL BY NAME ... A refused batch returns a count of `0`",
+	// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 	// NAME", the form byte read FIRST and refused as `newer_form`, "DAMAGE
 	// INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`", and "BYTES AFTER THE PAD
 	// ARE MALFORMED".
@@ -692,15 +692,18 @@ const messageBatchRefusalsMain = `
     }
     {
         // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
-        // ... The reader sets the returned count to the wire's M."
+        // ... A refused batch returns a count of 0" (docs/SPEC-TABLES.md
+        // §3.3), and nothing is decoded: the storage is as it was.
         let three = [one, one, one];
         let m = root_measure_messages(&three, &mut TableReport::default());
         let mut buf = vec![0u8; m as usize];
         assert!(root_save_messages(&three, &mut buf, &mut TableReport::default()) == m);
         let mut values = vec![RootRow::default(); 2];
+        values[0].c = 17;
+        values[1].c = 17;
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &buf, &mut rep);
-        say("batch_too_large_read", !ok && count == 3 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged,
+        say("batch_too_large_read", !ok && count == 0 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged && values[0].c == 17 && values[1].c == 17,
             format!("count={count} report={rep:?}"));
     }
     {
