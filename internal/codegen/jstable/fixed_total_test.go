@@ -30,7 +30,9 @@ const jsFixedTotalSchema = `package probe
 `
 
 // A bad second record must not land the first record or partially write the
-// second. Exercise both the in-place identity and shared image paths.
+// second, and (R4) a refusal hands back NO row: every row the caller handed in
+// holds its declared default afterwards, the poisoned ones included. Exercise
+// both the in-place identity and shared image paths.
 func TestJavaScriptFixedBatchRefusalUntouched(t *testing.T) {
 	slowtest.Gate(t, "node (fixed whole-batch CHECK before LAND)")
 	t.Parallel()
@@ -46,6 +48,19 @@ func TestJavaScriptFixedBatchRefusalUntouched(t *testing.T) {
 				t.Fatalf("whole-batch refusal: %v\n%s", err, out)
 			}
 		})
+	}
+}
+
+// The reset control: the generated read with its refusal reset planted away (the
+// old rule, every row left as the caller had it) must fail the oracle.
+func TestJavaScriptFixedBatchResetNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "node (refusal reset sabotage)")
+	t.Parallel()
+	files := generatedTree(unitFrom(t, jsFixedTotalSchema))
+	editJsFixedTotal(t, files, "  if (n < 0) {\n    for (let j = 0; j < values.length", "  if (false) {\n    for (let j = 0; j < values.length")
+	out, err := runJsFixedTotal(t, files)
+	if err == nil || !strings.Contains(string(out), "FAIL: scalar-second") {
+		t.Fatalf("planting the old no-reset behaviour back did not break the oracle: %v\n%s", err, out)
 	}
 }
 
@@ -142,10 +157,12 @@ const cases=[
 ];
 for(const [name,why,mutate,text] of cases){
  const bytes=Uint8Array.from(text?textBase:base);mutate(bytes,new DataView(bytes.buffer));
- const back=[new m.Row(),new m.Row()];back.forEach(poison);const before=state(back);
+ const back=[new m.Row(),new m.Row()];back.forEach(poison);
+ // the same poison, then the type's own reset: a union's unselected arms keep their storage across a reset, so the declared default is what the reset gives
+ const want=[new m.Row(),new m.Row()];want.forEach(poison);want.forEach((x)=>m.InitRow(x));const before=state(want);
  const report=new m.TableFixedReport();
  const n=m.RowFixedLoad(back,2,bytes,bytes.length,m.RowFixedNewPlan(),report);
- if(n!==-1||report.refused!==why||state(back)!==before||report.oor!==0||report.widened!==0)fail(name+" n="+n+" why="+report.refused+" untouched="+(state(back)===before));
+ if(n!==-1||report.refused!==why||state(back)!==before||report.oor!==0||report.widened!==0)fail(name+" n="+n+" why="+report.refused+" default="+(state(back)===before));
 }
 for(const bytes of [base,textBase]){
  const back=[new m.Row(),new m.Row()],r=new m.TableFixedReport();

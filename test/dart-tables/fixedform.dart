@@ -2865,10 +2865,10 @@ void negativeControl() {
     2: fx1home.TableFixedRefusal.messageFormAsFile,
     6: fx1home.TableFixedRefusal.newerForm,
   };
-  // A REFUSAL WRITES NOTHING. §5.3's REFUSE is total — no counter moves,
-  // nothing is decoded, and not one destination byte is written, the prefill
-  // included — so the destination record is pre-poisoned here with sentinels
-  // no value of this type holds and must come back exactly as it was. The
+  // A REFUSAL HANDS BACK NO ROW (R4). §5.3's REFUSE is total — no counter
+  // moves and nothing is decoded — and the destination record is pre-poisoned
+  // here with sentinels no value of this type holds and must come back at its
+  // declared default. The
   // report is the other half: it names the reason and nothing else claims a
   // read (no `malformed` beside a name, no counter moved, no hash reported).
   fx1home.FxRoot poisonedRoot() {
@@ -2882,13 +2882,18 @@ void negativeControl() {
     return v;
   }
 
-  bool rootIntact(fx1home.FxRoot v) =>
-      v.keep == 0x7f7f7f7f &&
-      v.narrow == 0x5a5a &&
-      v.renamed == 0x3c3c &&
-      v.gone == 0x1e1e &&
-      v.nested.a == 0x1111 &&
-      v.nested.b == 0x2222;
+  // R4: a refusal hands the row back at its declared default, which is what
+  // the type's own reset gives the same poison.
+  bool rootIntact(fx1home.FxRoot v) {
+    final ref = poisonedRoot();
+    fx1home.initFxRoot(ref);
+    return v.keep == ref.keep &&
+        v.narrow == ref.narrow &&
+        v.renamed == ref.renamed &&
+        v.gone == ref.gone &&
+        v.nested.a == ref.nested.a &&
+        v.nested.b == ref.nested.b;
+  }
 
   bool namedOnly(fx1home.TableFixedReport r, int want) =>
       r.refused == want &&
@@ -2924,7 +2929,7 @@ void negativeControl() {
     );
     check(
       rootIntact(v[0]),
-      'REFUSAL WRITES NOTHING: form byte $byte leaves the destination record unchanged',
+      'REFUSAL RESETS: form byte $byte hands the destination record back at its declared default',
     );
   });
 
@@ -2955,7 +2960,7 @@ void negativeControl() {
     );
     check(
       rootIntact(v[0]),
-      'CASE empty-file: REFUSAL WRITES NOTHING to the destination record',
+      'CASE empty-file: REFUSAL RESETS the destination record to its default',
     );
   }
 
@@ -2979,7 +2984,7 @@ void negativeControl() {
     );
     check(
       rootIntact(v[0]),
-      'CASE short-form1: REFUSAL WRITES NOTHING to the destination record',
+      'CASE short-form1: REFUSAL RESETS the destination record to its default',
     );
   }
 
@@ -3003,7 +3008,7 @@ void negativeControl() {
     );
     check(
       rootIntact(v[0]),
-      'CASE short-form2: REFUSAL WRITES NOTHING to the destination record',
+      'CASE short-form2: REFUSAL RESETS the destination record to its default',
     );
   }
 
@@ -3030,7 +3035,7 @@ void negativeControl() {
     );
     check(
       rootIntact(v[0]),
-      'CASE reserved-byte3: REFUSAL WRITES NOTHING to the destination record',
+      'CASE reserved-byte3: REFUSAL RESETS the destination record to its default',
     );
   }
 

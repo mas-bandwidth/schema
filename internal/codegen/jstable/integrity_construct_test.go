@@ -122,7 +122,7 @@ function loadFixed(wire){const dst=Array.from({length:3},()=>{const x=new f.Read
 const good=loadFixed(fixed);expect(good.n===3 && !good.report.damaged && good.dst[2].x===1002,"fixed integrity load");
 for(let i=1;i<fixed.length;i++){
  const bad=fixed.slice();bad[i]^=1;const result=loadFixed(bad);
- expect(result.n===-1 && result.report.damaged && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===777),"fixed damaged byte "+i);
+ expect(result.n===-1 && result.report.damaged && f.TableFixedRefusalName(result.report.refused)==="integrity_mismatch" && result.dst.every(x=>x.x===0),"fixed damaged byte "+i);
 }
 const vocab=new f.TableVocabulary();vocab.Init(new Array(f.TableMessageEntriesHere));const ar={};expect(f.AnnounceRead(vocab,bytes(spec.announcement),ar),"integrity announcement");
 const message=bytes(spec.message);const msgOut=new Uint8Array(f.ReadingMeasureMessages(records,{}));
@@ -132,7 +132,7 @@ function loadMessage(wire){const dst=Array.from({length:3},()=>{const x=new f.Re
 expect(loadMessage(message).n===3,"message integrity load");
 for(let i=1;i<message.length;i++){
  const bad=message.slice();bad[i]^=1;const result=loadMessage(bad);
- expect(result.n===0 && result.report.Damaged && result.report.Reason==="integrity_mismatch" && result.report.Verdict===2 && result.dst.every(x=>x.x===777),"message damaged byte "+i);
+ expect(result.n===0 && result.report.Damaged && result.report.Reason==="integrity_mismatch" && result.report.Verdict===2 && result.dst.every(x=>x.x===0),"message damaged byte "+i);
 }
 // The form byte's diagnostic has precedence over CRC, including short inputs.
 const vr=new v.TableVariableReport();v.RootLoad(new Uint8Array([2]),vr);expect(vr.reason==="message_form_as_file","variable form precedence");

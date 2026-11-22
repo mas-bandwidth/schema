@@ -63,9 +63,10 @@ const t13HeldBody = `
     check(rep.refused == want, '$what: owes ${name(want)}, not ${name(rep.refused)}');
     check(quiet(rep), '$what: REFUSE is total, no counter moves: ${why(rep)}');
     check(untouched(), '$what: REFUSE writes not one destination byte');
-    check(values[0].x == 0x5A5A && values[0].y == 0x5A5A &&
-        values[0].z == 0x5A5A && values[0].w == 0x5A5A,
-        '$what: no record was published into the destination');
+    for (var r = 0; r < values.length; r++) {
+      check(fresh(values[r]),
+          '$what: R4, row $r is not at its declared default after the refusal');
+    }
     return rep;
   }
 

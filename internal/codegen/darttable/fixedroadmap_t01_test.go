@@ -44,9 +44,8 @@ const roadmapPrelude = `  final data = File(FILE).readAsBytesSync();
       if (plan.image[i] != 0x5A) return false;
     }
     for (final v in values) {
-      if (v.x != 0x5A5A5A5A || v.y != 0x5A5A5A5A || v.z != 0x5A5A5A5A || v.w != 0x5A5A5A5A) {
-        return false;
-      }
+      // R4: a refusal hands every row back at its declared default
+      if (!fresh(v)) return false;
     }
     return true;
   }
@@ -60,7 +59,7 @@ const roadmapPrelude = `  final data = File(FILE).readAsBytesSync();
     check(n == -1, '$what: owes -1, not $n: ${why(rep)}');
     check(rep.refused == want, '$what: owes ${name(want)}, not ${name(rep.refused)}');
     check(quiet(rep), '$what: REFUSE is total, no counter moves: ${why(rep)}');
-    check(untouched(), '$what: REFUSE writes not one destination byte');
+    check(untouched(), '$what: REFUSE hands every row back at its default and writes no image byte');
     return rep;
   }
   // a file of n records: the corpus file's header and layout, then its one record n times

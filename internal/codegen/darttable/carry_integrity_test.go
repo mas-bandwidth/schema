@@ -140,10 +140,10 @@ final plainRows=List.generate(3,(i)=>f.PlainReading());check(f.plainReadingFixed
 final plainOut=Uint8List(f.plainReadingFixedMeasure(3));check(f.plainReadingFixedSave(plainRows,3,plainOut)==plainPin.length&&hex(plainOut)==hex(plainPin),'plain fixed unchanged');
 for(var at=1;at<pin.length;at++){for(var bit=0;bit<8;bit++){
  final bad=Uint8List.fromList(pin);bad[at]^=1<<bit;final dest=List.generate(3,(i)=>f.Reading()..x=777);final er=f.TableFixedReport();
- check(f.readingFixedLoad(dest,3,bad,bad.length,plan,er)==-1&&f.TableFixedRefusal.name(er.refused)=='integrity_mismatch'&&dest.every((x)=>x.x==777)&&er.unknown==0,'all single-bit fixed corruption before landing');
+ check(f.readingFixedLoad(dest,3,bad,bad.length,plan,er)==-1&&f.TableFixedRefusal.name(er.refused)=='integrity_mismatch'&&dest.every((x)=>x.x==0)&&er.unknown==0,'all single-bit fixed corruption refuses and resets every row');
 }}
-for(var cut=1;cut<5;cut++){final er=f.TableFixedReport();check(f.readingFixedLoad(rows,3,pin,cut,plan,er)==-1&&f.TableFixedRefusal.name(er.refused)=='integrity_mismatch','short fixed CRC');}
-final wrong=f.TableFixedReport();check(f.readingFixedLoad(rows,3,Uint8List.fromList([1]),1,plan,wrong)==-1&&f.TableFixedRefusal.name(wrong.refused)=='previous_form','fixed form before checksum');
+for(var cut=1;cut<5;cut++){final er=f.TableFixedReport();check(f.readingFixedLoad(List.generate(3,(i)=>f.Reading()),3,pin,cut,plan,er)==-1&&f.TableFixedRefusal.name(er.refused)=='integrity_mismatch','short fixed CRC');}
+final wrong=f.TableFixedReport();check(f.readingFixedLoad(List.generate(3,(i)=>f.Reading()),3,Uint8List.fromList([1]),1,plan,wrong)==-1&&f.TableFixedRefusal.name(wrong.refused)=='previous_form','fixed form before checksum');
 final vocab=f.TableVocabulary(entries:List.generate(4096,(i)=>f.TableMessageEntry(0,0)));check(f.announceRead(vocab,f.tableAnnouncement,f.TableReport()),'vocabulary');
 final plainMessage=bytes(%q);final plainMessageOut=Uint8List(plainMessage.length+7)..fillRange(0,plainMessage.length+7,0xa5);check(f.plainReadingSaveMessages(plainRows,plainMessageOut,f.TableReport())==plainMessage.length&&hex(plainMessageOut.sublist(0,plainMessage.length))==hex(plainMessage)&&plainMessageOut.skip(plainMessage.length).every((x)=>x==0xa5),'plain message writes reused buffer and leaves suffix');
 final message=bytes(%q);check(f.readingMeasureMessages(rows,f.TableReport())==message.length,'message measure includes trailer');
@@ -152,7 +152,7 @@ final msgShort=Uint8List(message.length-1)..fillRange(0,message.length-1,0xa5);c
 final dest=List.generate(3,(i)=>f.Reading());check(f.readingLoadMessages(dest,message,vocab,f.TableReport())==3&&dest[2].x==1002,'message load');
 for(var at=1;at<message.length;at++){for(var bit=0;bit<8;bit++){
  final bad=Uint8List.fromList(message);bad[at]^=1<<bit;final er=f.TableReport();final unchanged=List.generate(3,(i)=>f.Reading()..x=777);
- check(f.readingLoadMessages(unchanged,bad,vocab,er)==0&&er.refused&&er.reason=='integrity_mismatch'&&er.unknown==0&&unchanged.every((x)=>x.x==777),'all single-bit message corruption predecode');
+ check(f.readingLoadMessages(unchanged,bad,vocab,er)==0&&er.refused&&er.reason=='integrity_mismatch'&&er.unknown==0&&unchanged.every((x)=>x.x==0),'all single-bit message corruption refuses and resets every value');
 }}
 for(var cut=1;cut<6;cut++){final er=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.sublistView(message,0,cut),vocab,er)==0&&er.reason=='integrity_mismatch','short message CRC');}
 final wrongMsg=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.fromList([1]),vocab,wrongMsg)==0&&wrongMsg.reason=='newer_form','message form first');
