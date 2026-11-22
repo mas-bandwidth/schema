@@ -832,8 +832,11 @@ func unitHasWriteBound(u *ir.Unit) bool {
 	if ir.TableFixedHasWriteCheck(u) {
 		return true
 	}
+	// ROWS 1, 2 AND 10 (docs/SPEC.md §5.1): a range, a bits width or a
+	// compressed float is a variable Save's debug assert too
 	bounded := func(f *ir.Field) bool {
-		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList()
+		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList() ||
+			f.HasFloatRange || f.Type.Kind == ir.TBits || tableHasRawRange(f)
 	}
 	names := ir.TableClosure(u)
 	for name := range ir.TableClosureVocabulary(u) {
@@ -1160,4 +1163,11 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.pf("    return w.overflow ? -1 : w.offset;\n}\n\n")
 		}
 	}
+}
+
+// tableHasRawRange reports a field ir.TableRawRange bounds: a ranged integer
+// or a fixed/ufixed raw value, whose variable Save carries row 1's assert.
+func tableHasRawRange(f *ir.Field) bool {
+	_, _, ok := ir.TableRawRange(f)
+	return ok
 }
