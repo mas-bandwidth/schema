@@ -1,8 +1,10 @@
 package gotable
 
 import (
+	"maps"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -17,7 +19,8 @@ import (
 // then written and the strict read of it answers wire_damaged.
 func TestGoWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	runGenerated(t, tablewire.IdCapSchema(), `package idcap
+	schema := tablewire.IdCapSchema()
+	runGeneratedTables(t, schema, `package idcap
 
 import "testing"
 
@@ -68,5 +71,12 @@ func TestIdCap(t *testing.T) {
 		t.Fatalf("4097 ids: save wrote %d bytes, want a refusal", w)
 	}
 }
-`)
+`, func(files map[string][]byte) {
+		// the plain Go types (the enum K) beside the table surface
+		base, err := golang.Generate(unitFrom(t, schema))
+		if err != nil {
+			t.Fatal(err)
+		}
+		maps.Copy(files, base)
+	})
 }
