@@ -2332,8 +2332,12 @@ fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text:
     var labels: JsonLabel[>..] = [];
     var scratch: i64[>..<] = [];
     var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, kset_entries: kset_entries, kset_slots: kset_slots };
+    let bytes = data.len;
+    let slots = vals.len;
+    let held = nodes.len;
     let rec = jr_new_record(c, t);
     let ok = jr_table(c, t, rec, 0);
-    if !json_finish(jr, ok, report) { return -1; }
+    // a refused read restores the caller's three stores, as <T>ToLoaded does
+    if !json_finish(jr, ok, report) { data.resize(bytes); vals.resize(slots); nodes.resize(held); return -1; }
     return rec;
 }
