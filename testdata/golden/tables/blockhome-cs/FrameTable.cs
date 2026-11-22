@@ -189,7 +189,7 @@ namespace Blockhome
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -211,7 +211,7 @@ namespace Blockhome
             if (!rootElemSizes.IsEmpty)
             {
                 int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache_1 = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
