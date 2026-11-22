@@ -693,6 +693,28 @@ defaultValue = function(fd, value, owner) {
 
 local writeBody;
 local writePayload;
+// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md section 3.3 and
+// the 22.2 [M..N]T row, the Go engine's messageElides): a plain counted field
+// holding exactly Min elements that each stay off the wire (a table element by
+// its body being its terminator alone, a float by its bits) is not written.
+local bornElides = function(T, fd, value, depth) {
+  if (fd.shape != "arr" || typeof value != "array") return false;
+  if (!(("counted" in fd) && fd.counted) || (("list" in fd) && fd.list)) return false;
+  if (fd.min <= 0 || value.len() != fd.min) return false;
+  if (("optional" in fd) && fd.optional) return false;
+  if (("required" in fd) && fd.required) return false;
+  if (("keyvariants" in fd) && fd.keyvariants != null) return false;
+  local e = fd.elem;
+  for (local i = 0; i < value.len(); i++) {
+    if (e.shape == "tab") {
+      local pw = newWriter(null, true);
+      pw.owner = null;
+      writeBody(T, pw, T.Descriptors[e.table], value[i], depth + 1);
+      if (pw.bad || pw.bits > T.TableMessageRefBitsHere) return false;
+    } else if (!defaultValue(e, value[i], value)) return false;
+  }
+  return true;
+};
 local readBody;
 local readPayload;
 local kindWidens;
@@ -1074,6 +1096,7 @@ writeBody = function(T, w, d, value, depth) {
     if(!(fd.member in value))continue;
     local val=value[fd.member];
     if(defaultValue(fd,val,value))continue;
+    if(bornElides(T,fd,val,depth))continue;
     // AN ALL-DEFAULT NESTED BODY ELIDES (docs/SPEC-TABLES.md §3.3): the
     // table is written once, and when it came to its reference and the
     // terminator alone it is rolled back to the mark, as the Go engine's

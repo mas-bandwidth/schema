@@ -1094,6 +1094,42 @@ local function elemDefault(e: any, x: any): boolean
 	return false
 end
 
+-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+-- §22.2 [M..N]T row, the Go engine's messageElides): a plain counted field
+-- holding exactly its minimum count of elements, each off the wire (a float
+-- by its bits, a table by a body that is its terminator alone), is not
+-- written. A present optional rides before this is asked.
+local function bornElides(c: any, fd: any, val: any, n: number): boolean
+	local min = fd.min or 0
+	if min <= 0 or n ~= min or fd.required == true then
+		return false
+	end
+	local e = fd.e
+	if e.s ~= "tab" then
+		for i = 1, n do
+			if not elemDefault(e, elemAt(val, i)) then
+				return false
+			end
+		end
+		return true
+	end
+	local w = c.w
+	for i = 1, n do
+		local x = elemAt(val, i)
+		if type(x) ~= "table" then
+			return false
+		end
+		local st = w.n
+		local ok = encodeBody(c, S.lookup(e.t), x)
+		local empty = ok and w.n - st == c.refBits
+		truncate(w, st)
+		if not empty then
+			return false
+		end
+	end
+	return true
+end
+
 local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
 	local shape = entry.shape
 	local e = fd.e
@@ -1212,7 +1248,7 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		end
 		if fd.array == "counted" then
 			local n = liveCount(fd, v, val)
-			if n == 0 then
+			if n == 0 or bornElides(c, fd, val, n) then
 				return true
 			end
 			wref(c, entry.slot)

@@ -713,6 +713,43 @@ local arrayRides = function(fd, val) {
   return false;
 };
 
+// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+// §22.2 [M..N]T row, the Go engine's encodeArray): a plain counted field
+// (not optional, not required) holding exactly its minimum count of elements,
+// each at its default, stays off the wire. This judges the elements that can
+// be judged by value (a float by its bits); a table element is judged by its
+// written body, in bornTablesElide.
+local arrayBorn = function(d, val) {
+  if (d.optional || d.required || d.list || !d.counted || d.kind == 16) return false;
+  if (d.min <= 0 || val.len() != d.min) return false;
+  local e = d.elem;
+  if (e.shape == "tab") return e.kind != 12;
+  for (local i = 0; i < val.len(); i++) {
+    if (e.shape == "union") {
+      if (val[i] != null && val[i].Type != null && val[i].Type != 0) return false;
+    } else if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
+      if (val[i] != null) return false;
+    } else if (e.shape == "float") {
+      if (!floatIsDefault(e, val[i], e.def)) return false;
+    } else if (!typedDefault(e, val[i])) return false;
+  }
+  return true;
+};
+// a counted array of tables at its birth count elides when every element's
+// body is its terminator alone: the body is kind, count, then n times `01 00`
+local bornTablesElide = function(body, n) {
+  local hdr = 2;
+  if (n >= 128) hdr++;
+  if (n >= 16384) hdr++;
+  if (n >= 2097152) hdr++;
+  local len = body.b.len();
+  if (len != hdr + 2 * n) return false;
+  for (local i = 0; i < n; i++) {
+    if (body.b[hdr + 2 * i] != 1 || body.b[hdr + 2 * i + 1] != 0) return false;
+  }
+  return true;
+};
+
 // A UNION VALUE (docs/SPEC-TABLES.md §3): the arm reference (0 for none),
 // then the payload kind, its length and the payload; a payload-free arm
 // rides as kind 32 with length 0.
@@ -897,11 +934,20 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
     // declared minimum is refused, never elided (docs/SPEC.md §5.1 row 3)
     if (arrayOffCount(d, val)) return refuseValue(w);
     if (!always && !arrayRides(d, val)) return true;
+    local born = arrayBorn(d, val);
+    if (born && d.elem.shape != "tab") return true;
     if (("total" in d) && textTotalPast(d, val)) return false;
+    local mark = idsMark(ids);
+    local wMark = w.b.len();
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     local n = writeArrayBody(T, d, val, body, ids, at, root);
     if (n < 0) return false;
+    if (born && bornTablesElide(body, n)) {
+      idsRollback(ids, mark);
+      w.b.resize(wMark);
+      return true;
+    }
     wleb(w, body.b.len());
     appendWriter(w, body);
     return true;
