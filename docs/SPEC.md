@@ -2379,7 +2379,8 @@ whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
 where its check is active. **The assert legs are a closed list: C, C++, C#,
-Rust, Java and Dart. Every other leg, and every NEW language, refuses in every
+Rust, Java and Dart, and Lobster for its packet `Write` only (its table
+writers refuse in every build). Every other leg, and every NEW language, refuses in every
 build**; a new port does not choose by its own reading of its idioms.
 **In an assert leg (C, C++, C#, Rust, Java, Dart)
 every write check is a debug assert and nothing else, the storage checks
@@ -2406,7 +2407,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name`; a packet `Write` returns a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8, embedded NUL) |
-| Lobster | none (tables); `assert` today in the packet `Write`, which `--runtime-no-asserts` removes | every build tables; the packet `Write` OWES every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason. Lobster is not on the assert list, so the rule for its packet `Write` is a refusal in every build; today's packet writer asserts instead, which is a defect of that writer, not a licence |
+| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason. The packet `Write` is a Lobster `assert`: the default JIT traps on it and the release configuration `--runtime-no-asserts` removes it, the assert placement the `write-refusal` ruling gives Lobster's packets alone; its table writers refuse in every build |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
 is the leg's assert, "every build" its refusal. These tables record the code as
@@ -2597,7 +2598,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps. The rule for Lobster is every build: the debug-only rows are owed as refusals
+  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
 
 - **Python**
 
