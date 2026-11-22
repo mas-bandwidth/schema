@@ -11212,7 +11212,9 @@ inline int64_t WeaponConfigMeasureBody( TableIds & ids, const WeaponConfig & val
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 21.0f ) ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.speed ) != table_float_to_bits( 500.0f ) ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
+    schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
+    schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
     if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
@@ -11278,11 +11280,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -17112,6 +17116,7 @@ inline bool RootConfigLoadMessages( RootConfig * values, int64_t * count, const 
 inline int64_t AttachmentMeasureBody( TableIds & ids, const Attachment & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
     if ( !TableFloatFinite( value.power ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
@@ -17131,6 +17136,7 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, TableIds & ids,
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -18239,6 +18245,7 @@ inline bool BuffLoadMessages( Buff * values, int64_t * count, const TableVocabul
 inline int64_t DebuffMeasureBody( TableIds & ids, const Debuff & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
@@ -18256,6 +18263,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -22927,7 +22935,9 @@ inline int64_t WeaponConfigMeasureBodyRetain( TableRetainIds & ids, const Weapon
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 21.0f ) ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.speed ) != table_float_to_bits( 500.0f ) ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
+    schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
+    schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
     if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
@@ -22984,11 +22994,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBodyRetain( TableWriter & w, TableRe
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -25300,6 +25312,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBodyRetain( TableReader & r, RootConfi
 inline int64_t AttachmentMeasureBodyRetain( TableRetainIds & ids, const Attachment & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
     if ( !TableFloatFinite( value.power ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
@@ -25312,6 +25325,7 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBodyRetain( TableWriter & w, TableReta
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -25591,6 +25605,7 @@ TABLEDEMO_TABLE_INLINE bool BuffLoadBodyRetain( TableReader & r, Buff & value, T
 inline int64_t DebuffMeasureBodyRetain( TableRetainIds & ids, const Debuff & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -25601,6 +25616,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBodyRetain( TableWriter & w, TableRetainId
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.amount ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

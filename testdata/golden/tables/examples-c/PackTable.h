@@ -6379,6 +6379,8 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints_( tabledemo
     tabledemo_table_writer_put8( w, 4 ); tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
     for ( i = 0; i < value->hardpoints_count; i++ )
     {
+        schema_assert( !( value->hardpoints[i] < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+        schema_assert( !( value->hardpoints[i] > 8 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
         tabledemo_table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
     }
     return !w->overflow;
@@ -7028,6 +7030,8 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 88, 0xa65f859b617deaf3ull, 8 );
+            schema_assert( !( value->tick_rate < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->tick_rate > 240 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
         }
     }
@@ -7690,8 +7694,12 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds_( tabledem
             tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( !( value->thresholds[i] < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->thresholds[i] > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
             w = outer; tabledemo_table_writer_rewind(&probe); tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( !( value->thresholds[i] < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->thresholds[i] > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
         }
     }
@@ -11531,6 +11539,10 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints__retain( ta
     tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
     for ( i = 0; i < value->hardpoints_count; i++ )
     {
+        schema_assert( !( value->hardpoints[i] < 0 ) );
+        /* off its min, debug only (SPEC.md §5.1 row 1) */
+        schema_assert( !( value->hardpoints[i] > 8 ) );
+        /* off its max, debug only (SPEC.md §5.1 row 1) */
         tabledemo_table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
     }
     return !w->overflow;
@@ -11963,6 +11975,10 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body_retain( tabledemo_t
             }
             tabledemo_table_retain_writer_id( w, 0xa65f859b617deaf3ull , retention);
             tabledemo_table_writer_put8( w, 8 );
+            schema_assert( !( value->tick_rate < 1 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->tick_rate > 240 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
         }
     }
@@ -12429,10 +12445,18 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds__retain( t
             tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w , retention);
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( !( value->thresholds[i] < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->thresholds[i] > 1000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
             w = outer;
             tabledemo_table_retain_rewind(&probe, retention);
             tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( !( value->thresholds[i] < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->thresholds[i] > 1000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
         }
     }

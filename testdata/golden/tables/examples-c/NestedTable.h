@@ -5902,6 +5902,8 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body( tabledemo_table_wri
         if ( !( value->count == 1 ) )
         {
             tabledemo_table_writer_header_at( w, 97, 0xb1e5e28e4479a274ull, 4 );
+            schema_assert( !( value->count < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->count > 100 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }
@@ -7517,6 +7519,10 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body_retain( tabledemo_ta
         {
             tabledemo_table_retain_writer_id( w, 0xb1e5e28e4479a274ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( !( value->count < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->count > 100 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }

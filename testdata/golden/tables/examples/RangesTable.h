@@ -11020,20 +11020,32 @@ inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
+    schema_assert( !( value.i8_low > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
+    schema_assert( !( value.i8_high < -127 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 126, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
+    schema_assert( !( value.i8_inside < -127 || value.i8_inside > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 141, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
     if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 100, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
+    schema_assert( !( value.i16_low > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
+    schema_assert( !( value.i16_high < -32767 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 75, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
+    schema_assert( !( value.i16_inside < -32767 || value.i16_inside > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 58, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
     if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
+    schema_assert( !( value.i32_low > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
+    schema_assert( !( value.i32_high < -2147483647 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 118, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
+    schema_assert( !( value.i32_inside < -2147483647 || value.i32_inside > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 129, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
     if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 63, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
+    schema_assert( !( value.i64_low > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
+    schema_assert( !( value.i64_high < -9223372036854775807ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
+    schema_assert( !( value.i64_inside < -9223372036854775807ll || value.i64_inside > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     bool rides_edges = value.edges_count > 0;
@@ -11068,16 +11080,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     if ( value.i8_low != 0 )
     {
         w.header( ids.ref_at( 76, 0x942bfe3168090f7dull ), 2 ); // i8_low
+        schema_assert( !( value.i8_low > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_low ) );
     }
     if ( value.i8_high != 0 )
     {
         w.header( ids.ref_at( 126, 0xd182acd105b55dd1ull ), 2 ); // i8_high
+        schema_assert( !( value.i8_high < -127 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_high ) );
     }
     if ( value.i8_inside != 0 )
     {
         w.header( ids.ref_at( 141, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
+        schema_assert( !( value.i8_inside < -127 || value.i8_inside > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_inside ) );
     }
     if ( value.i16_span != 0 )
@@ -11088,16 +11103,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     if ( value.i16_low != 0 )
     {
         w.header( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
+        schema_assert( !( value.i16_low > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_low ) );
     }
     if ( value.i16_high != 0 )
     {
         w.header( ids.ref_at( 75, 0x90652f70c9127900ull ), 3 ); // i16_high
+        schema_assert( !( value.i16_high < -32767 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_high ) );
     }
     if ( value.i16_inside != 0 )
     {
         w.header( ids.ref_at( 58, 0x6a659d7c354db158ull ), 3 ); // i16_inside
+        schema_assert( !( value.i16_inside < -32767 || value.i16_inside > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_inside ) );
     }
     if ( value.i32_span != 0 )
@@ -11108,16 +11126,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     if ( value.i32_low != 0 )
     {
         w.header( ids.ref_at( 5, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
+        schema_assert( !( value.i32_low > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_low ) );
     }
     if ( value.i32_high != 0 )
     {
         w.header( ids.ref_at( 118, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
+        schema_assert( !( value.i32_high < -2147483647 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_high ) );
     }
     if ( value.i32_inside != 0 )
     {
         w.header( ids.ref_at( 129, 0xd363dfa465acf27aull ), 4 ); // i32_inside
+        schema_assert( !( value.i32_inside < -2147483647 || value.i32_inside > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_inside ) );
     }
     if ( value.i64_span != 0 )
@@ -11128,16 +11149,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     if ( value.i64_low != 0 )
     {
         w.header( ids.ref_at( 16, 0x1cce6617419771dbull ), 5 ); // i64_low
+        schema_assert( !( value.i64_low > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_low ) );
     }
     if ( value.i64_high != 0 )
     {
         w.header( ids.ref_at( 36, 0x3b54fa60620b5597ull ), 5 ); // i64_high
+        schema_assert( !( value.i64_high < -9223372036854775807ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_high ) );
     }
     if ( value.i64_inside != 0 )
     {
         w.header( ids.ref_at( 128, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
+        schema_assert( !( value.i64_inside < -9223372036854775807ll || value.i64_inside > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_inside ) );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
@@ -14055,20 +14079,32 @@ inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
+    schema_assert( !( value.u8_low > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
+    schema_assert( !( value.u8_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 84, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
+    schema_assert( !( value.u8_inside < 1 || value.u8_inside > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
     if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
+    schema_assert( !( value.u16_low > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 143, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
+    schema_assert( !( value.u16_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
+    schema_assert( !( value.u16_inside < 1 || value.u16_inside > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 125, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
     if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
+    schema_assert( !( value.u32_low > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
+    schema_assert( !( value.u32_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
+    schema_assert( !( value.u32_inside < 1 || value.u32_inside > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 74, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
     if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 109, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
+    schema_assert( !( value.u64_low > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
+    schema_assert( !( value.u64_high < 1ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
+    schema_assert( !( value.u64_inside < 1ull || value.u64_inside > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     bool rides_counts = value.counts_count > 0;
@@ -14103,16 +14139,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     if ( value.u8_low != 0 )
     {
         w.header( ids.ref_at( 28, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
+        schema_assert( !( value.u8_low > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_low ) );
     }
     if ( value.u8_high != 1 )
     {
         w.header( ids.ref_at( 84, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
+        schema_assert( !( value.u8_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_high ) );
     }
     if ( value.u8_inside != 1 )
     {
         w.header( ids.ref_at( 15, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
+        schema_assert( !( value.u8_inside < 1 || value.u8_inside > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_inside ) );
     }
     if ( value.u16_span != 0 )
@@ -14123,16 +14162,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     if ( value.u16_low != 0 )
     {
         w.header( ids.ref_at( 143, 0xf252136836b04cb2ull ), 7 ); // u16_low
+        schema_assert( !( value.u16_low > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_low ) );
     }
     if ( value.u16_high != 1 )
     {
         w.header( ids.ref_at( 48, 0x4f37e1f216e7610cull ), 7 ); // u16_high
+        schema_assert( !( value.u16_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_high ) );
     }
     if ( value.u16_inside != 1 )
     {
         w.header( ids.ref_at( 125, 0xd176b605978f3304ull ), 7 ); // u16_inside
+        schema_assert( !( value.u16_inside < 1 || value.u16_inside > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_inside ) );
     }
     if ( value.u32_span != 0 )
@@ -14143,16 +14185,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     if ( value.u32_low != 0 )
     {
         w.header( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
+        schema_assert( !( value.u32_low > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_low ) );
     }
     if ( value.u32_high != 1 )
     {
         w.header( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
+        schema_assert( !( value.u32_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_high ) );
     }
     if ( value.u32_inside != 1 )
     {
         w.header( ids.ref_at( 74, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
+        schema_assert( !( value.u32_inside < 1 || value.u32_inside > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_inside ) );
     }
     if ( value.u64_span != 0 )
@@ -14163,16 +14208,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     if ( value.u64_low != 0 )
     {
         w.header( ids.ref_at( 0, 0x0117ad66e0fff227ull ), 9 ); // u64_low
+        schema_assert( !( value.u64_low > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_low ) );
     }
     if ( value.u64_high != 1ull )
     {
         w.header( ids.ref_at( 144, 0xf2b45af3b50689dbull ), 9 ); // u64_high
+        schema_assert( !( value.u64_high < 1ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_high ) );
     }
     if ( value.u64_inside != 1ull )
     {
         w.header( ids.ref_at( 62, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
+        schema_assert( !( value.u64_inside < 1ull || value.u64_inside > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_inside ) );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
@@ -16859,7 +16907,9 @@ inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & val
     if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 149, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
     if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
     if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 148, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    schema_assert( value.b12 <= 4095ull ); // bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 150, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    schema_assert( value.b48 <= 281474976710655ull ); // bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     return bytes;
 }
@@ -16899,11 +16949,13 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBody( TableWriter & w, TableIds & id
     if ( value.b12 != 0 )
     {
         w.header( ids.ref_at( 150, 0xff95741912ad9e8aull ), 7 ); // b12
+        schema_assert( value.b12 <= 4095ull ); // bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2)
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
         w.header( ids.ref_at( 147, 0xff8b681912a535a1ull ), 9 ); // b48
+        schema_assert( value.b48 <= 281474976710655ull ); // bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2)
         w.put64( uint64_t( value.b48 ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -20064,20 +20116,32 @@ inline int64_t RangedSignedMeasureBodyRetain( TableRetainIds & ids, const Ranged
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
+    schema_assert( !( value.i8_low > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
+    schema_assert( !( value.i8_high < -127 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 126, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
+    schema_assert( !( value.i8_inside < -127 || value.i8_inside > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 141, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
     if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 100, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
+    schema_assert( !( value.i16_low > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
+    schema_assert( !( value.i16_high < -32767 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 75, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
+    schema_assert( !( value.i16_inside < -32767 || value.i16_inside > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 58, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
     if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
+    schema_assert( !( value.i32_low > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
+    schema_assert( !( value.i32_high < -2147483647 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 118, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
+    schema_assert( !( value.i32_inside < -2147483647 || value.i32_inside > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 129, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
     if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 63, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
+    schema_assert( !( value.i64_low > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
+    schema_assert( !( value.i64_high < -9223372036854775807ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
+    schema_assert( !( value.i64_inside < -9223372036854775807ll || value.i64_inside > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     bool rides_edges = value.edges_count > 0;
@@ -20103,16 +20167,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
     if ( value.i8_low != 0 )
     {
         w.header( ids.ref_at( 76, 0x942bfe3168090f7dull ), 2 ); // i8_low
+        schema_assert( !( value.i8_low > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_low ) );
     }
     if ( value.i8_high != 0 )
     {
         w.header( ids.ref_at( 126, 0xd182acd105b55dd1ull ), 2 ); // i8_high
+        schema_assert( !( value.i8_high < -127 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_high ) );
     }
     if ( value.i8_inside != 0 )
     {
         w.header( ids.ref_at( 141, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
+        schema_assert( !( value.i8_inside < -127 || value.i8_inside > 126 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_inside ) );
     }
     if ( value.i16_span != 0 )
@@ -20123,16 +20190,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
     if ( value.i16_low != 0 )
     {
         w.header( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
+        schema_assert( !( value.i16_low > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_low ) );
     }
     if ( value.i16_high != 0 )
     {
         w.header( ids.ref_at( 75, 0x90652f70c9127900ull ), 3 ); // i16_high
+        schema_assert( !( value.i16_high < -32767 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_high ) );
     }
     if ( value.i16_inside != 0 )
     {
         w.header( ids.ref_at( 58, 0x6a659d7c354db158ull ), 3 ); // i16_inside
+        schema_assert( !( value.i16_inside < -32767 || value.i16_inside > 32766 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_inside ) );
     }
     if ( value.i32_span != 0 )
@@ -20143,16 +20213,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
     if ( value.i32_low != 0 )
     {
         w.header( ids.ref_at( 5, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
+        schema_assert( !( value.i32_low > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_low ) );
     }
     if ( value.i32_high != 0 )
     {
         w.header( ids.ref_at( 118, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
+        schema_assert( !( value.i32_high < -2147483647 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_high ) );
     }
     if ( value.i32_inside != 0 )
     {
         w.header( ids.ref_at( 129, 0xd363dfa465acf27aull ), 4 ); // i32_inside
+        schema_assert( !( value.i32_inside < -2147483647 || value.i32_inside > 2147483646 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_inside ) );
     }
     if ( value.i64_span != 0 )
@@ -20163,16 +20236,19 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
     if ( value.i64_low != 0 )
     {
         w.header( ids.ref_at( 16, 0x1cce6617419771dbull ), 5 ); // i64_low
+        schema_assert( !( value.i64_low > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_low ) );
     }
     if ( value.i64_high != 0 )
     {
         w.header( ids.ref_at( 36, 0x3b54fa60620b5597ull ), 5 ); // i64_high
+        schema_assert( !( value.i64_high < -9223372036854775807ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_high ) );
     }
     if ( value.i64_inside != 0 )
     {
         w.header( ids.ref_at( 128, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
+        schema_assert( !( value.i64_inside < -9223372036854775807ll || value.i64_inside > 9223372036854775806ll ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_inside ) );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
@@ -21108,20 +21184,32 @@ inline int64_t RangedUnsignedMeasureBodyRetain( TableRetainIds & ids, const Rang
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
+    schema_assert( !( value.u8_low > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
+    schema_assert( !( value.u8_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 84, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
+    schema_assert( !( value.u8_inside < 1 || value.u8_inside > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
     if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
+    schema_assert( !( value.u16_low > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 143, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
+    schema_assert( !( value.u16_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
+    schema_assert( !( value.u16_inside < 1 || value.u16_inside > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 125, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
     if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
+    schema_assert( !( value.u32_low > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
+    schema_assert( !( value.u32_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
+    schema_assert( !( value.u32_inside < 1 || value.u32_inside > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 74, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
     if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 109, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
+    schema_assert( !( value.u64_low > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
+    schema_assert( !( value.u64_high < 1ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
+    schema_assert( !( value.u64_inside < 1ull || value.u64_inside > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     bool rides_counts = value.counts_count > 0;
@@ -21147,16 +21235,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     if ( value.u8_low != 0 )
     {
         w.header( ids.ref_at( 28, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
+        schema_assert( !( value.u8_low > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_low ) );
     }
     if ( value.u8_high != 1 )
     {
         w.header( ids.ref_at( 84, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
+        schema_assert( !( value.u8_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_high ) );
     }
     if ( value.u8_inside != 1 )
     {
         w.header( ids.ref_at( 15, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
+        schema_assert( !( value.u8_inside < 1 || value.u8_inside > 254 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_inside ) );
     }
     if ( value.u16_span != 0 )
@@ -21167,16 +21258,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     if ( value.u16_low != 0 )
     {
         w.header( ids.ref_at( 143, 0xf252136836b04cb2ull ), 7 ); // u16_low
+        schema_assert( !( value.u16_low > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_low ) );
     }
     if ( value.u16_high != 1 )
     {
         w.header( ids.ref_at( 48, 0x4f37e1f216e7610cull ), 7 ); // u16_high
+        schema_assert( !( value.u16_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_high ) );
     }
     if ( value.u16_inside != 1 )
     {
         w.header( ids.ref_at( 125, 0xd176b605978f3304ull ), 7 ); // u16_inside
+        schema_assert( !( value.u16_inside < 1 || value.u16_inside > 65534 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_inside ) );
     }
     if ( value.u32_span != 0 )
@@ -21187,16 +21281,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     if ( value.u32_low != 0 )
     {
         w.header( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
+        schema_assert( !( value.u32_low > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_low ) );
     }
     if ( value.u32_high != 1 )
     {
         w.header( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
+        schema_assert( !( value.u32_high < 1 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_high ) );
     }
     if ( value.u32_inside != 1 )
     {
         w.header( ids.ref_at( 74, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
+        schema_assert( !( value.u32_inside < 1 || value.u32_inside > 4294967294 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_inside ) );
     }
     if ( value.u64_span != 0 )
@@ -21207,16 +21304,19 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     if ( value.u64_low != 0 )
     {
         w.header( ids.ref_at( 0, 0x0117ad66e0fff227ull ), 9 ); // u64_low
+        schema_assert( !( value.u64_low > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_low ) );
     }
     if ( value.u64_high != 1ull )
     {
         w.header( ids.ref_at( 144, 0xf2b45af3b50689dbull ), 9 ); // u64_high
+        schema_assert( !( value.u64_high < 1ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_high ) );
     }
     if ( value.u64_inside != 1ull )
     {
         w.header( ids.ref_at( 62, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
+        schema_assert( !( value.u64_inside < 1ull || value.u64_inside > 18446744073709551614ull ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_inside ) );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
@@ -22155,7 +22255,9 @@ inline int64_t RangedWidthsMeasureBodyRetain( TableRetainIds & ids, const Ranged
     if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 149, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
     if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
     if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 148, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    schema_assert( value.b12 <= 4095ull ); // bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 150, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    schema_assert( value.b48 <= 281474976710655ull ); // bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2)
     if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -22186,11 +22288,13 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBodyRetain( TableWriter & w, TableRe
     if ( value.b12 != 0 )
     {
         w.header( ids.ref_at( 150, 0xff95741912ad9e8aull ), 7 ); // b12
+        schema_assert( value.b12 <= 4095ull ); // bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2)
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
         w.header( ids.ref_at( 147, 0xff8b681912a535a1ull ), 9 ); // b48
+        schema_assert( value.b48 <= 281474976710655ull ); // bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2)
         w.put64( uint64_t( value.b48 ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
