@@ -14,7 +14,7 @@ const NUMBER_SCRATCH = { value: 0 };
 // type DefaultArm
 export class DefaultArm {
   constructor() {
-    this.entries = Array.from({ length: 2 }, () => new ProbeConfig());
+    this.entries = globalThis.Array.from({ length: 2 }, () => new ProbeConfig());
     this.entriesCount = 0;
     this.marker = 0; // wire [0, 7]
   }
@@ -45,7 +45,7 @@ export function ZeroDefaultArm(value) {
 }
 
 export function WriteDefaultArm(stream, value) {
-  if (!Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.entriesCount) || value.entriesCount < 0 || value.entriesCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.entriesCount;
@@ -57,7 +57,7 @@ export function WriteDefaultArm(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
+  if (!globalThis.Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
     return false;
   }
   NUMBER_SCRATCH.value = value.marker;
@@ -85,7 +85,7 @@ export function ReadDefaultArm(stream, value, nested) {
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const DefaultChoiceType = Object.freeze({
+export const DefaultChoiceType = globalThis.Object.freeze({
   None: 0,
   First: 1,
   Second: 2,
@@ -132,7 +132,7 @@ export function ZeroDefaultChoice(value) {
 }
 
 export function WriteDefaultChoice(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -210,7 +210,7 @@ export function ReadDefaultChoicePacket(stream, value, nested) {
 export class DefaultBulkArm {
   constructor() {
     this.payload = new DefaultArm();
-    this.data = new Uint8Array(2); // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
+    this.data = new globalThis.Uint8Array(2); // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
     this.dataLength = 0;
   }
 }
@@ -238,7 +238,7 @@ export function WriteDefaultBulkArm(stream, value) {
   if (!WriteDefaultArm(stream, value.payload)) {
     return false;
   }
-  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.dataLength;
@@ -266,7 +266,7 @@ export function ReadDefaultBulkArm(stream, value, nested) {
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const DefaultBulkChoiceType = Object.freeze({
+export const DefaultBulkChoiceType = globalThis.Object.freeze({
   None: 0,
   First: 1,
   Second: 2,
@@ -313,7 +313,7 @@ export function ZeroDefaultBulkChoice(value) {
 }
 
 export function WriteDefaultBulkChoice(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;

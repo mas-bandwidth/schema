@@ -43,21 +43,21 @@ export function ZeroVec3(value) {
 }
 
 export function WriteVec3(stream, value) {
-  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+  if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+  if (typeof value.y !== "number" || !globalThis.Number.isFinite(value.y)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.z !== "number" || !Number.isFinite(value.z)) {
+  if (typeof value.z !== "number" || !globalThis.Number.isFinite(value.z)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.z;
@@ -115,28 +115,28 @@ export function ZeroQuat(value) {
 }
 
 export function WriteQuat(stream, value) {
-  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+  if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+  if (typeof value.y !== "number" || !globalThis.Number.isFinite(value.y)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.z !== "number" || !Number.isFinite(value.z)) {
+  if (typeof value.z !== "number" || !globalThis.Number.isFinite(value.z)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.w !== "number" || !Number.isFinite(value.w)) {
+  if (typeof value.w !== "number" || !globalThis.Number.isFinite(value.w)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.w;
@@ -192,14 +192,14 @@ export function ZeroHandle(value) {
 }
 
 export function WriteHandle(stream, value) {
-  if (!Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > MaxObjects - 1) {
+  if (!globalThis.Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > MaxObjects - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.objectId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 14)) {
     return false;
   }
-  if (!Number.isInteger(value.objectSequence) || value.objectSequence < 0 || value.objectSequence > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.objectSequence) || value.objectSequence < 0 || value.objectSequence > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.objectSequence;
@@ -250,21 +250,21 @@ export function ZeroQuantizedPosition(value) {
 }
 
 export function WriteQuantizedPosition(stream, value) {
-  if (!Number.isInteger(value.x) || value.x < -MaxPositionUnits || value.x > MaxPositionUnits) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -MaxPositionUnits || value.x > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.x >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.y) || value.y < -MaxPositionUnits || value.y > MaxPositionUnits) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -MaxPositionUnits || value.y > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.y >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.z) || value.z < -MaxPositionUnits || value.z > MaxPositionUnits) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -MaxPositionUnits || value.z > MaxPositionUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.z >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
@@ -319,21 +319,21 @@ export function ZeroQuantizedVelocity(value) {
 }
 
 export function WriteQuantizedVelocity(stream, value) {
-  if (!Number.isInteger(value.x) || value.x < -MaxVelocityUnits || value.x > MaxVelocityUnits) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -MaxVelocityUnits || value.x > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.x >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.y) || value.y < -MaxVelocityUnits || value.y > MaxVelocityUnits) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -MaxVelocityUnits || value.y > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.y >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.z) || value.z < -MaxVelocityUnits || value.z > MaxVelocityUnits) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -MaxVelocityUnits || value.z > MaxVelocityUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.z >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
@@ -391,28 +391,28 @@ export function ZeroQuantizedRotation(value) {
 }
 
 export function WriteQuantizedRotation(stream, value) {
-  if (!Number.isInteger(value.x) || value.x < -RotationUnits || value.x > RotationUnits) {
+  if (!globalThis.Number.isInteger(value.x) || value.x < -RotationUnits || value.x > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.x >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.y) || value.y < -RotationUnits || value.y > RotationUnits) {
+  if (!globalThis.Number.isInteger(value.y) || value.y < -RotationUnits || value.y > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.y >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.z) || value.z < -RotationUnits || value.z > RotationUnits) {
+  if (!globalThis.Number.isInteger(value.z) || value.z < -RotationUnits || value.z > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.z >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.w) || value.w < -RotationUnits || value.w > RotationUnits) {
+  if (!globalThis.Number.isInteger(value.w) || value.w < -RotationUnits || value.w > RotationUnits) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.w >>> 0) - (-RotationUnits >>> 0)) >>> 0;
@@ -585,35 +585,35 @@ export function ZeroInput(value) {
 }
 
 export function WriteInput(stream, value) {
-  if (typeof value.stickX !== "number" || !Number.isFinite(Math.fround(value.stickX))) {
+  if (typeof value.stickX !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.stickX))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.stickX;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.stickY !== "number" || !Number.isFinite(Math.fround(value.stickY))) {
+  if (typeof value.stickY !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.stickY))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.stickY;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.throttle !== "number" || !Number.isFinite(Math.fround(value.throttle))) {
+  if (typeof value.throttle !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.throttle))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.throttle;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.yaw !== "number" || !Number.isFinite(Math.fround(value.yaw))) {
+  if (typeof value.yaw !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.yaw))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.yaw;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  if (typeof value.pitch !== "number" || !Number.isFinite(Math.fround(value.pitch))) {
+  if (typeof value.pitch !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.pitch))) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.pitch;
@@ -717,7 +717,7 @@ export class InputPacket {
     this.synchronizeSequence = 0;
     this.currentFrame = 0n;
     this.startFrame = 0n;
-    this.inputs = Array.from({ length: MaxInputsPerPacket }, () => new Input());
+    this.inputs = globalThis.Array.from({ length: MaxInputsPerPacket }, () => new Input());
     this.inputsCount = 0;
   }
 }
@@ -751,7 +751,7 @@ export function ZeroInputPacket(value) {
 }
 
 export function WriteInputPacket(stream, value) {
-  if (!Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.synchronizeSequence;
@@ -772,7 +772,7 @@ export function WriteInputPacket(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.inputsCount) || value.inputsCount < 0 || value.inputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.inputsCount) || value.inputsCount < 0 || value.inputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.inputsCount;
@@ -866,7 +866,7 @@ export function ZeroShipCreate(value) {
 }
 
 export function WriteShipCreate(stream, value) {
-  if (!Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.shipType;
@@ -888,38 +888,38 @@ export function WriteShipCreate(stream, value) {
   }
   if (value.hasFlags) {
     {
-      const flagsValue = BigInt.asUintN(64, value.flags);
+      const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
       if (flagsValue >= 1n << 4n) { // a mask bit above the wire width cannot ride
         return false;
       }
-      NUMBER_SCRATCH.value = Number(flagsValue);
+      NUMBER_SCRATCH.value = globalThis.Number(flagsValue);
       if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
         return false;
       }
     }
   }
-  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return false;
   }
   NUMBER_SCRATCH.value = value.team;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.health) || value.health < 0 || value.health > MaxHealth) {
+  if (!globalThis.Number.isInteger(value.health) || value.health < 0 || value.health > MaxHealth) {
     return false;
   }
   NUMBER_SCRATCH.value = value.health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.thrust) || value.thrust < 0 || value.thrust > 100) {
+  if (!globalThis.Number.isInteger(value.thrust) || value.thrust < 0 || value.thrust > 100) {
     return false;
   }
   NUMBER_SCRATCH.value = value.thrust;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  if (!Number.isInteger(value.pending) || value.pending < 0 || value.pending > 0) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.pending) || value.pending < 0 || value.pending > 0) { // headroom above the wire range cannot ride
     return false;
   }
   return true;
@@ -947,7 +947,7 @@ export function ReadShipCreate(stream, value, nested) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
       return false;
     }
-    value.flags = BigInt(NUMBER_SCRATCH.value);
+    value.flags = globalThis.BigInt(NUMBER_SCRATCH.value);
   } else {
     value.flags = 0n;
   }
@@ -996,14 +996,14 @@ export function ZeroExpressionProbe(value) {
 }
 
 export function WriteExpressionProbe(stream, value) {
-  if (!Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
+  if (!globalThis.Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
     return false;
   }
   NUMBER_SCRATCH.value = value.hardpointIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.spinRate) || value.spinRate < -(-RotationUnits) || value.spinRate > RotationUnits * 2) {
+  if (!globalThis.Number.isInteger(value.spinRate) || value.spinRate < -(-RotationUnits) || value.spinRate > RotationUnits * 2) {
     return false;
   }
   NUMBER_SCRATCH.value = ((value.spinRate >>> 0) - (-(-RotationUnits) >>> 0)) >>> 0;
@@ -1067,28 +1067,28 @@ export function WriteExtremeProbe(stream, value) {
   if (value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorBound - -9223372036854775808n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.floorBound - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.doubledFloor - -9223372036854775808n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.doubledFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ceilingRange - 1n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.ceilingRange - 1n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (typeof value.floorDefault !== "bigint" || value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDefault);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.floorDefault);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1121,7 +1121,7 @@ export function ReadExtremeProbe(stream, value, nested) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.floorDefault = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.floorDefault = globalThis.BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1164,21 +1164,21 @@ export function WriteExtremeRow(stream, value) {
   if (value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedFloor - -9223372036854775808n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.clampedFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (value.clampedCeiling < 1n || value.clampedCeiling > 18446744073709551614n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedCeiling - 1n);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.clampedCeiling - 1n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (typeof value.floorDef !== "bigint" || value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDef);
+  BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.floorDef);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1207,7 +1207,7 @@ export function ReadExtremeRow(stream, value, nested) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.floorDef = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.floorDef = globalThis.BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }

@@ -28,8 +28,8 @@ GO ?= go
 # and a run that tested nothing is refused, never a vacuous pass.
 schema-squirrel-runs-hostile-corpus: dist-squirrel
 	sh test/slowgate/proof schema-squirrel-runs-hostile-corpus \
-		'TestSquirrelRunsHostileCorpus TestSquirrelRunsHostileCorpusPlant TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly' \
-		./internal/ci -run '^TestSquirrelRunsHostileCorpus' -count=1 -timeout 600s
+		'TestSquirrelRunsHostileCorpus TestSquirrelRunsHostileCorpusPlant TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly TestSquirrelHostileScorerOutcomes' \
+		./internal/ci -run '^(TestSquirrelRunsHostileCorpus|TestSquirrelHostileScorerOutcomes)' -count=1 -timeout 600s
 
 # THE NIGHTLY CONTROL: the same plant alone, so a control that stops going red
 # is named without a full corpus run.
