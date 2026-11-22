@@ -12,11 +12,11 @@ build/packet-write-cfloat/rust/.stamp: bin/schema test/packet-write-cfloat/CFloa
 	@touch $@
 
 .PHONY: packet-write-cfloat-rust packet-write-cfloat-rust-negative-control
-packet-write-cfloat-rust: build/packet-write-cfloat/rust/.stamp
+packet-write-cfloat-rust: build/mustrun build/packet-write-cfloat/rust/.stamp
 	@mkdir -p $(PACKET_CFLOAT_RUST_DIR)/driver/src
 	@cp test/packet-write-cfloat/rust/src/main.rs $(PACKET_CFLOAT_RUST_DIR)/driver/src/main.rs
 	@printf '[package]\nname = "packet-write-cfloat-test"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\npacketcfloat = { path = "%s/$(PACKET_CFLOAT_RUST_DIR)/cfloat" }\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" "$(CURDIR)" > $(PACKET_CFLOAT_RUST_DIR)/driver/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo run --offline --quiet --manifest-path $(PACKET_CFLOAT_RUST_DIR)/driver/Cargo.toml -- test/packet-write-cfloat/cases.txt
+	PATH="$(RUSTUP_BIN):$$PATH" $(MUSTRUN) -name packet-write-cfloat-rust -count 10 -- cargo run --offline --quiet --manifest-path $(PACKET_CFLOAT_RUST_DIR)/driver/Cargo.toml -- test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-rust-negative-control: packet-write-cfloat-rust
 	@rm -rf build/packet-write-cfloat/rust-negative

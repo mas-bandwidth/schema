@@ -34,14 +34,23 @@ public final class CardsTest {
         }
         if (!FAILURES.isEmpty()) {
             System.out.println(FAILURES.size() + " check(s) failed");
+        } else {
+            System.out.println("all checks passed");
+        }
+        System.out.println("cards-java-test: ran " + ran + ", failed " + FAILURES.size());
+        if (!FAILURES.isEmpty() || ran == 0) {
             System.exit(1);
         }
-        System.out.println("all checks passed");
     }
+
+    // one counted unit per test function: main prints "ran N, failed M" and
+    // build/mustrun holds N to the count the recipe registers
+    private static int ran = 0;
 
     interface Check { void run() throws Exception; }
 
     static void run(String name, Check c) {
+        ran++;
         try {
             c.run();
             System.out.println("PASS " + name);

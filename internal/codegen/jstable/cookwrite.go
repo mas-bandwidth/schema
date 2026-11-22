@@ -480,16 +480,16 @@ func cookScalarLiteral(u *ir.Unit, f *ir.Field, qn string, at int64, variable bo
 	case ir.TBool:
 		return fmt.Sprintf("{k:\"bool\",n:%s,at:%d}", qn, at)
 	case ir.TFloat32, ir.TFloat64:
-		// rg marks a COMPRESSED (ranged) float, whose -0 the writer stores
-		// as +0 (docs/rulings.json fixed-compressed-negzero)
-		k, rg := "f32", ""
+		// c:1 marks a COMPRESSED float, whose -0 the writer stores as +0
+		// (docs/SPEC-TABLES.md §3.3; docs/rulings.json fixed-compressed-negzero).
+		k, c := "f32", ""
 		if f.Type.Kind == ir.TFloat64 {
 			k = "f64"
 		}
 		if f.HasFloatRange {
-			rg = ",rg:1"
+			c = ",c:1"
 		}
-		return fmt.Sprintf("{k:%q,n:%s,at:%d%s}", k, qn, at, rg)
+		return fmt.Sprintf("{k:%q,n:%s,at:%d%s}", k, qn, at, c)
 	case ir.TInt, ir.TFixed, ir.TBits:
 		w := int64(f.Type.Width) / 8
 		sg := 0
@@ -661,8 +661,6 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
   }
   function writeValue(view, at, fd, value, le, ctx) {
-    // a compressed float's -0 is stored as +0 (fixed-compressed-negzero)
-    if (fd.rg === 1 && value === 0) { value = 0; }
     switch (fd.k) {
       case "bool":
         if (typeof value !== "boolean") { return false; }
@@ -671,11 +669,14 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       case "f32":
         if (typeof value !== "number") { return false; }
         if (!globalThis.Number.isFinite(globalThis.Math.fround(value))) { return refuseFloat(ctx); }
+        // a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+        if (fd.c === 1 && value === 0) { value = 0; }
         if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
         if (!globalThis.Number.isFinite(value)) { return refuseFloat(ctx); }
+        if (fd.c === 1 && value === 0) { value = 0; }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":

@@ -112,13 +112,13 @@ tables-goose-strict-emitter-negative-control:
 		cat $(GOOSE_GATES_DIR)/sabotage.log; \
 		echo "NEGATIVE CONTROL FAILED: the gate went red on [$$(echo $$got)], expected exactly [$$(echo $$want)]"; exit 1; fi; \
 	exits=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+: goose check exits ' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^.*: goose check exits [0-9]+: ([^:]+):[0-9]+: .*$$|\1|' | LC_ALL=C sort -u); \
-	for m in $$exits; do echo "$$want" | grep -q "/$$m$$" || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: a module exits on $$m, which the sabotage did not plant"; exit 1; }; done; \
+	for m in $$exits; do echo "$$want" | grep "/$$m$$" >/dev/null || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: a module exits on $$m, which the sabotage did not plant"; exit 1; }; done; \
 	other=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/' $(GOOSE_GATES_DIR)/sabotage.log | grep -v 'unknown type: schema_rt::FixedReportUnreachable'); \
 	if [ -n "$$other" ]; then echo "$$other"; echo "NEGATIVE CONTROL FAILED: the gate named a finding the sabotage did not plant"; exit 1; fi; \
 	placed=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+\.goose:[0-9]+: error: ' $(GOOSE_GATES_DIR)/sabotage.log); \
 	[ -n "$$placed" ] || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: no finding is placed on a line"; exit 1; }; \
 	echo "$$placed" | while IFS=: read -r file line rest; do \
-		sed -n "$${line}p" "$$file" | grep -q 'schema_rt::FixedReportUnreachable' || { \
+		sed -n "$${line}p" "$$file" | grep 'schema_rt::FixedReportUnreachable' >/dev/null || { \
 			echo "NEGATIVE CONTROL FAILED: $$file:$$line does not name the planted binding"; exit 1; }; \
 	done || exit 1; \
 	echo "goose strict emitter negative control: an unreachable binding in the emitter reds exactly $$(echo $$want | wc -w | tr -d ' ') Table modules, each on the line that names it, and nothing else"
@@ -233,7 +233,7 @@ tables-goose-names-negative-control:
 		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: CookOpen names went unclaimed and the gate stayed green"; exit 1; fi
 	@grep -q 'CookOpen into namespace .* without claiming it' $(GOOSE_NAMES_DIR)/log || { \
 		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on an unclaimed CookOpen"; exit 1; }
-	@if grep 'without claiming it' $(GOOSE_NAMES_DIR)/log | grep -v 'CookOpen into namespace' | grep -q .; then \
+	@if grep 'without claiming it' $(GOOSE_NAMES_DIR)/log | grep -v 'CookOpen into namespace' | grep . >/dev/null; then \
 		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: the gate named a name the sabotage did not unclaim"; exit 1; fi
 	@echo "goose names negative control: $$(grep -c 'without claiming it' $(GOOSE_NAMES_DIR)/log) unclaimed CookOpen name(s) named, nothing else"
 

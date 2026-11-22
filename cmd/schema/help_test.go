@@ -173,7 +173,11 @@ func TestSchemaSkillIsWellFormed(t *testing.T) {
 	if !strings.Contains(body, aiGuideURL) {
 		t.Errorf("SKILL.md does not point at %s", aiGuideURL)
 	}
-	for _, target := range helpTargets() {
+	allHelpTargets := helpTargets()
+	if len(allHelpTargets) == 0 {
+		t.Fatal("helpTargets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allHelpTargets {
 		if !strings.Contains(body, "`"+target+"`") {
 			t.Errorf("SKILL.md's --lang list leaves out %s", target)
 		}

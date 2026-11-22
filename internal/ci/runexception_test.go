@@ -42,6 +42,7 @@ func TestRunExceptionsNameExistingTests(t *testing.T) {
 
 	tokenRe := regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 	checked := 0
+	tokensChecked := 0
 	for _, e := range runPatternExceptions {
 		file, _, _ := strings.Cut(e.where, " ")
 		if file != "make/go.mk" && file != "Makefile" {
@@ -61,6 +62,7 @@ func TestRunExceptionsNameExistingTests(t *testing.T) {
 			continue
 		}
 		for _, tok := range tokenRe.FindAllString(r.pattern, -1) {
+			tokensChecked++
 			found := false
 			for name := range testNames {
 				if strings.Contains(name, tok) {
@@ -75,6 +77,12 @@ func TestRunExceptionsNameExistingTests(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no -run exceptions in make/go.mk or Makefile: this gate is looking at the wrong list")
+	}
+	// '^$' and $( ... ) patterns name no test, but the go.mk exceptions for
+	// tables-go-soak, tables-go-release, tables-go-usage and the cards module
+	// name literal tests: a run that resolved no token checked no test name.
+	if tokensChecked == 0 {
+		t.Fatal("no -run exception pattern yielded a test-name token: the existence check checked nothing")
 	}
 	t.Logf("checked %d -run exceptions in make/go.mk and Makefile against %d declared test functions", checked, len(testNames))
 }

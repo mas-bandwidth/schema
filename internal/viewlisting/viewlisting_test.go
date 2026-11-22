@@ -67,7 +67,11 @@ func TestUnitViewListingMatchesTheIR(t *testing.T) {
 			only[name] = true
 		}
 	}
-	for _, path := range corpus(t) {
+	allCorpus := corpus(t)
+	if len(allCorpus) == 0 {
+		t.Fatal("corpus(t) is empty: the loop below would check nothing")
+	}
+	for _, path := range allCorpus {
 		unit := load(t, path)
 		if len(only) > 0 && !only[unit.Package] {
 			continue

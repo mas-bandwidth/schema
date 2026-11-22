@@ -110,6 +110,9 @@ func TestSpecPointerTargetTypeChecked(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(vectors) == 0 {
+			t.Fatal("vectors is empty: the loop below would check nothing")
+		}
 		for _, v := range vectors {
 			if !named[filepath.Base(v)] {
 				t.Errorf("%s is not named by MANIFEST.tsv", v)

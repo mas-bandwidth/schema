@@ -114,7 +114,11 @@ table LocalsTable
 // a property.
 func TestFieldsNamedLikeGeneratorLocalsGenerateEveryTarget(t *testing.T) {
 	t.Parallel()
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
 			// a unit per target: no generator shares IR with another

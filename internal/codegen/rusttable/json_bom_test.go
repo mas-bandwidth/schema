@@ -237,13 +237,13 @@ fn main() {
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
 	}
 	t.Logf("Rust BOM boundary probe output:\n%s", string(out))
+	if !strings.Contains(string(out), "BOM PROBE DONE") {
+		t.Fatalf("the probe did not finish:\n%s", out)
+	}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "MISMATCH ") {
 			t.Errorf("%s", line)
 		}
-	}
-	if !strings.Contains(string(out), "BOM PROBE DONE") {
-		t.Fatalf("the probe did not finish:\n%s", out)
 	}
 }
 

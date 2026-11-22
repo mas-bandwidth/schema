@@ -226,6 +226,9 @@ table Root { child *Node }
 	m := tabletext.NewModel(u)
 	rows := fixedBytesRows(t, u, real)
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		table := u.Tables[row.table]
 		if table == nil {

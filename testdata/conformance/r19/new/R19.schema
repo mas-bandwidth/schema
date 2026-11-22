@@ -1,0 +1,21 @@
+// R19.schema, the NEW side of the Go conformance row R19's committed pair
+// (test/conformance/go/rows/R19_test.go). R19's law: "a clean NEW-READS-OLD
+// of an appended field, variant, arm, flag or keyed slot moves no counter at
+// all" (docs/roadmap.sexp, go/R19).
+//
+// The pair differs by EXACTLY ONE definition change from ../old/R19.schema:
+// the field w appended at the end. schema.lock beside this file was written
+// by `schema lock` over the old side and then over this one, so it carries the
+// old layout as a lineage entry and this generation reads ../old.bin.
+package tblr19
+
+fixed table Reading
+{
+    x int32 = 0
+    y int32 = 0
+    z int32 = 0
+    // THE APPEND. A non-zero default, so a reader that zero-fills the slot
+    // instead of landing the declared default is told apart from one that
+    // lands it: a NEW reader given an OLD record lands 77 here.
+    w int32 = 77
+}

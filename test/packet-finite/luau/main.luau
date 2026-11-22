@@ -305,7 +305,9 @@ for _, c in finite64 do
 	vectors += 1
 end
 
-if failures > 0 then
+-- The last stdout line is the count tools/mustrun reads.
+print(string.format("packet finite Luau: ran %d, failed %d", vectors, failures))
+if failures > 0 or vectors == 0 then
 	error(string.format("packet finite Luau: %d of %d vectors FAILED", failures, vectors), 0)
 end
-print(string.format("OK: packet finite Luau, %d vectors", vectors))
+

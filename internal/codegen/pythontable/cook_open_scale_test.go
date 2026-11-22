@@ -92,7 +92,11 @@ func TestPythonCookOpenFunctionalScale(t *testing.T) {
 		writeTree(t, dir, tree)
 		return string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)}))
 	}
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		out := run(runner, files, cookOpenFaultProbe)
 		if lo, hi := cookScaleRange(t, name+" faults", out, 1); hi > 5*lo {
 			t.Errorf("%s: page faults per open grew more than fivefold: %s", name, out)

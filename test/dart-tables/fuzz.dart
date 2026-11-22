@@ -383,6 +383,8 @@ void main(List<String> args) {
   for (final root in ['Scene', 'Depot', 'Album', 'TreeNode', 'ListNode']) {
     final path = 'build/cook-fuzz/$root.cook';
     if (!File(path).existsSync()) {
+      // a cook image the recipe did not build is a red run, never a smaller one
+      report(root, 0, 0, seed, 'the cook image $path is missing');
       continue;
     }
     cooks.add(
@@ -427,7 +429,9 @@ void main(List<String> args) {
     );
   }
 
+  var walkedCooks = 0;
   for (final c in cooks) {
+    var walked = 0;
     for (var i = 0; i < mutants; i++) {
       final rng = Rng(seed ^ (i * 0x9e3779b97f4a7c15) ^ c.name.hashCode);
       final file = mutate(c.file, rng, i);
@@ -437,6 +441,7 @@ void main(List<String> args) {
         if (opened == null) {
           continue;
         }
+        walked++;
         final (region, length) = cookRegionOf(opened);
         cookWhole(file, region, length, c.info, derefOf(opened));
       } on Finding catch (e) {
@@ -445,11 +450,16 @@ void main(List<String> args) {
         report(c.name, i % 6, i, seed, 'an exception ESCAPED the reader: $e');
       }
     }
+    walkedCooks += walked;
+    if (mutants > 0 && walked == 0) {
+      // every mutant refused: the walk under test never ran for this cook
+      report(c.name, 0, 0, seed, 'no mutant of ${c.name} opened: the cook walk was never exercised');
+    }
   }
 
   stdout.write(
     'dart tables fuzz: $checked mutants over ${blocks.length} blocks and '
-    '${cooks.length} cooks, seed $seed — $failures finding(s)\n',
+    '${cooks.length} cooks ($walkedCooks cook mutants opened and walked), seed $seed — $failures finding(s)\n',
   );
   exit(failures == 0 ? 0 : 1);
 }

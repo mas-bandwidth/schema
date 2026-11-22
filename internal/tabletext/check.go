@@ -229,7 +229,7 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 		if kind == ir.TableKindF32 && math.Abs(cell.F) > math.MaxFloat32 {
 			return bad("%v past float32", cell.F)
 		}
-		if f.HasFloatRange && (cell.F < f.FMin || cell.F > f.FMax) {
+		if f.HasFloatRange && !ir.CompressedFloatInRange(f.FMin, f.FMax, cell.F) {
 			return bad("%v off its range [%v, %v]", cell.F, f.FMin, f.FMax)
 		}
 		return nil

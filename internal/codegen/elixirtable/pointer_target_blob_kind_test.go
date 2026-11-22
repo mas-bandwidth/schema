@@ -326,6 +326,7 @@ func TestElixirPointerTargetTypeChecked(t *testing.T) {
 	}
 	elixirPointerTargetCheck(t, out, rows)
 	// a record of a type the reader cannot name reads null under its slot
+	nulled := 0
 	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Split(strings.TrimSpace(line), "|")
 		if len(f) != 4 || f[0] != "ROW" {
@@ -333,6 +334,7 @@ func TestElixirPointerTargetTypeChecked(t *testing.T) {
 		}
 		for _, row := range rows {
 			if row.name == f[1] && row.verdict == "read" && row.unknown > 0 {
+				nulled++
 				for _, a := range f[2:] {
 					if !strings.HasSuffix(a, ":null") {
 						t.Errorf("%s: the pointer reads %s, want null", row.name, a)
@@ -340,5 +342,8 @@ func TestElixirPointerTargetTypeChecked(t *testing.T) {
 				}
 			}
 		}
+	}
+	if nulled == 0 {
+		t.Fatalf("no read row with an unknown record answered, so the null-pointer rule was checked against nothing\n%s", out)
 	}
 }

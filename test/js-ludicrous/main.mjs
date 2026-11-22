@@ -23,12 +23,17 @@ import { WriteStream, ReadStream } from "../../../serialize.js/src/index.js";
 import * as lud from "../../generated/js-ludicrous/Ludicrous.js";
 import * as ludFlat from "../../generated/js-ludicrous/LudicrousFlat.js";
 
-let failed = false;
+// every check() call is counted: the last line this program prints is
+// "ran N, failed M", which tools/mustrun holds against the count the recipe
+// registers, so a check that stops running is red.
+let ran = 0;
+let failed = 0;
 
 function check(ok, what) {
+  ran++;
   if (!ok) {
     console.log(`FAILED: ${what}`);
-    failed = true;
+    failed++;
   }
 }
 
@@ -281,4 +286,7 @@ let takenWire;
   check(!lud.ReadUnsignedProbe(hrs, hOut), "a smuggled ufixed high-half offset is REJECTED");
 }
 
-console.log("OK");
+console.log(`ran ${ran}, failed ${failed}`);
+if (failed !== 0 || ran === 0) {
+  process.exit(1);
+}

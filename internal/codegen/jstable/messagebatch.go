@@ -733,13 +733,12 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // messageDiffers is the elision compare of one value against its default. A
 // float compares its BIT PATTERN (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
 // Object.is is the bit compare for two finite values, so a -0 under a +0
-// default rides, and a NaN never elides and reaches the writer's refusal.
-//
-// A COMPRESSED float's -0 IS +0 (docs/rulings.json fixed-compressed-negzero):
-// it elides by VALUE, where -0 === 0, so its -0 under a +0 default is absent
-// as its +0 twin is.
+// default rides, and a NaN never elides and reaches the writer's refusal. A
+// COMPRESSED float's -0 is stored as +0 (§3.3, docs/rulings.json
+// fixed-compressed-negzero), so it compares by value: a -0 under a +0 default
+// elides exactly as +0 does.
 func messageDiffers(f *ir.Field, lhs, def string) string {
-	if _, _, ok := fixedFloatClampEnds(f); ok {
+	if fixedIsFloat(f.Type) && f.HasFloatRange {
 		return lhs + " !== " + def
 	}
 	if fixedIsFloat(f.Type) {
@@ -1019,9 +1018,8 @@ func messageStoredDefaultCond(f *ir.Field, mem string) string {
 		return ""
 	}
 	def := fixedZeroFor(f)
-	if _, _, ok := fixedFloatClampEnds(f); ok {
-		// a compressed float's -0 is +0 (fixed-compressed-negzero)
-		return mem + " === " + def
+	if fixedIsFloat(f.Type) && f.HasFloatRange {
+		return mem + " === " + def // a compressed -0 is +0 (§3.3)
 	}
 	if fixedIsFloat(f.Type) {
 		return "globalThis.Object.is(" + mem + ", " + def + ")"

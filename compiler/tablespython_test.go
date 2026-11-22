@@ -70,6 +70,9 @@ func TestPythonTablesEmitTheSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.Contains(name, "_schema/load.py") || strings.HasSuffix(name, "Tables.py") {
 			t.Errorf("a table-free unit emitted the table source %s", name)
@@ -102,6 +105,9 @@ func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
 	got, ok := Carried("python")
 	if !ok {
 		t.Fatal("the python target registered no carries set")
+	}
+	if len(got) == 0 {
+		t.Fatal("got is empty: the loop below would check nothing")
 	}
 	for _, construct := range got {
 		if !slices.Contains(nonGoCarriers["python"], construct) {

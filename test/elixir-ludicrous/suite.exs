@@ -10,18 +10,28 @@ defmodule SchemaTestElixirLudicrous do
     bits
   end
 
+  # every check is counted: the last line this program prints is
+  # "ran N, failed M", which tools/mustrun holds against the count the recipe
+  # registers, so a check that stops running is red.
   def check(ok, what) do
+    Process.put(:schema_test_ran, Process.get(:schema_test_ran, 0) + 1)
+
     unless ok do
       IO.puts("FAILED: #{what}")
-      Process.put(:schema_test_failed, true)
+      Process.put(:schema_test_failed, Process.get(:schema_test_failed, 0) + 1)
     end
   end
 
   def expect_raise(fun, what) do
-    fun.()
-    check(false, what)
-  rescue
-    ArgumentError -> :ok
+    raised =
+      try do
+        fun.()
+        false
+      rescue
+        ArgumentError -> true
+      end
+
+    check(raised, what)
   end
 
   def golden(name), do: File.read!("../../testdata/wire/#{name}.bin")
@@ -251,11 +261,13 @@ defmodule SchemaTestElixirLudicrous do
       "a smuggled ufixed high-half offset is REJECTED"
     )
 
-    if Process.get(:schema_test_failed, false) do
+    ran = Process.get(:schema_test_ran, 0)
+    failed = Process.get(:schema_test_failed, 0)
+    IO.puts("ran #{ran}, failed #{failed}")
+
+    if failed != 0 or ran == 0 do
       System.halt(1)
     end
-
-    IO.puts("OK")
   end
 end
 

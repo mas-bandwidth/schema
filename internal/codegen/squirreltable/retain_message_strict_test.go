@@ -377,7 +377,11 @@ func TestSquirrelRetainOnMessageForm(t *testing.T) {
 	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	newerFiles, olderFiles, probe, inputs := sqRetainMessageSetup(t)
 	normal := runSqRetainMessageProbe(t, newerFiles, olderFiles, probe, inputs)
-	for _, c := range sqRetainMessageCases() {
+	allSqRetainMessageCases := sqRetainMessageCases()
+	if len(allSqRetainMessageCases) == 0 {
+		t.Fatal("sqRetainMessageCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allSqRetainMessageCases {
 		line := normal[c.name]
 		if !strings.HasPrefix(line, c.name+":true:") {
 			t.Errorf("%s: retain round trip %q, want %s:true:<retained>:0", c.name, line, c.name)

@@ -128,16 +128,19 @@ func TestCompareTreesBothWays(t *testing.T) {
 	if d, n, err := CompareTrees(same, writeTree(t, base), true); err != nil || d != nil || n != 2 {
 		t.Fatalf("identical trees: %v, %d, %v", d, n, err)
 	}
-	d, _, _ := CompareTrees(same, writeTree(t, map[string]string{"a.bin": "\x01\x09", "tables/b.bin": "\x03"}), true)
+	d, _, err := CompareTrees(same, writeTree(t, map[string]string{"a.bin": "\x01\x09", "tables/b.bin": "\x03"}), true)
+	if err != nil {
+		t.Fatalf("one changed byte: %v", err)
+	}
 	if d == nil || d.File != "a.bin" || d.Offset != 1 || d.Old != 2 || d.New != 9 {
 		t.Errorf("one changed byte: %+v", d)
 	}
 	short := writeTree(t, map[string]string{"a.bin": "\x01\x02"})
-	if d, _, _ := CompareTrees(same, short, true); d == nil || d.File != "tables/b.bin" || d.Offset != -1 {
-		t.Errorf("a pin the new side stopped writing: %+v", d)
+	if d, _, err := CompareTrees(same, short, true); err != nil || d == nil || d.File != "tables/b.bin" || d.Offset != -1 {
+		t.Errorf("a pin the new side stopped writing: %+v, %v", d, err)
 	}
-	if d, n, _ := CompareTrees(same, short, false); d != nil || n != 1 {
-		t.Errorf("one side stopped early: %+v, %d compared; want the common file alone, equal", d, n)
+	if d, n, err := CompareTrees(same, short, false); err != nil || d != nil || n != 1 {
+		t.Errorf("one side stopped early: %+v, %d compared, %v; want the common file alone, equal", d, n, err)
 	}
 }
 

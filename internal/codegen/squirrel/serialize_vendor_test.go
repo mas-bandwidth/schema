@@ -64,6 +64,9 @@ func TestVendoredSquirrelSerializeIsThePin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), "serialize") || !strings.HasSuffix(e.Name(), ".nut") {
 			continue

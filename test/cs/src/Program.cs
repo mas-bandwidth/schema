@@ -36,11 +36,18 @@ static class Program
     static bool failed;
     static string wireDir;
 
+    // every Check is one counted unit: Main prints "ran N, failed M" and
+    // build/mustrun holds N to the count the recipe registers
+    static int ran;
+    static int failures;
+
     static void Check(bool ok, string what)
     {
+        ran++;
         if (!ok)
         {
             Console.WriteLine("FAILED: " + what);
+            failures++;
             failed = true;
         }
     }
@@ -1724,11 +1731,12 @@ static class Program
             Check(off == stream.Count, "the joins reads consume the whole golden");
         }
 
-        if (failed)
+        if (!failed)
         {
-            return 1;
+            Console.WriteLine("OK");
         }
-        Console.WriteLine("OK");
-        return 0;
+        int failedCount = failed ? Math.Max(failures, 1) : 0;
+        Console.WriteLine("schematest: ran " + ran + ", failed " + failedCount);
+        return (failed || ran == 0) ? 1 : 0;
     }
 }
