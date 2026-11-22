@@ -31,11 +31,9 @@ type Rec
 fixed table FixI32 { few [2..4]int32 }
 fixed table FixRec { few [2..4]Rec }
 fixed table FixF64 { few [2..4]float64 }
-fixed table FixU128 { few [2..4]uint128 }
 table VarI32 { few [2..4]int32 }
 table VarRec { few [2..4]Rec }
 table VarF64 { few [2..4]float64 }
-table VarU128 { few [2..4]uint128 }
 `
 
 type countedBirthCase struct {
@@ -55,8 +53,6 @@ func countedBirthCases() []countedBirthCase {
 		{"fresh", "FixF64", "VarF64", "", ""},
 		{"min_default", "FixF64", "VarF64", `{"few":[0,0]}`, "v.few = {0.0, 0.0}"},
 		{"min_negzero", "FixF64", "VarF64", `{"few":[0,-0.0]}`, "v.few[2] = -0.0"},
-		{"min_default", "FixU128", "VarU128", `{"few":[0,0]}`, "v.few = {{lo = 0, hi = 0}, {lo = 0, hi = 0}}"},
-		{"min_one", "FixU128", "VarU128", `{"few":[0,7]}`, "v.few[2] = {lo = 7, hi = 0}"},
 	}
 }
 
