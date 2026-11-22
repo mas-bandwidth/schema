@@ -2561,9 +2561,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **JavaScript**
 
-  - `FixedSave`: 1–8 every build
+  - `FixedSave`: 1–8 every build; a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`, and row 3 holds the count to its `Min`
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` value that is negative or holds a bit at or above its declared width, `invalid_value`); a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`
 
   - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
@@ -2611,7 +2611,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–8 every build
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` bit at or above its declared width, `MsgRefuseInvalidValue`)
 
   - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
 

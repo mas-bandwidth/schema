@@ -436,15 +436,17 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLength(expr, f.KeyEnumRef.Max, ind)
 		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), expr, ind)
 	case f.Array == ir.ArrayFixed:
 		g.emitCheckValueArray(expr, ind)
+		g.emitCheckValueLength(expr, f.ArrayBound, ind)
 		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), expr, ind)
 	case f.Array == ir.ArrayCounted:
 		g.emitCheckValueArray(expr, ind)
 		count := expr + "Count"
-		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
-			ind, count, count, count, count, f.ArrayBound)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < %d || %s > %d) { return false; }\n",
+			ind, count, count, count, f.ArrayMin, count, f.ArrayBound)
 		g.emitCheckValueLoop(f, count, expr, ind)
 	case f.Type.Kind == ir.TString:
 		g.emitCheckValueText(f, expr, ind)
@@ -453,6 +455,14 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	default:
 		g.emitCheckValueElement(f, expr, ind)
 	}
+}
+
+// emitCheckValueLength holds a [N]T (and an enum-keyed array, N its variant
+// count) to EXACTLY N elements, as the variable Save does
+// (TableVariableArrayValid): a longer array is refused, never cut at N, and a
+// shorter one is refused, never read past its end (docs/SPEC.md §5.1).
+func (g *fixedGen) emitCheckValueLength(expr string, n int64, ind string) {
+	g.pf("%sif (%s.length !== %d) { return false; }\n", ind, expr, n)
 }
 
 // emitCheckValueArray is the storage-type guard a fixed array or a text field
@@ -1921,7 +1931,15 @@ func (g *fixedGen) emitFromTextField(f *ir.Field) {
 		if f.KeyEnum != "" {
 			bound = f.KeyEnumRef.Max
 		}
-		g.pf("  if (%s !== null && typeof %s === \"object\" && typeof %s.length === \"number\") {\n", s, s, s)
+		if f.Array != ir.ArrayCounted {
+			// a [N]T of any other length is carried as held, never cut at N,
+			// so <T>FixedCheckBody refuses it (docs/SPEC.md §5.1)
+			g.pf("  if (%s !== null && typeof %s === \"object\" && typeof %s.length === \"number\" && %s.length !== %d) { %s = %s; }\n", s, s, s, s, bound, d, s)
+			g.pf("  else ")
+		} else {
+			g.pf("  ")
+		}
+		g.pf("if (%s !== null && typeof %s === \"object\" && typeof %s.length === \"number\") {\n", s, s, s)
 		g.pf("    const n = globalThis.Math.min(%s.length, %d);\n", s, bound)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
 			g.pf("    %sCount = typeof %sCount === \"number\" ? %sCount : %s.length;\n", d, s, s, s)
