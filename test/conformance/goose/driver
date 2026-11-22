@@ -988,6 +988,8 @@ else
 	active_units=$(main_units "$1" "$2")
 fi
 running=0
+pids=""
+jobfailed=0
 keys=""
 for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 	printf '%s\n' "$active_units" | grep -qx "$key" || continue
@@ -1035,13 +1037,22 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			echo $? >"$dir/$2.$key.rc"
 		) &
 	fi
+	pids="$pids $!"
 	running=$((running + 1))
 	if [ "$running" -ge 8 ]; then
-		wait
+		for p in $pids; do
+			wait "$p" || jobfailed=1
+		done
+		pids=""
 		running=0
 	fi
 done
-wait
+# Each job is waited on by its pid, never a bare wait (F-068). A unit's status
+# is the one its job recorded in its .rc file, read below; a job that exited
+# non-zero without a failing .rc is still a failure.
+for p in $pids; do
+	wait "$p" || jobfailed=1
+done
 for key in $keys; do
 	status=$(cat "$dir/$2.$key.rc" 2>/dev/null || echo 1)
 	if [ "$status" -ne 0 ]; then
@@ -1050,4 +1061,8 @@ for key in $keys; do
 	fi
 	cat "$dir/$2.$key.out" >>"$out"
 done
+if [ "$jobfailed" -ne 0 ]; then
+	echo "driver: a unit job exited non-zero and recorded no failing status" >&2
+	exit 1
+fi
 GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h =~ /^absent(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; print $f (defined $1 ? $1 : ""); close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$out"

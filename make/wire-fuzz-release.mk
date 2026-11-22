@@ -143,9 +143,12 @@ wire-fuzz-release-targets:
 tables-wire-fuzz-release-negative-control: build/conformance-harness
 	sh test/conformance/dart/negative-control mapheader "$(DART)"
 	@rm -rf build/wire-fuzz-release-nc
-	@for s in $(WIRE_FUZZ_RELEASE_SEEDS); do \
+	@# each seed's run waited on by its pid, never a bare wait (F-068)
+	@pids=; for s in $(WIRE_FUZZ_RELEASE_SEEDS); do \
 		WFR_DRIVER="$(CURDIR)/build/conformance-dart-negative-mapheader/conformance-dart wire-fuzz" WFR_FLAGS="$(WFR_FLAGS_dart)" WFR_ENV= \
-		sh make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & done; wait
+		sh make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & pids="$$pids $$!"; done; \
+	failed=0; for p in $$pids; do wait "$$p" || failed=1; done; \
+	if test "$$failed" -ne 0; then echo "NEGATIVE CONTROL FAILED: a release wire-fuzz run exited non-zero" >&2; exit 1; fi
 	@cat build/wire-fuzz-release-nc/*.row | awk -F'\t' '{ print $$1 " | " $$2 " | " $$3 " | " $$4 }'
 	@red=$$(cut -f4 build/wire-fuzz-release-nc/*.row | grep -cE '^RED: .*(report|read acceptance) differs'); \
 	if [ "$$red" -eq 0 ]; then echo "NEGATIVE CONTROL FAILED: the map header bounded by L left the release gate green on every seed"; exit 1; fi; \

@@ -470,11 +470,8 @@ TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason|TableRefuse
 # blast radius (a package rename through `test/tables/main.cpp`, the goldens,
 # and the tabletext and tablepack suites that load `tables/examples` by name),
 # so it is named here rather than done under a wire branch.
-TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
-	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
-	build/tables-generated/p3/*Table.h \
-	build/tables-generated/fixedevo/*Table.h build/tables-generated/m1/*Table.h \
-	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
+TABLES_ZERO_COST_UNITS := v1 v2 p1 p3 fixedevo m1 m2 scalars
+TABLES_ZERO_COST_HEADERS := $(foreach u,$(TABLES_ZERO_COST_UNITS),build/tables-generated/$(u)/*Table.h)
 
 # $(1) one header. True when it carries a symbol the gate refuses. The last
 # stage reads ALL of its input (grep . >/dev/null, never grep -q): under
@@ -483,14 +480,27 @@ TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
 # leaks read as clean (F-067). tables-zero-cost-negative-control plants 17,576.
 tables_zero_cost_leaks = grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $(1) | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep . >/dev/null
 
+# $(1) a generated tree. The gate's whole scan: every registered unit must
+# hold at least one readable *Table.h, and no header may leak. A missing or
+# unreadable header is refused before it is scanned (F-072): grep on a file it
+# cannot open finds nothing, so the leak test above read a missing unit, or
+# all eight, as clean. An unmatched glob stays literal and is refused the same
+# way. tables-zero-cost-negative-control removes a unit and requires red.
+tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
+		for f in $(1)/$$u/*Table.h; do \
+			if ! test -f "$$f" || ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: registered unit $$u has no readable header: $$f"; exit 1; \
+			fi; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
+	done
+
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
-	@for f in $(TABLES_ZERO_COST_HEADERS); do \
-		if $(call tables_zero_cost_leaks,$$f); then \
-			grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
-			echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
-		fi; \
-	done
+	@$(call tables_zero_cost_scan,build/tables-generated)
 	@echo "tables zero-cost gate: value-only tables carry no pointer, map or list machinery"
 
 # THE NEGATIVE CONTROL. The gate above sanctions ONE node spelling, so it owes a
@@ -518,7 +528,20 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@if ! $(call tables_zero_cost_block_files_found,build/zero-cost-control/blockfiles); then \
 		echo "NEGATIVE CONTROL FAILED: 1000 planted Block files left the block-file check green (F-067: its reader quit early and find died of SIGPIPE)"; exit 1; \
 	fi
-	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not; 17576 planted symbols and 1000 planted Block files are RED too"
+	@# F-072: a copy of the registered units scans green, and the same copy with
+	@# one unit's headers removed (scalars) must be refused, not read as clean.
+	@mkdir -p build/zero-cost-control/tree && for u in $(TABLES_ZERO_COST_UNITS); do \
+		mkdir -p build/zero-cost-control/tree/$$u && cp build/tables-generated/$$u/*Table.h build/zero-cost-control/tree/$$u/ || exit 1; \
+	done
+	@( $(call tables_zero_cost_scan,build/zero-cost-control/tree) ) > build/zero-cost-control/tree.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: a copy of the registered headers did not scan green"; cat build/zero-cost-control/tree.log; exit 1; }
+	@rm -f build/zero-cost-control/tree/scalars/*Table.h
+	@if ( $(call tables_zero_cost_scan,build/zero-cost-control/tree) ) > build/zero-cost-control/missing.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a registered unit with no header left the zero-cost scan green (F-072)"; exit 1; \
+	fi
+	@grep 'registered unit scalars has no readable header' build/zero-cost-control/missing.log >/dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: the missing unit was refused for another reason:"; cat build/zero-cost-control/missing.log; exit 1; }
+	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not; 17576 planted symbols, 1000 planted Block files and a registered unit with no header are RED too"
 
 # THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
 # technique (docs/PORTING.md, schema#421): the generated accessor and the
@@ -3220,10 +3243,13 @@ tables-big-endian-control-only: build/tables-main-be-control.cpp
 	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
 	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order/examples
 	@./build/schema-host-order generate --lang cpp --out build/tables-host-order/examples tables/examples
+	@# Both compilers at once, each waited on by its own pid (F-068): a bare
+	@# wait returned 0 when either compile failed.
 	@set -e; \
-	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & \
-	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & \
-	wait
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & host=$$!; \
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & be=$$!; \
+	failed=0; wait "$$host" || failed=1; wait "$$be" || failed=1; \
+	if test "$$failed" -ne 0; then echo "NEGATIVE CONTROL FAILED: a host-order control binary did not compile" >&2; exit 1; fi
 	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; cat build/host-order-host.log; exit 1; }
 	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
@@ -8243,22 +8269,29 @@ cards-conformance-all-goose:
 	exit $$fail
 
 # ---- Per-commit big-endian smoke and nightly full battery (green-be-nightly) ----
+# The ten generators run at once, and each one's pid is kept and waited on by
+# itself (F-068): a bare `wait` returns 0 whatever the jobs did, so a failed
+# P2 generator wrote the stamp and a retry skipped the missing tree. Every job
+# is waited for, and the line fails if any of them failed, so the stamp below
+# is never touched over a failed child.
 define be_main_generate
-	@set -e; \
-	$(1) generate --lang cpp --out $(2)/examples tables/examples & \
-	$(1) generate --lang cpp --out $(2)/pointers tables/pointers & \
-	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema & \
-	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema & \
-	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema & \
-	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema & \
-	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema & \
-	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema & \
-	$(1) generate --lang cpp --out $(2)/scalars tables/scalars & \
-	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema & \
-	wait
+	@set -e; pids=; \
+	$(1) generate --lang cpp --out $(2)/examples tables/examples & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/pointers tables/pointers & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/scalars tables/scalars & pids="$$pids $$!"; \
+	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema & pids="$$pids $$!"; \
+	failed=0; for p in $$pids; do wait "$$p" || failed=1; done; \
+	if test "$$failed" -ne 0; then echo "FAILED: a big-endian generator failed; $(2)/.stamp is not written" >&2; exit 1; fi
 endef
 
 build/tables-generated-be/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/F1.schema
+	@rm -f $@
 	@mkdir -p build/tables-generated-be
 	$(call be_main_generate,./bin/schema,build/tables-generated-be)
 	@touch $@
