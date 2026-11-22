@@ -185,9 +185,9 @@ func check(t *testing.T, plain bool, minus, plus []byte) {
 
 // TestGoCompressedFloatStoresAreGuarded is the fast twin of the probe below:
 // it reads the generated source rather than running it. Every variable-form
-// store of a compressed float sits in the else of a zero test that stores +0,
-// and the plain float's store does not (the control). The JSON and cook
-// runtimes carry the same test.
+// store of a compressed float adds +0 to the value before taking its bits
+// (-0 + 0 is +0, every other value is itself), and the plain float's store
+// does not (the control). The JSON and cook runtimes carry the same rule.
 func TestGoCompressedFloatStoresAreGuarded(t *testing.T) {
 	t.Parallel()
 	files, err := Generate(unitFrom(t, negZeroWritersSchema))
@@ -204,8 +204,7 @@ func TestGoCompressedFloatStoresAreGuarded(t *testing.T) {
 				continue
 			}
 			isPlain := strings.Contains(line, "(value.P))")
-			isGuarded := i > 0 && strings.TrimSpace(lines[i-1]) == "} else {" && i > 2 &&
-				strings.HasSuffix(strings.TrimSpace(lines[i-2]), ".Put32(0)")
+			isGuarded := strings.Contains(line, " + 0))")
 			switch {
 			case isPlain && isGuarded:
 				t.Errorf("%s:%d: the plain float's -0 is normalized: %s", name, i+1, strings.TrimSpace(line))
@@ -221,10 +220,10 @@ func TestGoCompressedFloatStoresAreGuarded(t *testing.T) {
 	if guarded == 0 || plain == 0 {
 		t.Fatalf("the source has %d guarded compressed stores and %d plain ones; want both", guarded, plain)
 	}
-	if want := "if f.HasRange && value == 0 {"; strings.Count(all.String(), want) != 2 {
-		t.Errorf("the generated JSON writer does not carry %q for float32 and float64", want)
+	if want := "} else if f.HasRange {\n\t\t\tvalue += 0"; strings.Count(all.String(), want) != 1 {
+		t.Errorf("the generated JSON writer does not carry %q once", want)
 	}
-	if want := "if f.HasRange&&(f.Kind==10&&value==0x80000000||f.Kind==11&&value==0x8000000000000000){value=0}"; !strings.Contains(goCookWriteRuntime, want) {
+	if want := "if f.Kind==1||f.HasRange&&(f.Kind==10&&value==0x80000000||f.Kind==11&&value==0x8000000000000000) {value=0;if f.Kind==1&&*(*bool)(p){value=1}}"; !strings.Contains(goCookWriteRuntime, want) {
 		t.Errorf("the cook writer's runtime does not carry %q", want)
 	}
 }

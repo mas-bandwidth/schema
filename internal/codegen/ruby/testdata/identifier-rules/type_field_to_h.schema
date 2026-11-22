@@ -1,0 +1,6 @@
+package game
+
+type Player
+{
+    to_h uint32
+}

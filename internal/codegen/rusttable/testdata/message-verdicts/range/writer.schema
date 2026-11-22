@@ -1,0 +1,9 @@
+package verdict
+
+fixed table Root
+{
+    ticks uint32
+    level uint8
+    temp  float32
+    flags bits(8)
+}

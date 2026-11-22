@@ -31,6 +31,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const issue746Int32Max = 2147483647
@@ -105,10 +107,10 @@ func TestIssue746Base64WriterInt32MaxUBSan(t *testing.T) {
 		"-fsanitize=undefined", "-fno-sanitize-recover=all",
 		"-I", dir, main, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin,
 	}
-	if out, err := exec.Command(clang, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, clang, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile under UBSan: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the INT32_MAX Base64 write did not terminate clean under UBSan: %v\n%s", err, out)
 	}

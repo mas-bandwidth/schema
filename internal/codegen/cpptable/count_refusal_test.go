@@ -18,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppCountRefusalSchema = `package countcheck
@@ -328,12 +330,12 @@ int main(void) {
 	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-o", exePath)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("compile: %w", err)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exePath)
+	cmd := testproc.CommandContext(t, ctx, exePath)
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	return cmd.CombinedOutput()
 }

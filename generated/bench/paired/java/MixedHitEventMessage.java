@@ -105,7 +105,7 @@ public final class MixedHitEventMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -145,7 +145,7 @@ public final class MixedHitEventMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -185,7 +185,7 @@ public final class MixedHitEventMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -225,7 +225,7 @@ public final class MixedHitEventMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -258,7 +258,7 @@ public final class MixedHitEventMessage {
                     return false;
                 }
                 r.report.unknown++;
-                if (!TableMessage.skip(r, entry)) {
+                if (!TableMessage.skipField(r, entry)) {
                     r.report.damaged = true;
                     return false;
                 }

@@ -8,7 +8,6 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -25,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The lineage the Unity fixed form is held to: an older writer of Row, the
@@ -312,7 +313,7 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 	}
 	gen := filepath.Join(h.Tmp(), "fixed-gen")
 	compiler.WriteFilesForTest(t, gen, assembly)
-	host, err := buildUnityFixedHost(h)
+	host, err := buildUnityFixedHost(t, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +655,7 @@ func (p *unityFixedProbes) run(t *testing.T, h compiler.UnityHarnessForTest, hos
 	if err := os.WriteFile(scriptPath, []byte(script.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(h.Dotnet(), host, filepath.Join(units, "schemaunit.dll"), scriptPath, answers)
+	cmd := testproc.Command(t, h.Dotnet(), host, filepath.Join(units, "schemaunit.dll"), scriptPath, answers)
 	cmd.Dir = h.Tmp()
 	cmd.Env = h.Env()
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -786,7 +787,7 @@ func unityFixedProbeSource(rows []*unityFixedRow, namespaces []string) string {
 
 // buildUnityFixedHost builds the .NET host that loads one built assembly and
 // runs its probe script, and answers the host's dll.
-func buildUnityFixedHost(h compiler.UnityHarnessForTest) (string, error) {
+func buildUnityFixedHost(t testing.TB, h compiler.UnityHarnessForTest) (string, error) {
 	dir := filepath.Join(h.Tmp(), "fixed-host")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
@@ -834,7 +835,7 @@ internal static class Program
 		return "", err
 	}
 	out := filepath.Join(dir, "bin")
-	cmd := exec.Command(h.Dotnet(), "build", filepath.Join(dir, "fixedhost.csproj"), "-c", "Debug", "-o", out,
+	cmd := testproc.Command(t, h.Dotnet(), "build", filepath.Join(dir, "fixedhost.csproj"), "-c", "Debug", "-o", out,
 		"--artifacts-path", filepath.Join(h.Tmp(), "artifacts", "fixedhost"), "--nologo", "-v", "q", "-p:RestoreLockedMode=false")
 	cmd.Dir = dir
 	cmd.Env = h.Env()

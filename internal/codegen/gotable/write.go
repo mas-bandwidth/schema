@@ -548,7 +548,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 		g.emitWireArrayElement(f, expr+"[i]", body, i+"\t")
 	}
 	g.pf("%s pairs++\n%s}\n", i, i)
-	g.pf("%sif %s.Overflow { return false }; n := int64(1)+tableLebBytes(pairs)+%s.Offset\n", i, body, body)
+	g.pf("%sn := int64(1)+tableLebBytes(pairs)+%s.Offset; if %s.Overflow || n < 0 { return false }\n", i, body, body)
 	if framed {
 		g.emitPutLeb(i, writer, "uint64(n)")
 	}
@@ -608,7 +608,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	} else if isUnionRef(elem.Type) {
 		cond = expr + ".Type != " + elem.Type.Name + "TypeNone"
 	}
-	g.pf("%sif !(%s) { %s.Ids.Truncate(mark); continue }\n%sif %s.Overflow { return false }\n", i, cond, writer, i, element)
+	g.pf("%sif !(%s) { %s.Ids.Truncate(mark); continue }\n%sif %s.Overflow || %s.Offset < 0 { return false }\n", i, cond, writer, i, element, element)
 	g.emitPutLeb(i, writer, "ref")
 	g.emitPutLeb(i, writer, "uint64("+element+".Offset)")
 	g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, element, i, writer)
@@ -658,7 +658,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 			payload := g.nextWireWriter()
 			g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 			g.emitWireValue(v.F, arm, payload, i, false)
-			g.pf("%sif %s.Overflow { return false }\n", i, payload)
+			g.pf("%sif %s.Overflow || %s.Offset < 0 { return false }\n", i, payload, payload)
 			g.emitHeader(i, writer, "ref", fmt.Sprintf("%d", kind))
 			g.emitPutLeb(i, writer, "uint64("+payload+".Offset)")
 			g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
@@ -710,25 +710,21 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.pf("%sif %s { %s.Put8(1) } else { %s.Put8(0) }\n", ind, expr, writer, writer)
 	case tkF32, tkF64:
 		g.needsMath = true
-		bits := 32
-		if kind == tkF64 {
-			bits = 64
-		}
+		bits, zero := 32<<(kind-tkF32), "" // tkF64 is tkF32+1: 32 or 64 bits
 		if f.HasFloatRange {
-			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
-			// §3.3; docs/rulings.json fixed-compressed-negzero): the zero test
-			// stores the +0 bits, the store the fixed form makes. A plain
-			// float's -0 is a value and rides bit-exact below.
-			g.pf("%sif %s == 0 {\n%s\t%s.Put%d(0)\n%s} else {\n%s\t%s.Put%d(math.Float%dbits(%s))\n%s}\n",
-				ind, expr, ind, writer, bits, ind, ind, writer, bits, bits, expr, ind)
-			return
+			zero = " + 0" // a compressed float's -0 is stored as +0, and -0 + 0 is +0 (SPEC-TABLES §3.3, fixed-compressed-negzero)
 		}
-		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
+		g.pf("%s%s.Put%d(math.Float%dbits(%s%s))\n", ind, writer, bits, bits, expr, zero)
 	default:
 		width := ir.TableKindWidth(kind) * 8
-		if width == 128 {
+		switch {
+		case width == 128:
 			g.pf("%s%s.Put128(%s.Lo, %s.Hi)\n", ind, writer, expr, expr)
-		} else {
+		case width == 64 && goFieldType(f.Type) == "int64":
+			g.pf("%s%s.putI64(%s)\n", ind, writer, expr)
+		case goFieldType(f.Type) == fmt.Sprintf("int%d", width): // the mask is the same-width store, said so gosec can see it
+			g.pf("%s%s.Put%d(uint%d(int64(%s)&0x%x))\n", ind, writer, width, width, expr, uint64(1)<<width-1)
+		default:
 			g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
 		}
 	}
