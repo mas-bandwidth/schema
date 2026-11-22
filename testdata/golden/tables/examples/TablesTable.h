@@ -11035,8 +11035,8 @@ struct MinArmFix
 // member initializers (docs/SPEC-TABLES.md)
 struct MinPlainFix
 {
-    uint32_t few[4] = {}; // used count beside it; count in [0, 4]
-    int32_t few_count = 0;
+    uint32_t few[4] = {}; // used count beside it; count in [2, 4]
+    int32_t few_count = 2;
 };
 
 // Grade on the TABLE wire: a value rides under its OWN kind 30, carrying the
@@ -11232,15 +11232,16 @@ inline void RootConfigReset( RootConfig & value )
 inline void MinArmFixReset( MinArmFix & value )
 {
     memset( value.pick.few.value, 0, sizeof( value.pick.few.value ) );
-    value.pick.few.value_count = 0;
+    value.pick.few.value_count = 2;
     value.pick.other = 0;
+    value.pick.few.value_count = 2; // the arm's birth count, after the overlapping arms' resets (§4.6)
     value.pick.type = MinPickType::None;
 }
 
 inline void MinPlainFixReset( MinPlainFix & value )
 {
     memset( value.few, 0, sizeof( value.few ) );
-    value.few_count = 0;
+    value.few_count = 2;
 }
 
 inline void AttachmentReset( Attachment & value )
@@ -17269,7 +17270,7 @@ inline int64_t MinArmFixMeasureBody( TableIds & ids, const MinArmFix & value )
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.pick.few.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.pick.few.value_count ) * 4;
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -17310,12 +17311,12 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixSaveBody( TableWriter & w, TableIds & ids, 
             {
                 const uint64_t arm_ref = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
                 int64_t arm_payload = 0;
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.pick.few.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.pick.few.value_count ) * 4;
                 w.header( arm_ref, 14 );
                 w.putleb( (uint64_t) arm_payload ); // few
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 w.put8( 8 );
                 w.putleb( (uint64_t) ( value.pick.few.value_count ) );
                 for ( int32_t elem_ie = 0; elem_ie < value.pick.few.value_count; elem_ie++ )
@@ -17451,6 +17452,7 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBody( TableReader & r, MinArmFix & valu
                             }
                             value.pick.type = MinPickType::Few;
                             memset( (void *) &value.pick.few, 0, sizeof( value.pick.few ) ); // selection establishes the arm (§2.6)
+                            value.pick.few.value_count = 2; // selection establishes the arm at its declared minimum (§4.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -17741,7 +17743,8 @@ inline int64_t MinArmFixMeasureMessageBody( int64_t at, const MinArmFix & value 
             case MinPickType::Few:
             {
                 bits += kTableMessageRefBitsHere;
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+                if ( ( value.pick.few.value_count ) < 2 ) { return -1; } // below the declared [2..4] (R10)
                 bits += 2;
                 bits += (int64_t) ( value.pick.few.value_count ) * 32;
                 break;
@@ -17773,7 +17776,8 @@ inline bool MinArmFixSaveMessageBody( TableBitWriter & w, const MinArmFix & valu
             case MinPickType::Few:
             {
                 w.put( 28, kTableMessageRefBitsHere );
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+                if ( ( value.pick.few.value_count ) < 2 ) { return false; } // below the declared [2..4] (R10)
                 w.put( (uint64_t) ( value.pick.few.value_count ) - 2, 2 );
                 for ( int32_t i_2 = 0; i_2 < value.pick.few.value_count; i_2++ )
                 {
@@ -18163,8 +18167,10 @@ inline bool MinArmFixLoadMessages( MinArmFix * values, int64_t * count, const Ta
 inline int64_t MinPlainFixMeasureBody( TableIds & ids, const MinPlainFix & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -18185,8 +18191,10 @@ inline int64_t MinPlainFixMeasure( const MinPlainFix & value )
 
 TABLEDEMO_TABLE_INLINE bool MinPlainFixSaveBody( TableWriter & w, TableIds & ids, const MinPlainFix & value )
 {
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -18308,6 +18316,13 @@ TABLEDEMO_TABLE_INLINE bool MinPlainFixLoadBody( TableReader & r, MinPlainFix & 
                             r.offset = body_end;
                             break;
                         }
+                        if ( count < 2 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [2..4] (R10)
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -18338,6 +18353,13 @@ TABLEDEMO_TABLE_INLINE bool MinPlainFixLoadBody( TableReader & r, MinPlainFix & 
                     }
                     else
                     {
+                        if ( count < 2 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [2..4] (R10)
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -18501,10 +18523,13 @@ inline bool MinPlainFixLoad( MinPlainFix & value, const uint8_t * buffer, int64_
 inline int64_t MinPlainFixMeasureMessageBody( int64_t at, const MinPlainFix & value )
 {
     int64_t bits = 0;
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         bits += kTableMessageRefBitsHere;
+        if ( ( value.few_count ) < 2 ) { return -1; } // below the declared [2..4] (R10)
         bits += 2;
         bits += (int64_t) ( value.few_count ) * 32;
     }
@@ -18518,10 +18543,13 @@ inline int64_t MinPlainFixMeasureMessageBody( int64_t at, const MinPlainFix & va
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool MinPlainFixSaveMessageBody( TableBitWriter & w, const MinPlainFix & value )
 {
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         w.put( 28, kTableMessageRefBitsHere );
+        if ( ( value.few_count ) < 2 ) { return false; } // below the declared [2..4] (R10)
         w.put( (uint64_t) ( value.few_count ) - 2, 2 );
         for ( int32_t i = 0; i < value.few_count; i++ )
         {
@@ -20738,7 +20766,7 @@ inline void MinPlainFixFixedWriteBody( uint8_t * b, const MinPlainFix & value )
 {
     (void) b;
     (void) value;
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // the declared count is the bound (§3.4)
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.few_count );
     for ( int64_t i = 0; i < (int64_t) value.few_count; ++i )
     {
@@ -27997,7 +28025,7 @@ inline int64_t MinArmFixMeasureBodyRetain( TableRetainIds & ids, const MinArmFix
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.pick.few.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.pick.few.value_count ) * 4;
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
@@ -28029,12 +28057,12 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixSaveBodyRetain( TableWriter & w, TableRetai
             {
                 const uint64_t arm_ref = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
                 int64_t arm_payload = 0;
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.pick.few.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.pick.few.value_count ) * 4;
                 w.header( arm_ref, 14 );
                 w.putleb( (uint64_t) arm_payload ); // few
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 w.put8( 8 );
                 w.putleb( (uint64_t) ( value.pick.few.value_count ) );
                 for ( int32_t elem_ie = 0; elem_ie < value.pick.few.value_count; elem_ie++ )
@@ -28166,6 +28194,7 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
                             }
                             value.pick.type = MinPickType::Few;
                             memset( (void *) &value.pick.few, 0, sizeof( value.pick.few ) ); // selection establishes the arm (§2.6)
+                            value.pick.few.value_count = 2; // selection establishes the arm at its declared minimum (§4.6)
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
@@ -28336,8 +28365,10 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
 inline int64_t MinPlainFixMeasureBodyRetain( TableRetainIds & ids, const MinPlainFix & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -28351,8 +28382,10 @@ inline int64_t MinPlainFixMeasureBodyRetain( TableRetainIds & ids, const MinPlai
 
 TABLEDEMO_TABLE_INLINE bool MinPlainFixSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const MinPlainFix & value, TableRetain * retain, const TableRetainPath & path )
 {
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.few_count > 0 )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
+    if ( !born_value_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -28469,6 +28502,13 @@ TABLEDEMO_TABLE_INLINE bool MinPlainFixLoadBodyRetain( TableReader & r, MinPlain
                             r.offset = body_end;
                             break;
                         }
+                        if ( count < 2 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [2..4] (R10)
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -28499,6 +28539,13 @@ TABLEDEMO_TABLE_INLINE bool MinPlainFixLoadBodyRetain( TableReader & r, MinPlain
                     }
                     else
                     {
+                        if ( count < 2 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [2..4] (R10)
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -29618,7 +29665,7 @@ inline bool MinArmFixCookBody( uint8_t * at, const MinArmFix & value, TableByteO
             case MinPickType::Few:
             {
                 // 4 slots of storage, value.pick.few.value_count live: a slot past the count keeps the extent's zero (§7.2)
-                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds in an arm, debug only (§5.1)
+                schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
                 for ( int32_t ia = 0; ia < value.pick.few.value_count; ia++ )
                 {
                     table_cook_put( at + 0 + 4 + ia * 4, (uint64_t) value.pick.few.value[ia], 4, order );
@@ -29640,7 +29687,7 @@ inline bool MinArmFixCookBody( uint8_t * at, const MinArmFix & value, TableByteO
 inline bool MinPlainFixCookBody( uint8_t * at, const MinPlainFix & value, TableByteOrder order )
 {
     // 4 slots of storage, value.few_count live: a slot past the count keeps the extent's zero (§7.2)
-    schema_assert( value.few_count >= 0 && value.few_count <= 4 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
     for ( int32_t i = 0; i < value.few_count; i++ )
     {
         table_cook_put( at + 0 + i * 4, (uint64_t) value.few[i], 4, order );

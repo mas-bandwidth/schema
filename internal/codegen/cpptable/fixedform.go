@@ -349,7 +349,11 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		// slots' STORAGE on the wire, which for an array of a type with
 		// declared defaults is the element's default image and not zero — a
 		// value nobody wrote, riding as if somebody had.
-		g.fixedWriteBound(fmt.Sprintf("%s.%s_count", val, f.Name), f.ArrayBound, "count", ind)
+		if f.ArrayMin > 0 {
+			g.pf("%sschema_assert( %s.%s_count >= %d && %s.%s_count <= %d ); // the declared [%d..%d] is the bound (§3.4)\n", ind, val, f.Name, f.ArrayMin, val, f.Name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
+		} else {
+			g.fixedWriteBound(fmt.Sprintf("%s.%s_count", val, f.Name), f.ArrayBound, "count", ind)
+		}
 		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_count );\n", ind, buf, base, val, f.Name)
 		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s.%s_count", val, f.Name), buf, val+"."+f.Name, depth, indent)
 	case f.Type.Kind == ir.TString:

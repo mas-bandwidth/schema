@@ -245,8 +245,8 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
 	case f.CountedOnWire():
-		g.storageAssert("    ", "value."+name+"_count", f.ArrayBound)
-		g.pf("    if ( value.%s_count > 0 )\n    {\n", name)
+		g.storageAssertMin("    ", "value."+name+"_count", f.ArrayMin, f.ArrayBound)
+		g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+name, "    ", true))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
 		g.pf("    }\n")
@@ -345,6 +345,15 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	elem := fmt.Sprintf(access, idx)
 	shape := entry.Shape
 	if width := ir.TableMessageCountBits(shape); width > 0 {
+		if shape.Min > 0 {
+			// THE COUNT RIDES AS count - min (§3.3): a count below the
+			// declared minimum has no spelling, and subtracting would wrap
+			// into a count the elements that follow do not match. The write
+			// contract is a debug assert on this leg (docs/SPEC.md §5.1); the
+			// guard keeps a release build from writing an unreadable body,
+			// refusing it as an unnamed union tag is refused.
+			g.pf("%sif ( ( %s ) < %d ) { return %s; } // below the declared [%d..%d] (R10)\n", ind, count, shape.Min, messageBad(pass), shape.Min, shape.Max)
+		}
 		if pass == messagePassMeasure {
 			g.pf("%sbits += %d;\n", ind, width)
 		} else {

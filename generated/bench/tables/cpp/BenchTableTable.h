@@ -6885,8 +6885,8 @@ struct TableMixed
     int64_t world_time = 0;
     uint64_t frame_tick = 0;
     float server_time = 0.0f;
-    TableEntity entities[8]; // used count beside it; count in [0, 8]
-    int32_t entities_count = 0;
+    TableEntity entities[8]; // used count beside it; count in [1, 8]
+    int32_t entities_count = 1;
     TableStat stats[80]; // used count beside it; count in [0, 80]
     int32_t stats_count = 0;
     TableEvent game_event;
@@ -7207,7 +7207,7 @@ inline void TableMixedReset( TableMixed & value )
     {
         TableEntityReset( value.entities[i] );
     }
-    value.entities_count = 0;
+    value.entities_count = 1;
     for ( int32_t i = 0; i < 80; i++ )
     {
         TableStatReset( value.stats[i] );
@@ -10375,8 +10375,10 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int32_t mark_born_value_entities = ids.count; const int64_t bytes_born_value_entities = TableEntityMeasureBody( ids, value.entities[slot_born_value_entities] ); ids.truncate( mark_born_value_entities ); if ( bytes_born_value_entities != 1 ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -10558,8 +10560,10 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( TableStoredFloatBits( value.server_time ) );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int32_t mark_born_value_entities = ids.count; const int64_t bytes_born_value_entities = TableEntityMeasureBody( ids, value.entities[slot_born_value_entities] ); ids.truncate( mark_born_value_entities ); if ( bytes_born_value_entities != 1 ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -11362,6 +11366,13 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                     }
                     else
                     {
+                        if ( count < 1 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [1..8] (R10)
                         uint64_t keep = count;
                         if ( keep > 8 )
                         {
@@ -12544,10 +12555,13 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 23;
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int64_t bits_born_value_entities = TableEntityMeasureMessageBody( 0, value.entities[slot_born_value_entities] ); if ( bits_born_value_entities != kTableMessageRefBitsHere ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         bits += kTableMessageRefBitsHere;
+        if ( ( value.entities_count ) < 1 ) { return -1; } // below the declared [1..8] (R10)
         bits += 3;
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -12759,10 +12773,13 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) TableMessageQuantize( float( value.server_time ), 0.0f, 65535.0f, 6553500u ), 23 );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    bool born_value_entities = value.entities_count == 1; // the array at its birth elides (SPEC §4.6)
+    for ( int32_t slot_born_value_entities = 0; born_value_entities && slot_born_value_entities < 1; slot_born_value_entities++ ) { const int64_t bits_born_value_entities = TableEntityMeasureMessageBody( 0, value.entities[slot_born_value_entities] ); if ( bits_born_value_entities != kTableMessageRefBitsHere ) { born_value_entities = false; } }
+    if ( !born_value_entities )
     {
         w.put( 31, kTableMessageRefBitsHere );
+        if ( ( value.entities_count ) < 1 ) { return false; } // below the declared [1..8] (R10)
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -17653,7 +17670,7 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPut64( b + 34, (uint64_t) value.world_time );
     TableFixedPut64( b + 42, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 50, TableStoredFloatBits( value.server_time ) );
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] is the bound (§3.4)
     TableFixedPut32( b + 54, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
@@ -20767,7 +20784,7 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     table_cook_put( at + 56, (uint64_t) TableStoredFloatBits( value.server_time ), 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !TableEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }
