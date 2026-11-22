@@ -29,8 +29,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x3af2702a313e2e51)
-const _ = uint64(0x3af2702a313e2e51 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x0e8702581dce3641)
+const _ = uint64(0x0e8702581dce3641 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -1268,7 +1268,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1546,7 +1546,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1569,8 +1569,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 31:
-		return true
 	case 32:
 		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
 	case 13, 14, 16:
@@ -4769,7 +4767,7 @@ func tableRetainFileMinimum(kind uint8) int64 {
 		return 10
 	case 15, 30:
 		return 8
-	case 12, 31, 32:
+	case 12, 32:
 		return 1
 	}
 	return 0
@@ -4895,7 +4893,7 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 		return s.raw(width)
 	}
 	switch kind {
-	case 12, 31, 32:
+	case 12, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) || !s.room(tableLebBytes(n)) {
 			return false
@@ -5166,7 +5164,7 @@ func (s *tableRetainOut) payload(kind uint8, depth int) bool {
 		return s.raw(n)
 	}
 	switch kind {
-	case 12, 31, 32:
+	case 12, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) {
 			return false
