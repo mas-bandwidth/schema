@@ -238,6 +238,9 @@ func patchDeclaration(t *testing.T, work string, block []string) func() {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) == 0 {
+		t.Fatalf("no .schema file under %s to patch %q into", work, head)
+	}
 	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {

@@ -47,8 +47,12 @@ func TestRuntimePinsGoRed(t *testing.T) {
 		"replace github.com/mas-bandwidth/serialize.go/v2 => ../serialize.go",          // 8 no version
 		"serialize.c v1.9.2 at `ddea231` is what the run used",                         // 9 a record
 	}, "\n")
+	problems := pagePinProblems("docs/X.md", page, pins)
+	if len(problems) == 0 {
+		t.Fatal("a page with drifted runtime versions surfaced no problem")
+	}
 	got := map[int]string{}
-	for _, p := range pagePinProblems("docs/X.md", page, pins) {
+	for _, p := range problems {
 		got[p.Line] = p.Ref
 	}
 	want := map[int]string{

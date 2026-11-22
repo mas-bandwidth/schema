@@ -48,15 +48,16 @@ func TestCStrictReadsEmitted(t *testing.T) {
 		{"the JSON read holds a float32 range at float32", values, "if ( nv < (float) f->range_min )"},
 		{"the JSON read folds a compressed -0", values, "nv = nv + 0.0f;"},
 		{"the file read folds a compressed -0", values, "decoded_f = decoded_f + 0.0f;"},
-		{"the file writer stores +0 for a compressed -0", values, "table_float_to_bits( ( value->f ) + 0.0f )"},
-		{"the fixed writer stores +0 for a compressed -0", values, "( value->f ) + 0.0f );"},
+		{"the file writer stores +0 for a compressed -0", values, "table_writer_put32( w, table_stored_float_bits( value->f ) );"},
+		{"the fixed writer stores +0 for a compressed -0", values, "table_stored_float_bits( value->f ) );"},
 		// the variable save asserts SPEC.md §5.1 rows 1, 2, 3 and 10 in a debug build
 		{"row 1 is a debug assert on a field, element and arm", writes, "(§5.1 row 1) */"},
 		{"row 2 is a debug assert", writes, "(§5.1 row 2) */"},
 		{"row 3 below Min is a debug assert", writes, "(§5.1 row 3) */"},
-		{"row 10 is a debug assert", writes, "(§5.1 row 10) */"},
-		// C-4: a later record's hash refusal resets what landed
-		{"a record hash refusal resets records 0..k-1 (C-4)", values, "if ( table_fixed_get64( at ) != hash )\n        {\n            int64_t j;\n            for ( j = 0; j < k; ++j ) { root_reset( values + j ); }\n            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT;"},
+		{"row 10 is a debug assert", writes, "§5.1 row 10) */"},
+		// C-4: a later record's hash refusal leaves records 0..k-1 untouched:
+		// every record's hash is checked before any record lands
+		{"every record hash is checked before any record lands (C-4)", values, "    for ( k = 0; k < count; ++k )\n    {\n        if ( table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n    }\n"},
 	} {
 		if !strings.Contains(tc.text, tc.want) {
 			t.Errorf("%s: the emitted C lacks %q", tc.name, tc.want)

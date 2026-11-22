@@ -3837,8 +3837,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: v
 
   defp float_at_width(v, 4) do
-    <<x::float-32>> = <<v::float-32>>
-    x
+    <<n::float-32>> = <<v::float-32>>
+    n
   end
 
   defp float_at_width(v, _width), do: v
