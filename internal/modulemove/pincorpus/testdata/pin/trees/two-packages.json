@@ -12,8 +12,8 @@
      "fail": [{"stage_in": "p2"}], "error": "nothing was changed"},
     {"id": "two-publish-fails-on-second", "finding": "F-157", "note": "the first entry is put back, the entry itself: same file, same time last written", "version": "v2.6.0", "dirs": ["p1", "p2"],
      "fail": [{"onto": "p2/generate.go", "from": 1, "until": 1}], "error": "nothing was changed"},
-    {"id": "two-publish-fails-and-nothing-goes-back", "finding": "F-157", "note": "if restoring an original also fails, the error names the retained original", "version": "v2.6.0", "dirs": ["p1", "p2"],
-     "fail": [{"onto": "p2/generate.go", "from": 1}, {"onto": "p1/generate.go", "from": 2}], "error": "HALF MOVED", "half_moved": ["p1/generate.go", "p2/generate.go"]},
+    {"id": "two-publish-fails-and-nothing-goes-back", "finding": "F-157", "note": "if restoring an original also fails, the error names the retained original; p2, whose publish failed, never left its name and holds its original", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"onto": "p2/generate.go", "from": 1}, {"onto": "p1/generate.go", "from": 2}], "error": "HALF MOVED", "half_moved": ["p1/generate.go"]},
     {"id": "two-refuse-v3.0.4", "finding": "pin-304", "version": "v3.0.4", "dirs": ["p1", "p2"], "error": "Go cannot resolve v3.0.4"}
   ]
 }

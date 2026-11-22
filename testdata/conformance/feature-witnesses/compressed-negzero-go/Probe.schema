@@ -1,0 +1,43 @@
+// Probe.schema — a compressed float's -0 on the Go reference engine's writers
+// (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10 fixed-compressed-negzero): the
+// writer stores +0 for it, the same bits it stores for +0, in the variable
+// form and in the fixed form. cases.tsv beside it names the rows.
+//
+// `a` is a compressed leaf under a non-zero default (its +0 rides), `z` one
+// under a +0 default (its -0 elides by value in the variable form and is
+// stored in the fixed form), `xs` an array whose second element rides at 0.05
+// so the first is stored, `ys` a counted array, `ks` an enum-keyed array
+// (positional in the fixed form; a +0 slot is not present in the variable
+// form), `pick` a union whose set arm is compressed, and `p` a PLAIN float,
+// which keeps its -0 bit-exact (the control).
+package nzgo
+
+enum Level { Low, High }
+
+union Pick
+{
+    v float32 | min = 0, max = 0.1, resolution = 0.01
+    n uint8
+}
+
+table Var
+{
+    a    float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
+    z    float32 | min = 0, max = 0.1, resolution = 0.01
+    xs   [2]float32 | min = 0, max = 0.1, resolution = 0.01
+    ys   [..3]float32 | min = 0, max = 0.1, resolution = 0.01
+    ks   [Level]float32 | min = 0, max = 0.1, resolution = 0.01
+    pick Pick
+    p    float32
+}
+
+fixed table Fix
+{
+    a    float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
+    z    float32 | min = 0, max = 0.1, resolution = 0.01
+    xs   [2]float32 | min = 0, max = 0.1, resolution = 0.01
+    ys   [..3]float32 | min = 0, max = 0.1, resolution = 0.01
+    ks   [Level]float32 | min = 0, max = 0.1, resolution = 0.01
+    pick Pick
+    p    float32
+}

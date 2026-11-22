@@ -1,0 +1,37 @@
+# THE COMPRESSED -0 WRITER CORPUS, GO REFERENCE ENGINE (docs/SPEC-TABLES.md
+# §3.3, ruled 2026-11-10 fixed-compressed-negzero: the writer stores +0 for a
+# compressed float's -0, the same bits it stores for +0). Probe.schema is the
+# unit; the sibling compressed-negzero-writers corpus holds the same rule for
+# the ports' value and region writers.
+#
+# Each row: load <base>.json, then set <path> to -0 IN THE NATIVE VALUE, after
+# the load, so no reader normalizes it first; save <form> and owe
+# <expect>.<form>.bin byte for byte. <form> is `variable` (the variable form)
+# or `fixed` (the fixed form, a fixed table's alone). Every <stem>.<form>.bin
+# is the engine's <form> encoding of <stem>.json, pinned by
+# internal/tablewire's TestCompressedNegZeroGoCorpus.
+#
+# A compressed row's <expect> is its own <base>: the +0 twin, the control the
+# -0 is held to. The plain rows are the CONTROL for the rule's other side: a
+# plain float keeps its -0, so their <expect> is not their <base>, and a writer
+# that normalized every float fails them.
+#
+# A path is a field, `field[index]` for an array element, `field[Variant]` for
+# an enum-keyed slot, or `field.arm` for a union's set arm.
+#
+# case	form	root	base	path	expect
+var_leaf_nonzero_default	variable	Var	var-a-zero	a	var-a-zero
+var_leaf_zero_default_elided	variable	Var	empty	z	empty
+var_array_element_forced	variable	Var	xs-zero	xs[0]	xs-zero
+var_counted_element	variable	Var	ys-zero	ys[1]	ys-zero
+var_keyed_slot_elided	variable	Var	ks-high	ks[Low]	ks-high
+var_union_arm	variable	Var	pick-zero	pick.v	pick-zero
+var_plain_keeps_negzero	variable	Var	empty	p	p-negzero
+var_fixed_table_leaf	variable	Fix	fix-a-zero	a	fix-a-zero
+fix_leaf_nonzero_default	fixed	Fix	fix-a-zero	a	fix-a-zero
+fix_leaf_zero_default	fixed	Fix	empty	z	empty
+fix_array_element	fixed	Fix	xs-zero	xs[0]	xs-zero
+fix_counted_element	fixed	Fix	ys-zero	ys[1]	ys-zero
+fix_keyed_slot	fixed	Fix	ks-high	ks[Low]	ks-high
+fix_union_arm	fixed	Fix	pick-zero	pick.v	pick-zero
+fix_plain_keeps_negzero	fixed	Fix	empty	p	p-negzero
