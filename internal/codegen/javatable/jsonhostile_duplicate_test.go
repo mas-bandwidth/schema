@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsonHostileDuplicateProbe reads one row per argument triple (name, root,
@@ -132,7 +133,7 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -144,7 +145,7 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		}
 		args = append(args, row.name, row.root, p)
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "tabledemo.DuplicateProbe")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "tabledemo.DuplicateProbe")
 	cmd.Args = append(cmd.Args, args...)
 	out, err := cmd.Output()
 	if err != nil {

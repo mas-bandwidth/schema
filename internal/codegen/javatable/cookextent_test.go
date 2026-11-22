@@ -1,12 +1,13 @@
 package javatable
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE NODE EXTENT'S NEGATIVE CONTROL (docs/PORTING.md M19; docs/SPEC-TABLES.md
@@ -83,7 +84,7 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 						if w.name == "unsorted_map" {
 							class = "CookReversed" + root
 						}
-						out, err := exec.Command(javaBin, "-ea", "-cp", dir, class,
+						out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, class,
 							filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
 							filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json")).CombinedOutput()
 						if err != nil && strings.Contains(string(out), "cook bytes order") {
@@ -130,7 +131,7 @@ func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
 		for root, rows := range u.rows {
 			for _, row := range rows {
 				inst, cook := m.instance[row], m.cook[row]
-				out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CookReversed"+root,
+				out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CookReversed"+root,
 					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
 					filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json")).CombinedOutput()
 				if err != nil {

@@ -23,6 +23,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // unityTableProbe is the reader every Unity table test generates: two roots
@@ -639,7 +641,7 @@ func (h *unityTableHarness) build(project, out, artifacts string, props ...strin
 		"--artifacts-path", filepath.Join(h.tmp, "artifacts", artifacts), "--nologo", "-v", "q",
 		"-p:RestoreLockedMode=false", "-p:SerializeCsRoot=" + h.serialize}
 	args = append(args, props...)
-	cmd := exec.Command(h.dotnet, args...)
+	cmd := testproc.Command(h.t, h.dotnet, args...)
 	cmd.Dir = h.root
 	cmd.Env = h.env
 	if msg, err := cmd.CombinedOutput(); err != nil {
@@ -658,7 +660,7 @@ func (h *unityTableHarness) buildUnit(generated, out, artifacts string) error {
 }
 
 func (h *unityTableHarness) run(env []string, args ...string) (string, int) {
-	cmd := exec.Command(h.dotnet, append([]string{filepath.Join(h.driver, "unityconformance.dll")}, args...)...)
+	cmd := testproc.Command(h.t, h.dotnet, append([]string{filepath.Join(h.driver, "unityconformance.dll")}, args...)...)
 	cmd.Dir = h.root
 	cmd.Env = append(append([]string(nil), h.env...), env...)
 	out, err := cmd.CombinedOutput()

@@ -1,0 +1,12 @@
+// The reader: a counted array of 2 to 4 elements.
+package probe
+
+table P
+{
+    items [2..4]int32
+}
+
+fixed table M
+{
+    items [2..4]int32
+}

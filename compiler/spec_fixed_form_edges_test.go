@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestSpecFixedFormEdges(t *testing.T) {
@@ -117,7 +118,7 @@ func TestSpecFixedFormEdges(t *testing.T) {
 	// (4) the generator reproduces both files byte for byte.
 	slowtest.Gate(t, "the Go toolchain (it runs the vector generator)")
 	out := t.TempDir()
-	cmd := exec.Command("go", "run", "./test/fixed-empty-batch/gen",
+	cmd := testproc.Command(t, "go", "run", "./test/fixed-empty-batch/gen",
 		"-schema", filepath.Join(root, "test", "fixed-empty-batch", "Batch.schema"),
 		"-out", out)
 	cmd.Dir = root

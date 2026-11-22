@@ -3,12 +3,13 @@ package gotable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestGoMessageFormFixedOnly asserts, over one generated unit, that the
@@ -80,7 +81,7 @@ func compileTightCaller(t *testing.T, files map[string][]byte) {
 	if err := os.WriteFile(filepath.Join(dir, "fixedonly_test.go"), []byte(tightCaller), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("a caller naming the fixed root's message verbs does not compile: %v\n%s", err, out)

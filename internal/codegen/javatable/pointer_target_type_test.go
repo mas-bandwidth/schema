@@ -3,7 +3,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,6 +10,8 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaPointerTargetTypeChecked holds the Java leg to docs/SPEC-TABLES.md
@@ -167,7 +168,7 @@ public final class PointerTargetDriver {
 	}
 	sources = append(sources, driverPath)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -175,7 +176,7 @@ public final class PointerTargetDriver {
 		// the writer-only row is the one whose next names a record this reader
 		// cannot name: its pointer must read null
 		nullNext := r.unknown > 0
-		out, err := exec.Command(java, "-ea", "-cp", classes, "PointerTargetDriver",
+		out, err := testproc.Command(t, java, "-ea", "-cp", classes, "PointerTargetDriver",
 			r.name, filepath.Join(dir, r.file), r.verdict, strconv.Itoa(r.unknown), strconv.FormatBool(nullNext)).CombinedOutput()
 		if err != nil {
 			t.Errorf("%s: java: %v\n%s", r.name, err, out)

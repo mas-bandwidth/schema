@@ -1,0 +1,33 @@
+# LUAU-4 (review 2026-11-21): Write<Name> returns false, never raises, for a
+# value of the wrong Luau type, a nested struct, union or array that is not a
+# table, and a float that is not finite at its width (Contract.schema, type
+# Outer). TestLuauPacketWriteRefusesRatherThanRaises runs probe.luau over every
+# row.
+# id	field	value	want
+#
+# field: the Outer field set before the write; - writes the value as born,
+#        * writes the value itself in place of an Outer.
+# value: a Luau expression.
+# want: written, refused or raised (the writer's contract allows no raise).
+#
+# the lawful control
+lawful	-	-	written
+# a float32: the wrong type, not finite, past float32's range
+f-string	F	"1"	refused
+f-nan	F	0 / 0	refused
+f-inf	F	math.huge	refused
+f-past-float32	F	1e39	refused
+# a compressed float32
+c-string	C	"0.5"	refused
+c-nan	C	0 / 0	refused
+c-inf	C	-math.huge	refused
+# a float64
+d-string	D	"1"	refused
+d-nan	D	0 / 0	refused
+d-inf	D	math.huge	refused
+# a nested struct, union and array that is not a table
+inr-nil	Inr	nil	refused
+inr-number	Inr	3	refused
+pick-nil	Pick	nil	refused
+xs-nil	Xs	nil	refused
+outer-nil	*	nil	refused

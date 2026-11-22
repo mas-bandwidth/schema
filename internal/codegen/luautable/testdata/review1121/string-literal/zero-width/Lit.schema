@@ -1,0 +1,14 @@
+package lit
+
+/// zero​width separator
+type Held
+{
+    /// field zero​width separator
+    n uint8
+}
+
+/// zero​width separator
+table Holder
+{
+    h Held
+}

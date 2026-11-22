@@ -19,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type unityToolchainState struct {
@@ -154,7 +156,7 @@ public static class ProbeCommon
 func ensureUnityToolchain(t *testing.T) unityToolchainState {
 	t.Helper()
 	unityTCOnce.Do(func() {
-		unityTC, unityTCErr = initUnityToolchain()
+		unityTC, unityTCErr = initUnityToolchain(t)
 	})
 	if unityTCErr != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -165,7 +167,7 @@ func ensureUnityToolchain(t *testing.T) unityToolchainState {
 	return unityTC
 }
 
-func initUnityToolchain() (unityToolchainState, error) {
+func initUnityToolchain(t testing.TB) (unityToolchainState, error) {
 	var st unityToolchainState
 	st.dotnet = os.Getenv("DOTNET")
 	if st.dotnet == "" {
@@ -241,7 +243,7 @@ func initUnityToolchain() (unityToolchainState, error) {
 	nsRef := filepath.Join(nugetRoot, "netstandard.library.ref", "2.1.0", "ref", "netstandard2.1", "netstandard.dll")
 	if _, err := os.Stat(nsRef); err != nil {
 		// Restore once via serializeunity.csproj into scratch artifacts without touching repo obj/.
-		cmd := exec.Command(st.dotnet, "build",
+		cmd := testproc.Command(t, st.dotnet, "build",
 			filepath.Join(repoRoot, "test", "unity", "serialize", "serializeunity.csproj"),
 			"-c", "Debug",
 			"-o", filepath.Join(tmp, "ser-out"),
@@ -281,7 +283,7 @@ func initUnityToolchain() (unityToolchainState, error) {
 		filepath.Join(st.serializeRoot, "src", "Serialize.cs"),
 		filepath.Join(st.serializeRoot, "src", "Int128Pair.cs"),
 	}
-	cmd := exec.Command(st.dotnet, serArgs...)
+	cmd := testproc.Command(t, st.dotnet, serArgs...)
 	cmd.Env = st.env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return st, fmt.Errorf("compile serializeunity.dll: %w\n%s", err, out)
@@ -299,7 +301,7 @@ func initUnityToolchain() (unityToolchainState, error) {
 		pcArgs = append(pcArgs, "-r:"+r)
 	}
 	pcArgs = append(pcArgs, probeCommonPath)
-	cmd = exec.Command(st.dotnet, pcArgs...)
+	cmd = testproc.Command(t, st.dotnet, pcArgs...)
 	cmd.Env = st.env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return st, fmt.Errorf("compile probecommon.dll: %w\n%s", err, out)
@@ -403,7 +405,7 @@ func compileUnityUnitDLL(t *testing.T, files map[string][]byte) (string, string,
 		"-out:" + tmpDLL,
 	}
 	args = append(args, srcPaths...)
-	cmd := exec.Command(tc.dotnet, args...)
+	cmd := testproc.Command(t, tc.dotnet, args...)
 	cmd.Env = tc.env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", fmt.Errorf("csc unit compile failed: %w\n%s", err, out)
@@ -467,7 +469,7 @@ func runUnityProbe(t *testing.T, files map[string][]byte, probeCS string, inputs
 			args = append(args, "-r:"+r)
 		}
 		args = append(args, probePath)
-		cmd := exec.Command(tc.dotnet, args...)
+		cmd := testproc.Command(t, tc.dotnet, args...)
 		cmd.Env = tc.env
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return "", -1, nil, fmt.Errorf("csc probe compile failed: %w\n%s\n--- ProbeMain.cs ---\n%s", err, out, probeCS)
@@ -504,7 +506,7 @@ func runUnityProbe(t *testing.T, files map[string][]byte, probeCS string, inputs
 		}
 	}
 
-	run := exec.Command(tc.dotnet, "exec", appDLL)
+	run := testproc.Command(t, tc.dotnet, "exec", appDLL)
 	run.Dir = workDir
 	run.Env = tc.env
 	out, runErr := run.CombinedOutput()
@@ -559,7 +561,7 @@ func TestUnityFixedDialectMSBuild(t *testing.T) {
 		}
 	}
 	for _, cfg := range []string{"Debug", "Release"} {
-		cmd := exec.Command(tc.dotnet, "build",
+		cmd := testproc.Command(t, tc.dotnet, "build",
 			filepath.Join(repoRoot, "test", "conformance", "unity", "unit", "schemaunit.csproj"),
 			"-c", cfg,
 			"-o", filepath.Join(tmp, "out-"+cfg),

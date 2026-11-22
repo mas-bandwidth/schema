@@ -343,8 +343,8 @@ public final class BenchMixedFixed {
         }
         {
             int n = TableFixed.get32(b, at + 52);
-            if (n < 0) {
-                n = 0;
+            if (n < 1) {
+                n = 1;
                 if (live) {
                     r.refuse(TableFixed.Reason.countOverBound);
                 }
