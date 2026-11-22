@@ -56,6 +56,10 @@ refusal      <forgery> <reason>
 write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
+write-refusal-cook, write-refusal-block: the write-refusal columns
+announce     <case> <unit> <root> <mode> <input> <verdict>
+read-into    <case> <unit> <root> <form> <lawful> <damaged> <count>
+json-write-into <case> <instance>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -110,6 +114,34 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   key whose announced vocabulary the batch is written against; and
   `write-refusal-json` writes it through the text writer, where `wrote` means
   the text was written and spells the value (a zero byte or unit as `\u0000`).
+  **The 2026-11-22 kinds**: `elems` the element count of a fixed `[N]T` or
+  keyed `[E]T` array (more are copies of element 0, fewer drop the tail),
+  `mask` a flags field's raw bits in decimal, `dupkey` `1` to append a copy of
+  the map's first entry (its key held twice) or `0` to leave the map as
+  loaded, and `point` to set the pointer at `<path>` to the node the pointer
+  at path `<value>` points at. `float` also takes a decimal number. A
+  `<wire>` of `-` is the root's fresh value. `write-refusal-cook` writes
+  through the cook writer and `write-refusal-block` through the block
+  builder.
+- **`announce`** asks a unit's announcement writer and reader
+  (docs/SPEC-TABLES.md §3.3). `<mode>` `write` (root, input `-`; `wrote`,
+  owing `announce/<case>.bin`, or `refused`); `strict` and `lenient` (root
+  `-`, input a `connection` key whose file the derived manifest names; `read`
+  or `refused`); `send` (input the root's current-form wire or `-`;
+  `SaveMessages` of one body with no announcement in hand; `wrote`, owing
+  `announce/<case>.bin`, or `refused`). `make conformance-generate` writes
+  the owed bytes from the engine.
+- **`read-into`** hands one report and `<count>` caller values to a read of
+  `<lawful>`, a read of `<damaged>` and a read of `<lawful>` again
+  (docs/SPEC-TABLES.md §6.5). `<form>` is `variable`, `json`, `fixed`,
+  `message` (`<unit>` a connection key) or `fixed-nocap` (damaged `-`, the
+  count the answer). The answer owed is `read-into/<case>.txt`, which `make
+  conformance-generate` writes from the engine; the derived line withholds a
+  `fixed-nocap` count and adds the connection's announcement file for a
+  `message` row.
+- **`json-write-into`** is the instance's text written in a comma-decimal
+  process locale into a caller buffer longer than the text; the answer is
+  `json/<instance>.json`.
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary
@@ -239,7 +271,10 @@ message-batch <case> <connection> <root> <wire>
 retain <case> <unit> <root> <wire> <capacity> <ids>
 framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
-write-refusal[-fixed|-message|-json] <case> <unit> <root> <wire> <path> <kind> <value>
+write-refusal[-fixed|-message|-json|-cook|-block] <case> <unit> <root> <wire> <path> <kind> <value>
+announce <case> <unit> <root> <mode> <input file or ->
+read-into <case> <unit> <root> <form> <lawful> <damaged> <count or -> <announcement or ->
+json-write-into <case> <unit> <root> <wire>
 ```
 
 `retain` has seven fields including its keyword. `framing` always has five,

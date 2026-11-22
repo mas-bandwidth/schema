@@ -25,7 +25,8 @@ import (
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
-	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
+	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
+	"write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
 
 type driver struct {
 	lang string
@@ -332,6 +333,29 @@ func deriveManifest(m *Manifest, path string) error {
 		// value and owes what its writer does with it (docs/SPEC.md §5.1)
 		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s\n", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
 	}
+	for _, a := range m.Announces {
+		// the verdict is withheld; a strict or lenient read is handed the
+		// connection's announcement file itself
+		input, err := a.derivedInput(m)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "announce %s %s %s %s %s\n", a.Name, a.Unit, a.Root, a.Mode, input)
+	}
+	for _, r := range m.ReadIntos {
+		line, err := r.derivedLine(m)
+		if err != nil {
+			return err
+		}
+		b.WriteString(line)
+	}
+	for _, j := range m.JSONWriteIntos {
+		inst, err := m.LookupInstance(j.Instance)
+		if err != nil {
+			return fmt.Errorf("json-write-into %s: %w", j.Name, err)
+		}
+		fmt.Fprintf(&b, "json-write-into %s %s %s %s\n", j.Name, inst.Unit, inst.Root, inst.Wire)
+	}
 	return writeFileAtomic(path, []byte(b.String()))
 }
 
@@ -362,6 +386,10 @@ type expectation struct {
 	// verdict is a port's behaviour before the ruling, and the value that
 	// behaviour leaves is not the standard's.
 	verdictOnly bool
+	// unrepresentable credits `unrepresentable\n` as the answer: a
+	// read-into fixed-nocap row in a leg whose fixed load cannot omit the
+	// capacity, so the rule has no call to hold (FL-17).
+	unrepresentable bool
 }
 
 // hostileExpectations is the answer each port owes the hostile battery: the
@@ -620,7 +648,35 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: b.Name, want: want})
 		}
-	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+	case "announce":
+		for _, a := range m.Announces {
+			want, err := a.want()
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{name: a.Name, want: want})
+		}
+	case "read-into":
+		for _, r := range m.ReadIntos {
+			want, err := os.ReadFile(r.Golden())
+			if err != nil {
+				return nil, fmt.Errorf("%s: the engine's read-into answer: %w — run: make conformance-generate", r.Name, err)
+			}
+			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap"})
+		}
+	case "json-write-into":
+		for _, j := range m.JSONWriteIntos {
+			inst, err := m.LookupInstance(j.Instance)
+			if err != nil {
+				return nil, fmt.Errorf("json-write-into %s: %w", j.Name, err)
+			}
+			want, err := os.ReadFile(inst.JSON)
+			if err != nil {
+				return nil, fmt.Errorf("json-write-into %s: %w", j.Name, err)
+			}
+			out = append(out, expectation{name: j.Name, want: want})
+		}
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
 		// THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declaration does
 		// not admit is refused, and the lawful value at the same boundary is
 		// written. An assert leg answers from its debug build, where the
@@ -1053,6 +1109,13 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			return
 		}
 	}
+	if e.unrepresentable && string(got) == "unrepresentable\n" {
+		// NO CALL TO HOLD: the leg's fixed load always takes a capacity, so
+		// no omitted capacity can be invented (FL-17)
+		r.pass++
+		r.mark(e.name, outcomePass)
+		return
+	}
 	if strings.HasPrefix(surface, "write-refusal") && string(e.want) == "refused\n" && string(got) == "unrepresentable\n" {
 		// THE TYPE SYSTEM REFUSED IT FIRST: a leg whose storage cannot hold
 		// the value (a Rust enum is a native enum) has nothing for its writer
@@ -1197,6 +1260,16 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
+	if surface == "json-write-into" {
+		// THE COMMA-DECIMAL LOCALE the surface runs the text writer under
+		// (FL-14): named to the driver, and compiled for it where the host
+		// has none. A host that can do neither fails the surface loudly.
+		env, err := commaLocaleOnce()
+		if err != nil {
+			return 0, "", err
+		}
+		cmd.Env = append(os.Environ(), env...)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = os.Stdout

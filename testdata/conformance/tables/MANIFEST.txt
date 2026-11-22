@@ -1886,3 +1886,175 @@ rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/
 unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
+
+# THE 2026-11-22 SURFACES (docs/SPEC-CONFORMANCE.md §2; surfaces1122.go in the
+# harness): the rules the corpus could not ask before. The unit
+# test/tables/surfaces declares one root per rule; tblann4096 and tblann4097
+# are tablewire.AnnounceSchema(4096) and (4097), a vocabulary of exactly that
+# many entries.
+unit tblsurf    test/tables/surfaces/Surfaces.schema
+unit tblann4096 test/tables/announce4096/Announce.schema
+unit tblann4097 test/tables/announce4097/Announce.schema
+connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
+
+# FL-11 (SPEC-TABLES §16.14 W2): the text writer judges its depth cap at table
+# and type values only. 128 Links put the last at depth 128 and its `vals`
+# array at depth 129, and it is written; one Link more is refused
+# (graph_chain_past_cap, above). FL-16 (§2.3): a null `*T | required` is
+# written as index 0 and reads back null; its twin points at a node.
+instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin
+instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
+instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
+instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
+instance surf_counted_full         tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin
+instance surf_narrow_full          tblsurf Narrow  testdata/conformance/tables/wire/surf_narrow_full.bin
+instance surf_wide_full            tblsurf Wide    testdata/conformance/tables/wire/surf_wide_full.bin
+instance surf_arrays_full          tblsurf Arrays  testdata/conformance/tables/wire/surf_arrays_full.bin
+
+# SF-34, SF-35, FL-22 (docs/SPEC.md §5.1; SPEC-TABLES §3): a `[N]T` holds
+# exactly N values and a `[E]T` one per variant, in every writer; `elems`
+# sets the element count. Each refusal sits beside the lawful count.
+write-refusal         sref_fixed_long      tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 4 refused
+write-refusal         sref_fixed_short     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 2 refused
+write-refusal         sref_fixed_ok        tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 3 wrote
+write-refusal         sref_keyed_long      tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 4 refused
+write-refusal         sref_keyed_short     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 2 refused
+write-refusal         sref_keyed_ok        tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 3 wrote
+write-refusal-fixed   sfref_fixed_long     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 4 refused
+write-refusal-fixed   sfref_fixed_short    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 2 refused
+write-refusal-fixed   sfref_fixed_ok       tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 3 wrote
+write-refusal-fixed   sfref_keyed_long     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 4 refused
+write-refusal-fixed   sfref_keyed_short    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 2 refused
+write-refusal-fixed   sfref_keyed_ok       tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 3 wrote
+write-refusal-message smref_fixed_long     surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 4 refused
+write-refusal-message smref_fixed_short    surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 2 refused
+write-refusal-message smref_fixed_ok       surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 3 wrote
+write-refusal-message smref_keyed_long     surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 4 refused
+write-refusal-message smref_keyed_short    surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 2 refused
+write-refusal-message smref_keyed_ok       surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 3 wrote
+write-refusal-json    sjref_fixed_long     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 4 refused
+write-refusal-json    sjref_fixed_short    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 2 refused
+write-refusal-json    sjref_fixed_ok       tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin trio elems 3 wrote
+write-refusal-json    sjref_keyed_long     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 4 refused
+write-refusal-json    sjref_keyed_short    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 2 refused
+write-refusal-json    sjref_keyed_ok       tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 3 wrote
+
+# FL-06 (docs/SPEC.md §5.1 row 9): Marks names bits 1, 2 and 4. A bit no
+# variant names (8) is KEPT by the file writers, refused by the text writer
+# and refused by the message writer, where it is above the 3-bit width.
+write-refusal         sref_mask_unnamed    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 wrote
+write-refusal-fixed   sfref_mask_unnamed   tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 wrote
+write-refusal-message smref_mask_unnamed   surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused
+write-refusal-message smref_mask_named     surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 7 wrote
+write-refusal-json    sjref_mask_unnamed   tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused
+write-refusal-json    sjref_mask_named     tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 7 wrote
+
+# FL-04 (docs/SPEC.md §5.1 row 11): a bare intN/uintN value outside its width.
+# A leg whose storage is exactly N bits answers `unrepresentable`.
+write-refusal sref_int8_high   tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin tilt       int 128         refused
+write-refusal sref_int8_max    tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin tilt       int 127         wrote
+write-refusal sref_int8_low    tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin tilt       int -129        refused
+write-refusal sref_int8_min    tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin tilt       int -128        wrote
+write-refusal sref_uint8_high  tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin badge      int 256         refused
+write-refusal sref_uint8_max   tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin badge      int 255         wrote
+write-refusal sref_uint32_high tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin experience int 4294967296  refused
+write-refusal sref_uint32_max  tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin experience int 4294967295  wrote
+write-refusal sref_uint32_neg  tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin experience int -1          refused
+write-refusal sref_uint32_zero tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin experience int 0           wrote
+
+# FL-22 (docs/SPEC.md §5.1): a map holding one key twice is refused by every
+# writer that can be handed it; `dupkey 1` appends a copy of the first entry.
+write-refusal      sref_map_dupkey     mapdemo Fleet testdata/wire/tables/map_full.bin ships dupkey 1 refused
+write-refusal      sref_map_dupkey_ok  mapdemo Fleet testdata/wire/tables/map_full.bin ships dupkey 0 wrote
+write-refusal-json sjref_map_dupkey    mapdemo Fleet testdata/wire/tables/map_full.bin ships dupkey 1 refused
+write-refusal-json sjref_map_dupkey_ok mapdemo Fleet testdata/wire/tables/map_full.bin ships dupkey 0 wrote
+
+# SF-22 (docs/SPEC.md §5.1 row 3): a counted array below its Min (`[2..4]`)
+# is refused by the variable save and the text writer. SF-28: a list field
+# holding no list is refused; `count -1` is no list (a typed leg answers
+# `unrepresentable`).
+write-refusal      sref_count_below_min   tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count 1  refused
+write-refusal      sref_count_at_min      tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count 2  wrote
+write-refusal      sref_count_not_list    tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count -1 refused
+write-refusal-json sjref_count_below_min  tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count 1  refused
+write-refusal-json sjref_count_at_min     tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count 2  wrote
+write-refusal-json sjref_count_not_list   tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin few count -1 refused
+
+# SF-23 (SPEC-TABLES §3.3): Narrow.hp and Wide.hp share name and kind at
+# ranges [0,5] and [0,10]; SaveMessages holds 6 to Narrow's own range.
+write-refusal-message smref_narrow_hp_6 surfaces_conn Narrow testdata/conformance/tables/wire/surf_narrow_full.bin hp int 6 refused
+write-refusal-message smref_narrow_hp_5 surfaces_conn Narrow testdata/conformance/tables/wire/surf_narrow_full.bin hp int 5 wrote
+write-refusal-message smref_wide_hp_10  surfaces_conn Wide   testdata/conformance/tables/wire/surf_wide_full.bin   hp int 10 wrote
+write-refusal-message smref_wide_hp_11  surfaces_conn Wide   testdata/conformance/tables/wire/surf_wide_full.bin   hp int 11 refused
+
+# SF-05, SF-06 (docs/SPEC.md §5.1 rows 1, 2, 10): Big is a fixed table past
+# the 65536-byte ceiling, with no file form, so its rows start from the fresh
+# value (wire -). SaveMessages checks every value.
+write-refusal-message smref_big_hp_high    surfaces_conn Big - hp    int   11  refused
+write-refusal-message smref_big_hp_max     surfaces_conn Big - hp    int   10  wrote
+write-refusal-message smref_big_hp_low     surfaces_conn Big - hp    int   -1  refused
+write-refusal-message smref_big_mask_wide  surfaces_conn Big - mask  int   64  refused
+write-refusal-message smref_big_mask_max   surfaces_conn Big - mask  int   63  wrote
+write-refusal-message smref_big_ratio_high surfaces_conn Big - ratio float 1.5 refused
+write-refusal-message smref_big_ratio_max  surfaces_conn Big - ratio float 1   wrote
+
+# THE COOK WRITER holds the write contract (SPEC-TABLES §7.6). FL-28: a
+# cyclic pointer graph is refused `data_cycle` in every build; `point` sets
+# head.next to head, and the twin shares head from alias, which is lawful.
+# SF-29: a counted length outside [Min, bound]. SF-37: a NaN or an infinity
+# in a plain float.
+write-refusal-cook cref_cycle            graphdemo Scene      testdata/wire/tables/graph_shared.bin                    head.next          point head  refused
+write-refusal-cook cref_shared_ok        graphdemo Scene      testdata/wire/tables/graph_shared.bin                    alias              point head  wrote
+write-refusal-cook cref_count_below_min  tblsurf   Counted    testdata/conformance/tables/wire/surf_counted_full.bin   few                count 1     refused
+write-refusal-cook cref_count_at_min     tblsurf   Counted    testdata/conformance/tables/wire/surf_counted_full.bin   few                count 2     wrote
+write-refusal-cook cref_count_over       tblsurf   Counted    testdata/conformance/tables/wire/surf_counted_full.bin   few                count 5     refused
+write-refusal-cook cref_count_at_max     tblsurf   Counted    testdata/conformance/tables/wire/surf_counted_full.bin   few                count 4     wrote
+write-refusal-cook cref_non_finite       tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float nan   refused
+write-refusal-cook cref_infinite         tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float inf   refused
+write-refusal-cook cref_finite_ok        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float 1.5   wrote
+write-refusal-cook cref_fixed_long       tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 4     refused
+write-refusal-cook cref_fixed_ok         tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 3     wrote
+
+# THE BLOCK BUILDER holds the write contract too (SPEC-TABLES §19.1). SF-31: a
+# used length or a count past its maximum is refused by name in every build.
+write-refusal-block bref_length      backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin sku               length 33  refused
+write-refusal-block bref_length_ok   backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin sku               length 32  wrote
+write-refusal-block bref_range       backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity          int    100 refused
+write-refusal-block bref_range_ok    backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity          int    99  wrote
+write-refusal-block bref_elems_long  backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  11  refused
+write-refusal-block bref_elems_ok    backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  10  wrote
+
+# THE ANNOUNCEMENT (SPEC-TABLES §3.3). FL-38: no writer announces more than
+# 4096 entries; 4096 is served. FL-36: strict mode refuses a peer whose build
+# version is not the unit's own, and the default (lenient) reads it; a strict
+# read of the unit's own announcement reads. FL-18: SaveMessages with no
+# announcement in hand writes under the sender's own vocabulary.
+announce ann_4096_write    tblann4096 -      write   -                                                    wrote
+announce ann_4097_write    tblann4097 -      write   -                                                    refused
+announce ann_strict_peer   messagedemo -     strict  widenbound_conn                                      refused
+announce ann_lenient_peer  messagedemo -     lenient widenbound_conn                                      read
+announce ann_strict_own    tblsurf    -      strict  surfaces_conn                                        read
+announce ann_send_narrow   tblsurf    Narrow send    testdata/conformance/tables/wire/surf_narrow_full.bin wrote
+announce ann_send_arrays   tblsurf    Arrays send    testdata/conformance/tables/wire/surf_arrays_full.bin wrote
+
+# READ INTO THE CALLER'S VALUES (SPEC-TABLES §6.5, §3.4): one report and one
+# set of values through a lawful read, a refused read and the lawful read
+# again. FL-02: every read zeroes the report. FL-03: a refusal leaves every
+# value the call was handed at its declared defaults (a fixed batch checks
+# every record before any lands). FL-29: the read refuses through its report,
+# never by throwing. FL-17: a fixed load with no stated capacity reads the
+# file's own 5000 records.
+read-into ri_variable   tblsurf      Counted       variable    testdata/conformance/tables/wire/surf_counted_full.bin      testdata/conformance/tables/read-into/counted_cut.bin            1
+read-into ri_json       tblsurf      Counted       json        testdata/conformance/tables/json/surf_counted_full.json     testdata/conformance/tables/read-into/counted_cut.json           1
+read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conformance/tables/read-into/narrow_3.fixed        testdata/conformance/tables/read-into/narrow_3_damaged.fixed     3
+read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
+read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
+
+# FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
+# locale, into a caller buffer longer than the text, writes the instance's
+# own text and nothing past it.
+json-write-into jwi_float_misc     text_float_misc
+json-write-into jwi_float64_ties   text_float64_ties
+json-write-into jwi_float_exp      text_float_exp
+json-write-into jwi_negative_zero  text_negative_zero
+json-write-into jwi_root_full      root_full

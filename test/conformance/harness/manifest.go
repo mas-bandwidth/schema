@@ -387,6 +387,11 @@ type Manifest struct {
 	// value per row that breaks its declaration, or the lawful value at the
 	// same boundary, handed to the writer the row's form names.
 	WriteRefusals []WriteRefusal
+	// Announces, ReadIntos and JSONWriteIntos are the 2026-11-22 surfaces
+	// (surfaces1122.go).
+	Announces      []AnnounceCase
+	ReadIntos      []ReadInto
+	JSONWriteIntos []JSONWriteInto
 }
 
 // WriteRefusal is one row of the `write-refusal` surface (docs/SPEC.md §5.1):
@@ -401,7 +406,17 @@ type Manifest struct {
 // element 0), `length` the used length of the text at Path (filled with `a`),
 // `ordinal` an enum by its raw ordinal, `tag` a union by its raw tag, `float`
 // one of nan, inf or -inf, `bytes` a narrow text's exact bytes in hex, and
-// `units` a wide text's exact UTF-16 units, four hex digits each.
+// `units` a wide text's exact UTF-16 units, four hex digits each; `float` also
+// takes a decimal number (a ranged or compressed float off its range).
+//
+// The 2026-11-22 kinds (surfaces1122.go): `elems` the element count of a fixed
+// `[N]T` or keyed `[E]T` array (more elements are copies of element 0, fewer
+// drop the tail), `mask` a flags field's raw bits in decimal, `dupkey` `1`
+// appends a copy of the map's first entry, so its key is held twice, and `0`
+// leaves the map as loaded, and `point` sets the pointer at Path to the node
+// the pointer at the path in Value points at (a cycle when that node encloses
+// Path). Wire `-` starts from the root's fresh value instead of a load, for a
+// root with no file form.
 type WriteRefusal struct {
 	// Form is the writer the row drives, and the line kind and surface it
 	// travels under: "" the variable-form Save (`write-refusal`), "fixed" the
@@ -420,11 +435,11 @@ type WriteRefusal struct {
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
-var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true}
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true, "elems": true, "mask": true, "dupkey": true, "point": true}
 
 // writeRefusalForms maps each write-refusal line kind, which is also its
 // surface, to the writer it drives.
-var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json"}
+var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json", "write-refusal-cook": "cook", "write-refusal-block": "block"}
 
 // Surface is the surface, and the manifest line kind, a row travels under.
 func (wr WriteRefusal) Surface() string {
@@ -836,7 +851,24 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
 			}
 			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3], Dump: f[4]})
-		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+		case "announce":
+			a, err := parseAnnounce(f, where)
+			if err != nil {
+				return nil, err
+			}
+			m.Announces = append(m.Announces, a)
+		case "read-into":
+			r, err := parseReadInto(f, where)
+			if err != nil {
+				return nil, err
+			}
+			m.ReadIntos = append(m.ReadIntos, r)
+		case "json-write-into":
+			if len(f) != 3 {
+				return nil, fmt.Errorf("%s: json-write-into takes case, instance", where)
+			}
+			m.JSONWriteIntos = append(m.JSONWriteIntos, JSONWriteInto{Name: f[1], Instance: f[2]})
+		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
 			// write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 			// (a message row's <unit> is a connection key)
 			// The DERIVED manifest carries the line without its verdict.

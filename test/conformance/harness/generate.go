@@ -290,6 +290,9 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err := generateMessageBatches(u, m); err != nil {
 		return err
 	}
+	if err := generate1122(u, m); err != nil {
+		return err
+	}
 
 	// THE WRITE REFUSALS (docs/SPEC-TABLES.md §16.14, W0): the oracle must
 	// refuse every one, or the row asks every leg for an answer the reference

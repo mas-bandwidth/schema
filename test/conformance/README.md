@@ -211,6 +211,11 @@ One process per surface, so a runtime starts once rather than once per case.
 | `write-refusal-fixed` | `write-refusal-fixed` | the same through the fixed form's `FixedSave` | the verdict in the manifest |
 | `write-refusal-message` | `write-refusal-message` | the same through `SaveMessages` against the connection's vocabulary | the verdict in the manifest |
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
+| `write-refusal-cook` | `write-refusal-cook` | the same through the cook writer (`CookMeasure` then `Cook`, little-endian) | the verdict in the manifest |
+| `write-refusal-block` | `write-refusal-block` | the same through the block builder, which builds the root's block from the value | the verdict in the manifest |
+| `announce` | `announce` | the unit's announcement writer, a strict or lenient announcement read, or a `SaveMessages` with no announcement in hand (below) | the engine's bytes, or the verdict in the manifest |
+| `read-into` | `read-into` | one report and one set of caller values through a lawful read, a refused read and the lawful read again (below) | `read-into/<case>.txt`, from the engine |
+| `json-write-into` | `json-write-into` | the text writer in a comma-decimal process locale, into a caller buffer longer than the text (below) | `json/<instance>.json` |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
@@ -228,6 +233,83 @@ and every other leg answers from its ordinary build. Each leg carries `conforman
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
+
+**The 2026-11-22 surfaces ask what no surface asked before** (docs/SPEC-CONFORMANCE.md
+§2; the rules are the fix ledger's FL ids and the silent-failure audit's SF
+ids). Every driver exercises its own runtime on each; a driver never computes
+an answer the runtime did not give.
+
+- **New write-refusal kinds.** `elems` sets the element count of a fixed
+  `[N]T` or keyed `[E]T` array (more elements are copies of element 0, fewer
+  drop the tail): a writer refuses any count but N (SF-34, SF-35, FL-22).
+  `mask` sets a flags field's raw bits, in decimal (FL-06: the file writers
+  keep an unnamed bit, the text writer refuses it, the message writer refuses
+  it above the declared width). `dupkey 1` appends a copy of the map's first
+  entry, so one key is held twice, and `dupkey 0` leaves the map as loaded
+  (FL-22). `point` sets the pointer at `<path>` to the node the pointer at the
+  path in `<value>` points at; pointed at an enclosing node it makes a cycle
+  (FL-28). `float` also takes a decimal number, for a ranged or compressed
+  float off its range. `count -1` is a negative count, and where the leg's
+  array is a native list it is a value that is no list (SF-28). `int` rows on
+  a bare `intN`/`uintN` field outside its width answer `unrepresentable` in a
+  leg whose storage is exactly N bits (FL-04, docs/SPEC.md §5.1 row 11). A
+  `<wire>` of `-` starts from the root's fresh value, for a root with no
+  file form (SF-05, SF-06: `Big`, a fixed table past the 65536-byte ceiling).
+- **`write-refusal-cook`** runs the row's value through the cook writer
+  (`CookMeasure`, then `Cook` in little-endian order; `wrote` when both
+  complete). A cyclic graph is refused `data_cycle` in every build (FL-28);
+  a count outside `[Min, bound]` (SF-29) and a NaN or an infinity in a plain
+  float (SF-37) are refused as `Save` refuses them.
+- **`write-refusal-block`** builds the root's block from the row's value
+  through the leg's block builder (the counts and used lengths it is handed
+  are the value's); `wrote` when the block is built. A count or a used length
+  past its maximum is refused by name in every build (SF-31).
+- **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
+  `write` (root and input `-`): the unit's announcement writer
+  (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,
+  or `refused\n` when the writer refuses. A vocabulary of 4096 entries is
+  announced and one of 4097 refused (FL-38). `strict` and `lenient`: a fresh
+  vocabulary of `<unit>`, its strict flag set (`strict`) or left at its
+  default (`lenient`), reads the announcement file `<input>`; the answer is
+  `read\n` or `refused\n` (FL-36: strict refuses a peer whose build version is
+  not the unit's own). `send`: load `<input>` as `<root>` (`-` is the fresh
+  value) and write it with `SaveMessages` as a batch of one, with NO
+  announcement read or written on that connection; the answer is the batch's
+  bytes, or `refused\n` (FL-18).
+- **`read-into <case> <unit> <root> <form> <lawful> <damaged> <count> <announcement>`**.
+  `<form>` is `variable` (the variable-form `Load`), `json` (the text read),
+  `fixed` (the fixed form's batch load, with capacity `<count>`) or `message`
+  (`LoadMessages`, after the connection's announcement file `<announcement>`
+  is read into the vocabulary). Make `<count>` fresh values (1 for `variable`
+  and `json`) and ONE report, then: read `<lawful>` into them with that
+  report, read `<damaged>` into the same values with the same report, write
+  the ToJson text of every value the call was handed, in order, and read
+  `<lawful>` into them with the same report once more. Each read writes one
+  line: `read` when the call returned success and its report holds no
+  refusal, `refused` when it returned its refusal, `threw` when it raised
+  (the driver catches only to say so: a read refuses through its report and
+  never by throwing, FL-29). The owed answer is
+  `read\nrefused\n<defaults × count>read\n`: every read zeroes the report it
+  is handed (FL-02), and a refusal leaves every value the call was handed at
+  its declared defaults, a fixed batch checking every record before any lands
+  (FL-03). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
+  with NO stated capacity and answers `read\n` and the record count it
+  returned (FL-17: the omitted capacity is the file's own 5000 records, never
+  a default the port invented). A leg whose fixed load cannot omit the
+  capacity answers `unrepresentable\n`, which the harness credits on that
+  form alone.
+- **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
+  driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
+  harness also sets where the host has none). The driver makes it the
+  process's locale through the language's own call (`setlocale(LC_ALL, …)`,
+  `locale.setlocale`, `Locale.setDefault`, `os.setlocale`, …) and fails, exit
+  1, if that is refused; a language with no process locale says so in its
+  driver and runs the rest. It loads `<wire>`, measures the text, hands the
+  writer a buffer 64 bytes longer than the measure filled with `0xA5` where
+  the writer takes a caller buffer, and writes. The answer is the text the
+  writer returned, which must be `json/<instance>.json` byte for byte (FL-14:
+  float text never reads the process locale); if any byte past the returned
+  length is not `0xA5` the answer is `tail-written\n` instead (FL-15).
 
 **The packet wire has its own surface, `write-refusal-packet`** (docs/SPEC.md
 §5.1): a generated packet type carries one field per row, and the surface runs

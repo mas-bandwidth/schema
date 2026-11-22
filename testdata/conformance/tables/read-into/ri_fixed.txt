@@ -1,0 +1,12 @@
+read
+refused
+{
+  "hp": 1
+}
+{
+  "hp": 1
+}
+{
+  "hp": 1
+}
+read

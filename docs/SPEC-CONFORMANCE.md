@@ -35,7 +35,8 @@ The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
 `retain-save`, `json-read`, `json-write`, `json-hostile`, `cook`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
-`write-refusal-message` and `write-refusal-json`. The cards surfaces are
+`write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
+`write-refusal-block`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
 `load`, `save`, `render`, `parse`, `bounds`, `upgrade`, `edit`, `taskhash`
 and `view`. `test/conformance/README.md` states what each one asks.
 
@@ -55,6 +56,25 @@ OWES) and is repeated here as the rule for the suite:
 - A surface a port declares absent must be one the specification lets it
   refuse. An absence on a required surface is a failure, not a gap.
 
+**The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
+the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
+
+| rule | surface | rows |
+|---|---|---|
+| SF-34, SF-35, FL-22: a `[N]T` holds exactly N values and a `[E]T` one per variant, in every writer; a map holding one key twice is refused | `write-refusal`, `-fixed`, `-message`, `-json`, `-cook`, `-block` (`elems`, `dupkey`) | `sref_fixed_*`, `sref_keyed_*`, `sfref_*`, `smref_fixed_*`, `smref_keyed_*`, `sjref_*`, `cref_fixed_*`, `bref_elems_*`, `sref_map_dupkey*`, `sjref_map_dupkey*` |
+| FL-06: a flags bit no variant names is kept by the file writers, refused by the text writer, refused by the message writer above the width | `write-refusal*` (`mask`) | `*_mask_unnamed`, `*_mask_named` |
+| FL-04: a bare `intN`/`uintN` value outside its width | `write-refusal` (`int`) | `sref_int8_*`, `sref_uint8_*`, `sref_uint32_*` |
+| SF-22, SF-28: a counted array below its Min, and a list field holding no list | `write-refusal`, `-json` (`count`) | `sref_count_*`, `sjref_count_*` |
+| SF-23: `SaveMessages` holds a value to its own declaration's range | `write-refusal-message` | `smref_narrow_hp_*`, `smref_wide_hp_*` |
+| SF-05, SF-06: a fixed table past the size ceiling is checked by `SaveMessages` | `write-refusal-message` | `smref_big_*` |
+| FL-28, SF-29, SF-37: the cook refuses a cycle, a count outside `[Min, bound]`, a NaN or an infinity | `write-refusal-cook` | `cref_*` |
+| SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
+| FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
+| FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
+| FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
+| FL-11: the text writer's depth cap counts table and type values only | `wire`, `json-read`, `json-write` | `surf_chain128_vals`, `surf_chain127_vals`; refusal `graph_chain_past_cap` |
+| FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
+
 ## 3. The driver protocol
 
 A driver is a command, not a binary:
@@ -70,6 +90,18 @@ the answer), and writes one file per case into `<outdir>`. Exit 0 means the
 surface ran, exit 2 means the port does not implement it, anything else is a
 failure. `test/conformance/README.md` is the authority for the details: the
 file shapes of every surface, the absence rules and the reference-leg rule.
+
+Three surfaces run more than one call per case. `read-into` hands ONE report
+and one set of values to three reads in a row and answers one line per read
+(`read`, `refused`, or `threw` when the read raised instead of refusing)
+with the values' text after the refused read. `announce` answers the
+announcement's bytes, a SaveMessages batch's bytes, or a verdict line.
+`json-write-into` runs under the comma-decimal locale the harness names in
+`SCHEMA_COMMA_LOCALE` (and `LOCPATH`), which the driver must make the
+process's own locale before it writes. On the `write-refusal*` and
+`read-into` (`fixed-nocap`) surfaces a driver may answer `unrepresentable`
+where its own types or API cannot hold the case; that answer is credited only
+where the README says so.
 
 ## 4. How answers are judged
 

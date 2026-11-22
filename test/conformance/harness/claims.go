@@ -305,6 +305,37 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	for _, a := range m.Announces {
+		root := a.Root
+		if root == "-" {
+			root = ""
+		}
+		if err := add("announce", a.Name, a.Unit, root); err != nil {
+			return nil, err
+		}
+	}
+	for _, r := range m.ReadIntos {
+		unit := r.Unit
+		if r.Form == "message" {
+			conn, err := m.LookupConnection(r.Unit)
+			if err != nil {
+				return nil, err
+			}
+			unit = conn.Unit
+		}
+		if err := add("read-into", r.Name, unit, r.Root); err != nil {
+			return nil, err
+		}
+	}
+	for _, j := range m.JSONWriteIntos {
+		inst, err := m.LookupInstance(j.Instance)
+		if err != nil {
+			return nil, err
+		}
+		if err := add("json-write-into", j.Name, inst.Unit, inst.Root); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
