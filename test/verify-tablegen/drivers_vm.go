@@ -376,6 +376,21 @@ for _ in range(total):
         check_bytes(cid, jtxt, want1)
         if len(want2) > 0:
             check_bytes(cid + ":save", v.save(), want2)
+    elif op == 7:
+        rep = m.LoadReport()
+        try:
+            v = cls.from_json(inp.decode("utf-8"), rep)
+            if is_bad(rep):
+                die(cid, "from_json refused")
+            jtxt = v.to_json().encode("utf-8")
+        except Exception as exc:
+            die(cid, f"json raised {exc!r}")
+        check_bytes(cid, jtxt, want1)
+        try:
+            out = m.save_messages(cls, [v])
+        except Exception as exc:
+            die(cid, f"save_messages after from_json raised {exc!r}")
+        check_bytes(cid + ":save_messages", out, want2)
     else:
         die(cid, f"unknown op {op}")
 
@@ -518,6 +533,21 @@ total.times do
     end
     check_bytes(cid, jtxt, want1)
     check_bytes("#{cid}:save", v.save, want2) if want2.bytesize > 0
+  when 7
+    begin
+      rep = mod::LoadReport.new
+      v = cls.from_json(inp.dup.force_encoding("UTF-8"), rep)
+      jtxt = v.to_json
+    rescue StandardError => e
+      die(cid, "json raised #{e.class}: #{e.message}")
+    end
+    check_bytes(cid, jtxt, want1)
+    begin
+      out = mod.save_messages(cls, [v])
+    rescue StandardError => e
+      die(cid, "save_messages after from_json raised #{e.class}: #{e.message}")
+    end
+    check_bytes("#{cid}:save_messages", out, want2)
   else
     die(cid, "unknown op #{op}")
   end
@@ -709,6 +739,16 @@ for _ = 1, total do
       local wout = u.S.Save(u.T, root, v)
       check_bytes(cid .. ":save", wout, want2)
     end
+  elseif op == 7 then
+    local rep = {}
+    local v = u.J.FromJson(u.T, root, inp, rep)
+    if v == nil or is_bad(rep) then die(cid, "FromJson") end
+    local jtxt, jwhy = u.J.ToJson(u.T, root, v)
+    if jtxt == nil then die(cid, "ToJson: " .. tostring(jwhy)) end
+    check_bytes(cid, jtxt, want1)
+    local out, owhy = u.T.SaveMessages(root, u.own_voc, { v })
+    if out == nil then die(cid, "SaveMessages after FromJson: " .. tostring(owhy)) end
+    check_bytes(cid .. ":save_messages", out, want2)
   else
     die(cid, "unknown op " .. tostring(op))
   end
@@ -795,9 +835,15 @@ func verifyLuau(repoRoot, schemaBin, workDir string, units []UnitSpec, cases []C
 			if fileExists(filepath.Join(udir, u.FileBase+"Block.luau")) {
 				blockReq = fmt.Sprintf("local _RB = require(\"./%sBlock\")\n", u.FileBase)
 			}
+			// the unit's type module is emitted only when the unit declares a
+			// type (a pinned unit of a scalar array declares none), so the
+			// probe loads it only where it exists, as it does the block module
+			typesReq := ""
+			if fileExists(filepath.Join(udir, u.FileBase+".luau")) {
+				typesReq = fmt.Sprintf("local _P = require(\"./%s\")\n", u.FileBase)
+			}
 			src := fmt.Sprintf(`--!strict
-local P = require("./%s")
-local T = require("./%sTable")
+%slocal T = require("./%sTable")
 %slocal L = require("./schema_load")
 local S = require("./schema_save")
 local R = require("./schema_retain")
@@ -805,7 +851,6 @@ local M = require("./schema_message")
 local FX = require("./schema_fixed")
 local J = require("./schema_json")
 local F = require("./cases_fix")
-local _ = P
 
 local function die(cid: string, why: string)
 	error("FAILED: " .. cid .. ": " .. why)
@@ -898,12 +943,24 @@ for _, c in ipairs(F.cases) do
 			local wout = S.save(desc, v)
 			if not bufEq(wout, c.want2) then die(c.id, "Save after FromJson") end
 		end
+	elseif c.op == 7 then
+		local rep: {[string]: any} = {}
+		local v = J.FromJson(root, c.inp, rep)
+		if v == nil or isBad(rep) then die(c.id, "FromJson") end
+		local jrep: {[string]: any} = {}
+		local jtxt = J.ToJson(root, v, jrep)
+		if jtxt == nil or isBad(jrep) then die(c.id, "ToJson") end
+		local jbuf = if type(jtxt) == "string" then buffer.fromstring(jtxt :: string) else (jtxt :: buffer)
+		if not bufEq(jbuf, c.want1) then die(c.id, "ToJson mismatch") end
+		local srep: {[string]: any} = {}
+		local out, _ = M.SaveMessages(ownVocab, root, { v }, srep)
+		if out == nil or isBad(srep) or not bufEq(out, c.want2) then die(c.id, "SaveMessages after FromJson") end
 	else
 		die(c.id, "unknown op")
 	end
 end
 print("UNIT_OK " .. tostring(#F.cases))
-`, u.FileBase, u.FileBase, blockReq)
+`, typesReq, u.FileBase, blockReq)
 			if err := os.WriteFile(filepath.Join(udir, "probe.luau"), []byte(src), 0o644); err != nil {
 				errs <- err
 				return
