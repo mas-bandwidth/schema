@@ -3020,6 +3020,14 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
   return x
 end
 
+-- A [Min..Max] COUNT BELOW ITS MIN is one the writer refuses, as one past its
+-- Max (docs/SPEC.md §5.1 row 3): what a writer accepts is what a read
+-- accepts (§16.3), and the strict read refuses it. A byte array held as one
+-- buffer is held to it as a table of elements is.
+local function below_min(fd: any, n: number): boolean
+  return not fd.fixed and not fd.list and fd.keyed == nil and n < (fd.min or 0)
+end
+
 local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   memo.count = memo.count or {}
   memo.len = memo.len or {}
@@ -3081,6 +3089,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
       local out = {}
       local n = memo.count[x]
       if n == nil then n = buffer.len(x) end
+      if below_min(fd, n) then memo.invalid = true; refuse_reason = "out_of_range" end
       if n > buffer.len(x) then n = buffer.len(x) end
       for i = 1, n do out[i] = buffer.readu8(x, i - 1) end
       return out
@@ -3092,6 +3101,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     -- the walk records the value as unwritable rather than truncating it here
     if n < 0 then memo.invalid = true; refuse_reason = "out_of_range"; n = 0 end
     if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "out_of_range"; n = fd.bound end
+    if below_min(fd, n) then memo.invalid = true; refuse_reason = "out_of_range" end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
