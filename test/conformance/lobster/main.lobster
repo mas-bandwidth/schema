@@ -37,7 +37,7 @@ import .json
 // its forgery battery (§19.2), each refusal with its reason, the JSON
 // text form (§16), the framing vectors (docs/LAYERS/1-framing.md), and the
 // write contract through each table writer (SPEC §5.1)
-let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]
@@ -227,6 +227,39 @@ def surface_message(text:string):
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
                     assert n == length(out)
                     say(f[1], out)
+
+// the MESSAGE-PRIOR surface (testdata/conformance/tables/FORMAT.md,
+// `message-prior`): the same read of a PRIOR WRITER's batch, handed on its own
+// keywords, `prior-connection` and `prior-message`. A row may owe a refusal,
+// so the answer is what the public read returned: the batch re-saved, or the
+// line `<case> refused <reason>`, which the driver writes as <case>.refused and
+// the harness never compares (docs/rulings.json `refusal-verdict-only`).
+def surface_message_prior(text:string):
+    let lines = tokenize(text, "\n", " \t\r")
+    for(lines) line:
+        let f = words(line)
+        if length(f) >= 6 and f[0] == "prior-message":
+            var announcement = ""
+            var unit = ""
+            for(lines) other:
+                let c = words(other)
+                if length(c) >= 5 and c[0] == "prior-connection" and c[1] == f[2]:
+                    unit = c[2]
+                    announcement = c[4]
+            if unit == unit_key:
+                if not schema_rt.is_message_root(f[3]):
+                    print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+                else:
+                    let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
+                    let rep = schema_rt.LoadReport {}
+                    assert schema_rt.announce_read(v, fixture(announcement), rep)
+                    let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
+                    if not ok or count != length(recs) or count < 1:
+                        print(f[1] + " refused " + rep.reason)
+                    else:
+                        let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
+                        assert n == length(out)
+                        say(f[1], out)
 
 // lines are the manifest's lines of one kind, whatever unit they name
 def lines(text:string, kind:string) -> [[string]]:
@@ -699,6 +732,8 @@ else:
         surface_block(text, false)
     elif surface == "message":
         surface_message(text)
+    elif surface == "message-prior":
+        surface_message_prior(text)
     elif surface == "retain":
         surface_retain(text, false)
     elif surface == "retain-save":
