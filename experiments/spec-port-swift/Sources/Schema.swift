@@ -476,12 +476,13 @@ struct Parser {
                 let g = try ident()
                 skipNL()
                 out += try block(guards + [Guard(field: g, negate: neg)])
+                let afterBlock = p
                 skipNL()
                 if isW("else") {
                     p += 1
                     skipNL()
                     out += try block(guards + [Guard(field: g, negate: !neg)])
-                }
+                } else { p = afterBlock }
                 try endItem()
                 continue
             }
