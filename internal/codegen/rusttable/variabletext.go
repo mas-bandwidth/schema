@@ -1723,6 +1723,11 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// the count is judged when the array closes: fewer than Min refuses,
+			// `[]` included; an absent key keeps the born state (§16.2)
+			fmt.Fprintf(b, "%s    if %s.len() < %d { jr.damaged = true; }\n", in, field, f.ArrayMin)
+		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
 	}
@@ -1820,6 +1825,13 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
 		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_variant_name() {\n", in)
 		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
+		for i, v := range e.Variants {
+			if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+				// a deprecated variant reads as the field's or element's default
+				// (docs/SPEC-TABLES.md §2.15), and is not counted unknown
+				fmt.Fprintf(b, "%s            Some(%s::%s) => %s,\n", in, e.Name, rustVariant(v), enumDefault(f))
+			}
+		}
 		fmt.Fprintf(b, "%s            Some(x) => x,\n", in)
 		fmt.Fprintf(b, "%s            None => { jr.unknown += 1; %s::None },\n", in, e.Name)
 		fmt.Fprintf(b, "%s        };\n", in)
