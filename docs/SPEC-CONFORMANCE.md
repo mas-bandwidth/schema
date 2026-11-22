@@ -112,3 +112,22 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## Silent-failure rows (2026-11-22)
+
+Nothing a writer or a reader is handed may fail silently. Each rule below was
+fixed in one port on 2026-11-22 and is a rule for every port. The finding, its
+spec section and its per-port test are in `docs/silent-failure-audit-1122.md`
+(the SF ids). Where no corpus case carries a rule yet, the table says so, and
+the rule is held per port by the named test until a case is added.
+
+| rule | spec | shared rows |
+|---|---|---|
+| SF-03, SF-04: the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields | SPEC.md §5.1 rows 1–2 | `write-refusal` (`wref_range_*`, `wref_bits_wide*`); a case on a non-required field of a variable root is owed |
+| SF-07, SF-08: the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included | SPEC.md §5.1 rows 8, 10 | `write-refusal-packet` |
+| SF-09 to SF-15: a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot | SPEC.md §5.1 rows 1–4, 8 | `write-refusal` (`wref_*`); a case per carrier is owed |
+| SF-17: `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint | SPEC.md §5.1 row 10 | `write-refusal-message`; a float case is owed |
+| SF-18, SF-19: the message form refuses a flags value above its declared width and never masks it | SPEC.md §5.1 row 9; SPEC-TABLES §3.3 | a `write-refusal-message` flags case is owed |
+| SF-20: a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it | SPEC.md §5.1 | a case on `write-refusal-fixed` and `write-refusal-message` is owed |
+| SF-21: a writer refuses a counted array below its `Min` | SPEC.md §5.1 row 3 | a case on `write-refusal-fixed` is owed (`sp-count-min-*` carries the read side) |
+| SF-25, SF-26: `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write | SPEC-TABLES §7.6, §2.15 | `cook-write`; a refusal case is owed |

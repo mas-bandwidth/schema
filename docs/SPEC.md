@@ -2495,6 +2495,10 @@ where its check is active (docs/plans/strict-only.md, decision 8).
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
+A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
+writer holds exactly N values: a writer checks any other length like a count
+past its storage, and never cuts or pads it to N (SF-20,
+docs/silent-failure-audit-1122.md).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
