@@ -172,7 +172,7 @@ let digest (root : struct_d) : string =
 
 (* ---- the lock, for the lineage hashes (SPEC-TABLES §2.10 The lock) ---- *)
 
-type lineage = { wire : int64; record : int; lbytes : string; ldigest : string }
+type lineage = { wire : int64; record : int; lbytes : string; ldigest : string; retired : bool }
 
 let hex_decode s =
   String.init (String.length s / 2) (fun i -> Char.chr (int_of_string ("0x" ^ String.sub s (2 * i) 2)))
@@ -197,7 +197,8 @@ let read_lock (path : string) : (string, lineage list) Hashtbl.t =
             (match get "wire", get "record", get "bytes" with
              | Some w, Some r, Some b ->
                let e = { wire = Int64.of_string w; record = int_of_string r; lbytes = hex_decode b;
-                         ldigest = (match get "digest" with Some d -> hex_decode d | None -> "") } in
+                         ldigest = (match get "digest" with Some d -> hex_decode d | None -> "");
+                         retired = List.mem "retired" rest } in
                let prev = try Hashtbl.find t !cur with Not_found -> [] in
                Hashtbl.replace t !cur (prev @ [ e ])
              | _ -> ())
@@ -539,6 +540,7 @@ let load_records (root : struct_d) (lineage : lineage list) (s : string) ~capaci
     end else begin
       match List.find_opt (fun e -> e.wire = h) lineage with
       | None -> refuse "layout_unknown"
+      | Some e when e.retired -> refuse "layout_unsupported"
       | Some e ->
         if file_lay <> e.lbytes then refuse "layout_malformed";
         let w = parse_layout e.lbytes in
