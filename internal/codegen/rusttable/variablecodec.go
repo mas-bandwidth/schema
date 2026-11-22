@@ -372,6 +372,11 @@ func fieldDefault(f *ir.Field) string {
 	if f.Array == ir.ArrayFixed {
 		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a counted [A..B] is BORN AT ITS MINIMUM (docs/SPEC.md §4.2): A
+		// default elements, the value an absent field reads (ruling R10)
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayMin, fieldDefault(scalarOnly(f)))
+	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
 	}
@@ -809,11 +814,26 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	}
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
-		// L, the element kind, the live count, the elements; empty elides.
-		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
+		// L, the element kind, the live count, the elements; empty elides,
+		// and a counted [A..B] elides at its birth value, A default elements
+		// (docs/SPEC.md §4.2; gotable's emitCountedBirthRides)
+		rides := "!" + x + ".is_empty()"
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			differs := "true" // a table element is never compared: the array rides
+			if c := classOf(scalarOnly(f)); c != vTable && c != vMap {
+				differs = elemNonDefaultExpr(f, "e")
+			}
+			rides = fmt.Sprintf("(%s.len() != %d || %s.iter().any(|e| %s))", x, f.ArrayMin, x, differs)
+		}
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, rides))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				// a writer never produces a count below A (ruling R10): a
+				// debug assert, as Rust write checks are
+				fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count below %d\");\n", inner, x, f.ArrayMin, f.Name, f.ArrayMin)
+			}
 			// a count past the declared maximum is a debug assert (docs/SPEC.md
 			// §5.1, row 3; Rust write checks are debug asserts only); the
 			// writer's storage is held by the clamp to Max above in every build
@@ -1398,6 +1418,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
 	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count below the declared minimum A is out of range as one past
+		// B is: damage, so the load refuses (ruling R10, docs/SPEC-TABLES.md §3.3)
+		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i4, f.ArrayMin)
+	}
 	switch f.Array {
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)

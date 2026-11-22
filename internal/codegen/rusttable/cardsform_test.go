@@ -58,7 +58,9 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
+		// a counted [A..B] left this list with ruling R10 (it is carried and
+		// holds A: TestFixedClassConstructsAreCarried, armmin_rust_test.go)
+		{"optional_pointer", &ir.Field{Name: "some", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}}, []string{"optional ?T"}},
 	}
 
 	for _, tc := range cases {
@@ -95,6 +97,9 @@ func TestFixedClassConstructsAreCarried(t *testing.T) {
 		// the fixed-point family rides as its raw storage integer (§3, kinds
 		// 20–29); TestFixedPointRidesItsRawStorage pins storage and clamp
 		{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}},
+		// a counted [A..B] holds A wherever it sits (ruling R10); the probe in
+		// armmin_rust_test.go holds every form to it
+		{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 	} {
 		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
 			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
@@ -116,14 +121,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
+		&ir.Field{Name: "samples", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying a nonzero counted minimum was not refused")
+		t.Fatal("a card unit carrying an optional ?*string was not refused")
 	}
-	for _, want := range []string{"Card", "samples", "declared minimum"} {
+	for _, want := range []string{"Card", "samples", "optional ?T"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}
