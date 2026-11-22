@@ -26,7 +26,7 @@ python-message: $(PYTHON_MESSAGE_SHARDS) python-message-negative-control python-
     python-message-crc-negative-control python-message-onesided-negative-control \
     python-message-substitution-negative-control python-message-arm-shape-negative-control
 python-message-0: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessage(Bits|RangeInformation|NestedArray|Evolution|FixedKinds|UnionEnum|MixedKinds|ArrayEvolution|PacketValue|HostilePayload|RootIdentity)?$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessage(Bits|RangeInformation|NestedArray|Evolution|FixedKinds|UnionEnum|MixedKinds|ArrayEvolution|PacketValue|HostilePayload|BytesElementKind|FixedUnionArrayPad|CompressedNegativeZero|RangedAndUnionArmZero|RootIdentity)?$$' ./internal/codegen/pythontable/
 python-message-1: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessage(Announcement|PublicNameCollision|KeyedOptional|Damage|HostileAnnouncement|Wide|Widening|ShapeBenchFunctional|ZeroWidthSkip|UnionArray|GrownBoundPadsOneDefaultPerSlot)$$' ./internal/codegen/pythontable/
 python-message-negative-control: python-toolchain-check deps-go

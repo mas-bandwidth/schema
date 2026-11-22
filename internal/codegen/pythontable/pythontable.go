@@ -57,6 +57,26 @@ func GenerateSurface(u *ir.Unit, surfaces Surfaces) (map[string][]byte, error) {
 	return GenerateSurfaceLineage(u, surfaces, nil)
 }
 
+// tableModuleImports are the runtime and typing names a generated table
+// module binds at module scope without the helper prefix, beyond the ones
+// python.CheckNames already reserves. A declaration is a class or value in
+// that same module scope, so one spelled like these would replace the binding
+// the generated code calls; it is refused by name instead. (__init__.py is
+// another matter: there a schema export keeps its public name by rule.)
+// TestPythonRuntimeImportsAreReserved scans the emitted imports and holds
+// this list to them in both directions.
+var tableModuleImports = []string{
+	"Any", "ArmDesc", "BlockArray", "BlockField", "BlockRecord", "BlockTable", "ClassVar",
+	"FieldDesc", "LoadReport", "TableDesc", "UnionDesc", "buffer_view", "load_table",
+	"measure_table", "new_by_name", "new_union_by_name", "register", "register_union",
+	"save_table",
+}
+
+// declares reports whether the unit declares a module-level name spelled name.
+func declares(u *ir.Unit, name string) bool {
+	return u.Tables[name] != nil || u.Structs[name] != nil || u.Unions[name] != nil || u.TableUnions[name] != nil || u.Enums[name] != nil || u.Flags[name] != nil || u.Consts[name] != nil
+}
+
 // GenerateSurfaceLineage preserves caller-supplied fixed layouts while selecting surfaces.
 func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if err := ValidateSurfaces(u, surfaces); err != nil {
@@ -72,7 +92,12 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
 		return nil, err
 	}
-	if surfaces.Retain && (u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil) {
+	for _, name := range tableModuleImports {
+		if declares(u, name) {
+			return nil, fmt.Errorf("python: %s is a name the generated table modules import from their runtime, and a declaration spelled the same would replace that binding; rename the declaration", name)
+		}
+	}
+	if surfaces.Retain && declares(u, "TableRetain") {
 		return nil, fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
 	}
 	if surfaces.Retain {
@@ -753,7 +778,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExprForClass(st.Name, f, st.FixedDeclared))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
 		}
 	}
 	emitGraphEqRepr(b, name)
@@ -2098,7 +2123,10 @@ func floatBound(f *ir.Field, v float64) string {
 	if !compressedFloat(f) {
 		return "0.0"
 	}
-	return pyFloatLiteral(v)
+	// A compressed float is a float32, and its range is compared at float32
+	// (SPEC.md §4.6): the end is the float32 the declared decimal rounds to,
+	// so the float32 0.1f is inside max = 0.1 on every read and write.
+	return pyFloatLiteral(float64(float32(v)))
 }
 
 func pyFloatLiteral(v float64) string {
@@ -2249,10 +2277,6 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
-	return defaultExprForClass(owner, f, false)
-}
-
-func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
 		count := int64(0)
 		switch f.Array {
@@ -2282,17 +2306,12 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// Fixed files and variable union arrays start at their declared
-		// minimum. Other variable counted arrays preserve their existing
-		// absent-field reset. Every constructed element is distinct.
-		count := int64(0)
-		if fixed {
-			count = f.BornCount()
-		}
+		// A counted array is born at its declared minimum in every table,
+		// fixed or variable (SPEC.md §4.2), as the engine's model is; a fixed
+		// array holds its bound. Every constructed element is distinct.
+		count := f.BornCount()
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
-		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
-			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"
