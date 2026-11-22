@@ -1949,7 +1949,7 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
         end
 
       4 ->
-        fb = String.slice(ns, 0, 4)
+        fb = fixed_base(pkg)
         fmod = Module.concat([ns, "#{fb}Fixed"])
         sn = Macro.underscore(root)
         case apply(fmod, :"#{sn}_fixed_load", [inp]) do
@@ -1960,7 +1960,7 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
         end
 
       5 ->
-        fb = String.slice(ns, 0, 4)
+        fb = fixed_base(pkg)
         fmod = Module.concat([ns, "#{fb}Fixed"])
         sn = Macro.underscore(root)
         case apply(fmod, :"#{sn}_fixed_load", [inp]) do
@@ -2009,6 +2009,20 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
             end
           other -> die(id, "from_json: #{inspect(other)}")
         end
+
+      # op 7's message half has no Elixir counterpart: the Elixir message
+      # writer takes id-addressed bodies ([{ref, value}]), not a record, and
+      # REFUSES a field written at its default rather than eliding it
+      # (TableMessage written_at_default?), so leaving a birth value out is
+      # the caller's choice and there is no record writer to feed. The text
+      # half is checked as the other targets check it.
+      7 ->
+        case tmod.from_json(root, inp) do
+          {:ok, v, _rep} ->
+            {:ok, jout} = tmod.to_json(root, v)
+            check_bytes(id, jout, w1)
+          other -> die(id, "from_json fix: #{inspect(other)}")
+        end
     end
   end
 
@@ -2033,6 +2047,19 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
   end
 end
 `
+	// THE FIXED MODULE IS NAMED BY THE UNIT'S FILE BASE, which the runner is
+	// told per package: a corpus unit's base is its package's first four
+	// letters (Tg01), but a pinned unit's is "Pin" under package pinci32, so
+	// slicing the namespace named a module (PincFixed) that does not exist
+	var bases strings.Builder
+	seen := map[string]bool{}
+	for _, u := range units {
+		if !seen[u.Pkg] {
+			seen[u.Pkg] = true
+			fmt.Fprintf(&bases, "  defp fixed_base(%q), do: %q\n", u.Pkg, u.FileBase)
+		}
+	}
+	exRunner = strings.Replace(exRunner, "  def run_case(", bases.String()+"\n  def run_case(", 1)
 	runnerEx := filepath.Join(workDir, "runner.ex")
 	if err := os.WriteFile(runnerEx, []byte(exRunner), 0o644); err != nil {
 		return err
