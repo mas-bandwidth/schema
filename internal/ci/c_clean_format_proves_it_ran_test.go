@@ -73,7 +73,7 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 		{"a tree that does not exist is red",
 			tree{"gen/a.h": "int a;\n"}, "cat", "", []string{"gen", "moved"}, "moved is not a directory"},
 		{"trees that hold no C are red",
-			tree{"gen/readme.txt": "nothing generated here\n"}, "cat", "", []string{"gen"}, "no generated C under gen"},
+			tree{"gen/readme.txt": "nothing generated here\n"}, "cat", "", []string{"gen"}, "no .h or .c file under gen"},
 		{"a ratchet line outside every scanned tree is red",
 			tree{"gen/a.h": "int a;\n", "other/b.h": "int b;\n"}, "cat", "other/b.h\n", []string{"gen"}, "other/b.h is listed in allow.txt but is under none of the trees this gate scans"},
 		{"a ratchet line for a file that is gone is red",
