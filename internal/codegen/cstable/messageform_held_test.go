@@ -818,7 +818,7 @@ func csHeldRowsClass(t *testing.T) string {
 // of tables/backend, client_build 40, written by the Go engine and pinned to
 // it by test/conformance/harness
 // TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg), into storage for one
-// whose ClientBuild is the sentinel 17: "A refused batch returns a count of
+// whose ClientBuild is the sentinel 17; after the refusal every value handed in holds its declared default (R4): "A refused batch returns a count of
 // `0`" and "refuses before it decodes anything" (docs/SPEC-TABLES.md §3.3).
 // Storage for two owes 2 and 40. A caller's capacity is a resource limit
 // (§6.5), so this row runs here, in the leg's own tests.
@@ -835,7 +835,18 @@ const csHeldCapacityFixture = `    static void CapacityFixture()
         var report = new Br();
         Bs.LoginRequestLoadMessages(one, wire, vocab, report, out int count);
         if (!report.Refused || count != 0) { Fail(row, "two bodies into storage for one: count=" + count + " refused=" + report.Refused + ", and a refused batch returns 0"); return; }
-        if (one[0].ClientBuild != 17) { Fail(row, "two bodies into storage for one: ClientBuild reads " + one[0].ClientBuild + ", not the sentinel 17"); return; }
+        if (one[0].ClientBuild != 0) { Fail(row, "two bodies into storage for one: ClientBuild reads " + one[0].ClientBuild + ", not its declared default 0 (R4: a refusal resets every value handed in)"); return; }
+        var three = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest(), new Backenddemo.LoginRequest(), new Backenddemo.LoginRequest() };
+        byte[] cut = new byte[wire.Length - 1]; Array.Copy(wire, cut, cut.Length);
+        byte[] form = (byte[])wire.Clone(); form[0] = 3;
+        foreach (byte[] bad in new byte[][] { form, cut })
+        {
+            foreach (var v in three) { v.ClientBuild = 17; }
+            var badReport = new Br();
+            Bs.LoginRequestLoadMessages(three, bad, vocab, badReport, out int badCount);
+            if (badCount != 0 || (!badReport.Refused && !badReport.Damaged)) { Fail(row, "refused batch: count=" + badCount); return; }
+            foreach (var v in three) { if (v.ClientBuild != 0) { Fail(row, "refused batch left ClientBuild " + v.ClientBuild + ", not its declared default 0"); return; } }
+        }
         var two = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest(), new Backenddemo.LoginRequest() };
         var loaded = new Br();
         Bs.LoginRequestLoadMessages(two, wire, vocab, loaded, out int got);

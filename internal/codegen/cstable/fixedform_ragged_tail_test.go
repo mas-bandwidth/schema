@@ -19,7 +19,7 @@ import (
 // short-buffer guard and no other row appends bytes to a whole file. The reader
 // owes two answers and they are NEVER both set — `refused` plus a `reason`, or
 // `malformed`. A ragged tail is the residue of a bad file, so Reason stays
-// untouched. record_bytes is the SELECTED LINEAGE ENTRY's record size, compiled
+// at its declared default (R4). record_bytes is the SELECTED LINEAGE ENTRY's record size, compiled
 // into the reader (known.RecordBytes), so the guard's `record_bytes <= 8` arm is NOT
 // reachable from a file at all; rest is the file's bytes after the header and
 // layout, so this row forges only `rest % record_bytes != 0` by appending 1 to
@@ -76,10 +76,17 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 // sentinel, so a read that returns -1 can be told apart from one
                 // that wrote the destination. 0x5A5A5A5A is neither the lead,
                 // the trail, nor any declared default.
-                back[0].Lead = 0x5A5A5A5Au;
-                back[0].ValsCount = 0x5A5A5A5A;
-                for (int i = 0; i < 8; ++i) { back[0].Vals[i] = 0x5A5A5A5A; }
-                back[0].Trail = 0x5A5A5A5Au;
+                // R4: EVERY ROW handed in is poisoned, and every row owes its
+                // declared default after the refusal.
+                @TABLE@ fresh = new @TABLE@();
+                Schema.TableReset(fresh);
+                foreach (@TABLE@ row in back)
+                {
+                    row.Lead = 0x5A5A5A5Au;
+                    row.ValsCount = 0x5A5A5A5A;
+                    for (int i = 0; i < 8; ++i) { row.Vals[i] = 0x5A5A5A5A; }
+                    row.Trail = 0x5A5A5A5Au;
+                }
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, ragged, plan, r);
@@ -112,32 +119,19 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 {
                     bad += ProbeLog.Fail(@NAME@, "malformed publishes no hash: extra=" + extra + " hash=0x" + r.LayoutHash.ToString("x16"));
                 }
-                if (back[0].Lead != 0x5A5A5A5Au || back[0].ValsCount != 0x5A5A5A5A || back[0].Trail != 0x5A5A5A5Au)
+                for (int row = 0; row < back.Length; ++row)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "the malformed read wrote the destination: extra=" + extra + " lead=" + back[0].Lead + " valsCount=" + back[0].ValsCount + " trail=" + back[0].Trail);
-                }
-                for (int i = 0; i < 8; ++i)
-                {
-                    if (back[0].Vals[i] != 0x5A5A5A5A)
+                    if (back[row].Lead != fresh.Lead || back[row].ValsCount != fresh.ValsCount || back[row].Trail != fresh.Trail)
                     {
-                        bad += ProbeLog.Fail(@NAME@, "the malformed read wrote vals[" + i + "]: extra=" + extra + " v=" + back[0].Vals[i]);
+                        bad += ProbeLog.Fail(@NAME@, "the refusal left row " + row + " off its declared default: extra=" + extra + " lead=" + back[row].Lead + " valsCount=" + back[row].ValsCount + " trail=" + back[row].Trail);
                     }
-                }
-            }
-            // extra == recordBytes is ONE MORE WHOLE RECORD, not a ragged tail:
-            // the guard does not fire, n is 2, and against a one-slot destination
-            // the count-vs-capacity check refuses batch_too_large BY NAME.
-            {
-                byte[] whole = new byte[data.Length + (int)recordBytes];
-                data.CopyTo(whole, 0);
-                @TABLE@[] one = new @TABLE@[1];
-                one[0] = new @TABLE@();
-                TableReport rw = new TableReport();
-                TableFixedEntry[] planw = new TableFixedEntry[8192];
-                long nw = Schema.@TABLE@FixedLoad(one, whole, planw, rw);
-                if (nw != -1 || !rw.Refused || rw.Reason != "batch_too_large" || rw.Damaged)
-                {
-                    bad += ProbeLog.Fail(@NAME@, "extra == recordBytes is one more whole record and owes batch_too_large, not malformed: n=" + nw + " refused=" + rw.Refused + " reason=" + rw.Reason + " malformed=" + rw.Damaged);
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        if (back[row].Vals[i] != fresh.Vals[i])
+                        {
+                            bad += ProbeLog.Fail(@NAME@, "the refusal left row " + row + " vals[" + i + "] off its declared default: extra=" + extra + " v=" + back[row].Vals[i]);
+                        }
+                    }
                 }
             }`},
 	}

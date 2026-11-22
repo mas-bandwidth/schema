@@ -51,7 +51,7 @@ func csFixedR29Artifact(t *testing.T) string {
 // csFixedR29SpanLoad returns the emitted batch load's body. The [] and single
 // overloads follow it and only delegate, so the span overload is the read.
 func csFixedR29SpanLoad(src string) string {
-	const sig = "public static long BandFixedLoad("
+	const sig = "static long BandFixedLoadWalk("
 	for off := 0; ; {
 		at := strings.Index(src[off:], sig)
 		if at < 0 {
@@ -87,7 +87,7 @@ func csFixedR29ReplaceInWriterClamp(src, old, new string) (string, bool) {
 // csFixedR29StrictFaults holds the emitted writer-bound clamp and load to the
 // strict read: the endpoint's own 0..100 refuses out_of_range without writing
 // a value, the reader's own 0..200 stays its own pass, and a refusal resets
-// every record the read wrote (0..k) and returns -1 — the whole value or a
+// every row handed in (R4: the whole span) and returns -1 — the whole value or a
 // refusal, never a partial one beside a counter.
 func csFixedR29StrictFaults(src string) []string {
 	var faults []string
@@ -131,10 +131,9 @@ func csFixedR29StrictFaults(src string) []string {
 	if invoke >= 0 {
 		tail := load[invoke:]
 		refuse := strings.Index(tail, "if (refused)")
-		reset := strings.Index(tail, "for (int j = 0; j <= k; ++j) { TableReset(values[j]); }")
 		ret := strings.Index(tail, "return -1;")
-		if refuse < 0 || reset < refuse || ret < reset {
-			faults = append(faults, "a writer-bound refusal does not reset values[0..k] and return -1 (the read is not whole-or-refusal)")
+		if refuse < 0 || ret < refuse || !strings.Contains(src, "for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }") {
+			faults = append(faults, "a writer-bound refusal does not return -1 into the reset-all entry (the read is not whole-or-refusal)")
 		}
 	}
 	return faults
@@ -182,17 +181,15 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: dropping the writer-bound refusal left the check GREEN: %v", faults)
 	}
 
-	load := csFixedR29SpanLoad(src)
-	const reset = "for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }"
-	if !strings.Contains(load, reset) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the refusal reset is not in the real load artifact")
+	const reset = "for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }"
+	if !strings.Contains(src, reset) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the reset-all is not in the real load artifact")
 	}
-	noReset := strings.Replace(src, reset,
-		"if (report != null) { report.Verdict = TableWire.Verdict.Refused; }", 1)
+	noReset := strings.Replace(src, reset, "", 1)
 	if noReset == src {
 		t.Fatalf("NEGATIVE CONTROL FAILED: could not splice the dropped reset back into the real artifact")
 	}
-	if faults := csFixedR29StrictFaults(noReset); !slices.Contains(faults, "a writer-bound refusal does not reset values[0..k] and return -1 (the read is not whole-or-refusal)") {
+	if faults := csFixedR29StrictFaults(noReset); !slices.Contains(faults, "a writer-bound refusal does not return -1 into the reset-all entry (the read is not whole-or-refusal)") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: dropping the refusal reset left the check GREEN: %v", faults)
 	}
 }

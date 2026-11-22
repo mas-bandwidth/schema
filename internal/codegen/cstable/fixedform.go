@@ -2078,11 +2078,26 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<%s> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);\n", name)
 	g.pf("    return %sFixedSave(span, buffer);\n}\n\n", name)
 
+	// R4: AFTER ANY REFUSAL EVERY ROW HANDED IN HOLDS ITS DECLARED DEFAULT,
+	// whichever step refused (header, layout, hash, plan, capacity, dead
+	// bytes, a record hash, a run, non-finite, out of range). The walk below
+	// refuses with -1 and writes what it likes; this entry resets all of
+	// values. A null slot has nothing to reset and is skipped, left null.
 	g.pf("public static long %sFixedLoad(\n", name)
 	g.pf("    Span<%s> values,\n", name)
 	g.pf("    ReadOnlySpan<byte> data,\n")
 	g.pf("    Span<TableFixedEntry> plan,\n")
 	g.pf("    TableReport report = null)\n{\n")
+	g.pf("    long loaded = %sFixedLoadWalk(values, data, plan, report);\n", name)
+	g.pf("    if (loaded < 0)\n    {\n")
+	g.pf("        for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }\n")
+	g.pf("    }\n")
+	g.pf("    return loaded;\n}\n\n")
+	g.pf("static long %sFixedLoadWalk(\n", name)
+	g.pf("    Span<%s> values,\n", name)
+	g.pf("    ReadOnlySpan<byte> data,\n")
+	g.pf("    Span<TableFixedEntry> plan,\n")
+	g.pf("    TableReport report)\n{\n")
 	// STEP 1 (§5.3): only whether there IS a first byte. THE FORM BYTE IS READ
 	// BEFORE THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a
 	// form-2 batch THREE. And the DIRECTIONS are §5.3's, the same eight other
@@ -2229,7 +2244,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
 	// written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
-	g.pf("            for (int j = 0; j < k; ++j) { TableReset(values[j]); }\n")
 	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
@@ -2243,7 +2257,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
 	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
-	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
 	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
@@ -2254,7 +2267,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// this call wrote goes back to its defaults.
 		g.pf("        string finite_why = %sFixedFiniteBody(values[k]);\n", name)
 		g.pf("        if (finite_why != null)\n        {\n")
-		g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
 		g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 		g.pf("            return -1;\n        }\n")
 	}
@@ -2275,7 +2287,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            refused = true;\n")
 	g.pf("        }\n")
 	g.pf("        if (refused)\n        {\n")
-	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
 	g.pf("            if (report != null) { report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
