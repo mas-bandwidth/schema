@@ -46,9 +46,9 @@ type caseRef struct{ surface, name string }
 type discrimination struct {
 	refusal map[caseRef]string
 	lawful  map[string][]caseRef
-	// fallback is the group whose lawful rows stand in when a group has
-	// none of its own (the same entry point on another surface)
-	fallback map[string]string
+	// fallback is the groups whose lawful rows stand in, in order, when a
+	// group has none of its own (the same entry point on another surface)
+	fallback map[string][]string
 }
 
 // twins is the lawful rows that prove a group: its own, else its fallback's.
@@ -56,8 +56,10 @@ func (d *discrimination) twins(key string) []caseRef {
 	if own := d.lawful[key]; len(own) > 0 {
 		return own
 	}
-	if fb, ok := d.fallback[key]; ok {
-		return d.lawful[fb]
+	for _, fb := range d.fallback[key] {
+		if twins := d.lawful[fb]; len(twins) > 0 {
+			return twins
+		}
 	}
 	return nil
 }
@@ -73,7 +75,7 @@ func (d *discrimination) accept(surface, name, key string) {
 // buildDiscrimination reads the manifest (and the generated report verdicts)
 // into refusal rows and their lawful twins.
 func buildDiscrimination(m *Manifest, reports map[string]string) (*discrimination, error) {
-	d := &discrimination{refusal: map[caseRef]string{}, lawful: map[string][]caseRef{}, fallback: map[string]string{}}
+	d := &discrimination{refusal: map[caseRef]string{}, lawful: map[string][]caseRef{}, fallback: map[string][]string{}}
 	at := func(parts ...string) string { return strings.Join(parts, "|") }
 
 	for _, i := range m.Instances {
@@ -103,7 +105,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 	for _, msg := range m.Messages {
 		messageConn[msg.Name] = msg.Connection
 		key := at("message", msg.Connection)
-		d.fallback[key] = "message"
+		d.fallback[key] = []string{"message"}
 		if msg.Refused() {
 			d.refuse("message", msg.Name, key)
 		} else {
@@ -133,12 +135,17 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 		if !ok {
 			return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 		}
+		// A root the corpus reads NOWHERE (tabledemo WideBlob: past the
+		// form-3 ceiling it has no file form, so every file read of it
+		// refuses by rule) falls back last to the unit's lawful reports:
+		// the leg's report read of that unit runs.
 		key := at("report", r.Unit, r.Root)
-		d.fallback[key] = at("wire", r.Unit, r.Root)
+		d.fallback[key] = []string{at("wire", r.Unit, r.Root), at("report", r.Unit)}
 		if verdict == "refused" {
 			d.refuse("report", r.Name, key)
 		} else {
 			d.accept("report", r.Name, key)
+			d.accept("report", r.Name, at("report", r.Unit))
 		}
 	}
 	for _, fc := range m.Framings {
@@ -159,7 +166,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 	}
 	for _, h := range m.Hostiles {
 		key := at("json-hostile", h.Unit, h.Root)
-		d.fallback[key] = at("json-read", h.Unit, h.Root)
+		d.fallback[key] = []string{at("json-read", h.Unit, h.Root)}
 		if h.Refused {
 			d.refuse("json-hostile", h.Name, key)
 		} else {
@@ -204,7 +211,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 	for _, wr := range m.WriteRefusals {
 		key := at(wr.Surface(), wr.Unit, wr.Root)
 		if wr.Form == "json" {
-			d.fallback[key] = at("json-write", wr.Unit, wr.Root)
+			d.fallback[key] = []string{at("json-write", wr.Unit, wr.Root)}
 		}
 		if wr.Verdict == "refused" {
 			d.refuse(wr.Surface(), wr.Name, key)
