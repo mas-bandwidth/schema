@@ -8,6 +8,14 @@
 //	    .github/workflows/promotion-tag.yml runs it, through
 //	    `make promotion-tag PUSH=1`, on every push to main.
 //
+//	releasetag gate-version
+//	    prints the version a dry run of `make release` from this tree can
+//	    carry, for the release gate's own tests (make
+//	    release-refuses-on-differential): GateProbe, past every tag in the
+//	    current major, except after the /v3 module move and before its first
+//	    tag, where the release gate accepts only the boundary itself
+//	    (GateVersion).
+//
 //	releasetag release -version vX.Y.Z [-commit REV] [-main REF] [-push]
 //	    tags one commit vX.Y.Z (annotated). Refuses, by name, a version that
 //	    does not parse, one not greater than the newest v tag, a commit not
@@ -280,20 +288,8 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 	// boundary pin refuses every v3 tag and there is nothing to read.
 	var tagModules map[string]string
 	if boundary != "" {
-		tagModules = map[string]string{}
-		for _, existing := range fields(tags) {
-			if _, err := ParseVersion(existing); err != nil || modulemove.Major(existing) != "3" {
-				continue
-			}
-			src, err := g.Run("show", existing+":go.mod")
-			if err != nil {
-				return err
-			}
-			path, err := modulemove.ModulePath(src)
-			if err != nil {
-				return fmt.Errorf("%s: %w", existing, err)
-			}
-			tagModules[existing] = path
+		if tagModules, err = readTagModules(g, fields(tags)); err != nil {
+			return err
 		}
 	}
 	if err := modulemove.ReleaseGate(tag, goMod, boundary, tagModules); err != nil {
@@ -329,6 +325,59 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 	return nil
 }
 
+// readTagModules reads, for each v3 release tag in tags, the module path its
+// own go.mod names.
+func readTagModules(g Git, tags []string) (map[string]string, error) {
+	tagModules := map[string]string{}
+	for _, existing := range tags {
+		if _, err := ParseVersion(existing); err != nil || modulemove.Major(existing) != "3" {
+			continue
+		}
+		src, err := g.Run("show", existing+":go.mod")
+		if err != nil {
+			return nil, err
+		}
+		path, err := modulemove.ModulePath(src)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", existing, err)
+		}
+		tagModules[existing] = path
+	}
+	return tagModules, nil
+}
+
+// GateProbe is the version the release gate's tests dry-run a release as: in
+// the current major, past every tag that will be cut.
+const GateProbe = "v3.99999.0"
+
+// GateVersion is the version a dry run of a release from this tree can carry
+// (the release gate's tests need one that reaches the tag decision):
+// GateProbe, except when the boundary is set and no v3 tag cut so far names
+// /v3 in its go.mod. In that window, between the /v3 module move and its first
+// tag, internal/modulemove.ReleaseGate accepts only the boundary itself as the
+// first /v3 release, so that is the version. Before the move (no boundary) a
+// v3 tag over the /v2 go.mod passes, and after the first /v3 tag any later
+// v3 version does.
+func GateVersion(g Git, boundary string) (string, error) {
+	if boundary == "" {
+		return GateProbe, nil
+	}
+	tags, err := g.Run("tag", "--list", "v*")
+	if err != nil {
+		return "", err
+	}
+	tagModules, err := readTagModules(g, fields(tags))
+	if err != nil {
+		return "", err
+	}
+	for tag, path := range tagModules {
+		if path == modulemove.PathFor(tag) {
+			return GateProbe, nil
+		}
+	}
+	return boundary, nil
+}
+
 // execGit is the real git, used only by main.
 type execGit struct{}
 
@@ -345,6 +394,7 @@ func (execGit) Run(args ...string) (string, error) {
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: releasetag promotion-tag [-commit REV] [-push]")
 	fmt.Fprintln(os.Stderr, "       releasetag release -version vX.Y.Z [-commit REV] [-main REF] [-push]")
+	fmt.Fprintln(os.Stderr, "       releasetag gate-version")
 	os.Exit(2)
 }
 
@@ -365,6 +415,12 @@ func main() {
 		mainRef := fs.String("main", "origin/main", "the ref whose ancestry is main")
 		_ = fs.Parse(os.Args[2:])
 		err = Release(execGit{}, *version, *commit, *mainRef, *push, os.Stdout)
+	case "gate-version":
+		_ = fs.Parse(os.Args[2:])
+		var v string
+		if v, err = GateVersion(execGit{}, modulemove.FirstV3ModuleTag); err == nil {
+			fmt.Println(v)
+		}
 	default:
 		usage()
 	}

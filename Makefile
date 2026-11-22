@@ -7477,14 +7477,16 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
-# The version is past every tag but keeps the current major: releasetag refuses
-# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
-# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
-RELEASE_GATE_VERSION ?= v3.99999.0
+# The version is one a release from this tree can carry, from
+# `releasetag gate-version` when none is given: v3.99999.0, past every tag in
+# the current major, except between the /v3 module move and its first tag,
+# where internal/modulemove.ReleaseGate accepts only FirstV3ModuleTag itself.
+RELEASE_GATE_VERSION ?=
 # the same Makefile this test was read from, so its control can hand it a copy
 RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
+	@$(if $(RELEASE_GATE_VERSION),,$(eval RELEASE_GATE_VERSION := $(shell go run ./tools/releasetag gate-version)))test -n '$(RELEASE_GATE_VERSION)' || { echo 'FAILED: releasetag gate-version named no version'; exit 1; }
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
 	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema

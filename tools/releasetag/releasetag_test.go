@@ -344,3 +344,56 @@ func TestReleaseModuleGate(t *testing.T) {
 		}
 	}
 }
+
+// TestGateVersion: the release gate's tests dry-run a release that must reach
+// its tag decision. Before the /v3 module move GateProbe does; between the
+// move and its first tag only the boundary does (GateProbe is refused there:
+// ErrBoundaryStale, the red nightly #4601's review found); after the first
+// /v3 tag GateProbe does again. Each answer is driven through release.
+func TestGateVersion(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, boundary, goModMajor string
+		tags                       map[string]string // tag: its go.mod's major
+		want                       string
+		probeRefused               bool
+	}{
+		{"before the move", "", "2", map[string]string{"v3.0.5": "2", "v3.0.6": "2"}, GateProbe, false},
+		{"moved, first /v3 tag not cut", "v3.0.7", "3", map[string]string{"v3.0.5": "2", "v3.0.6": "2"}, "v3.0.7", true},
+		{"moved, no tags in the checkout", "v3.0.7", "3", map[string]string{}, "v3.0.7", true},
+		{"moved, first /v3 tag cut", "v3.0.7", "3", map[string]string{"v3.0.6": "2", "v3.0.7": "3"}, GateProbe, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			var list []string
+			answers := map[string]string{
+				"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+				"rev-list origin/main":                mergeSHA + "\n",
+				"show " + mergeSHA + ":" + FormSource: formSrc(4),
+				"show " + mergeSHA + ":go.mod":        goModSrc(c.goModMajor),
+			}
+			for tag, major := range c.tags {
+				list = append(list, tag)
+				answers["show "+tag+":go.mod"] = goModSrc(major)
+				answers["show "+tag+":"+FormSource] = formSrc(4)
+			}
+			slices.Sort(list)
+			answers["tag --list v*"] = strings.Join(list, "\n") + "\n"
+			got, err := GateVersion(&fakeGit{answers: answers}, c.boundary)
+			if err != nil || got != c.want {
+				t.Fatalf("GateVersion = %q, %v; want %q", got, err, c.want)
+			}
+			g := &fakeGit{answers: answers}
+			if err := release(g, got, "HEAD", "origin/main", false, io.Discard, c.boundary); err != nil {
+				t.Errorf("a dry run of %s does not reach its tag decision: %v", got, err)
+			}
+			if len(g.writes()) != 0 {
+				t.Errorf("a dry run wrote %q", g.writes())
+			}
+			err = release(&fakeGit{answers: answers}, GateProbe, "HEAD", "origin/main", false, io.Discard, c.boundary)
+			if refused := errors.Is(err, modulemove.ErrBoundaryStale); refused != c.probeRefused {
+				t.Errorf("a dry run of %s: %v; want refused as stale %v", GateProbe, err, c.probeRefused)
+			}
+		})
+	}
+}
