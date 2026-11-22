@@ -114,12 +114,26 @@ public final class BenchMixedMessage {
         }
         {
             assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
-            if (v.entitiesCount > 0) {
+            boolean rides1 = v.entitiesCount > 0;
+            if (v.entitiesCount == 1) {
+                rides1 = false;
+                for (int i2 = 0; i2 < 1; i2++) {
+                    TableMessage.Writer probe3 = new TableMessage.Writer(null, 0, true);
+                    if (!MixedEntityMessage.saveMessageBody(probe3, v.entities[i2])) {
+                        return false;
+                    }
+                    if (probe3.bits > 7L) {
+                        rides1 = true;
+                        break;
+                    }
+                }
+            }
+            if (rides1) {
                 w.put(10L, 7);
                 assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
                 w.put((long) (v.entitiesCount) - 1L, 3);
-                for (int i1 = 0; i1 < v.entitiesCount; i1++) {
-                    if (!MixedEntityMessage.saveMessageBody(w, v.entities[i1])) {
+                for (int i4 = 0; i4 < v.entitiesCount; i4++) {
+                    if (!MixedEntityMessage.saveMessageBody(w, v.entities[i4])) {
                         return false;
                     }
                 }
@@ -131,8 +145,8 @@ public final class BenchMixedMessage {
                 w.put(11L, 7);
                 assert v.statsCount >= 0 && v.statsCount <= 80;
                 w.put((long) (v.statsCount) - 0L, 7);
-                for (int i2 = 0; i2 < v.statsCount; i2++) {
-                    if (!MixedStatMessage.saveMessageBody(w, v.stats[i2])) {
+                for (int i5 = 0; i5 < v.statsCount; i5++) {
+                    if (!MixedStatMessage.saveMessageBody(w, v.stats[i5])) {
                         return false;
                     }
                 }
@@ -175,18 +189,18 @@ public final class BenchMixedMessage {
             }
         }
         {
-            boolean allDef3 = true;
-            for (int i4 = 0; i4 < 4; i4++) {
-                if (v.loadout[i4] != (byte) 0) {
-                    allDef3 = false;
+            boolean allDef6 = true;
+            for (int i7 = 0; i7 < 4; i7++) {
+                if (v.loadout[i7] != (byte) 0) {
+                    allDef6 = false;
                     break;
                 }
             }
-            if (!allDef3) {
+            if (!allDef6) {
                 w.put(13L, 7);
                 w.align();
-                for (int i5 = 0; i5 < 4; i5++) {
-                    TableMessage.writeScalar(w, 0, 8, 0L, 0L, ((long) v.loadout[i5] & 0xffL), 0L);
+                for (int i8 = 0; i8 < 4; i8++) {
+                    TableMessage.writeScalar(w, 0, 8, 0L, 0L, ((long) v.loadout[i8] & 0xffL), 0L);
                 }
             }
         }
@@ -338,8 +352,8 @@ public final class BenchMixedMessage {
         assert v.frameTick >= 0 && v.frameTick <= 281474976710655L;
         assert v.serverTime >= 0L;
         assert v.serverTime <= 0xffff00L;
-        for (int i6 = 0; i6 < java.lang.Math.min(v.entitiesCount, v.entities.length); i6++) {}
-        for (int i7 = 0; i7 < java.lang.Math.min(v.statsCount, v.stats.length); i7++) {}
+        for (int i9 = 0; i9 < java.lang.Math.min(v.entitiesCount, v.entities.length); i9++) {}
+        for (int i10 = 0; i10 < java.lang.Math.min(v.statsCount, v.stats.length); i10++) {}
         switch (v.gameEvent.type) {
             case 1:
                 break;
@@ -348,7 +362,7 @@ public final class BenchMixedMessage {
             case 3:
                 break;
         }
-        for (int i8 = 0; i8 < v.loadout.length; i8++) {}
+        for (int i11 = 0; i11 < v.loadout.length; i11++) {}
         assert v.playerNameLength < 0
                 || v.playerNameLength > 15
                 || TableMessage.utf8Valid(v.playerName, 0, v.playerNameLength);
@@ -414,12 +428,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v9 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 16);
+                    long v12 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 16);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.sequence = (int) (v9);
+                    v.sequence = (int) (v12);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -454,12 +468,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v10 = TableMessage.readSigned(r, entry.shape, 0L, 65535L, true);
+                    long v13 = TableMessage.readSigned(r, entry.shape, 0L, 65535L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.ackSequence = (int) (v10);
+                    v.ackSequence = (int) (v13);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -494,12 +508,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v11 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 32);
+                    long v14 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 32);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.ackBits = (int) (v11);
+                    v.ackBits = (int) (v14);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -534,12 +548,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v12 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
+                    long v15 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.sessionId = v12;
+                    v.sessionId = v15;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -574,12 +588,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffffffffL, true, 0);
+                    long v16 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffffffffL, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.clientId = (int) (v13);
+                    v.clientId = (int) (v16);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -614,14 +628,14 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v14 =
+                    long v17 =
                             TableMessage.readUnsigned(
                                     r, entry.shape, 0L, 0xffffffffffffffffL, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.nonce = v14;
+                    v.nonce = v17;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -656,14 +670,14 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v15 =
+                    long v18 =
                             TableMessage.readSigned(
                                     r, entry.shape, -1000000000000L, 1000000000000L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.worldTime = v15;
+                    v.worldTime = v18;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -698,12 +712,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v16 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 48);
+                    long v19 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 48);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.frameTick = v16;
+                    v.frameTick = v19;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -738,12 +752,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v17 = TableMessage.readSigned(r, entry.shape, 0L, 16776960L, true);
+                    long v20 = TableMessage.readSigned(r, entry.shape, 0L, 16776960L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.serverTime = (int) (v17);
+                    v.serverTime = (int) (v20);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -777,7 +791,7 @@ public final class BenchMixedMessage {
                     }
                 }
                 int canonUnk = r.report.unknown;
-                long n18 = TableMessage.readCount(r, entry.shape);
+                long n21 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
                     return false;
@@ -786,40 +800,54 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep19 = java.lang.Math.min(n18, 8L);
-                if (keep19 < n18) {
+                long keep22 = java.lang.Math.min(n21, 8L);
+                if (keep22 < n21) {
                     r.report.refuse("count_over_bound");
                 }
-                if (n18 < 1L) {
+                if (n21 < 1L) {
                     r.report.refuse("count_over_bound");
                 }
-                long run20 = TableMessage.elementRunBits(14, entry.element);
-                long walk21 = (run20 >= 0L && n18 > keep19) ? keep19 : n18;
-                for (long i22 = 0; i22 < walk21; i22++) {
-                    if (i22 < keep19) {
-                        MixedEntityFixed.Value elem24 = v.entities[(int) i22];
-                        if (!MixedEntityMessage.loadMessageBody(r, elem24)) {
+                long run23 = TableMessage.elementRunBits(14, entry.element);
+                long walk24 = (run23 >= 0L && n21 > keep22) ? keep22 : n21;
+                for (long i25 = 0; i25 < walk24; i25++) {
+                    if (i25 < keep22) {
+                        MixedEntityFixed.Value elem27 = v.entities[(int) i25];
+                        if (!MixedEntityMessage.loadMessageBody(r, elem27)) {
                             return false;
                         }
                     } else {
-                        MixedEntityFixed.Value scratch23 = new MixedEntityFixed.Value();
-                        if (!MixedEntityMessage.loadMessageBody(r, scratch23)) {
+                        MixedEntityFixed.Value scratch26 = new MixedEntityFixed.Value();
+                        if (!MixedEntityMessage.loadMessageBody(r, scratch26)) {
                             return false;
                         }
                     }
                 }
-                if (walk21 < n18) {
-                    if (!TableMessage.skipRun(r, n18 - walk21, run20)) {
+                if (walk24 < n21) {
+                    if (!TableMessage.skipRun(r, n21 - walk24, run23)) {
                         r.report.damaged = true;
                         return false;
                     }
                 }
-                v.entitiesCount = (int) keep19;
+                v.entitiesCount = (int) keep22;
+                boolean rides28 = v.entitiesCount > 0;
+                if (v.entitiesCount == 1) {
+                    rides28 = false;
+                    for (int i29 = 0; i29 < 1; i29++) {
+                        TableMessage.Writer probe30 = new TableMessage.Writer(null, 0, true);
+                        if (!MixedEntityMessage.saveMessageBody(probe30, v.entities[i29])) {
+                            return false;
+                        }
+                        if (probe30.bits > 7L) {
+                            rides28 = true;
+                            break;
+                        }
+                    }
+                }
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.entitiesCount > 0)) {
+                        && !(rides28)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -847,7 +875,7 @@ public final class BenchMixedMessage {
                     }
                 }
                 int canonUnk = r.report.unknown;
-                long n25 = TableMessage.readCount(r, entry.shape);
+                long n31 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
                     return false;
@@ -856,32 +884,32 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep26 = java.lang.Math.min(n25, 80L);
-                if (keep26 < n25) {
+                long keep32 = java.lang.Math.min(n31, 80L);
+                if (keep32 < n31) {
                     r.report.refuse("count_over_bound");
                 }
-                long run27 = TableMessage.elementRunBits(14, entry.element);
-                long walk28 = (run27 >= 0L && n25 > keep26) ? keep26 : n25;
-                for (long i29 = 0; i29 < walk28; i29++) {
-                    if (i29 < keep26) {
-                        MixedStatFixed.Value elem31 = v.stats[(int) i29];
-                        if (!MixedStatMessage.loadMessageBody(r, elem31)) {
+                long run33 = TableMessage.elementRunBits(14, entry.element);
+                long walk34 = (run33 >= 0L && n31 > keep32) ? keep32 : n31;
+                for (long i35 = 0; i35 < walk34; i35++) {
+                    if (i35 < keep32) {
+                        MixedStatFixed.Value elem37 = v.stats[(int) i35];
+                        if (!MixedStatMessage.loadMessageBody(r, elem37)) {
                             return false;
                         }
                     } else {
-                        MixedStatFixed.Value scratch30 = new MixedStatFixed.Value();
-                        if (!MixedStatMessage.loadMessageBody(r, scratch30)) {
+                        MixedStatFixed.Value scratch36 = new MixedStatFixed.Value();
+                        if (!MixedStatMessage.loadMessageBody(r, scratch36)) {
                             return false;
                         }
                     }
                 }
-                if (walk28 < n25) {
-                    if (!TableMessage.skipRun(r, n25 - walk28, run27)) {
+                if (walk34 < n31) {
+                    if (!TableMessage.skipRun(r, n31 - walk34, run33)) {
                         r.report.damaged = true;
                         return false;
                     }
                 }
-                v.statsCount = (int) keep26;
+                v.statsCount = (int) keep32;
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
@@ -919,105 +947,105 @@ public final class BenchMixedMessage {
                 MixedChatEventMessage.reset(v.gameEvent.chat);
                 MixedPickupEventMessage.reset(v.gameEvent.pickup);
                 {
-                    long ref32 = r.get(r.vocab.refBits);
+                    long ref38 = r.get(r.vocab.refBits);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    if (ref32 == 0L) {
+                    if (ref38 == 0L) {
                         v.gameEvent.type = 0;
                     } else {
-                        if (ref32 < 0L || ref32 > (long) r.vocab.count) {
+                        if (ref38 < 0L || ref38 > (long) r.vocab.count) {
                             r.report.damaged = true;
                             return false;
                         }
-                        TableVocabulary.Entry arm33 = r.vocab.entries[(int) ref32 - 1];
-                        if (TableMessage.reservedId(arm33.id) || arm33.kind == 0) {
+                        TableVocabulary.Entry arm39 = r.vocab.entries[(int) ref38 - 1];
+                        if (TableMessage.reservedId(arm39.id) || arm39.kind == 0) {
                             r.report.damaged = true;
                             return false;
                         }
-                        int aHi34 = (int) (arm33.id >>> 32);
-                        int aLo35 = (int) arm33.id;
-                        if (aHi34 == 0x33732819 && aLo35 == 0x300680aa) {
-                            boolean armWidened36 = false;
-                            int armElemKind37 = arm33.element != null ? arm33.element.kind : 0;
-                            if (arm33.kind != 13 || armElemKind37 != 0) {
-                                if (TableMessage.entryWidens(arm33, 13, 0)) {
-                                    armWidened36 = true;
+                        int aHi40 = (int) (arm39.id >>> 32);
+                        int aLo41 = (int) arm39.id;
+                        if (aHi40 == 0x33732819 && aLo41 == 0x300680aa) {
+                            boolean armWidened42 = false;
+                            int armElemKind43 = arm39.element != null ? arm39.element.kind : 0;
+                            if (arm39.kind != 13 || armElemKind43 != 0) {
+                                if (TableMessage.entryWidens(arm39, 13, 0)) {
+                                    armWidened42 = true;
                                 } else {
                                     v.gameEvent.type = 0;
                                     r.report.refuse("kind_mismatch");
-                                    if (!TableMessage.skip(r, arm33)) {
+                                    if (!TableMessage.skip(r, arm39)) {
                                         r.report.damaged = true;
                                         return false;
                                     }
-                                    armWidened36 = false;
+                                    armWidened42 = false;
                                 }
                             }
-                            if (arm33.kind == 13 && armElemKind37 == 0 || armWidened36) {
+                            if (arm39.kind == 13 && armElemKind43 == 0 || armWidened42) {
                                 v.gameEvent.type = 1;
                                 if (!MixedHitEventMessage.loadMessageBody(r, v.gameEvent.hit)) {
                                     return false;
                                 }
-                                if (armWidened36) {
+                                if (armWidened42) {
                                     r.report.widened++;
                                 }
                             }
-                        } else if (aHi34 == 0xf2a38d91 && aLo35 == 0x0b5b348b) {
-                            boolean armWidened38 = false;
-                            int armElemKind39 = arm33.element != null ? arm33.element.kind : 0;
-                            if (arm33.kind != 13 || armElemKind39 != 0) {
-                                if (TableMessage.entryWidens(arm33, 13, 0)) {
-                                    armWidened38 = true;
+                        } else if (aHi40 == 0xf2a38d91 && aLo41 == 0x0b5b348b) {
+                            boolean armWidened44 = false;
+                            int armElemKind45 = arm39.element != null ? arm39.element.kind : 0;
+                            if (arm39.kind != 13 || armElemKind45 != 0) {
+                                if (TableMessage.entryWidens(arm39, 13, 0)) {
+                                    armWidened44 = true;
                                 } else {
                                     v.gameEvent.type = 0;
                                     r.report.refuse("kind_mismatch");
-                                    if (!TableMessage.skip(r, arm33)) {
+                                    if (!TableMessage.skip(r, arm39)) {
                                         r.report.damaged = true;
                                         return false;
                                     }
-                                    armWidened38 = false;
+                                    armWidened44 = false;
                                 }
                             }
-                            if (arm33.kind == 13 && armElemKind39 == 0 || armWidened38) {
+                            if (arm39.kind == 13 && armElemKind45 == 0 || armWidened44) {
                                 v.gameEvent.type = 2;
                                 if (!MixedChatEventMessage.loadMessageBody(r, v.gameEvent.chat)) {
                                     return false;
                                 }
-                                if (armWidened38) {
+                                if (armWidened44) {
                                     r.report.widened++;
                                 }
                             }
-                        } else if (aHi34 == 0x9fa3a41c && aLo35 == 0x86ecb765) {
-                            boolean armWidened40 = false;
-                            int armElemKind41 = arm33.element != null ? arm33.element.kind : 0;
-                            if (arm33.kind != 13 || armElemKind41 != 0) {
-                                if (TableMessage.entryWidens(arm33, 13, 0)) {
-                                    armWidened40 = true;
+                        } else if (aHi40 == 0x9fa3a41c && aLo41 == 0x86ecb765) {
+                            boolean armWidened46 = false;
+                            int armElemKind47 = arm39.element != null ? arm39.element.kind : 0;
+                            if (arm39.kind != 13 || armElemKind47 != 0) {
+                                if (TableMessage.entryWidens(arm39, 13, 0)) {
+                                    armWidened46 = true;
                                 } else {
                                     v.gameEvent.type = 0;
                                     r.report.refuse("kind_mismatch");
-                                    if (!TableMessage.skip(r, arm33)) {
+                                    if (!TableMessage.skip(r, arm39)) {
                                         r.report.damaged = true;
                                         return false;
                                     }
-                                    armWidened40 = false;
+                                    armWidened46 = false;
                                 }
                             }
-                            if (arm33.kind == 13 && armElemKind41 == 0 || armWidened40) {
+                            if (arm39.kind == 13 && armElemKind47 == 0 || armWidened46) {
                                 v.gameEvent.type = 3;
                                 if (!MixedPickupEventMessage.loadMessageBody(
                                         r, v.gameEvent.pickup)) {
                                     return false;
                                 }
-                                if (armWidened40) {
+                                if (armWidened46) {
                                     r.report.widened++;
                                 }
                             }
                         } else {
                             v.gameEvent.type = 0;
                             r.report.unknown++;
-                            if (!TableMessage.skip(r, arm33)) {
+                            if (!TableMessage.skip(r, arm39)) {
                                 r.report.damaged = true;
                                 return false;
                             }
@@ -1055,7 +1083,7 @@ public final class BenchMixedMessage {
                     }
                 }
                 int canonUnk = r.report.unknown;
-                long n42 = TableMessage.readCount(r, entry.shape);
+                long n48 = TableMessage.readCount(r, entry.shape);
                 if (r.err) {
                     r.report.damaged = true;
                     return false;
@@ -1064,46 +1092,46 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep43 = java.lang.Math.min(n42, 4L);
-                if (keep43 < n42) {
+                long keep49 = java.lang.Math.min(n48, 4L);
+                if (keep49 < n48) {
                     r.report.refuse("count_over_bound");
                 }
-                long run44 = TableMessage.elementRunBits(14, entry.element);
-                long walk45 = (run44 >= 0L && n42 > keep43) ? keep43 : n42;
-                for (long i46 = 0; i46 < walk45; i46++) {
-                    if (i46 < keep43) {
+                long run50 = TableMessage.elementRunBits(14, entry.element);
+                long walk51 = (run50 >= 0L && n48 > keep49) ? keep49 : n48;
+                for (long i52 = 0; i52 < walk51; i52++) {
+                    if (i52 < keep49) {
                         {
-                            long v48 =
+                            long v54 =
                                     TableMessage.readUnsigned(r, entry.element, 0L, 0xffL, true, 0);
                             if (r.err) {
                                 r.report.damaged = true;
                                 return false;
                             }
-                            v.loadout[(int) i46] = (byte) (v48);
+                            v.loadout[(int) i52] = (byte) (v54);
                         }
                     } else {
-                        byte scratch47 = (byte) 0;
+                        byte scratch53 = (byte) 0;
                         {
-                            long v49 =
+                            long v55 =
                                     TableMessage.readUnsigned(r, entry.element, 0L, 0xffL, true, 0);
                             if (r.err) {
                                 r.report.damaged = true;
                                 return false;
                             }
-                            scratch47 = (byte) (v49);
+                            scratch53 = (byte) (v55);
                         }
                     }
                 }
-                if (walk45 < n42) {
-                    if (!TableMessage.skipRun(r, n42 - walk45, run44)) {
+                if (walk51 < n48) {
+                    if (!TableMessage.skipRun(r, n48 - walk51, run50)) {
                         r.report.damaged = true;
                         return false;
                     }
                 }
-                boolean allDef50 = true;
-                for (int i51 = 0; i51 < 4; i51++) {
-                    if (v.loadout[i51] != (byte) 0) {
-                        allDef50 = false;
+                boolean allDef56 = true;
+                for (int i57 = 0; i57 < 4; i57++) {
+                    if (v.loadout[i57] != (byte) 0) {
+                        allDef56 = false;
                         break;
                     }
                 }
@@ -1111,7 +1139,7 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(!allDef50)) {
+                        && !(!allDef56)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1139,28 +1167,28 @@ public final class BenchMixedMessage {
                     }
                 }
                 int canonUnk = r.report.unknown;
-                long n52 = TableMessage.readCount(r, entry.shape);
+                long n58 = TableMessage.readCount(r, entry.shape);
                 if (r.err || !r.align()) {
                     r.report.damaged = true;
                     return false;
                 }
-                int start53 = r.atByte();
-                if (!r.skipBits(n52 * 8L)) {
+                int start59 = r.atByte();
+                if (!r.skipBits(n58 * 8L)) {
                     r.report.damaged = true;
                     return false;
                 }
-                if (!TableMessage.utf8Valid(r.buf, start53, (int) n52)) {
+                if (!TableMessage.utf8Valid(r.buf, start59, (int) n58)) {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept54 = (int) java.lang.Math.min(n52, 15L);
-                if ((long) kept54 < n52) {
-                    kept54 = TableMessage.utf8Clamp(r.buf, start53, kept54);
+                int kept60 = (int) java.lang.Math.min(n58, 15L);
+                if ((long) kept60 < n58) {
+                    kept60 = TableMessage.utf8Clamp(r.buf, start59, kept60);
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.playerName, (byte) 0);
-                java.lang.System.arraycopy(r.buf, start53, v.playerName, 0, kept54);
-                v.playerNameLength = kept54;
+                java.lang.System.arraycopy(r.buf, start59, v.playerName, 0, kept60);
+                v.playerNameLength = kept60;
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
@@ -1193,23 +1221,23 @@ public final class BenchMixedMessage {
                     }
                 }
                 int canonUnk = r.report.unknown;
-                long n55 = TableMessage.readCount(r, entry.shape);
+                long n61 = TableMessage.readCount(r, entry.shape);
                 if (r.err || !r.align()) {
                     r.report.damaged = true;
                     return false;
                 }
-                int start56 = r.atByte();
-                if (!r.skipBits(n55 * 8L)) {
+                int start62 = r.atByte();
+                if (!r.skipBits(n61 * 8L)) {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept57 = (int) java.lang.Math.min(n55, 16L);
-                if ((long) kept57 < n55) {
+                int kept63 = (int) java.lang.Math.min(n61, 16L);
+                if ((long) kept63 < n61) {
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.payload, (byte) 0);
-                java.lang.System.arraycopy(r.buf, start56, v.payload, 0, kept57);
-                v.payloadLength = kept57;
+                java.lang.System.arraycopy(r.buf, start62, v.payload, 0, kept63);
+                v.payloadLength = kept63;
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
@@ -1243,7 +1271,7 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    float v58 =
+                    float v64 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1255,7 +1283,7 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimX = v58;
+                    v.aimX = v64;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1291,7 +1319,7 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    float v59 =
+                    float v65 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1303,7 +1331,7 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimY = v59;
+                    v.aimY = v65;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1339,7 +1367,7 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    float v60 =
+                    float v66 =
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
@@ -1351,7 +1379,7 @@ public final class BenchMixedMessage {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.aimZ = v60;
+                    v.aimZ = v66;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1387,14 +1415,14 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    float v61 =
+                    float v67 =
                             TableMessage.readFloat32(
                                     r, entry.shape, 0.0f, 0.0f, false, "BenchMixed.recoil");
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.recoil = v61;
+                    v.recoil = v67;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1430,14 +1458,14 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    double v62 =
+                    double v68 =
                             TableMessage.readFloat64(
                                     r, entry.shape, 0.0, 0.0, false, "BenchMixed.drift");
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.drift = v62;
+                    v.drift = v68;
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1473,13 +1501,13 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long[] raw63 = TableMessage.read128Raw(r, entry.shape, false);
+                    long[] raw69 = TableMessage.read128Raw(r, entry.shape, false);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    long lo64 = raw63[0], hi65 = raw63[1];
-                    v.wideKey = new UInt128(hi65, lo64);
+                    long lo70 = raw69[0], hi71 = raw69[1];
+                    v.wideKey = new UInt128(hi71, lo70);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1514,25 +1542,25 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long[] raw66 = TableMessage.read128Raw(r, entry.shape, true);
+                    long[] raw72 = TableMessage.read128Raw(r, entry.shape, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    long lo67 = raw66[0], hi68 = raw66[1];
-                    int below69 =
-                            TableMessage.compareSigned128(lo67, hi68, 0L, 0xfffffff000000000L);
-                    int above70 = TableMessage.compareSigned128(lo67, hi68, 0L, 0x1000000000L);
-                    if (below69 < 0) {
-                        lo67 = 0L;
-                        hi68 = 0xfffffff000000000L;
+                    long lo73 = raw72[0], hi74 = raw72[1];
+                    int below75 =
+                            TableMessage.compareSigned128(lo73, hi74, 0L, 0xfffffff000000000L);
+                    int above76 = TableMessage.compareSigned128(lo73, hi74, 0L, 0x1000000000L);
+                    if (below75 < 0) {
+                        lo73 = 0L;
+                        hi74 = 0xfffffff000000000L;
                         r.report.refuse("out_of_range");
-                    } else if (above70 > 0) {
-                        lo67 = 0L;
-                        hi68 = 0x1000000000L;
+                    } else if (above76 > 0) {
+                        lo73 = 0L;
+                        hi74 = 0x1000000000L;
                         r.report.refuse("out_of_range");
                     }
-                    v.flux = new Int128(hi68, lo67);
+                    v.flux = new Int128(hi74, lo73);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1567,12 +1595,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v71 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xfa00L, true, 0);
+                    long v77 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xfa00L, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.ping = (short) (v71);
+                    v.ping = (short) (v77);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1607,12 +1635,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v72 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 24);
+                    long v78 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 24);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.crcHint = (int) (v72);
+                    v.crcHint = (int) (v78);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1647,12 +1675,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v73 = r.get(1);
+                    long v79 = r.get(1);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.hasExtra = (v73 != 0L);
+                    v.hasExtra = (v79 != 0L);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1687,12 +1715,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v74 = TableMessage.readSigned(r, entry.shape, 0L, 255L, true);
+                    long v80 = TableMessage.readSigned(r, entry.shape, 0L, 255L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.extra = (int) (v74);
+                    v.extra = (int) (v80);
                 }
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1727,12 +1755,12 @@ public final class BenchMixedMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v75 = TableMessage.readSigned(r, entry.shape, 0L, 15L, true);
+                    long v81 = TableMessage.readSigned(r, entry.shape, 0L, 15L, true);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
                     }
-                    v.idleTicks = (int) (v75);
+                    v.idleTicks = (int) (v81);
                 }
                 if (!r.report.refused
                         && !r.report.damaged

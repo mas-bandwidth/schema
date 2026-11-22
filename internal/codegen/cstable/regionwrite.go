@@ -27,7 +27,9 @@ const tableRegionWriteSource = `
             // BORN AT ITS MIN (docs/SPEC.md §4.2), as Rides says
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                // a table element is at its default when its body writes
+                // nothing (no field rides), a union element when it is None
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!RegionDefaultElement(value, f, i)) { return true; } }
                 return false;
             }

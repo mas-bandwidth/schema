@@ -4263,6 +4263,44 @@ func variableValueType(f *ir.Field) string {
 	return "java.lang.Object"
 }
 
+// variableBornCounted says whether f is a plain counted [A..B] array with a
+// positive minimum: its BORN state is A default elements (ir.Field.BornCount,
+// docs/SPEC.md §4.2), and the writer elides it exactly there (SPEC-TABLES §2.3).
+func variableBornCounted(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Type.Optional && f.KeyEnum == "" &&
+		!f.IsMap() && !f.Type.Pointer && !ir.TextListPlain(f)
+}
+
+// variableBorn is a field's initializer: a counted [A..B] array is born
+// holding A default elements, every other field at variableDefault.
+func variableBorn(f *ir.Field) string {
+	if !variableBornCounted(f) {
+		return variableDefault(f)
+	}
+	one := variableDefault(variableElement(f))
+	elems := make([]string, f.BornCount())
+	for i := range elems {
+		elems[i] = one
+	}
+	return "new java.util.ArrayList<>(java.util.Arrays.asList(" + strings.Join(elems, ", ") + "))"
+}
+
+// writeArrayRides emits the test a counted array's save rides on and returns
+// it: not empty, and, for a [A..B] array, not at its born state (A elements,
+// each writing nothing; a table element is judged by its save body on the
+// writer, rolled back with its ids, as isDefault does).
+func writeArrayRides(b *strings.Builder, f *ir.Field, m string) string {
+	if !variableBornCounted(f) {
+		return "!v." + m + ".isEmpty()"
+	}
+	rides := "rides_" + m
+	one := variableElement(f)
+	fmt.Fprintf(b, "        boolean %s = !v.%s.isEmpty();\n", rides, m)
+	fmt.Fprintf(b, "        if (v.%s.size() == %d) { %s = false; for (int i = 0; i < %d; i++) { if (!(%s)) { %s = true; break; } } }\n",
+		m, f.BornCount(), rides, f.BornCount(), variableDefaultTest(one, "v."+m+".get(i)"), rides)
+	return rides
+}
+
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new java.util.ArrayList<>()"
@@ -4370,7 +4408,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
+		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableBorn(f))
 		if f.Type.Optional {
 			fmt.Fprintf(&b, "        public boolean %sPresent;\n", varMember(f))
 		}
@@ -5524,10 +5562,20 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
+// writeJsonBornClear empties a counted [A..B] array before its JSON elements
+// are placed: the value is born holding A elements (variableBorn), and the
+// text's elements replace them rather than follow them.
+func writeJsonBornClear(b *strings.Builder, f *ir.Field, m string) {
+	if variableBornCounted(f) {
+		fmt.Fprintf(b, "                    v.%s.clear();\n", m)
+	}
+}
+
 func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
 	b.WriteString("                    in.p++;\n")
+	writeJsonBornClear(b, f, m)
 	b.WriteString("                    int idx = 0;\n")
 	if f.Array != ir.ArrayList {
 		fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
@@ -5995,6 +6043,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
 		b.WriteString("                    in.p++;\n")
+		writeJsonBornClear(b, f, m)
 		b.WriteString("                    int idx = 0;\n")
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
@@ -6582,7 +6631,7 @@ func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "        if (%s) {\n", writeArrayRides(b, f, m))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6708,7 +6757,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", writeArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {
