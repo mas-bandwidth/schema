@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCTableViewOutsideClosure(t *testing.T) {
@@ -78,10 +79,10 @@ func TestCTableViewListing(t *testing.T) {
 			}
 			binary := filepath.Join(dir, "view")
 			args = append(args, "-lm", "-o", binary)
-			if out, err := exec.Command("cc", args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, "cc", args...).CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
-			out, err := exec.Command(binary).CombinedOutput()
+			out, err := testproc.Command(t, binary).CombinedOutput()
 			if err != nil {
 				t.Fatalf("run: %v\n%s", err, out)
 			}

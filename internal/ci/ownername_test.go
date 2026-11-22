@@ -37,7 +37,7 @@ func TestOwnerName(t *testing.T) {
 		t.Fatal("the walk of internal/ci found no .go source; this gate would pass having read two documents")
 	}
 
-	scanned := 0
+	scanned, cited := 0, 0
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -56,6 +56,7 @@ func TestOwnerName(t *testing.T) {
 				t.Errorf("%s:%d: ruling citation names the maintainer; cite the date and docs/rulings.json key", rel, i+1)
 			}
 			for _, m := range citationKey.FindAllStringSubmatch(line, -1) {
+				cited++
 				if !keys[m[1]] {
 					t.Errorf("%s:%d: docs/rulings.json has no ruling %q", rel, i+1, m[1])
 				}
@@ -64,6 +65,14 @@ func TestOwnerName(t *testing.T) {
 	}
 	if scanned == 0 {
 		t.Fatal("no file scanned; this gate would pass over an empty set")
+	}
+	// the fixed pages are always in the set, so scanned alone cannot fall to
+	// zero; what can is the count of citations the pattern still reads
+	if cited == 0 {
+		t.Fatalf("%d files scanned and no docs/rulings.json citation read; the citation pattern no longer matches how the tree cites a ruling", scanned)
+	}
+	if !citationKey.MatchString("docs/rulings.json, `strict-only-read`") || !citationKey.MatchString("(docs/rulings.json strict-only-read)") {
+		t.Fatal("the citation pattern does not read the two spellings the tree uses")
 	}
 }
 

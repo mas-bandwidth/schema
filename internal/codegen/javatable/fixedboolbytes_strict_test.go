@@ -11,12 +11,13 @@ package javatable
 import (
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const fixedBoolBytesSchema = `package strictbool
@@ -138,12 +139,12 @@ func TestFixedBoolBytesStrict(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
 	cleanPath := filepath.Join(t.TempDir(), "clean.bin")
-	if out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_save", cleanPath).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_save", cleanPath).CombinedOutput(); err != nil {
 		t.Fatalf("Probe_save: %v\n%s", err, out)
 	}
 	raw, err := os.ReadFile(cleanPath)
@@ -167,7 +168,7 @@ func TestFixedBoolBytesStrict(t *testing.T) {
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_load", path).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_load", path).CombinedOutput()
 		if err != nil {
 			t.Fatalf("Probe_load: %v\n%s", err, out)
 		}

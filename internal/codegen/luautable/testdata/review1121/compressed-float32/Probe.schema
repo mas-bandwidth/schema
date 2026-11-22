@@ -1,0 +1,15 @@
+package probe
+
+// cf's max (0.1) is not a float32: the float32 the declaration names, 0.1f,
+// is a hair above the double 0.1. V is a variable root, F a fixed one (the
+// fixed and message forms).
+
+table V
+{
+    cf float32 | min = 0.0, max = 0.1, resolution = 0.001
+}
+
+fixed table F
+{
+    cf float32 | min = 0.0, max = 0.1, resolution = 0.001
+}

@@ -1,0 +1,5 @@
+// enum.schema: generated Java names its outer class enum, which javac refuses
+// or which obscures the java package (compiler/javaplatform_test.go).
+package demo
+
+type Packet { value uint16 }

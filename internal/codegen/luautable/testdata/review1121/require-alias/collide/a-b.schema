@@ -1,0 +1,11 @@
+package alias
+
+type C
+{
+    z uint8 = 3
+}
+
+table TC
+{
+    c C
+}

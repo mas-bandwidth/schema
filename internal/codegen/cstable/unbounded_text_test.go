@@ -9,10 +9,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unboundedTextSchema = `package probe
@@ -149,7 +150,7 @@ func TestUnboundedOracle(t *testing.T){
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestUnboundedOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestUnboundedOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Go unbounded oracle: %v\n%s", err, out)

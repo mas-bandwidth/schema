@@ -8,10 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-
 // Types carries every generated declaration of Types.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -20,8 +16,9 @@ public final class Types {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -127,7 +124,7 @@ public final class Types {
         int pos = bitOffset;
         long scratch;
         {
-            final long b = Double.doubleToRawLongBits(value.x);
+            final long b = java.lang.Double.doubleToRawLongBits(value.x);
             scratch = loadBits(data, pos);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
@@ -135,14 +132,14 @@ public final class Types {
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.y);
+            final long b = java.lang.Double.doubleToRawLongBits(value.y);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.z);
+            final long b = java.lang.Double.doubleToRawLongBits(value.z);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -171,7 +168,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -188,7 +185,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.x = Double.longBitsToDouble(lo);
+        value.x = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -198,7 +195,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.y = Double.longBitsToDouble(lo);
+        value.y = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -208,7 +205,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.z = Double.longBitsToDouble(lo);
+        value.z = java.lang.Double.longBitsToDouble(lo);
         return bitsRead;
     }
 
@@ -284,7 +281,7 @@ public final class Types {
         int pos = bitOffset;
         long scratch;
         {
-            final long b = Double.doubleToRawLongBits(value.x);
+            final long b = java.lang.Double.doubleToRawLongBits(value.x);
             scratch = loadBits(data, pos);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
@@ -292,21 +289,21 @@ public final class Types {
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.y);
+            final long b = java.lang.Double.doubleToRawLongBits(value.y);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.z);
+            final long b = java.lang.Double.doubleToRawLongBits(value.z);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.w);
+            final long b = java.lang.Double.doubleToRawLongBits(value.w);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -335,7 +332,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -352,7 +349,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.x = Double.longBitsToDouble(lo);
+        value.x = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -362,7 +359,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.y = Double.longBitsToDouble(lo);
+        value.y = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -372,7 +369,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.z = Double.longBitsToDouble(lo);
+        value.z = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -382,7 +379,7 @@ public final class Types {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.w = Double.longBitsToDouble(lo);
+        value.w = java.lang.Double.longBitsToDouble(lo);
         return bitsRead;
     }
 
@@ -480,7 +477,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -605,7 +602,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -739,7 +736,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -881,7 +878,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1022,7 +1019,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1164,7 +1161,7 @@ public final class Types {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.stickX) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.stickX) & 0xffffffffL,
                         32);
         pos += 32;
         scratch =
@@ -1172,7 +1169,7 @@ public final class Types {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.stickY) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.stickY) & 0xffffffffL,
                         32);
         pos += 32;
         scratch =
@@ -1180,13 +1177,24 @@ public final class Types {
                         data,
                         pos,
                         scratch,
-                        Float.floatToRawIntBits(value.throttle) & 0xffffffffL,
+                        java.lang.Float.floatToRawIntBits(value.throttle) & 0xffffffffL,
                         32);
         pos += 32;
-        scratch = putBits(data, pos, scratch, Float.floatToRawIntBits(value.yaw) & 0xffffffffL, 32);
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        java.lang.Float.floatToRawIntBits(value.yaw) & 0xffffffffL,
+                        32);
         pos += 32;
         scratch =
-                putBits(data, pos, scratch, Float.floatToRawIntBits(value.pitch) & 0xffffffffL, 32);
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        java.lang.Float.floatToRawIntBits(value.pitch) & 0xffffffffL,
+                        32);
         pos += 32;
         scratch = putBits(data, pos, scratch, value.fire ? 1 : 0, 1);
         pos += 1;
@@ -1227,7 +1235,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1239,31 +1247,31 @@ public final class Types {
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.stickX = Float.intBitsToFloat((int) v);
+        value.stickX = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.stickY = Float.intBitsToFloat((int) v);
+        value.stickY = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.throttle = Float.intBitsToFloat((int) v);
+        value.throttle = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.yaw = Float.intBitsToFloat((int) v);
+        value.yaw = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         if ((v & 0x7f800000L) == 0x7f800000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.pitch = Float.intBitsToFloat((int) v);
+        value.pitch = java.lang.Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.fire = v != 0;
@@ -1417,7 +1425,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1612,7 +1620,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1772,7 +1780,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1862,7 +1870,7 @@ public final class Types {
         assert (long) data.length * 8 >= (long) bitOffset + EXTREME_PROBE_MAX_BITS;
         assert value.floorBound <= 100;
         assert value.doubledFloor <= 100;
-        assert Long.compareUnsigned(value.ceilingRange, 1) >= 0;
+        assert java.lang.Long.compareUnsigned(value.ceilingRange, 1) >= 0;
         return true;
     }
 
@@ -1928,7 +1936,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1942,7 +1950,7 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.floorBound = (lo + 0x8000000000000000L);
@@ -1952,7 +1960,7 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.doubledFloor = (lo + 0x8000000000000000L);
@@ -1962,7 +1970,7 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0xfffffffffffffffeL) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0xfffffffffffffffeL) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.ceilingRange = (lo + 1);
@@ -2045,8 +2053,8 @@ public final class Types {
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + EXTREME_ROW_MAX_BITS;
         assert value.clampedFloor <= 100;
-        assert Long.compareUnsigned(value.clampedCeiling, 1) >= 0;
-        assert Long.compareUnsigned(value.clampedCeiling, 0xfffffffffffffffeL) <= 0;
+        assert java.lang.Long.compareUnsigned(value.clampedCeiling, 1) >= 0;
+        assert java.lang.Long.compareUnsigned(value.clampedCeiling, 0xfffffffffffffffeL) <= 0;
         return true;
     }
 
@@ -2105,7 +2113,7 @@ public final class Types {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -2119,7 +2127,7 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0x8000000000000064L) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.clampedFloor = (lo + 0x8000000000000000L);
@@ -2129,7 +2137,7 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0xfffffffffffffffdL) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0xfffffffffffffffdL) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.clampedCeiling = (lo + 1);

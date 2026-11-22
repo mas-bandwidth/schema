@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestVariableClassBeyondCardConstructsJava is the variable-class half of this
@@ -170,10 +171,10 @@ func roundTripVariable(t *testing.T, javac, javaBin string, files map[string][]b
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver",
 		filepath.Join(dir, "instance.wire"), filepath.Join(dir, "instance.json")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

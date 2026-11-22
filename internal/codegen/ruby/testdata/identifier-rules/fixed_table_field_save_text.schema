@@ -1,0 +1,6 @@
+package game
+
+fixed table Fleet
+{
+    save_text uint32
+}

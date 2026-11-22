@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type nonCanonicalRow struct {
@@ -99,7 +100,7 @@ func javaNonCanonicalExpected(t *testing.T, vectors string, row nonCanonicalRow)
 func javaRunVerdicts(t *testing.T, javac, javaBin string, files map[string][]byte, pkg, driver string) map[string]string {
 	t.Helper()
 	dir := compileCookUnit(t, javac, files, pkg, map[string]string{"NonCanonicalDriver": driver})
-	out, err := exec.Command(javaBin, "-ea", "-cp", dir, "NonCanonicalDriver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, "NonCanonicalDriver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

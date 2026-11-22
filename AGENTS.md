@@ -33,6 +33,6 @@ bin/schema check <dir>
 | [test/](test/AGENTS.md) | language test harnesses | `make test` | `make test` |
 | [testdata/](testdata/AGENTS.md) | goldens, wire pins, conformance | `go test ./internal/goldens` | `make update-goldens` |
 | `third_party/` | staged sibling libraries: serialize.py (docs/PORT-PYTHON.md) | `make python-serialize-test` | `make python-serialize-test` |
-| `tla/` | bounded TLA models | `Step 4 TLC via tla/README.md` | `Step 4 TLC via tla/README.md` |
+| `tla/` | bounded TLA models | `go test ./tools/tlcrun` | `bash tla/run-tlc.sh` |
 | [tools/](tools/AGENTS.md) | maintainer tools | `go test ./tools/...` | `go test ./tools/...` |
 | `working/` | scratch; not normative | `none` | `none` |

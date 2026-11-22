@@ -53,7 +53,7 @@ var catalog = []Entry{
 	page("test", "language test harnesses", "make test", "make test"),
 	page("testdata", "goldens, wire pins, conformance", "go test ./internal/goldens", "make update-goldens"),
 	e("third_party", "staged sibling libraries: serialize.py (docs/PORT-PYTHON.md)", "make python-serialize-test", "make python-serialize-test"),
-	e("tla", "bounded TLA models", "Step 4 TLC via tla/README.md", "Step 4 TLC via tla/README.md"),
+	e("tla", "bounded TLA models", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	page("tools", "maintainer tools", "go test ./tools/...", "go test ./tools/..."),
 	e("working", "scratch; not normative", "none", "none"),
 
@@ -101,6 +101,7 @@ var catalog = []Entry{
 	e("internal/mapwalk", "map walk", "go test ./internal/mapwalk", "go test ./internal/mapwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
+	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
 	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
@@ -181,8 +182,12 @@ var catalog = []Entry{
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
+	e("testdata/golangci-lint-classes", "generated Go lint regression fixtures", "go test ./internal/goldens -run TestGolangciLintClassesShapes", "make schema-go-generated-golangci-lint-gate-classes-negative-control"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
+	e("testdata/lua-nightly-fuzz", "Lua fuzz replay controls", "make schema-lua-fuzz-replay-controls", "make schema-lua-fuzz-replay"),
 	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
+	e("testdata/moo-wire-fuzz-pinned-controls", "moo pinned-list controls", "make tables-moo-wire-fuzz-pinned-list-controls", "go test ./internal/ci -run TestMooPinnedListIsReadWhole"),
+	e("testdata/ruby-gems-lock-controls", "Ruby gem lock controls", "make ruby-gems-lock-controls", "go test ./internal/ci -run TestRubyGemsLockIsReadWhole"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/
@@ -204,6 +209,7 @@ var catalog = []Entry{
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
+	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
 
