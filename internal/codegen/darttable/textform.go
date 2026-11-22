@@ -749,6 +749,15 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonRangedFloat holds a compressed float's read to its range (§3.3): the
+// value as placed (a float32 already narrowed), inside the ends given, which
+// for a float32 are the float32 nearest each declared end (THE RANGE IS HELD
+// AT FLOAT32); one past an end refuses out_of_range, and a -0 lands as +0.
+double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
+  if (x < lo || x > hi) r.refuse('out_of_range');
+  return x == 0 ? 0.0 : x;
+}
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
@@ -1171,7 +1180,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\t\t\tv.%s.add(_jsonBoolField(item, r));\n", name)
 			case wireKindF32, wireKindF64:
-				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r, %t));\n", name, listElementKind(f) == wireKindF32)
+				g.pf("\t\t\t\t\tv.%s.add(%s);\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(item, r, %t)", listElementKind(f) == wireKindF32)))
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
@@ -1219,7 +1228,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d, v.%s);\n", name, f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t, v.%s);\n", name, f.Type.Kind == ir.TFloat32, name)
+		g.pf("\t\t\t\tv.%s = %s;\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(val, r, %t, v.%s)", f.Type.Kind == ir.TFloat32, name)))
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
@@ -1333,4 +1342,15 @@ func jsonTableShape(st *ir.Struct, expr string) string {
 		return expr + " is List"
 	}
 	return "_jsonEntries(" + expr + ") != null"
+}
+
+// jsonRangedFloat wraps one float read of the text form in its range test
+// when the field is compressed (_jsonRangedFloat, docs/SPEC-TABLES.md §3.3):
+// a float32's ends are the float32 nearest each declared end.
+func jsonRangedFloat(f *ir.Field, call string) string {
+	lo, hi, ok := fixedFloatClampEnds(f)
+	if !ok {
+		return call
+	}
+	return fmt.Sprintf("_jsonRangedFloat(%s, %s, %s, r)", call, lo, hi)
 }

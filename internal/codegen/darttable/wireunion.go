@@ -650,10 +650,12 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s\tif (%s.limit - %s.pos %s 8) %s\n", ind, p, p, g.widthCmp(), bad)
 		g.pf("%s\t%s = %s.readF64(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s}\n", ind)
-		if f.HasFloatRange {
-			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMin), p)
-			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMax), p)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			// held at the float32 nearest each end (§3.3, THE RANGE IS HELD AT
+			// FLOAT32); a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S
+			// SPECIAL VALUES)
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, lo, p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, hi, p)
 			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -791,10 +793,10 @@ func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 		g.pf("%s%s.add(%s.readBool());\n", ind, out, p)
 	case wireKindF32:
 		g.pf("%sif (!%s.has(4)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
+		g.pf("%s%s\n", ind, rangedFloatAdd(f, out, fmt.Sprintf("%s.readF32(%s.pos, '%s')", p, p, g.floatOwner(f)), p+".pos += 4;", p+".report"))
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, out, p, p, g.floatOwner(f), p)
+		g.pf("%s%s\n", ind, rangedFloatAdd(f, out, fmt.Sprintf("%s.readF64(%s.pos, '%s')", p, p, g.floatOwner(f)), p+".pos += 8;", p+".report"))
 	default:
 		w := ir.TableKindWidth(ek)
 		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)

@@ -4548,8 +4548,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimX = d;
         }
@@ -4566,8 +4566,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimY = d;
         }
@@ -4584,8 +4584,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimZ = d;
         }
@@ -5872,6 +5872,15 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   }
   r.refuse('kind_mismatch');
   return def;
+}
+
+// _jsonRangedFloat holds a compressed float's read to its range (§3.3): the
+// value as placed (a float32 already narrowed), inside the ends given, which
+// for a float32 are the float32 nearest each declared end (THE RANGE IS HELD
+// AT FLOAT32); one past an end refuses out_of_range, and a -0 lands as +0.
+double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
+  if (x < lo || x > hi) r.refuse('out_of_range');
+  return x == 0 ? 0.0 : x;
 }
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
@@ -7461,21 +7470,21 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1 && v.aimX <= 1)) { throw StateError('invalid_value: field aim_x out of range'); }
+  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimX, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1 && v.aimY <= 1)) { throw StateError('invalid_value: field aim_y out of range'); }
+  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimY, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1 && v.aimZ <= 1)) { throw StateError('invalid_value: field aim_z out of range'); }
+  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
@@ -7642,15 +7651,15 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "aim_x":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimX = _jsonFloatField(val, r, true, v.aimX);
+        v.aimX = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimX), -1.0, 1.0, r);
         break;
       case "aim_y":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimY = _jsonFloatField(val, r, true, v.aimY);
+        v.aimY = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimY), -1.0, 1.0, r);
         break;
       case "aim_z":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
+        v.aimZ = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimZ), -1.0, 1.0, r);
         break;
       case "recoil":
         if (!seen.add(key)) r.refuse('text_damaged');
