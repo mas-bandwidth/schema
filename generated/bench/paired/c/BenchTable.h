@@ -7614,6 +7614,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 72, 0xdbaf7be5e24296c9ull, 10 );
             if ( !bench_table_float_finite( value->aim_x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_x < -1.0f ) && !( value->aim_x > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_x ) );
         }
     }
@@ -7623,6 +7624,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 71, 0xdbaf7ae5e2429516ull, 10 );
             if ( !bench_table_float_finite( value->aim_y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_y < -1.0f ) && !( value->aim_y > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_y ) );
         }
     }
@@ -7632,6 +7634,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 70, 0xdbaf79e5e2429363ull, 10 );
             if ( !bench_table_float_finite( value->aim_z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_z < -1.0f ) && !( value->aim_z > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_z ) );
         }
     }
@@ -10587,6 +10590,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     {
         (*damaged)++;
     }
+    (*out_of_range) += (int) ( bench_table_float_finite( value->aim_x ) && ( value->aim_x < -1.0f || value->aim_x > 1.0f ) );
+    (*out_of_range) += (int) ( bench_table_float_finite( value->aim_y ) && ( value->aim_y < -1.0f || value->aim_y > 1.0f ) );
+    (*out_of_range) += (int) ( bench_table_float_finite( value->aim_z ) && ( value->aim_z < -1.0f || value->aim_z > 1.0f ) );
     (*out_of_range) += (int) ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
     (*out_of_range) += ( value->ping > 64000 );
     /* bits(24) width clamp */

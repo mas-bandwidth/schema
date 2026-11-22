@@ -12709,10 +12709,13 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
     if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
     if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
     if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
@@ -12936,18 +12939,21 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
         w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( table_float_to_bits( value.aim_z ) );
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
@@ -17703,6 +17709,9 @@ inline bool BenchMixedFixedWriteAdmits( const BenchMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
+    bad |= (int) ( TableFloatFinite( value.aim_x ) && ( value.aim_x < -1.0f || value.aim_x > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_y ) && ( value.aim_y < -1.0f || value.aim_y > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_z ) && ( value.aim_z < -1.0f || value.aim_z > 1.0f ) );
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );
     // bits(24) width clamp

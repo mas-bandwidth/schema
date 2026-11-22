@@ -470,6 +470,12 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sif ( !table_float_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		} else if f.HasFloatRange {
+			// ROW 10, A COMPRESSED FLOAT OFF ITS RANGE (docs/SPEC.md §5.1): in
+			// this assert leg the write check is a debug assert, against the
+			// float32 ends (docs/SPEC-TABLES.md §3.3)
+			g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */\n",
+				ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		}
 		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
 	case tkF64:
@@ -885,7 +891,12 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
 	} else if f.HasFloatRange {
 		hasRange = "1"
-		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+		// THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a compressed
+		// float's ends are float32(min) and float32(max), spelled exactly as
+		// doubles, so a read that narrows its value first and a write that
+		// casts the end back to float hold the one test every port holds, and
+		// the 0.1f a writer saved under max = 0.1 reads back.
+		rangeMin, rangeMax = formatFloat(float64(float32(f.FMin)), false), formatFloat(float64(float32(f.FMax)), false)
 	}
 
 	enumMax := "-1"

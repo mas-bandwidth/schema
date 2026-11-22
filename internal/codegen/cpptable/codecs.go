@@ -1015,7 +1015,16 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 	g.pf("%sif ( !TableFloatFinite( %s ) ) { %s } // a NaN or an infinity is refused (§3.3)\n", ind, expr, onBad)
 }
 
+// emitRequiredRangeCheck is the writer's range check. A `| required` field's
+// is a refusal in every build; any other compressed float's is ROW 10 of the
+// write contract (docs/SPEC.md §5.1), which in this assert leg is a debug
+// assert, against the float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
+	if !f.Required && f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+		g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)\n",
+			ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		return
+	}
 	if !f.Required {
 		return
 	}
@@ -3392,7 +3401,12 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
-		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+		// THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a compressed
+		// float's ends are float32(min) and float32(max), spelled exactly as
+		// doubles, so a read that narrows its value first and a write that
+		// casts the end back to float hold the one test every port holds, and
+		// the 0.1f a writer saved under max = 0.1 reads back.
+		rangeMin, rangeMax = formatFloat(float64(float32(f.FMin)), false), formatFloat(float64(float32(f.FMax)), false)
 	}
 	// THE WIDE KINDS (18-29) carry no int64/uint64 pair: their bounds may not
 	// fit sixty-four bits and their exact raw range is the `wide` column
