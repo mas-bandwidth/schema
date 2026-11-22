@@ -174,7 +174,10 @@ type tableGen struct {
 	// CHECK (docs/SPEC.md §5.1) rather than the read-side clamp: the same
 	// closed list of value bounds, over const storage a caller filled.
 	fixedWriteCheck bool
-	includes        map[string]bool // referenced files -> #include "<base>Table.h"
+	// armDescriptor is set while a union arm's field descriptor is emitted:
+	// its array_min column carries the arm's counted minimum (ruling R10).
+	armDescriptor bool
+	includes      map[string]bool // referenced files -> #include "<base>Table.h"
 }
 
 func (g *tableGen) canProbe(st *ir.Struct) bool {
@@ -510,6 +513,7 @@ typedef struct TableFieldInfo
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
+    int32_t array_min;      /* a union arm's counted [A..B] A, held on read and write (ruling R10); 0 otherwise */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */

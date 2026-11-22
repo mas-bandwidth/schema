@@ -211,6 +211,7 @@ typedef struct tabledemo_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
+    int32_t array_min;      /* a union arm's counted [A..B] A, held on read and write (ruling R10); 0 otherwise */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
@@ -6128,6 +6129,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_message_save_(tabledemo_
  break;
  case TABLEDEMO_MIN_PICK_TYPE_FEW: {
   tabledemo_table_bit_put(w,125,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( 2 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
   schema_assert( 0 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)(*value).as.few.value_count-2,2);
   { int32_t i;
@@ -6218,6 +6220,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_message_load_(tabledemo_
   }if(walk<n && !tabledemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   (*value).as.few.value_count=(int32_t)kept;
  }
+ if((*value).as.few.value_count<2)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
  value->type=TABLEDEMO_MIN_PICK_TYPE_FEW;
  break;
  }
@@ -6348,7 +6351,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load_( tabledemo_table_rea
 
 static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_arm_few_( tabledemo_table_writer_t * w, const tabledemo_min_pick_t * value )
 {
-    schema_assert( 0 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
+    schema_assert( 2 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
     { int32_t i; tabledemo_table_writer_put8( w, 8 ); tabledemo_table_writer_leb( w, (uint64_t)((*value).as.few.value_count) );
       for ( i=0; i<(*value).as.few.value_count; i++ ) {
         tabledemo_table_writer_put32( w, (uint32_t) ( (*value).as.few.value[i] ) );
@@ -6476,6 +6479,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load_( tabledemo_table_r
                         } }
                     }
                 }
+            if ( (*value).as.few.value_count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
             if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
             if ( kind != 14 ) { r->report->widened++; }
             value->type = TABLEDEMO_MIN_PICK_TYPE_FEW;
@@ -11636,6 +11640,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint32_t) value->pick.type > 2u ) { (*out_of_range)++; }
+    switch ( value->pick.type )
+    {
+        case TABLEDEMO_MIN_PICK_TYPE_FEW:
+        {
+            if ( value->pick.as.few.value_count < 2 ) { (*out_of_range)++; }
+            break;
+        }
+        default: break;
+    }
 }
 
 /* Debuff's write check (docs/SPEC.md §5.1). */
@@ -11747,6 +11760,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_arm
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint32_t) value->pick.type > 2u ) { (*out_of_range)++; }
+    switch ( value->pick.type )
+    {
+        case TABLEDEMO_MIN_PICK_TYPE_FEW:
+        {
+            if ( value->pick.as.few.value_count < 2 ) { (*out_of_range)++; }
+            break;
+        }
+        default: break;
+    }
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value WeaponConfig holds is
@@ -12276,7 +12298,7 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_load( tabledemo_weapo
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -12997,7 +13019,7 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_load( tabledemo_load
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -13775,7 +13797,7 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_load( tabledemo_prof
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -14959,7 +14981,7 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -15337,7 +15359,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_arm_fix_fixed_load( tabledemo_min_arm
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !tabledemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -15530,7 +15552,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_arm_few__retain( tablede
     (void)retention;
 
     retention=tabledemo_table_retain_step(retention,0,0);
-    schema_assert( 0 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
+    schema_assert( 2 <= (*value).as.few.value_count && (*value).as.few.value_count <= 4 );
     { int32_t i;
     tabledemo_table_writer_put8( w, 8 );
     tabledemo_table_writer_leb( w, (uint64_t)((*value).as.few.value_count) );
@@ -15714,6 +15736,8 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load__retain( tabledemo_
                         } }
                     }
                 }
+            if ( (*value).as.few.value_count < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            }
             if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             break;
             }
@@ -19097,6 +19121,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_(struct tabledem
     tabledemo_table_cook_put(at+0,(uint64_t)value->pick.type,1,order);
     switch(value->pick.type) {
     case TABLEDEMO_MIN_PICK_TYPE_FEW: {
+        schema_assert( 2 <= value->pick.as.few.value_count && value->pick.as.few.value_count <= 4 );
         { int32_t cook_i1; for(cook_i1=0;cook_i1<value->pick.as.few.value_count && cook_i1<4;cook_i1++) {
             tabledemo_table_cook_put(at+0+4+cook_i1*4,(uint64_t)value->pick.as.few.value[cook_i1],4,order);
         } }

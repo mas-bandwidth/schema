@@ -774,6 +774,15 @@ func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
 }
 
+// writeCountBound is the same check for a union ARM's counted array, which a
+// declared [A..B] holds to A as well as B (docs/SPEC-TABLES.md §3.4, ruling
+// R10): a writer never produces a count below A, and in this assert leg that
+// is the debug assert. An arm is never optional, so there is no presence to
+// ask first.
+func (g *tableGen) writeCountBound(count string, f *ir.Field, ind string) {
+	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, count, count, f.ArrayBound)
+}
+
 // unitHasWriteBound reports a unit whose writers carry a debug-only write
 // check — the fixed form's bounds and value checks, or a storage bound
 // of the variable or message form — so its header takes <assert.h> and
