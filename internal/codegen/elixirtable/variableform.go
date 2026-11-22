@@ -950,6 +950,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
@@ -6928,6 +6933,11 @@ const variableRetainSource = `
 
       {s, body} = save_fields_retain(desc, value, {idx_map, %{}, [], retain, report}, [], [])
       {{_idx_map, _ids, order, retain, report}, body} = save_node_table_retain(nodes, s, body)
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       # a record whose path no longer names a body was lost by the caller's
@@ -6940,6 +6950,7 @@ const variableRetainSource = `
        retain, report}
     catch
       :blob_shared -> {:error, :blob_shared}
+      :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
     end
@@ -8432,7 +8443,7 @@ const variableRetainSource = `
           ref = length(order) + 1
           {ref, Map.put(ids, id, ref), [id | order], retain}
         else
-          if length(retain.ids) >= retain.id_cap do
+          if length(retain.ids) >= retain.id_cap or length(order) >= 4096 do
             {0, ids, order, retain}
           else
             ref = length(order) + 1
