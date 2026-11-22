@@ -58,7 +58,7 @@ public final class Main {
 	// TableUnitView is the unit's descriptor listing, one method that spells
 	// every one of the 4094 variants: javac refuses it as "code too large", and
 	// no save or load names it, so the probe compiles the unit without it.
-	compileAndRunJavaProbeSkipping(t, tablewire.IdCapSchema(), "idcap", driver, "TableUnitView.java")
+	compileAndRunJavaProbeSkipping(t, tablewire.IdCapSchema(), "idcap", driver, "TableUnitView.java", "TableRegistry.java")
 }
 
 func compileAndRunJavaProbeSkipping(t *testing.T, schema, pkg, driver string, skip ...string) {
