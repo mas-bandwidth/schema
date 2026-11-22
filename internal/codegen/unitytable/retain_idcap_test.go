@@ -35,9 +35,9 @@ class Program
     static int Main()
     {
         byte[] wire = Convert.FromBase64String("%s");
-        var retain = new TableRetain(1 << 20, 1 << 14);
-        var report = new TableReport();
-        Root root = null;
+        var retain = new Schema.TableRetain(1 << 20, 1 << 14);
+        var report = new Schema.TableReport();
+        Root root = default;
         if (!Schema.RootLoadRetain(ref root, wire, retain, ref report)) throw new Exception("the lawful 4096-id file did not load with retention");
         if (report.Retained != 1) throw new Exception("z was not retained: " + report.Retained);
         root.X = 1;
