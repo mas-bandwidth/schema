@@ -297,11 +297,12 @@ local function surfaceWire(all, outdir)
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
-        if wireRefusal(why) then
-          absent(outdir, f[2], "blob_shared")
-        else
-          io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
-        end
+        -- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+        -- (docs/rulings.json refusal-verdict-only): a .absent holding the
+        -- reason, which the harness passes on a row the corpus marks
+        -- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails on
+        -- a row that owes the bytes (as test/conformance/go/main.go does)
+        absent(outdir, f[2], why ~= nil and tostring(why) or "refused")
       else
         local saved, wwhy = canonicalWrite(u, f[4], v)
         if saved == nil then

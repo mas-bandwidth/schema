@@ -213,13 +213,12 @@ local function surfaceWire(lines: { { string } })
 			local r = report()
 			local v = u.load.load(f[4], file(f[5]), r)
 			if v == nil then
-				if r.reason == "blob_shared" then
-					-- one blob named from two slots (docs/SPEC-TABLES.md §2.5)
-					-- is a NAMED refusal, and the harness holds the name
-					print(f[2] .. " absent blob_shared")
-				else
-					error(f[2] .. ": load refused " .. f[5])
-				end
+				-- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+				-- (docs/rulings.json refusal-verdict-only): an absence naming
+				-- the reason, which the harness passes on a row the corpus marks
+				-- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
+				-- on a row that owes the bytes (as test/conformance/go/main.go does)
+				print(f[2] .. " absent " .. (if r.reason ~= nil then tostring(r.reason) else "refused"))
 			else
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil and why ~= nil and why.name == "blob_shared" then
