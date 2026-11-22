@@ -206,8 +206,8 @@ parseShape = function(b, state, kind) {
   }
   if(kind==11)return s;
   if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max<0||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
-  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if((s.ElemKind>32&&s.ElemKind!=36)||s.ElemKind==14||s.ElemKind==16){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
-  if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind==31||(s.ElemKind>32&&s.ElemKind!=36)||s.ElemKind==14||s.ElemKind==16){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==32){return s;}
   state.bad=true;return s;
 };
 local parseVocabulary = function(words) {
@@ -216,7 +216,8 @@ local parseVocabulary = function(words) {
     if(state.at+9>state.end){state.bad=true;break;}
     local start=state.at,id=readU64(words,state.at);state.at+=8;
     local kind=words[state.at]&0xff;state.at++;
-    if((kind>32&&kind!=36)||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
+    // kind 31 is held by name and never written (R17): malformed, as 33 and 34 are
+    if(kind==31||(kind>32&&kind!=36)||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
     if(id==0xffffffffffffffff){if(kind!=0||nodeSeen){state.bad=true;break;}nodeSeen=true;}
     local shape=parseShape(words,state,kind);if(state.bad)break;
     local entry={Id=id,Kind=kind,Shape=shape};
@@ -237,7 +238,7 @@ skipFileKind = function(b,state,kind) {
   if(width>0){if(state.at+width>state.end){state.bad=true;return;}state.at+=width;return;}
   if(kind==17){readLeb(b,state);return;}
   if(kind==30){local r=readLeb(b,state);if(state.bad||r<0||r>state.idsLen||r>state.nextRef){state.bad=true;return;}if(r>0&&r==state.nextRef)state.nextRef++;return;}
-  if(kind==12 || kind==31){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
+  if(kind==12){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
   if(kind==32){local n=readLeb(b,state);if(state.bad||n!=0){state.bad=true;}return;}
   if(kind==13){
     local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}
@@ -278,7 +279,7 @@ skipFileKind = function(b,state,kind) {
     local arm=b[state.at]&0xff;state.at++;
     local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}
     local sub={b=b,at=state.at,end=state.at+n,bad=false,idsLen=state.idsLen,nextRef=state.nextRef};
-    if(arm!=12&&arm!=31){
+    if(arm!=12){
       if(arm==32){if(n!=0)sub.bad=true;}
       else if(arm==13){
         local seen={};
@@ -579,7 +580,6 @@ skipRemoteEntry = function(T,v,r,e,depth,atField=false) {
   if(k==13){skipRemoteBody(T,v,r,depth+1);return;}
   if(k==15){local ref=get(r,v.RefBits);if(r.bad)return;if(ref==0){if(atField)r.bad=true;return;}if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm.Shape.Kind==0||reservedId(arm.Id)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
   if(k==12){local n=get(r,sh.Bits);if(r.bad||n>sh.Max||!alignRead(r)||r.bits+n*8>r.b.len()*8){r.bad=true;return;}if(!messageTextOk(r.b,r.bits/8,n)){r.bad=true;return;}r.bits+=n*8;return;}
-  if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
   if(k==11){local raw=get(r,64);if(!r.bad&&(raw&0x7ff0000000000000)==0x7ff0000000000000)refuseRead(r,"non_finite_float");return;}
   if(k==10&&sh.Packing==2){local index=get(r,sh.Bits);if(r.bad)return;if(index>sh.QCount){r.bad=true;return;}local x=f32(f32(f32(f32(index.tofloat())/f32(sh.QCount.tofloat()))*sh.QDelta)+sh.QMin);if(x-x!=0)refuseRead(r,"non_finite_float");return;}
   if(k==10){local raw=get(r,32);if(!r.bad&&(raw&0x7f800000)==0x7f800000)refuseRead(r,"non_finite_float");return;}
@@ -590,7 +590,7 @@ skipRemoteEntry = function(T,v,r,e,depth,atField=false) {
     // A RUN OF FIXED-WIDTH ELEMENTS NO RULE LOOKS INSIDE IS ARITHMETIC, so a
     // hostile count over a zero-width element buys no loop
     // (a ranged element with bits is walked: its base plus offset is held)
-    if(k==14&&ek!=10&&ek!=11&&ek!=12&&ek!=13&&ek!=14&&ek!=15&&ek!=16&&ek!=17&&ek!=30&&ek!=31&&!(e.Element.Shape.Packing==1&&e.Element.Shape.Bits>0)){
+    if(k==14&&ek!=10&&ek!=11&&ek!=12&&ek!=13&&ek!=14&&ek!=15&&ek!=16&&ek!=17&&ek!=30&&!(e.Element.Shape.Packing==1&&e.Element.Shape.Bits>0)){
       if(ek==0||ek==32)return;
       local width=e.Element.Shape.Bits;if(width<0){r.bad=true;return;}
       skip(r,n*width);return;
