@@ -255,7 +255,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("//\n")
 	g.pf("// THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the\n")
 	g.pf("// accessor below, so a write to it cannot move this realm's decode.\n")
-	g.pf("const %sFixedLayout = new Uint8Array([\n", st.Name)
+	g.pf("const %sFixedLayout = new globalThis.Uint8Array([\n", st.Name)
 	g.emitBytes(layout)
 	g.pf("]);\n")
 	g.pf("export function %sFixedLayoutCopy() { return %sFixedLayout.slice(); }\n", st.Name, st.Name)
@@ -264,7 +264,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes. Load copies\n")
 	g.pf("// them into exactly the dest ranges the plan does not write. Identity's hole\n")
 	g.pf("// list is empty — one COPY of the whole body — so that copy is a no-op.\n")
-	g.pf("const %sFixedPrefill = new Uint8Array([\n", st.Name)
+	g.pf("const %sFixedPrefill = new globalThis.Uint8Array([\n", st.Name)
 	g.emitBytes(prefill)
 	g.pf("]);\n")
 	g.pf("export function %sFixedPrefillCopy() { return %sFixedPrefill.slice(); }\n\n", st.Name, st.Name)
@@ -272,7 +272,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
 	g.pf("// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
 	g.pf("// storage in JavaScript is the canonical image, so they are its offsets.\n")
-	g.pf("const %sFixedDst = new Int32Array([\n", st.Name)
+	g.pf("const %sFixedDst = new globalThis.Int32Array([\n", st.Name)
 	for i, d := range w.dst {
 		g.pf("  %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
 	}
@@ -284,7 +284,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// source and destination advance together over the whole body and the walk\n")
 	g.pf("// coalesces to exactly ONE run. That is the same coalescer the plan compiler\n")
 	g.pf("// runs, reaching its best case rather than skipping a step.\n")
-	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1, 0, 0]);\n", st.Name, body)
+	g.pf("const %sFixedIdentity = new globalThis.Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1, 0, 0]);\n", st.Name, body)
 	g.pf("export function %sFixedIdentityCopy() { return %sFixedIdentity.slice(); }\n\n", st.Name, st.Name)
 
 	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
@@ -318,8 +318,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("];\n")
 	g.pf("// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold\n")
 	g.pf("// the module's own entries to their values but cannot replace one.\n")
-	g.pf("for (const entry of %sFixedKnown) { Object.freeze(entry); }\n", st.Name)
-	g.pf("Object.freeze(%sFixedKnown);\n\n", st.Name)
+	g.pf("for (const entry of %sFixedKnown) { globalThis.Object.freeze(entry); }\n", st.Name)
+	g.pf("globalThis.Object.freeze(%sFixedKnown);\n\n", st.Name)
 	g.pf("// THE FLOOR is one number and the lineage is one array, so \"retired\" is an\n")
 	g.pf("// index cut and the operator's two answers stay distinct: below it a layout\n")
 	g.pf("// this build once served is layout_unsupported (upgrade the client), outside\n")
@@ -333,8 +333,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		st.Name, st.Name, st.Name, st.Name, st.Name)
 	g.pf("// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that\n")
 	g.pf("// reaches it cannot replace a lane with one of its own.\n")
-	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }\n", st.Name)
-	g.pf("Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
+	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { globalThis.Object.freeze(lane); } }\n", st.Name)
+	g.pf("globalThis.Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
 	writerBounds := g.emitWriterBounds(st, entries, hash)
 
 	// ---- the caller's plan storage ----
@@ -373,7 +373,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.\n")
 		g.pf("  for (let k = 0; k < count; k++) { if (!%sFixedCheckBody(values[k])) { return -1; } }\n", st.Name)
 	}
-	g.pf("  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("  const view = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("  bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("  bytes[0] = TableFixedForm;\n")
 	g.pf("  view.setUint32(TableFixedHashAt, %sFixedHashLo, true);\n", st.Name)
@@ -424,7 +424,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("                   : TableFixedRefusal.NewerForm;\n")
 	g.pf("    return -1;\n  }\n")
 	if st.Integrity != "" {
-		g.pf("  if (!Number.isSafeInteger(byteLength) || byteLength > bytes.length || !TableIntegrityHolds(bytes.subarray(0, byteLength), 1)) { report.damaged = true; report.refused = TableFixedRefusal.IntegrityMismatch; return -1; }\n")
+		g.pf("  if (!globalThis.Number.isSafeInteger(byteLength) || byteLength > bytes.length || !TableIntegrityHolds(bytes.subarray(0, byteLength), 1)) { report.damaged = true; report.refused = TableFixedRefusal.IntegrityMismatch; return -1; }\n")
 		g.pf("  byteLength -= 4;\n")
 	}
 	g.pf("  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.damaged = true; return -1; }\n")
@@ -456,7 +456,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
 	// layout compare, the record hashes and the identity projection all read
 	// through it, in 32-bit lanes where they move words (§3.4).
-	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("  const srcView = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("  {\n")
 	g.pf("    // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.\n")
 	g.pf("    const lv = known.layoutView;\n")

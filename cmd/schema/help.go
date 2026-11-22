@@ -7,15 +7,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v2/compiler"
 )
 
 // aiHelp is the block `schema help ai` prints: what a project's own AI
 // assistant needs before it touches a .schema file, short enough to paste into
 // that project's AGENTS.md or CLAUDE.md. The file is the one copy; docs/AI.md
 // links to it rather than repeating it. Its `{{targets}}` placeholder is the
-// --lang list, filled from internal/languages so the block never carries a
-// second, hand-typed copy of the registry.
+// --lang list, filled from the compiler's own registry so the block never
+// carries a second, hand-typed copy of it.
 //
 //go:embed help/ai.md
 var aiHelp string
@@ -32,16 +32,11 @@ var helpTopics = map[string]string{
 }
 
 // helpTargets is every --lang spelling this build generates, sorted: the
-// languages internal/languages lists with no build tag.
+// public compiler's registry (compiler.New().Targets()), which is the list
+// `--lang` accepts. The CLI is a client of the public API and reads nothing
+// under internal/ (internal/publicapi).
 func helpTargets() []string {
-	var out []string
-	for _, l := range languages.All() {
-		if l.Tag == "" {
-			out = append(out, l.Target)
-		}
-	}
-	sort.Strings(out)
-	return out
+	return compiler.New().Targets()
 }
 
 // fillTargets replaces the placeholder with the comma-separated targets,

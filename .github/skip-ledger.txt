@@ -118,7 +118,15 @@ skip platform ^platform has no kernel address-space ceiling$
 
 # root: the test proves nothing as root. Provided by a lane that does not run
 # as root.
-skip root ^root writes (through|into) a read-only directory
+skip root ^root writes (through|into) a read-only (directory|file)
+
+# volume:aliases: the test needs a volume that takes two spellings of a name
+# (a case fold, a Unicode normalization) for one entry, as APFS on macOS
+# does. Provided by no CI lane today: every Linux lane keeps the spellings
+# apart, so these tests run on macOS hosts only (the Studio, the macOS
+# benches). Their controls, which need the spellings kept apart, are
+# platform skips above and run on every Linux lane.
+skip volume:aliases ^this (volume|file system) keeps .+ apart, so 
 
 # helper: a helper-process entry point, run by the test that names it.
 # Provided by no lane: it skips whenever go test runs it directly.

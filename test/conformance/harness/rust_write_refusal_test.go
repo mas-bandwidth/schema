@@ -15,6 +15,20 @@ import (
 func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)
+	// The driver builds against the serialize.rs runtime, the sibling
+	// checkout make/rust.mk names SERIALIZE_RS (../serialize.rs by default),
+	// which no make rule fetches: `make deps` clones it. Without it cargo
+	// fails deep in its dependency walk; say what to run instead.
+	serializeRS := os.Getenv("SERIALIZE_RS")
+	if serializeRS == "" {
+		serializeRS = filepath.Join("..", "serialize.rs")
+	}
+	if !filepath.IsAbs(serializeRS) {
+		serializeRS = filepath.Join(root, serializeRS)
+	}
+	if _, err := os.Stat(filepath.Join(serializeRS, "Cargo.toml")); err != nil {
+		t.Fatalf("the serialize.rs sibling checkout is absent at %s: run `make deps`, which clones the serialize siblings beside the repository (%v)", serializeRS, err)
+	}
 	build := exec.Command("make", "build/conformance-rust")
 	build.Dir = root
 	// This gate checks the debug writer's refusal, so optimization and debug

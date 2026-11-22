@@ -11,7 +11,7 @@ import (
 const jsJSONWideFractionSchema = "package probe\ntable Root\n{\n    q fixed(48, 16) | min = -10, max = 10\n    n uint128\n}\n"
 
 // The anchor the count is hung on: the one BigInt built from a token's digits.
-const jsJSONWideFractionAnchor = "      raw = BigInt(digits) << BigInt(d.frac);\n"
+const jsJSONWideFractionAnchor = "      raw = globalThis.BigInt(digits) << globalThis.BigInt(d.frac);\n"
 
 // TestJavaScriptJSONWideFractionDigitsRefusedEarly pins js.md Q2: a fixed(I,
 // F) or 128-bit integer JSON token carrying more fraction digits than F, past

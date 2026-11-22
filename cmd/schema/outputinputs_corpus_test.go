@@ -88,7 +88,7 @@ func TestOutputInputsCorpus(t *testing.T) {
 			}
 			for rel, of := range tc.Layout.Hardlinks {
 				if err := os.Link(filepath.Join(work, of), filepath.Join(work, rel)); err != nil {
-					t.Skipf("hard links unavailable: %v", err)
+					t.Fatalf("hard link %s -> %s: %v", rel, of, err)
 				}
 			}
 			before := map[string]fs.FileInfo{}
