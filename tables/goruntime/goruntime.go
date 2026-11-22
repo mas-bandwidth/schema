@@ -1788,8 +1788,6 @@ func TableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
 
 const TableMessageBatchMax = 256
 
-const TableAnnounceTooLarge = false
-
 func (w *TableBitWriter) Put(value uint64, n int64) {
 	if n < 0 || n > 64 {
 		w.Overflow = true
@@ -2376,4 +2374,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe8c48b8c90e8b5e2
+const Version uint64 = 0xb9f6e38dc91be5cf

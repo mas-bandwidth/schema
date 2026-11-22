@@ -78,8 +78,6 @@ func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))), len(tablewire.MessageVocabulary(u)))
 	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(tablewire.Announce(u)))
-	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
-	fmt.Fprintf(&b, "const tableAnnounceTooLarge = %t\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
 	for i, e := range tablewire.MessageVocabulary(u) {
 		fmt.Fprintf(&b, "%s,OwnSlot:%d},\n", strings.TrimSuffix(messageEntryLiteral(e), "}"), i+1)
@@ -90,6 +88,15 @@ func tableMessageRuntime(u *ir.Unit) string {
 	}
 	b.WriteString("}\n")
 	runtime := goMessageRuntime
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3). The refusing
+	// unit swaps in two writers that answer -1; every other unit keeps the
+	// runtime byte for byte (one per-unit text, so the shared runtime hoists
+	// nothing and the size budget does not move).
+	if len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries {
+		runtime = tableSourceReplace(runtime, "func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}", "func AnnounceMeasure()int64{return -1}", 1)
+		runtime = tableSourceReplace(runtime, "func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}", "func Announce(buffer []byte)int64{return -1}", 1)
+	}
 	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3): when a
 	// table of the unit declares `integrity`, the batch open also checks the
 	// batch's CRC-32C trailer before any body is decoded. A unit with no
@@ -209,8 +216,8 @@ func tableMessageSeenRepeat(v *TableVocabulary,starts []uint64,depth int,ref uin
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
-func AnnounceMeasure()int64{if tableAnnounceTooLarge{return -1};return int64(len(tableAnnouncement))}
-func Announce(buffer []byte)int64{if tableAnnounceTooLarge{return -1};if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}
+func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}
+func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}
 func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.FixedRaised=false;r.Reason=reason;return false}
 func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if report==nil {var ignored TableReport;report=&ignored};if v.Announced||v.Refused{return tableMessageRefuse(report,"second_announcement")};ok:=tableAnnounceRead(v,data,report);if !ok{v.Refused=true};return ok
