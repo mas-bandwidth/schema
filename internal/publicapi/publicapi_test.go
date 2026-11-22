@@ -33,6 +33,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -62,11 +63,38 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
+// goSourceCount reports how many non-test Go files pkg holds, resolved from
+// dir's module. It is the scan every build below stands on.
+func goSourceCount(t *testing.T, dir, pkg string) int {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-f", "{{len .GoFiles}}", pkg)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list %s in %s: %v\n%s", pkg, dir, err, out)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("go list %s in %s: unreadable count %q", pkg, dir, out)
+	}
+	return n
+}
+
+// requireGoSource fails when pkg holds no non-test Go source: the package
+// moved, and a build or comparison over it would prove nothing.
+func requireGoSource(t *testing.T, dir, pkg string) {
+	t.Helper()
+	if n := goSourceCount(t, dir, pkg); n == 0 {
+		t.Fatalf("%s in %s holds no non-test Go source: the package moved, and the build over its sources would prove nothing", pkg, dir)
+	}
+}
+
 // goBuild builds the main package pkg, from dir's module, into binPath,
 // failing the test with the toolchain's own message.
 func goBuild(t *testing.T, dir, pkg, binPath string) {
 	t.Helper()
 	slowtest.Gate(t, "go build and the compiled schema binary")
+	requireGoSource(t, dir, pkg)
 	cmd := exec.Command("go", "build", "-o", binPath, pkg)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -309,4 +337,28 @@ func wantClientOutput(t *testing.T) string {
 		}
 	}
 	return b.String()
+}
+
+// TestRequireGoSourceFiresOnAnEmptyPackage proves the scan guard runs: a
+// package holding only a test file has zero non-test Go source, the count
+// reads zero, and requireGoSource refuses it.
+func TestRequireGoSourceFiresOnAnEmptyPackage(t *testing.T) {
+	slowtest.Gate(t, "go list")
+	dir := t.TempDir()
+	files := map[string]string{
+		"go.mod":    "module emptypkg\n\ngo 1.26\n",
+		"x_test.go": "package main\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := goSourceCount(t, dir, "."); n != 0 {
+		t.Fatalf("empty package counted %d non-test files", n)
+	}
+	// the live package is not empty
+	if n := goSourceCount(t, filepath.Join(repoRoot(t), "cmd", "schema"), "."); n == 0 {
+		t.Fatal("cmd/schema counted zero non-test files: the guard would fire on the real build")
+	}
 }
