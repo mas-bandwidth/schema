@@ -50,6 +50,7 @@ func TestHostileTargetsGradeScorerOutcomes(t *testing.T) {
 		"make/goose-fuzz.mk":                          "goose-hostile.sh --scorer " + hostilecorpus.ScorerOutcomesPath,
 		"make/schema-lua-runs-hostile-corpus.mk":      "TestSchemaLuaHostileScorerOutcomes",
 		"make/schema-luau-runs-hostile-corpus.mk":     "TestLuauHostileScorerOutcomes",
+		"make/schema-moo-runs-hostile-corpus.mk":      "TestSchemaMooHostileScorerOutcomes",
 		"make/schema-ruby-runs-hostile-corpus.mk":     "TestSchemaRubyHostileScorerOutcomes",
 		"make/schema-squirrel-runs-hostile-corpus.mk": "TestSquirrelHostileScorerOutcomes",
 		"make/python-hostile.mk":                      "TestPythonHostileScorerOutcomes",
