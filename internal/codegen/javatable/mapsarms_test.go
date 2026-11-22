@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type javaVariableFixture struct {
@@ -172,7 +173,7 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, row := range fixtures {
@@ -180,7 +181,7 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 		if formThree[row.name] {
 			class = "FixedDriver_" + row.root
 		}
-		out, err := exec.Command(java, "-ea", "-cp", classes, class, row.wire, row.json).CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", classes, class, row.wire, row.json).CombinedOutput()
 		if err != nil || !strings.Contains(string(out), "ok") {
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		} else {

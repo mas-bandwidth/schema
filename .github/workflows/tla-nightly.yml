@@ -76,5 +76,15 @@ jobs:
             echo "TLC_JAR=$jar" >> "$GITHUB_ENV"
           fi
 
+      - name: the runner and its ledger pairing hold
+        run: go test ./tools/tlcrun -count=1
+
+      - name: the runner refuses three broken trees
+        # the wrong violation with the right exit code, a config error in
+        # place of a violation, and a config with no row: tools/tlcrun -controls
+        run: bash tla/run-tlc.sh -controls
+
       - name: run TLC over tla/
+        # every .cfg, each held to its RUNS.tsv row: the named invariant for a
+        # reversed witness, the recorded distinct states for an exhaustive run
         run: bash tla/run-tlc.sh

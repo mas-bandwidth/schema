@@ -115,17 +115,42 @@ func TestTLARunsHashEveryModelAndConfig(t *testing.T) {
 		t.Error(e)
 	}
 
-	for _, control := range []struct{ name, file string }{
-		{"a model file", "FixedBatch.tla"},
-		{"a config file", "MCFixedBatch.cfg"},
-		{"an unrecorded model file", "CsReadReportIso.tla"},
-		{"an unrecorded config file", "MCCsReadReportIsoBroken.cfg"},
+	// Every config has a row and every row a config (tools/tlcrun's Plan is
+	// the same rule on the nightly). A file no row records is red here, not
+	// only folded into the hashes.
+	extra, err := tlaUnrecordedFiles(tlaDir, runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range extra {
+		t.Errorf("tla/%s is recorded by no RUNS.tsv row", name)
+	}
+	for config := range runs {
+		if _, err := os.Stat(filepath.Join(tlaDir, config)); err != nil {
+			t.Errorf("tla/RUNS.tsv row %s has no config file: %v", config, err)
+		}
+	}
+
+	for _, control := range []struct {
+		name, file string
+		create     bool
+	}{
+		{"a model file", "FixedBatch.tla", false},
+		{"a config file", "MCFixedBatch.cfg", false},
+		{"an unrecorded model file", "Unrecorded.tla", true},
+		{"an unrecorded config file", "MCFixedBatchUnrecorded.cfg", true},
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			dir := t.TempDir()
 			copyTLAFiles(t, tlaDir, dir)
 			path := filepath.Join(dir, control.file)
 			data, err := os.ReadFile(path)
+			if control.create {
+				if err == nil {
+					t.Fatalf("the control file %s already exists in tla/", control.file)
+				}
+				data, err = nil, nil
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -138,6 +163,15 @@ func TestTLARunsHashEveryModelAndConfig(t *testing.T) {
 			}
 			if errs := verifyTLARunHashes(dir, mutated); len(errs) == 0 {
 				t.Fatalf("changing %s left every model_sha256 current", control.file)
+			}
+			if control.create {
+				extra, err := tlaUnrecordedFiles(dir, mutated)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(extra) != 1 || extra[0] != control.file {
+					t.Fatalf("unrecorded files are %v, want [%s]", extra, control.file)
+				}
 			}
 		})
 	}

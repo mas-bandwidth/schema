@@ -545,7 +545,7 @@ var FixedTableFixedLineagePlans = tableFixedLineagePlans(FixedTableFixedKnown, F
 var FixedTableFixedResetImage = func() []byte {
 	var def FixedTable
 	FixedTableReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var FixedTableFixedHoles = tableFixedHoles(FixedTableFixedPlan.Entries, FixedTableFixedPlan.Count, uint32(len(FixedTableFixedResetImage)))
@@ -724,7 +724,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])

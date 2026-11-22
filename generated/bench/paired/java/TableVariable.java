@@ -28,6 +28,24 @@ public final class TableVariable {
         report.refused = true;
     }
 
+    // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS ON READ (docs/SPEC-TABLES.md
+    // §3.3; SPEC.md §4.6, the triple is evaluated at float32): a finite value
+    // past an end refuses out_of_range, naming the field, and lands the end;
+    // the value at an end float32 cannot spell exactly (max = 0.1) is the
+    // float32 nearest it and in range. Its -0 IS +0: it lands as +0, uncounted
+    // (ruling fixed-compressed-negzero). The variable and JSON reads share it.
+    public static float compressedF32(float v, float lo, float hi, Report report, String field) {
+        if (v < lo) {
+            report.refuse("out_of_range", field);
+            return lo;
+        }
+        if (v > hi) {
+            report.refuse("out_of_range", field);
+            return hi;
+        }
+        return v == 0.0f ? 0.0f : v;
+    }
+
     // a retained unknown float is named by the table that holds it and the
     // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
     public static String retainedFloatName(String owner, long id) {
@@ -672,12 +690,17 @@ public final class TableVariable {
 
         // putF32In and putF64In write a ranged float: its raw bits as putF32
         // and putF64 do, and a value off [lo, hi] refuses the whole save in
-        // every build (docs/SPEC.md §5.1 row 10), on every field shape.
-        public void putF32In(float v, double lo, double hi) {
-            if ((double) v < lo || (double) v > hi) {
+        // every build (docs/SPEC.md §5.1 row 10), on every field shape. A
+        // float32's range is held at float32 (SPEC.md §4.6): lo and hi are the
+        // float32 ends, so the value at an end float32 cannot spell exactly
+        // (max = 0.1) is in range. A compressed float's -0 is stored as +0,
+        // the bits +0 stores (docs/SPEC-TABLES.md §3.3, ruling
+        // fixed-compressed-negzero).
+        public void putF32In(float v, float lo, float hi) {
+            if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF32(v);
+            putF32(v == 0.0f ? 0.0f : v);
         }
 
         public void putF64In(double v, double lo, double hi) {

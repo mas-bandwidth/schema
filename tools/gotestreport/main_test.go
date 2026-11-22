@@ -139,25 +139,39 @@ const slow = `{"Action":"start","Package":"s"}
 {"Action":"pass","Package":"s","Elapsed":701}
 `
 
-// The budget fails only after the package reported, and names it. A record's
-// budget line (the -timeout its go test named) wins over the default.
+// A package past its budget is NAMED, never failed: the nightly has no time
+// limit (the owner, 2026-11-16: "Nightly runs don't have a timeout... they can
+// run as long as they need."; 2026-11-21: the only limit is 2 minutes for PR
+// unit and functional CI, which tools/pgroup's PGROUP_WALL holds, not this
+// report). Runs 44870787501 (gotable 10m16s) and 44668927158 (compiler
+// 16m37s) went red here with every test passed. A record's budget line (the
+// -timeout its go test named) still wins over the default for what is named.
 func TestThePackageBudget(t *testing.T) {
 	t.Parallel()
 	f := reportOf(t, 10*time.Minute, slow).findings(0)
-	if !f.red || !strings.Contains(f.text, "OVER BUDGET     s ran 11m41s, past the 10m0s its go test named") {
-		t.Errorf("a package past its budget is not named red:\n%s", f.text)
+	if f.red {
+		t.Errorf("a nightly package that passed after 11m41s is failed for time; the nightly has no time limit:\n%s", f.text)
 	}
-	if f := reportOf(t, 0, slow).findings(0); f.red {
+	if !strings.Contains(f.text, "OVER BUDGET     s ran 11m41s, past the 10m0s its go test named") {
+		t.Errorf("a package past its budget is not named:\n%s", f.text)
+	}
+	if f := reportOf(t, 0, slow).findings(0); f.red || strings.Contains(f.text, "OVER BUDGET") {
 		t.Errorf("budget 0 is no budget:\n%s", f.text)
 	}
-	if f := reportOf(t, 10*time.Minute, `{"Action":"budget","Budget":"20m"}`+"\n"+slow).findings(0); f.red {
-		t.Errorf("a package inside the 20m its command named is red:\n%s", f.text)
+	if f := reportOf(t, 10*time.Minute, `{"Action":"budget","Budget":"20m"}`+"\n"+slow).findings(0); f.red || strings.Contains(f.text, "OVER BUDGET") {
+		t.Errorf("a package inside the 20m its command named is named or red:\n%s", f.text)
 	}
-	if f := reportOf(t, 10*time.Minute, `{"Action":"budget","Budget":"0"}`+"\n"+slow).findings(0); f.red {
+	if f := reportOf(t, 10*time.Minute, `{"Action":"budget","Budget":"0"}`+"\n"+slow).findings(0); f.red || strings.Contains(f.text, "OVER BUDGET") {
 		t.Errorf("a command that named -timeout 0 has no budget:\n%s", f.text)
 	}
-	if f := reportOf(t, 0, `{"Action":"budget","Budget":"600s"}`+"\n"+slow).findings(0); !f.red {
-		t.Errorf("a package past the 600s its command named is not red:\n%s", f.text)
+	if f := reportOf(t, 0, `{"Action":"budget","Budget":"600s"}`+"\n"+slow).findings(0); f.red || !strings.Contains(f.text, "OVER BUDGET") {
+		t.Errorf("a package past the 600s its command named is not named, or is red:\n%s", f.text)
+	}
+	// a hang is still red: a package that never reported is a finding of
+	// its own, whatever its time
+	cut := `{"Action":"start","Package":"h"}` + "\n" + `{"Action":"run","Package":"h","Test":"TestHang"}` + "\n"
+	if f := reportOf(t, 10*time.Minute, cut).findings(0); !f.red {
+		t.Errorf("a package that never reported is not red:\n%s", f.text)
 	}
 }
 
