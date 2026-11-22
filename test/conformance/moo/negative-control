@@ -29,7 +29,23 @@
 #           else; `json-write` and `wire` green, so the break is the text
 #           reader's and the matrix localizes it (I11).
 #
-# usage: test/conformance/moo/negative-control <report|walk|framing>
+#   write-refusal  table_save.moo's variable writer stops refusing a NaN or an
+#           infinity (docs/SPEC.md §5.1; SPEC-TABLES.md §3.3: the finite check
+#           and the range check, which also holds finiteness, are both taken out): the write-refusal
+#           battery's variable-class float rows (cooktorture's slice and map
+#           floats) are written instead of refused, so `moo / write-refusal`
+#           and nothing else goes red; `wire`, `message`, write-refusal-fixed
+#           and write-refusal-message stay green.
+#   write-refusal-fixed  table_fixed.moo's fixed writer stops refusing a NaN or
+#           an infinity: a fixed root is written through that one checked
+#           writer for both batteries, so `moo / write-refusal-fixed` goes red
+#           with `moo / write-refusal` beside it, and `wire`, `message` and
+#           write-refusal-message stay green.
+#   write-refusal-message  table_message.moo's SaveMessages stops refusing
+#           ill-formed UTF-8 in a text: `moo / write-refusal-message` red alone;
+#           `wire`, `message`, write-refusal and write-refusal-fixed green.
+#
+# usage: test/conformance/moo/negative-control <report|walk|framing|write-refusal|write-refusal-fixed|write-refusal-message>
 set -eu
 
 mode=$1
@@ -49,6 +65,22 @@ framing)
 walk)
     source=internal/codegen/mootable/runtime/json.moo
     sed 's/^\([[:space:]]*\)k\[fd\.json\] = i$/\1if i ~= 1 then k[fd.json] = i end/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal)
+    source=internal/codegen/mootable/runtime/table_save.moo
+    sed -e 's/if not V\.finite32(val) then/if false and not V.finite32(val) then/' \
+        -e 's/if not V\.finite64(val\[1\], val\[2\]) then/if false and not V.finite64(val[1], val[2]) then/' \
+        -e 's/if not V\.floatInRange(e, val) then/if false and not V.floatInRange(e, val) then/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal-fixed)
+    source=internal/codegen/mootable/runtime/table_fixed.moo
+    sed -e 's/^\t\t\tif not V\.finite32(v) then$/\t\t\tif false and not V.finite32(v) then/' \
+        -e 's/^\t\t\tif not V\.finite64(v\[1\], v\[2\]) then$/\t\t\tif false and not V.finite64(v[1], v[2]) then/' \
+        -e 's/if not V\.floatInRange(f, v) then/if false and not V.floatInRange(f, v) then/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal-message)
+    source=internal/codegen/mootable/runtime/table_message.moo
+    sed 's/if type(s) ~= "string" or #s > fd\.bound or not V\.utf8String(s) then/if type(s) ~= "string" or #s > fd.bound then/' "$source" > "$out/runtime.moo"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -92,6 +124,9 @@ case "$mode" in
 report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
+write-refusal) want="write-refusal " ; green="wire message write-refusal-fixed write-refusal-message" ;;
+write-refusal-fixed) want="write-refusal write-refusal-fixed " ; green="wire message write-refusal-message" ;;
+write-refusal-message) want="write-refusal-message " ; green="wire message write-refusal write-refusal-fixed" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

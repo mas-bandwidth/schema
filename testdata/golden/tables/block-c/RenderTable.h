@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_BLOCKDEMO_RENDERTABLE_H
-#define SCHEMA_BLOCKDEMO_RENDERTABLE_H
+#ifndef SCHEMA_BLOCKDEMO_Render_table_h
+#define SCHEMA_BLOCKDEMO_Render_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -20784,4 +20784,4 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_to_json( const blockdem
 }
 #endif
 
-#endif /* SCHEMA_BLOCKDEMO_RENDERTABLE_H */
+#endif /* SCHEMA_BLOCKDEMO_Render_table_h */
