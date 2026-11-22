@@ -389,7 +389,7 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -3971,7 +3971,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
-  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32], do: body(bin)
+  defp slice(bin, kind) when kind in [12, 13, 14, 16, 32], do: body(bin)
 
   defp slice(bin, 15) do
     case leb(bin) do
@@ -8578,7 +8578,7 @@ const variableRetainSource = `
       n != nil and byte_size(payload) >= n ->
         {:ok, n}
 
-      kind in [12, 31, 32] ->
+      kind in [12, 32] ->
         case leb(payload) do
           {len, rest} when byte_size(rest) >= len ->
             {:ok, byte_size(payload) - byte_size(rest) + len}

@@ -457,7 +457,7 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -709,7 +709,7 @@ defmodule Benchtable.TableMessage do
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -865,7 +865,9 @@ defmodule Benchtable.TableMessage do
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)

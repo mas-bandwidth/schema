@@ -2762,7 +2762,7 @@ defmodule Benchtable.Table do
       kind == 15 ->
         unknown_arm(buf, ids, depth)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         case leb(buf) do
           {n, rest} when byte_size(rest) >= n ->
             <<content::binary-size(^n), after_l::binary>> = rest
@@ -2797,7 +2797,6 @@ defmodule Benchtable.Table do
   defp unknown_content?(b, 12, _ids, _depth),
     do: utf8_valid?(b) and :binary.match(b, <<0>>) == :nomatch
 
-  defp unknown_content?(_b, 31, _ids, _depth), do: true
   defp unknown_content?(b, 32, _ids, _depth), do: b == <<>>
 
   defp unknown_content?(_b, kind, _ids, depth) when kind in [13, 14, 16] and depth >= 128,
@@ -3151,7 +3150,7 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32] do
+  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 32] do
     case body(rest) do
       {:ok, payload, after_elem} -> {wire_payload_refs(kind, payload, ids), after_elem}
       :error -> :error
@@ -3542,7 +3541,7 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -5580,7 +5579,7 @@ defmodule Benchtable.Table do
   defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
-  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32], do: body(bin)
+  defp slice(bin, kind) when kind in [12, 13, 14, 16, 32], do: body(bin)
 
   defp slice(bin, 15) do
     case leb(bin) do

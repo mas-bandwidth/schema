@@ -163,7 +163,7 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
       kind == 15 ->
         unknown_arm(buf, ids, depth)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         case leb(buf) do
           {n, rest} when byte_size(rest) >= n ->
             <<content::binary-size(^n), after_l::binary>> = rest
@@ -198,7 +198,6 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   defp unknown_content?(b, 12, _ids, _depth),
     do: utf8_valid?(b) and :binary.match(b, <<0>>) == :nomatch
 
-  defp unknown_content?(_b, 31, _ids, _depth), do: true
   defp unknown_content?(b, 32, _ids, _depth), do: b == <<>>
 
   defp unknown_content?(_b, kind, _ids, depth) when kind in [13, 14, 16] and depth >= 128,
@@ -552,7 +551,7 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
     end
   end
 
-  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32] do
+  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 32] do
     case body(rest) do
       {:ok, payload, after_elem} -> {wire_payload_refs(kind, payload, ids), after_elem}
       :error -> :error

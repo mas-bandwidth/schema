@@ -6,7 +6,8 @@ package elixirtable
 // (kind 14) includes the closed element-kind lists: a body whose element kind
 // is off the list, whose key references no id or names one twice, whose slot
 // length crosses its L, or that leaves bytes after its last pair is damage
-// and refuses the whole read. The engine is the oracle; only its verdict is
+// and refuses the whole read, as is a field riding under kind 31, held by
+// name and never written (R17). The engine is the oracle; only its verdict is
 // compared, never a refusal's name.
 //
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
@@ -110,6 +111,12 @@ table Root { a int32 = 0 }
 		{"bytes-after-pairs", ukwFramed(2, ir.TableKindKeyed, ukwCat(ukwKeyed(ir.TableKindU8, 1, ukwPair(2, []byte{1})), []byte{9})), "bytes after the last pair"},
 		{"keyed-header-short", ukwFramed(2, ir.TableKindKeyed, []byte{byte(ir.TableKindU8)}), "a body too short for its header"},
 		{"keyed-element-string", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindString, 1, ukwPair(2, []byte("hi")))), "string is off the keyed list"},
+		// KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17: the newer reader reads
+		// old data, never the other way): the escape an older reader once
+		// skipped by its L is damage, at the top level and inside an unknown body
+		{"unnamed-held-escape", ukwFramed(2, ir.TableKindHeldEscape, []byte{0xAA, 0xBB}), "kind 31 is held, never skipped"},
+		{"unnamed-held-escape-empty", ukwFramed(2, ir.TableKindHeldEscape, nil), "kind 31 is held, never skipped"},
+		{"nested-held-escape", ukwFramed(2, ir.TableKindTable, ukwCat(ukwFramed(2, ir.TableKindHeldEscape, nil), []byte{0})), "kind 31 is held, never skipped"},
 		{"keyed-element-array", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindArray, 1, ukwPair(2, nestedArray))), "array is off the keyed list"},
 		{"keyed-element-union", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindUnion, 1, ukwPair(2, []byte{0}))), "union is off the keyed list"},
 		{"keyed-element-keyed", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindKeyed, 1, ukwPair(2, nestedKeyed))), "keyed is off the keyed list"},
