@@ -2,7 +2,7 @@
 // docs/PORT-LOBSTER.md, THE HARNESS). The shell driver beside this file runs
 // it once per surface and generated unit:
 //
-//   lobster <unit dir>/conformance_main.lobster -- <repo root> <manifest> <surface> <unit>
+//   lobster <unit dir>/conformance_main.lobster -- <repo root> <manifest> <surface> <unit> <case or ->
 //
 // Lobster imports are resolved when the program is compiled, so one program
 // cannot reach every unit: the driver writes this file into each generated
@@ -30,25 +30,32 @@ import .message
 import .cook
 import .retain_unknown
 import .json
+import .conformance_hooks
 
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
 // the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
 // write and forgery battery (§7), and the block form's reflective read with
 // its forgery battery (§19.2), each refusal with its reason, the JSON
 // text form (§16), the framing vectors (docs/LAYERS/1-framing.md), and the
-// write contract through each table writer (SPEC §5.1)
+// write contract through each table writer (SPEC §5.1), and the 2026-11-22
+// surfaces: the cook writer and the block builder held to it, the
+// announcement, the read into caller values, and the text written under a
+// comma-decimal locale (test/conformance/README.md)
 let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
-    "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]
+    "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
+    "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
-assert argument_count >= 4
-let repo_root = arguments[argument_count - 4]
-let manifest_path = arguments[argument_count - 3]
-let surface = arguments[argument_count - 2]
-let unit_key = arguments[argument_count - 1]
+assert argument_count >= 5
+let repo_root = arguments[argument_count - 5]
+let manifest_path = arguments[argument_count - 4]
+let surface = arguments[argument_count - 3]
+let unit_key = arguments[argument_count - 2]
+// case_only is one case the driver reruns alone, or - for every case
+let case_only = arguments[argument_count - 1]
 
 def hexs(b:string) -> string:
     var s = ""
@@ -502,9 +509,43 @@ def wr_segment(segment:string) -> string, int:
     assert substring(segment, length(segment) - 1, 1) == "]"
     return substring(segment, 0, open), wr_int(substring(segment, open + 1, length(segment) - open - 2))
 
+// wr_value is the cell a slot holds at index, -1 for the slot's own cell
+def wr_value(sl:schema_rt.Slot, index:int) -> schema_rt.Value:
+    if sl.fd.s == "map":
+        return sl.entries[index]
+    if index >= 0:
+        return sl.elems[index]
+    return sl.cell
+
+// wr_locate walks Path from the root to the slot its last segment names,
+// through by-value tables, elements, map entries and pointer referents, and
+// answers that slot and the last segment's index
+def wr_locate(root:schema_rt.Record, path:string) -> schema_rt.Slot, int:
+    let segments = tokenize(path, ".", "")
+    var rec = root
+    var i = 0
+    while i < length(segments) - 1:
+        let name, index = wr_segment(segments[i])
+        let v = wr_value(schema_rt.slot_named(rec, name), index)
+        let t = if v.tab: v.tab else: v.node
+        assert t
+        rec = t
+        i++
+    let name, index = wr_segment(segments[length(segments) - 1])
+    return schema_rt.slot_named(rec, name), index
+
 // wr_set sets the one field a row names: Path is dotted field names with
 // `[i]` element indexes from the root, and Kind says what the value sets
 def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
+    if kind == "point":
+        // the pointer at Path names the node the pointer at path Value
+        // names: pointed at an enclosing node, a cycle (FL-28)
+        let target, ti = wr_locate(root, path)
+        let source, si = wr_locate(root, text)
+        if target.fd.present != "":
+            target.present = true
+        wr_value(target, ti).node = wr_value(source, si).node
+        return
     let segments = tokenize(path, ".", "")
     var rec = root
     for(segments) segment, i:
@@ -530,8 +571,8 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
                 else:
                     assert false
                 return
-            let v = if sl.fd.s == "map": sl.entries[index] elif index >= 0: sl.elems[index] else: sl.cell
-            let t = v.tab
+            let v = wr_value(sl, index)
+            let t = if v.tab: v.tab else: v.node
             assert t
             rec = t
             continue
@@ -543,15 +584,41 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
             assert tr
             v = tr.fields[0].cell
         if kind == "count":
-            // new elements are copies of element 0's value
+            // new elements are copies of element 0's value; a count of -1
+            // is a negative count the slot holds as it is, handed to the
+            // writer (SF-28: Lobster storage holds the count as an int)
             let n = wr_int(text)
             sl.count = n
             while length(sl.elems) < n:
                 push(sl.elems, if length(sl.elems) > 0: copy(sl.elems[0]) else: schema_rt.element_zero(sl.fd))
+        elif kind == "elems":
+            // the element count of a fixed [N]T or keyed [E]T array: more
+            // are copies of element 0, fewer drop the tail; Lobster holds
+            // an array as a list, so any count is held and handed over
+            let n = wr_int(text)
+            while length(sl.elems) < n:
+                push(sl.elems, if length(sl.elems) > 0: copy(sl.elems[0]) else: schema_rt.element_zero(sl.fd))
+            if length(sl.elems) > n:
+                truncate(sl.elems, n)
+            if sl.fd.array == "counted" or sl.fd.array == "list":
+                sl.count = n
+        elif kind == "mask":
+            // a flags value's raw bits, unnamed ones included
+            v.i = wr_int(text)
+        elif kind == "dupkey":
+            // 1 appends a copy of the first entry, its key held twice
+            if wr_int(text) == 1:
+                assert length(sl.entries) > 0
+                push(sl.entries, copy(sl.entries[0]))
         elif kind == "length":
+            // the used length, as the text and as the count beside it that
+            // the cook writer and the block builder are handed
+            let n = wr_int(text)
             var s = ""
-            for(wr_int(text)): s += "a"
+            for(n): s += "a"
             v.s = s
+            if index < 0:
+                sl.count = n
         elif kind == "bytes":
             v.s = wr_hex(text)
         elif kind == "int":
@@ -585,12 +652,14 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
             v.f = wr_float(text)
 
 // wr_rows are the rows of one write-refusal surface that this unit answers:
-// a message row through its connection's unit
+// a message row through its connection's unit. When the driver names one
+// case (it reruns a unit case by case after the runtime aborted a run),
+// only that row.
 def wr_rows(text:string, kind:string) -> [[string]]:
     let out:[[string]] = []
     let connections = lines(text, "connection")
     for(lines(text, kind)) f:
-        if length(f) >= 8:
+        if length(f) >= 8 and (case_only == "-" or f[1] == case_only):
             var unit = f[2]
             if kind == "write-refusal-message":
                 unit = ""
@@ -601,11 +670,19 @@ def wr_rows(text:string, kind:string) -> [[string]]:
                 push(out, f)
     return out
 
+// wr_value_of is a row's starting value: its wire loaded, or for wire `-`
+// the root's fresh value (a root with no file form, SF-05, SF-06)
+def wr_value_of(f:[string]) -> schema_rt.Record:
+    if f[4] == "-":
+        return schema_rt.new_record(schema_rt.table_of(f[3]))
+    let rep = schema_rt.LoadReport {}
+    let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+    assert rec
+    return rec
+
 def surface_write_refusal(text:string, kind:string):
     for(wr_rows(text, kind)) f:
-        let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
-        assert rec
+        let rec = wr_value_of(f)
         wr_set(rec, f[5], f[6], f[7])
         var answer = "refused\n"
         if kind == "write-refusal-message":
@@ -622,6 +699,21 @@ def surface_write_refusal(text:string, kind:string):
                 answer = "wrote\n"
                 if f[6] == "bytes" and find_string(wr_hex(f[7]), "\x00") >= 0 and find_string(out, "\\u0000") < 0:
                     answer = "wrote without \\u0000\n"
+        elif kind == "write-refusal-cook":
+            // THE COOK WRITER (SPEC-TABLES §7.6): CookMeasure, then Cook in
+            // little-endian order; -1 and "" are its refusals
+            let ct = schema_rt.cook_table_of(f[3])
+            let build = if ct: ct.build else: 0
+            let size = schema_rt.cook_measure(rec, build)
+            if size >= 0:
+                let little = schema_rt.cook_write(rec, build, false)
+                if little != "":
+                    answer = if length(little) == size: "wrote\n" else: "wrote other than measured\n"
+        elif kind == "write-refusal-block":
+            // THE BLOCK BUILDER (SPEC-TABLES §19.1), handed the whole value:
+            // "" is its refusal
+            if schema_rt.block_build(f[3], rec) != "":
+                answer = "wrote\n"
         else:
             // the root's own form's writer: a declared fixed root saves
             // through the fixed form's checked writer (save_reasoned)
@@ -630,6 +722,157 @@ def surface_write_refusal(text:string, kind:string):
                 assert length(out) > 0
                 answer = "wrote\n"
         say(f[1], answer)
+        // a `point` row can leave a cycle, which outlives every reference
+        // under reference counting: release clears the pointer edges
+        schema_rt.release(rec)
+
+// THE ANNOUNCEMENT (test/conformance/README.md, `announce`; SPEC-TABLES §3.3).
+// A line is `announce <case> <unit> <root> <mode> <input>`.
+def surface_announce(text:string):
+    for(rows(text, "announce")) f:
+        assert length(f) >= 6
+        let mode = f[4]
+        if mode == "write":
+            // AnnounceMeasure, then Announce
+            let n = schema_rt.announce_measure()
+            let a = schema_rt.announce()
+            if n < 0 or a == "":
+                say(f[1], "refused\n")
+            elif n != length(a):
+                say(f[1], "announced other than measured\n")
+            else:
+                say(f[1], a)
+        elif mode == "strict" or mode == "lenient":
+            // a fresh vocabulary of the unit, its strict flag set or left at
+            // its default, reads the connection's announcement
+            let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
+            if mode == "strict":
+                v.strict = true
+            let ok = schema_rt.announce_read(v, fixture(f[5]), schema_rt.LoadReport {})
+            say(f[1], if ok: "read\n" else: "refused\n")
+        else:
+            // SaveMessages of one body with no announcement read or written
+            // on the connection (FL-18)
+            assert mode == "send"
+            var rec = schema_rt.new_record(schema_rt.table_of(f[3]))
+            if f[5] != "-":
+                let loaded = schema_rt.load(f[3], fixture(f[5]), schema_rt.LoadReport {})
+                assert loaded
+                rec = loaded
+            let out, n = schema_rt.save_messages([rec], schema_rt.LoadReport {})
+            if n < 0:
+                say(f[1], "refused\n")
+            elif n != length(out):
+                say(f[1], "wrote other than its length\n")
+            else:
+                say(f[1], out)
+
+// ri_verdict is one read's line: `read` when the call returned success and
+// its report holds no refusal, `refused` when it returned its refusal.
+// Lobster has no exceptions: a read cannot throw, so no line is `threw`.
+def ri_verdict(ok:bool, reason:string) -> string:
+    if not ok:
+        return "refused\n"
+    if reason != "":
+        return "read with a refusal in its report: " + reason + "\n"
+    return "read\n"
+
+// ri_text is a value's ToJson text
+def ri_text(rec:schema_rt.Record) -> string:
+    let js, why = schema_rt.json_write(rec)
+    if why != "":
+        return "unwritable " + why + "\n"
+    return js
+
+// READ INTO THE CALLER'S VALUES (test/conformance/README.md, `read-into`;
+// SPEC-TABLES §6.5, §3.4). A line is `read-into <case> <unit> <root> <form>
+// <lawful> <damaged> <count> <announcement>`: ONE report and <count> values
+// through a read of <lawful>, a read of <damaged>, the ToJson text of every
+// value, and a read of <lawful> again.
+def surface_read_into(text:string):
+    for(rows(text, "read-into")) f:
+        assert length(f) >= 9
+        let root = f[3]
+        let form = f[4]
+        let steps = [f[5], f[6], "", f[5]]
+        var out = ""
+        if form == "fixed-nocap":
+            // <Root>FixedLoad takes the caller values, and their count is
+            // its capacity: no call omits it (FL-17), so no omitted capacity
+            // can be asked of it
+            out = "unrepresentable\n"
+        elif form == "variable":
+            // THE VARIABLE LOAD RETURNS A NEW VALUE: schema_rt.load takes no
+            // caller value, so the driver holds the value the last read that
+            // succeeded returned, and a refused read returns none (ruling 3)
+            let rep = schema_rt.LoadReport {}
+            var held = schema_rt.new_record(schema_rt.table_of(root))
+            for(steps) step:
+                if step == "":
+                    out += ri_text(held)
+                else:
+                    let rec = schema_rt.load(root, fixture(step), rep)
+                    if rec:
+                        held = rec
+                    out += ri_verdict(rec != nil, schema_rt.strict_reason(rep))
+        elif form == "json":
+            // FromJson into the caller value: json_read_into
+            let rep = schema_rt.LoadReport {}
+            let held = schema_rt.new_record(schema_rt.table_of(root))
+            for(steps) step:
+                if step == "":
+                    out += ri_text(held)
+                else:
+                    let ok = schema_rt.json_read_into(held, fixture(step), rep)
+                    out += ri_verdict(ok, schema_rt.strict_reason(rep))
+        elif form == "message":
+            // LoadMessages into the caller batch: load_messages_into, after
+            // the connection's announcement is read into the vocabulary;
+            // the values written are what the batch holds after the call
+            let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
+            assert schema_rt.announce_read(v, fixture(f[8]), schema_rt.LoadReport {})
+            let count = wr_int(f[7])
+            let rep = schema_rt.LoadReport {}
+            let batch:[schema_rt.Record] = []
+            for(count):
+                push(batch, schema_rt.new_record(schema_rt.table_of(root)))
+            for(steps) step:
+                if step == "":
+                    for(batch) r:
+                        out += ri_text(r)
+                else:
+                    let n, ok = schema_rt.load_messages_into(root, v, fixture(step), rep, count, batch)
+                    out += ri_verdict(ok and n == length(batch), schema_rt.strict_reason(rep))
+        else:
+            // the fixed batch load, <Root>FixedLoad, through the unit adapter
+            assert form == "fixed"
+            let b = fixed_batch(root)
+            if b:
+                b.fresh(wr_int(f[7]))
+                let rep = schema_rt.TableReport {}
+                for(steps) step:
+                    if step == "":
+                        for(b.texts()) t:
+                            out += t
+                    else:
+                        let n = b.load_into(fixture(step), rep)
+                        out += ri_verdict(n >= 0, rep.reason)
+            else:
+                out = "no unit adapter serves " + root + " (test/conformance/lobster/units)\n"
+        say(f[1], out)
+
+// JSON-WRITE-INTO (test/conformance/README.md; FL-14, FL-15). A line is
+// `json-write-into <case> <unit> <root> <wire>`. LOBSTER HAS NO PROCESS
+// LOCALE: its builtins carry no setlocale, so SCHEMA_COMMA_LOCALE has nothing
+// to be set through, and the row runs as it stands (ruling 1). The text
+// writer, schema_rt.json_write, returns a fresh string and takes no caller
+// buffer, so the answer is the text it returned, with no tail to check.
+def surface_json_write_into(text:string):
+    for(rows(text, "json-write-into")) f:
+        let rec = schema_rt.load(f[3], fixture(f[4]), schema_rt.LoadReport {})
+        assert rec
+        let js, why = schema_rt.json_write(rec)
+        say(f[1], if why != "": "refused\n" else: js)
 
 if surface == "list":
     for(surfaces) s:
@@ -673,6 +916,12 @@ else:
         surface_json_hostile(text)
     elif surface == "block-foreign":
         surface_block(text, true)
+    elif surface == "announce":
+        surface_announce(text)
+    elif surface == "read-into":
+        surface_read_into(text)
+    elif surface == "json-write-into":
+        surface_json_write_into(text)
     elif find_string(surface, "write-refusal") == 0:
         surface_write_refusal(text, surface)
     else:
