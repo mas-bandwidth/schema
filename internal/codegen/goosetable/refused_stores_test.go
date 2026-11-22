@@ -11,7 +11,6 @@ package goosetable_test
 //     node tables (and the text load the data buffer) the length they had.
 
 import (
-	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,7 +85,6 @@ func refusedStoresWire(keys []byte) []byte {
 func TestGooseRefusedStoresAndDuplicateSave(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it runs the refused-stores probe)")
 	t.Parallel()
-	_ = binary.LittleEndian
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Probe.schema")
 	if err := os.WriteFile(path, []byte(refusedStoresSchema), 0o644); err != nil {
