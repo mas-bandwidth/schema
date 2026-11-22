@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -263,7 +264,7 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		live.History = append(live.History, "")
 	}
 	live.History = append(live.History, entry...)
-	if err := os.WriteFile(path, []byte(live.Text()), 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(live.Text()), 0o644); err != nil {
 		return "", false, err
 	}
 	return path, true, nil
