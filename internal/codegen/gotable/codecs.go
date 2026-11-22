@@ -1113,6 +1113,25 @@ func flagsWidthBound(f *ir.Field, expr string) (string, bool) {
 	return fmt.Sprintf("%s>>%d != 0", expr, fl.WireBits), true
 }
 
+// emitWidthRead holds a read value to its WIDTH: a bits(N) value past 2^N-1,
+// and, the read's half of flagsWidthBound, A MASK BIT AT OR
+// ABOVE THE READER'S W REFUSES THE LOAD out_of_range (docs/SPEC-TABLES.md §4,
+// A TABLE LOAD HOLDS A MASK TO ITS WIDTH). Flags append at the end, so old
+// data never carries one, and an old reader does not read new data. Every
+// widened kind is held the same; a wire kind no wider than W cannot carry one,
+// and nothing is emitted. v is the value the read just took.
+func (g *tableGen) emitWidthRead(f *ir.Field, wireKind, ind, onBad string) {
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		max := uint64(1)<<f.Type.Width - 1
+		g.pf("%s\tif v > %d { %s }\n", ind, max, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
+	}
+	cond, ok := flagsWidthBound(f, "v")
+	if !ok || knownKindWidth(wireKind) > 0 && f.Type.Ref.(*ir.Flags).WireBits >= 8*knownKindWidth(wireKind) {
+		return
+	}
+	g.pf("%s\tif %s { %s }\n", ind, cond, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
+}
+
 // plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
 // range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
 // the condition that is true for a NaN or an infinity, which no form carries.

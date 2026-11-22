@@ -608,18 +608,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
 			g.pf("%s\tif v < %s || v > %s { %s }\n", ind, lo, hi, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
 		}
-		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { %s }\n", ind, max, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
-		}
-		if cond, ok := flagsWidthBound(f, "v"); ok && (knownKindWidth(wireKind) == 0 || f.Type.Ref.(*ir.Flags).WireBits < 8*knownKindWidth(wireKind)) {
-			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD
-			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
-			// flags append at the end, so old data never carries one, and an
-			// old reader does not read new data. A wire kind no wider than W
-			// cannot carry one, and nothing is emitted.
-			g.pf("%s\tif %s { %s }\n", ind, cond, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
-		}
+		g.emitWidthRead(f, wireKind, ind, onBad)
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			typ = "byte"
