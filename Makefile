@@ -7001,7 +7001,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 
 # The corpus is written beside the live one and swapped in whole, so a reader
 # never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@rm -rf build/fixedform-corpus.next
 	@mkdir -p build/fixedform-corpus.next
 	./build/schema_test_fixedform_dump build/fixedform-corpus.next

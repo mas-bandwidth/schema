@@ -1,0 +1,13 @@
+package decls
+
+table ListNode
+{
+    value int32
+    next  *ListNode
+}
+
+table Holder
+{
+    p *ListNode
+    c int32
+}

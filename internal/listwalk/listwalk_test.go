@@ -107,8 +107,13 @@ func TestListWalkHalfRidesTheListBearingUnits(t *testing.T) {
 	}
 	// The counts below are what the gate COUNTED, so they are reported only
 	// when it held: a red run's numbers describe the failure, not the corpus.
-	if dir == "" || t.Failed() {
+	if t.Failed() {
 		return
+	}
+	if dir == "" {
+		// the derivation above held; the generated half did not run, and
+		// that is a skip with a reason, never a pass
+		t.Skip("set SCHEMA_LIST_WALK_DIR to read the generated tree: make tables-json-list-walk does")
 	}
 	summary := "tables list-walk gate: one list half, byte-identical in " + strconv.Itoa(bearingFiles) +
 		" .cpp files across " + strconv.Itoa(bearingUnits) + " list-bearing units, and in none of the " +

@@ -1,0 +1,6 @@
+package demo
+type B {
+    health int16 [min = 0, max = 100]
+    arr [<= 4]uint8
+    level uint32
+}

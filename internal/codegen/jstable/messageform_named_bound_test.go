@@ -213,7 +213,8 @@ v.Init(new Array(16));
 if (!AnnounceRead(v, new Uint8Array(readFileSync(%q)), {})) { throw new Error("announce refused"); }
 const rep = {};
 const n = MsgLoadMessages([new Msg()], v, new Uint8Array(%s), rep);
-console.log("JS loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason ?? ""));
+console.log("JS loaded=" + (n === 1 && !rep.Damaged));
+console.log("diagnostic reason=" + (rep.Reason ?? ""));
 `, announcePath, jsByteList(batch))
 			probePath := filepath.Join(dir, "probe_"+tc.name+".mjs")
 			if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
@@ -225,7 +226,9 @@ console.log("JS loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason 
 			if err != nil {
 				t.Fatalf("node probe failed: %v\n%s", err, out)
 			}
-			want := fmt.Sprintf("loaded=%t|reason=%s", tc.reason == "", tc.reason)
+			// the verdict alone: the reason is per-language detail (rulings
+			// refusal-verdict-only); the engine pins its own reason above
+			want := fmt.Sprintf("loaded=%t", tc.reason == "")
 			got := ""
 			for line := range strings.SplitSeq(string(out), "\n") {
 				if after, ok := strings.CutPrefix(line, "JS "); ok {

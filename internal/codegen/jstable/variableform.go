@@ -706,6 +706,9 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 
 // elemDefaultExpr is one keyed or fixed-array slot's declared default: the
 // field's own default, which every slot holds until a value is placed (§2.4).
+// A slot is never ABSENT: an optional array's presence is the whole array's,
+// so a slot of `?[N]T` holds the element's default, the value a read pads a
+// grown bound with (§21.1, "a grown bound"), and never null.
 func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
 	if !f.Type.Pointer && tableOf(f) != nil {
 		return "new " + tableOf(f).Name + "()"
@@ -713,6 +716,7 @@ func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
 	plain := *f
 	plain.KeyEnum, plain.KeyEnumRef = "", nil
 	plain.Array, plain.ArrayBound = ir.ArrayNone, 0
+	plain.Type.Optional = false
 	return g.defaultExpr(&plain)
 }
 

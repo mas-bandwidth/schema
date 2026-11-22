@@ -2794,6 +2794,10 @@ function L.Load(T, name, bytes, report, state, into)
 end
 
 L.loadWalk = read_form1
+-- zero_elem is one fresh default element of an array: the message form pads a
+-- fixed array stored short of a grown bound with one per missing slot
+-- (docs/SPEC-TABLES.md §21.1), as the variable form's zero_array does.
+L.zero_elem = zero_elem
 
 -- THE EXTENT WALK (docs/SPEC-TABLES.md §6.5, §8.5; internal/tablewire/extent.go):
 -- LoadMeasure(T, name, bytes) ports tablewire.FileRegionMeasure(u, root, data):
