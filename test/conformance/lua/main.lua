@@ -33,7 +33,7 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 
 -- every surface test/conformance/README.md names, in its table's order
 local SURFACE_ORDER = {
-  "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
+  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
   "block-reason", "write-refusal", "write-refusal-fixed",
@@ -418,8 +418,8 @@ end
 -- the message form (docs/SPEC-TABLES.md §3.3)
 ---------------------------------------------------------------------------
 
-local function connectionNamed(all, key)
-  for _, c in ipairs(kind(all, "connection")) do
+local function connectionNamed(all, key, keyword)
+  for _, c in ipairs(kind(all, keyword or "connection")) do
     if c[2] == key then return c end
   end
   fail("no connection " .. key)
@@ -459,6 +459,34 @@ local function surfaceMessage(all, outdir)
       local saved = u.T.SaveMessages(f[4], vocab, values)
       if saved == nil then fail(f[2] .. ": message save refused") end
       writeBytes(outdir .. "/" .. f[2], saved)
+    end
+  end
+end
+
+-- `message-prior` (testdata/conformance/tables/FORMAT.md) is the same read of
+-- a prior writer's batch, handed on its own keywords. A row may owe a
+-- refusal, so the answer is what the public read returned: the batch re-saved,
+-- or `<case>.refused` holding this leg's own reason, which the harness never
+-- compares (docs/rulings.json `refusal-verdict-only`).
+local function surfaceMessagePrior(all, outdir)
+  for _, f in ipairs(kind(all, "prior-message")) do
+    local conn = connectionNamed(all, f[3], "prior-connection")
+    local u = unit(conn[3])
+    if not u then
+      absent(outdir, f[2], NOT_GENERATED)
+    elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
+      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+    else
+      local vocab = vocabulary(u, conn, f[2])
+      local r = newReport()
+      local values = u.T.LoadMessages(f[4], vocab, mustRead(f[6]), r)
+      if values == nil or #values < 1 then
+        writeBytes(outdir .. "/" .. f[2] .. ".refused", tostring(r.reason))
+      else
+        local saved = u.T.SaveMessages(f[4], vocab, values)
+        if saved == nil then fail(f[2] .. ": message save refused") end
+        writeBytes(outdir .. "/" .. f[2], saved)
+      end
     end
   end
 end
@@ -1180,6 +1208,7 @@ elseif surface == "json-read" then surfaceJsonRead(all, outdir)
 elseif surface == "json-write" then surfaceJsonWrite(all, outdir)
 elseif surface == "json-hostile" then surfaceJsonHostile(all, outdir)
 elseif surface == "message" then surfaceMessage(all, outdir)
+elseif surface == "message-prior" then surfaceMessagePrior(all, outdir)
 elseif surface == "retain" then surfaceRetain(all, outdir, false)
 elseif surface == "retain-save" then surfaceRetain(all, outdir, true)
 elseif surface == "cook" then surfaceCook(all, outdir)

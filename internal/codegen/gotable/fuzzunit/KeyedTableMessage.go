@@ -1185,6 +1185,10 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "HullConfig.turrets")
+						return false
+					}
 					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1529,6 +1533,10 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "KeyedConfig.teams")
+						return false
+					}
 					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1615,6 +1623,10 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "KeyedConfig.hulls")
 						return false
 					}
 					if exact && n == 0 {
@@ -1858,6 +1870,10 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "ScoreBoard.per_team")
 						return false
 					}
 					if exact && n == 0 {

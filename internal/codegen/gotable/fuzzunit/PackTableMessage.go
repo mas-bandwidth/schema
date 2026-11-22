@@ -746,6 +746,10 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "ShipEntry.hardpoints")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1240,6 +1244,10 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "GlobalSettings.spawn_delays")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1672,6 +1680,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.ships")
+						return false
+					}
 					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1758,6 +1770,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.thresholds")
 						return false
 					}
 					if exact && n == 0 {
@@ -1872,6 +1888,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.reserves")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {

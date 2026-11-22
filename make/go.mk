@@ -177,6 +177,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/varevo1 test/tables/varevo/VarEvo1.schema' \
 		'build/tables-generated-go/varevo2 test/tables/varevo/VarEvo2.schema' \
 		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
+		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
 		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
 		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
 		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
@@ -221,6 +222,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,varevo1,tblvarevo1)
 	$(call go_table_module,varevo2,tblvarevo2)
 	$(call go_table_module,varevo3,tblvarevo3)
+	$(call go_table_module,prior,tblprior)
 	$(call go_table_module,cooktorture,cooktorture)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
 	$(call go_table_module,shapes,shapes)
