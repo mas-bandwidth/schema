@@ -206,7 +206,7 @@ func fixedSemanticField(f *ir.Field) map[string]any {
 			spec["shape"] = "int"
 			spec["signed"] = false
 			spec["lo"] = 0
-			spec["hi"] = fixedLiteral("18446744073709551615")
+			spec["hi"] = fixedLiteral(flagsHi(r)) // a mask holds to W (docs/SPEC-TABLES.md §4)
 			def := big.NewInt(0)
 			if f.HasDefault && f.DefInt != nil {
 				def.Set(f.DefInt)

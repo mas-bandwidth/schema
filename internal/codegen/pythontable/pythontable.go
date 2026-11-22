@@ -2497,8 +2497,10 @@ func intRange(f *ir.Field) (lo, hi string) {
 			// the value is the variant's ordinal, 0 for the implicit None
 			return "0", strconv.FormatInt(ref.Max, 10)
 		case *ir.Flags:
-			// a file carries a mask whole, so its width is the u64's own
-			return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)).String()
+			// a mask holds to W, its declaration's wire width: every table read
+			// refuses a bit at or above W out_of_range and every writer refuses to
+			// write one (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			return "0", flagsHi(ref)
 		}
 	}
 	return widthRange(f.Type.Width, f.Type.Signed)
@@ -2550,4 +2552,13 @@ func pythonTags(tags []string) string {
 	}
 	b.WriteString(")")
 	return b.String()
+}
+
+// flagsHi is the largest mask a flags declaration holds: every bit below W,
+// the declaration's wire width (the variant count, or K under | max = K).
+func flagsHi(fl *ir.Flags) string {
+	if fl.WireBits >= 64 {
+		return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)).String()
+	}
+	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)).String()
 }
