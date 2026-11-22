@@ -2398,12 +2398,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
 	keyCapacity := maxJsonKey
-	if keyField.Type.TextUnbounded() {
-		keyCapacity = -1 // map identity uses the whole unbounded key (§2.13.1)
-	} else if MapKeyIsString(f) && int(keyField.Type.Size) > keyCapacity {
-		// the 255-byte cap is on schema NAMES and never reaches a map key: a
-		// bounded key is judged against its own declared bytes (§16.2)
-		keyCapacity = int(keyField.Type.Size)
+	if keyField.Type.TextUnbounded() || MapKeyIsString(f) {
+		// A string key is bounded by its own string(N) alone (§16.3: the
+		// 255-byte cap is for schema names, never a map key); MapKeyFits holds
+		// it to N below. An unbounded key is held whole (§2.13.1).
+		keyCapacity = -1
 	}
 	// THE DUPLICATE TEST IS A HASH LOOKUP, never a scan of the entries placed
 	// so far: a scan is quadratic in the entry count, so a large map in text
