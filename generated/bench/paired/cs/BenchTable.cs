@@ -5107,7 +5107,6 @@ namespace Bench
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
                     int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
-                    ulong raw = (ulong)variant;
                     if (reference != 0 && variant == 0) { d.Report.Unknown++; }
                     ulong raw = (ulong)variant;
                     // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
