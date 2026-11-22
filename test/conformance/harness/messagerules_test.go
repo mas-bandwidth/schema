@@ -175,10 +175,10 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 
 // TestTheMasksWidth: a `flags` field of three variants in a message and in a
 // file, whose message payload is three bits and whose file payload is eight
-// bytes, and a file load carrying a bit above the reader's W saved into a
-// message, which must drop it. Red if a leg writes sixty-four bits on a
-// message, or keeps the appended bit through the message round trip and so
-// contradicts the row §4 states as moved.
+// bytes, and a newer writer's message carrying a bit above the reader's W,
+// which the reader refuses out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD
+// HOLDS A MASK TO ITS WIDTH). Red if a leg writes sixty-four bits on a message,
+// or reads a bit above its W.
 func TestTheMasksWidth(t *testing.T) {
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
@@ -218,7 +218,8 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Errorf("the mask did not read back: ok=%v err=%v report=%+v perks=%d", ok, derr, report, instU64(t, back, "perks"))
 	}
 
-	// A NEWER WRITER'S BIT ABOVE W SURVIVES MESSAGE READ AND REFUSES OLDER RE-ENCODE
+	// A NEWER WRITER'S BIT ABOVE W REFUSES THE READ out_of_range, and the older
+	// build never encodes one
 	newerUnit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo, Hyper }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	newerModel := tabletext.NewModel(newerUnit)
 	newerVocab := vocabularyOf(t, newerUnit)
@@ -229,12 +230,10 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", newerVocab, messageWire)
-	if derr != nil || !ok || mreport.Refused {
-		t.Fatalf("the message with the appended bit did not read: %v %+v", derr, mreport)
+	if ok || !mreport.Refused || tablewire.RefusalReason(derr) != tablewire.ReasonOutOfRange {
+		t.Errorf("the message with the appended bit read: ok=%v err=%v report=%+v, want out_of_range", ok, derr, mreport)
 	}
-	if instU64(t, fromMessage, "perks") != (1<<3)|1 || mreport.Unknown != 0 {
-		t.Errorf("the message read dropped or miscounted a bit above W: perks=%d unknown=%d, want perks=9 unknown=0", instU64(t, fromMessage, "perks"), mreport.Unknown)
-	}
+	setU64(t, fromMessage, "perks", (1<<3)|1)
 	if _, err := tablewire.EncodeMessage(model, fromMessage); err == nil {
 		t.Errorf("the older build encoded a bit above W without refusing invalid_value")
 	}

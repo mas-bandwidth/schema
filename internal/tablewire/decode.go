@@ -1223,6 +1223,12 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 	default:
 		raw = r.u64()
 	}
+	if fl := tabletext.FlagsOf(f); fl != nil && tabletext.FlagsPastWidth(fl, raw) {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+		// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): flags append at the end, so
+		// old data never carries one, and an old reader does not read new data
+		return r.refuseField(ReasonOutOfRange, f)
+	}
 	value := int64(raw)
 	if signed && width < 8 {
 		shift := uint(64 - width*8)

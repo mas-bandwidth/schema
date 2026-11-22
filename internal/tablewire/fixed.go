@@ -512,7 +512,10 @@ func (d *fixedDecoder) element(b []byte, f *ir.Field, cell *tabletext.Cell, isEl
 		}
 		return ""
 	}
-	if tabletext.FlagsOf(f) != nil {
+	if fl := tabletext.FlagsOf(f); fl != nil {
+		if tabletext.FlagsPastWidth(fl, binary.LittleEndian.Uint64(b)) {
+			return FixedReasonOutOfRange // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+		}
 		cell.U = binary.LittleEndian.Uint64(b)
 		return ""
 	}

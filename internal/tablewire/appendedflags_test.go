@@ -1,9 +1,7 @@
 package tablewire
 
 import (
-	"bytes"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -30,59 +28,87 @@ fixed table Root
 }
 `
 
-// TestAppendedFlagBitsReadThenWrite holds a flags mask's appended bits on
-// every path (docs/SPEC-TABLES.md §4, A TABLE LOAD DOES NOT JUDGE A MASK
-// AGAINST A RANGE; §3.3; §16.3). An older build reads the newer build's
-// variable-form file, keeps the bit it cannot name, and writes the file back
-// byte for byte. The fixed form never reads a newer writer (§21), so its half
-// is the same build: a mask bit past W reads and writes back whole, as the
-// u64 it rides as. The writers that cannot carry that bit, the text form (a
-// mask is its names) and the message form (a mask is its declared W bits),
-// refuse invalid_value rather than drop it.
-func TestAppendedFlagBitsReadThenWrite(t *testing.T) {
+// TestFlagBitsPastWidthRefuse holds a flags mask to its reader's width W on
+// every table path (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS
+// WIDTH; §3.3; §16.3). The newer reader reads old data, and never the other
+// way: an older build that meets a newer build's variable-form file with the
+// appended bit set refuses the whole load out_of_range, and the same file with
+// only the older build's bits set reads. The fixed form refuses a stored bit
+// past W the same way. Every writer refuses a mask past W, so a same-build
+// round trip never writes what its own reader refuses. The old rule kept the
+// bit and wrote it back; planting it back turns every refusal here green-read.
+func TestFlagBitsPastWidthRefuse(t *testing.T) {
 	t.Parallel()
-	for _, form := range []struct {
-		name     string
-		newer    *tabletext.Model
-		older    *tabletext.Model
-		readBack func(m *tabletext.Model, inst *tabletext.Instance, data []byte, r *tabletext.Report) (bool, error)
-	}{
-		{"variable", covVariableTwin(t, appendedFlagsNew), covVariableTwin(t, appendedFlagsOld), Decode},
-		{"fixed", covModel(t, appendedFlagsOld), covModel(t, appendedFlagsOld), Decode},
-	} {
-		inst := form.newer.New(form.newer.Lookup("Root"))
-		inst.Fields[0].Cell.U = 0b101 // Trace and the appended Extra
-		file, err := Encode(form.newer, inst)
+	newer, older := covVariableTwin(t, appendedFlagsNew), covVariableTwin(t, appendedFlagsOld)
+	for _, tc := range []struct {
+		mask uint64
+		read bool
+	}{{0b011, true}, {0b101, false}, {0b100, false}} {
+		inst := newer.New(newer.Lookup("Root"))
+		inst.Fields[0].Cell.U = tc.mask
+		file, err := Encode(newer, inst)
 		if err != nil {
-			t.Fatalf("%s: the newer build's write: %v", form.name, err)
+			t.Fatalf("%#b: the newer build's write: %v", tc.mask, err)
 		}
-		old := form.older.New(form.older.Lookup("Root"))
+		old := older.New(older.Lookup("Root"))
 		var r tabletext.Report
-		ok, err := form.readBack(form.older, old, file, &r)
-		if !ok || err != nil {
-			t.Errorf("%s: the older build refused the newer build's file: %v %+v", form.name, err, r)
-			continue
+		ok, err := Decode(older, old, file, &r)
+		switch {
+		case tc.read && (!ok || err != nil || r.Refused || old.Fields[0].Cell.U != tc.mask):
+			t.Errorf("%#b: the older build read %v %v %+v %#b, want the mask read whole", tc.mask, ok, err, r, old.Fields[0].Cell.U)
+		case !tc.read && (ok || RefusalReason(err) != ReasonOutOfRange || !r.Refused):
+			t.Errorf("%#b: the older build read %v %v %+v, want the whole load refused out_of_range", tc.mask, ok, err, r)
 		}
-		if got := old.Fields[0].Cell.U; got != 0b101 {
-			t.Errorf("%s: the older build read the mask as %#b, want 0b101 (the appended bit kept)", form.name, got)
+	}
+
+	// THE FIXED FORM: a stored bit past W refuses the load out_of_range.
+	fixed := covModel(t, appendedFlagsOld)
+	image := func(mask uint64) []byte {
+		inst := fixed.New(fixed.Lookup("Root"))
+		inst.Fields[0].Cell.U = mask
+		b, err := EncodeFixed(fixed, inst)
+		if err != nil {
+			t.Fatalf("fixed %#b: %v", mask, err)
 		}
-		again, err := Encode(form.older, old)
-		if err != nil || !bytes.Equal(again, file) {
-			t.Errorf("%s: the older build's write-back is %x %v, want the file it read, %x", form.name, again, err, file)
+		return b
+	}
+	low, both := image(0b01), image(0b11)
+	at := -1
+	for i := range low {
+		if low[i] != both[i] {
+			at = i
 		}
-		if form.name == "fixed" {
-			if fixed, err := EncodeFixed(form.older, old); err != nil || !bytes.Equal(fixed, file) {
-				t.Errorf("fixed: EncodeFixed wrote %x %v, want the file it read, %x", fixed, err, file)
-			}
-		}
+	}
+	if at < 0 || len(low) != len(both) {
+		t.Fatalf("fixed: no mask byte found between %x and %x", low, both)
+	}
+	forged := append([]byte(nil), low...)
+	forged[at] |= 0b100
+	var r tabletext.Report
+	if ok, err := Decode(fixed, fixed.New(fixed.Lookup("Root")), forged, &r); ok || RefusalReason(err) != ReasonOutOfRange {
+		t.Errorf("fixed: a stored bit past W read %v %v %+v, want out_of_range", ok, err, r)
+	}
+
+	// EVERY WRITER refuses a mask past W: the variable and fixed file forms, the
+	// text form (a mask is its names) and the message form (a mask is W bits).
+	for _, m := range []*tabletext.Model{older, fixed} {
+		inst := m.New(m.Lookup("Root"))
+		inst.Fields[0].Cell.U = 0b101
 		var iv *tabletext.InvalidValue
-		if out, err := form.older.Write(old); !errors.As(err, &iv) || out != nil {
-			t.Errorf("%s: the text writer answered %q %v for a bit no name carries, want invalid_value", form.name, out, err)
+		if out, err := Encode(m, inst); !errors.As(err, &iv) || out != nil {
+			t.Errorf("the file writer answered %x %v for a bit past W, want invalid_value", out, err)
 		}
-		if out, err := EncodeMessage(form.older, old); !errors.As(err, &iv) || out != nil {
-			t.Errorf("%s: the message writer answered %x %v for a bit past W, want invalid_value", form.name, out, err)
-		} else if !strings.Contains(err.Error(), "name no variant") {
-			t.Errorf("%s: the message writer's refusal is %v", form.name, err)
+		if out, err := m.Write(inst); !errors.As(err, &iv) || out != nil {
+			t.Errorf("the text writer answered %q %v for a bit no name carries, want invalid_value", out, err)
 		}
+		if out, err := EncodeMessage(m, inst); !errors.As(err, &iv) || out != nil {
+			t.Errorf("the message writer answered %x %v for a bit past W, want invalid_value", out, err)
+		}
+	}
+	inst := fixed.New(fixed.Lookup("Root"))
+	inst.Fields[0].Cell.U = 0b101
+	var iv *tabletext.InvalidValue
+	if out, err := EncodeFixed(fixed, inst); !errors.As(err, &iv) || out != nil {
+		t.Errorf("the fixed writer answered %x %v for a bit past W, want invalid_value", out, err)
 	}
 }

@@ -334,9 +334,12 @@ func (d *lineageDecoder) element(w *fixedNode, b []byte, f *ir.Field, cell *tabl
 		}
 		return ""
 	}
-	if tabletext.FlagsOf(f) != nil {
+	if fl := tabletext.FlagsOf(f); fl != nil {
 		if w.size != 8 || w.kind == ir.TableKindTable || len(w.children) != 0 {
 			return FixedReasonKindMismatch
+		}
+		if tabletext.FlagsPastWidth(fl, binary.LittleEndian.Uint64(b)) {
+			return FixedReasonOutOfRange // a mask bit at or above W (docs/SPEC-TABLES.md §4)
 		}
 		cell.U = binary.LittleEndian.Uint64(b)
 		return ""
