@@ -1,0 +1,16 @@
+package fends
+
+// tenth: a compressed float whose declared top is 0.1, a decimal float32
+// cannot hold: its float32 end is 0.10000000149011612 (SPEC.md 4.6).
+// z: a compressed float under a +0 default, with its float32 ends at -1 and 1.
+fixed table Msg
+{
+    z float32 | min = -1, max = 1, resolution = 0.01
+    tenth float32 | min = 0, max = 0.1, resolution = 0.01
+}
+
+table Probe
+{
+    z float32 | min = -1, max = 1, resolution = 0.01
+    tenth float32 | min = 0, max = 0.1, resolution = 0.01
+}

@@ -155,7 +155,7 @@ func WriteHandle(stream *serialize.WriteStream, value *Handle) error {
 	f0 := uint64(value.ObjectID) & 0x3fff
 	f1 := uint64(value.ObjectSequence) & 0xff
 	w0 := uint32(f0 | f1<<14)
-	stream.SerializeBits(&w0, 22)
+	_ = stream.SerializeBits(&w0, 22) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -175,7 +175,7 @@ func ReadHandle(stream *serialize.ReadStream, value *Handle) error {
 // Handle nested in another value is read through it.
 func (value *Handle) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 22)
+	_ = stream.SerializeBits(&n0, 22) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -224,9 +224,9 @@ func WriteQuantizedPosition(stream *serialize.WriteStream, value *QuantizedPosit
 	f1 := uint64(value.Y+MaxPositionUnits) & 0x1ffffff
 	f2 := uint64(value.Z+MaxPositionUnits) & 0x1ffffff
 	w0 := f0 | f1<<25 | f2<<50
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := uint32(f2 >> 14)
-	stream.SerializeBits(&w1, 11)
+	_ = stream.SerializeBits(&w1, 11) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -246,9 +246,9 @@ func ReadQuantizedPosition(stream *serialize.ReadStream, value *QuantizedPositio
 // QuantizedPosition nested in another value is read through it.
 func (value *QuantizedPosition) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	n1 := uint32(0)
-	stream.SerializeBits(&n1, 11)
+	_ = stream.SerializeBits(&n1, 11) // sticky: checked once for the run below
 	c1 := uint64(n1)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -305,9 +305,9 @@ func WriteQuantizedVelocity(stream *serialize.WriteStream, value *QuantizedVeloc
 	f1 := uint64(value.Y+MaxVelocityUnits) & 0x7fffff
 	f2 := uint64(value.Z+MaxVelocityUnits) & 0x7fffff
 	w0 := f0 | f1<<23 | f2<<46
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := uint32(f2 >> 18)
-	stream.SerializeBits(&w1, 5)
+	_ = stream.SerializeBits(&w1, 5) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -327,9 +327,9 @@ func ReadQuantizedVelocity(stream *serialize.ReadStream, value *QuantizedVelocit
 // QuantizedVelocity nested in another value is read through it.
 func (value *QuantizedVelocity) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	n1 := uint32(0)
-	stream.SerializeBits(&n1, 5)
+	_ = stream.SerializeBits(&n1, 5) // sticky: checked once for the run below
 	c1 := uint64(n1)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -391,7 +391,7 @@ func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotat
 	f2 := uint64(int32(value.Z)+RotationUnits) & 0xfff
 	f3 := uint64(int32(value.W)+RotationUnits) & 0xfff
 	w0 := f0 | f1<<12 | f2<<24 | f3<<36
-	stream.SerializeBits64(&w0, 48)
+	_ = stream.SerializeBits64(&w0, 48) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -411,7 +411,7 @@ func ReadQuantizedRotation(stream *serialize.ReadStream, value *QuantizedRotatio
 // QuantizedRotation nested in another value is read through it.
 func (value *QuantizedRotation) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 48)
+	_ = stream.SerializeBits64(&c0, 48) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -600,11 +600,11 @@ func WriteInput(stream *serialize.WriteStream, value *Input) error {
 		f12 = 1
 	}
 	w0 := f0 | f1<<32
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := f2 | f3<<32
-	stream.SerializeBits64(&w1, 64)
+	_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 	w2 := f4 | f5<<32 | f6<<33 | f7<<34 | f8<<35 | f9<<36 | f10<<37 | f11<<38 | f12<<39
-	stream.SerializeBits64(&w2, 40)
+	_ = stream.SerializeBits64(&w2, 40) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -623,11 +623,11 @@ func ReadInput(stream *serialize.ReadStream, value *Input) error {
 // nested in another value is read through it.
 func (value *Input) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	c1 := uint64(0)
-	stream.SerializeBits64(&c1, 64)
+	_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 	c2 := uint64(0)
-	stream.SerializeBits64(&c2, 40)
+	_ = stream.SerializeBits64(&c2, 40) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -763,11 +763,11 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 			f12 = 1
 		}
 		w0 := f0 | f1<<32
-		stream.SerializeBits64(&w0, 64)
+		_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 		w1 := f2 | f3<<32
-		stream.SerializeBits64(&w1, 64)
+		_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 		w2 := f4 | f5<<32 | f6<<33 | f7<<34 | f8<<35 | f9<<36 | f10<<37 | f11<<38 | f12<<39
-		stream.SerializeBits64(&w2, 40)
+		_ = stream.SerializeBits64(&w2, 40) // sticky: the stream latches the first error and Err reports it
 	}
 	return stream.Err()
 }
@@ -803,11 +803,11 @@ func (value *InputPacket) read(stream *serialize.ReadStream) error {
 	value.InputsCount = int32(offsetValue)
 	for i := int32(0); i < value.InputsCount; i++ {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
+		_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
+		_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 40)
+		_ = stream.SerializeBits64(&c2, 40) // sticky: checked once for the run below
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -936,13 +936,13 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 		f11 = 1
 	}
 	w0 := f0 | f1<<3 | f2<<28 | f3<<53
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := f3>>11 | f4<<14 | f5<<26 | f6<<38 | f7<<50 | f8<<62
-	stream.SerializeBits64(&w1, 64)
+	_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 	w2 := f8>>2 | f9<<21 | f10<<44
-	stream.SerializeBits64(&w2, 64)
+	_ = stream.SerializeBits64(&w2, 64) // sticky: the stream latches the first error and Err reports it
 	w3 := uint32(f10>>20 | f11<<3)
-	stream.SerializeBits(&w3, 4)
+	_ = stream.SerializeBits(&w3, 4) // sticky: the stream latches the first error and Err reports it
 	if value.HasFlags {
 		if value.Flags >= 1<<4 { // a mask bit above the wire width cannot ride
 			return serialize.ErrValueOutOfRange
@@ -966,7 +966,7 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	f13 := uint64(value.Health) & 0x3ff
 	f14 := uint64(value.Thrust) & 0x7f
 	w4 := uint32(f12 | f13<<2 | f14<<12)
-	stream.SerializeBits(&w4, 19)
+	_ = stream.SerializeBits(&w4, 19) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -986,13 +986,13 @@ func ReadShipCreate(stream *serialize.ReadStream, value *ShipCreate) error {
 // ShipCreate nested in another value is read through it.
 func (value *ShipCreate) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	c1 := uint64(0)
-	stream.SerializeBits64(&c1, 64)
+	_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 	c2 := uint64(0)
-	stream.SerializeBits64(&c2, 64)
+	_ = stream.SerializeBits64(&c2, 64) // sticky: checked once for the run below
 	n3 := uint32(0)
-	stream.SerializeBits(&n3, 4)
+	_ = stream.SerializeBits(&n3, 4) // sticky: checked once for the run below
 	c3 := uint64(n3)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -1062,7 +1062,7 @@ func (value *ShipCreate) read(stream *serialize.ReadStream) error {
 		value.Flags = 0
 	}
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 19)
+	_ = stream.SerializeBits(&n0, 19) // sticky: checked once for the run below
 	c4 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -1124,7 +1124,7 @@ func WriteExpressionProbe(stream *serialize.WriteStream, value *ExpressionProbe)
 	f0 := uint64(value.HardpointIndex) & 0x1f
 	f1 := uint64(value.SpinRate-(-(-RotationUnits))) & 0x7ff
 	w0 := uint32(f0 | f1<<5)
-	stream.SerializeBits(&w0, 16)
+	_ = stream.SerializeBits(&w0, 16) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -1144,7 +1144,7 @@ func ReadExpressionProbe(stream *serialize.ReadStream, value *ExpressionProbe) e
 // ExpressionProbe nested in another value is read through it.
 func (value *ExpressionProbe) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 16)
+	_ = stream.SerializeBits(&n0, 16) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()

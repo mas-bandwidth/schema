@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFixedClassOnTableWireJava holds the three roadmap cells of this card:
@@ -182,11 +183,11 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, row := range fixtures {
-		out, err := exec.Command(java, "-ea", "-cp", classes, "FixedClassDriver_"+row.root, row.wire, row.json).CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", classes, "FixedClassDriver_"+row.root, row.wire, row.json).CombinedOutput()
 		if err != nil || !strings.Contains(string(out), "ok") {
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		}
@@ -429,10 +430,10 @@ public final class DefaultDriver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", classes, "DefaultDriver", wantPath).CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", classes, "DefaultDriver", wantPath).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "ok") {
 		t.Fatalf("DefaultDriver: %v\n%s", err, out)
 	}
@@ -567,10 +568,10 @@ public final class RenameDriver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", classes, "RenameDriver", filepath.Join(repo, "testdata", "wire", "tables")).CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", classes, "RenameDriver", filepath.Join(repo, "testdata", "wire", "tables")).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "ok") {
 		t.Fatalf("RenameDriver: %v\n%s", err, out)
 	}

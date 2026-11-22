@@ -142,6 +142,32 @@ if [ -s "$work/claimed-but-emitted" ]; then
 	printf '  drop the line from %s: it is generator output now, and the exception hides its staleness.\n' "${exceptions:-test/generated-tree/not-emitted}"
 fi
 
+# AN IGNORED PATH IS JUDGED BY NOTHING, so the ignore rules are held to what
+# they are for: build products nobody commits. A path git TRACKS that an
+# ignore rule also matches would be carried by the tree and compared by no
+# one, which is how a rule written too broadly turns into a hole.
+# The tracked set is git's own; the negative control hands a prepared listing
+# in GENERATED_TREE_TRACKED, since its planted paths are tracked by nothing.
+if [ -n "${GENERATED_TREE_TRACKED:-}" ]; then
+	LC_ALL=C sort -u "$GENERATED_TREE_TRACKED" > "$work/tracked"
+else
+	git ls-files generated | sed 's|^generated/||' | LC_ALL=C sort -u > "$work/tracked"
+fi
+comm -12 "$work/ignored" "$work/tracked" > "$work/ignored-but-tracked"
+if [ -s "$work/ignored-but-tracked" ]; then
+	fail=1
+	printf 'UNJUDGED — %s tracked file(s) that .gitignore excludes from this comparison:\n' "$(count "$work/ignored-but-tracked")"
+	show "$work/ignored-but-tracked"
+	printf '  narrow the .gitignore rule or `git rm --cached` the file: a tracked file must be compared.\n'
+fi
+
+# A COMPARISON OF NOTHING IS NOT A PASS. Two empty directories differ in no
+# file, and so would an emission and a tree that were both lost.
+if [ ! -s "$work/common" ]; then
+	fail=1
+	printf 'EMPTY — the emission and the tree share no file, so nothing was compared.\n'
+fi
+
 if [ "$fail" -ne 0 ]; then
 	printf 'the generated/ tree is NOT what this compiler emits. The lists above are the whole difference.\n'
 	exit 1

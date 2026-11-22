@@ -16,13 +16,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFixedRoadmapJavaT07ConformanceIntegers is the card's one harness: a
@@ -129,7 +130,7 @@ func t07Build(t *testing.T, schema, root, setters string) string {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes
@@ -141,7 +142,7 @@ func t07Run(t *testing.T, classes string) string {
 
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_capability").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_capability").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_capability: %v\n%s", err, out)
 	}
@@ -347,7 +348,7 @@ func t07BuildProbe(t *testing.T, schema, probe string) string {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes
@@ -359,7 +360,7 @@ func t07RunClass(t *testing.T, classes, class string) string {
 
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, class).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", class, err, out)
 	}

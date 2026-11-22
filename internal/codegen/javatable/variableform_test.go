@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestVariableFormRuntimeCompilesAndRoundTrips proves the variable-form runtime
@@ -45,13 +46,13 @@ table Card { id string(64) }
 	if err := os.WriteFile(filepath.Join(src, "probe", "Probe.java"), []byte(variableRuntimeProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-d", classes,
+	cmd := testproc.Command(t, javac, "--release", "17", "-d", classes,
 		filepath.Join(src, "probe", "TableVariable.java"),
 		filepath.Join(src, "probe", "Probe.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "probe.Probe").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "probe.Probe").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
