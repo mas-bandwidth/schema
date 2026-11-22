@@ -234,8 +234,9 @@ rather than a clamp. `manifest_case` still holds — every `.bin` in the corpus 
 
 **Row 9's corpus files carry ONE record each, and the multi-record answer is settled.** FIXED-FORM-ALGORITHM
 §5.3 checks every record's hash in its CHECK loop before any record lands, so a multi-record `no_layout`
-leaves `out[0..k-1]` exactly as untouched as `out[k]`: not one destination byte is written. A two-record
-file asserts the same untouched storage as a one-record file.
+lands nothing from the file, and the refusal leaves `out[0..k-1]` at their declared defaults exactly as it
+leaves `out[k]` and every row past it (SPEC-TABLES §6.5). A two-record file asserts the same reset storage
+as a one-record file.
 
 **Row 11's handed-in entry is the probe's, in one line, and it is the only unlawful thing in the corpus.**
 §5.9 #30 withdrew the owed lawful row because no lawful lineage can move the census; the entry is therefore
