@@ -107,6 +107,20 @@ defmodule Probe do
 end
 `)
 			for _, r := range varRows {
+				// A form byte other than 1 at a variable root is not damage: the
+				// variable table opens only form 1, so a form-3 (fixed) header is a
+				// newer-form refusal, handed back before any body is read.
+				if strings.HasPrefix(r[0], "frame_form_") {
+					fmt.Fprintf(&probe, `
+data = File.read!(%q)
+
+case %s.variable_load(%q, data) do
+  {:error, :newer_form, %%{reason: "unknown_form"}} -> :ok
+  other -> Probe.fail(%q <> ": the plain read handed back " <> inspect(other, limit: 8))
+end
+`, r[2], units[unit].module, r[1], r[0])
+					continue
+				}
 				fmt.Fprintf(&probe, `
 data = File.read!(%q)
 
