@@ -104,6 +104,9 @@ $(call wfr_runs,$(1)): build/conformance-harness $$(if $$(WFR_DRIVER_$(1)),$$(WF
 		$$(WIRE_FUZZ_RELEASE_N) $$(WIRE_FUZZ_RELEASE_DIR)
 tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
 	@for r in $(call wfr_runs,$(1)); do set -- $$$$(echo $$$$r | tr - ' '); cat $$(WIRE_FUZZ_RELEASE_DIR)/$$$$3.$$$$4.$$$$5.row; done > $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv
+	@rows=$$$$(wc -l < $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | tr -d ' '); \
+	if [ "$$$$rows" -ne $(words $(call wfr_runs,$(1))) ]; then \
+		echo "tables-wire-fuzz-release-$(1): RED ($$$$rows rows for $(words $(call wfr_runs,$(1))) runs: a run landed no row)"; exit 1; fi
 	@awk -F'\t' '{ print $$$$1 " | " $$$$2 " | " $$$$3 " | " $$$$4 }' $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv
 	@if cut -f4 $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | grep -q '^RED'; then \
 		echo "tables-wire-fuzz-release-$(1): RED (logs and mutants under $$(WIRE_FUZZ_RELEASE_DIR)/$(1).*)"; exit 1; fi

@@ -28,7 +28,7 @@ type Problem struct {
 	File   string // repo-relative slash path of the file holding the reference
 	Line   int    // 1-based line within File
 	Ref    string // the reference text as written
-	Reason string // link-file, link-anchor, cite-page, or cite-heading
+	Reason string // link-file, link-anchor, cite-page, cite-heading, or fence-unclosed
 }
 
 func (p Problem) String() string {
@@ -107,8 +107,24 @@ func FindRoot(dir string) (string, error) {
 	}
 }
 
+// Counts is what one Check examined. A gate that found no problem among no
+// pages, no links or no citations has checked nothing, so the caller holds
+// these above zero.
+type Counts struct {
+	Pages     int // markdown pages read
+	Links     int // relative markdown links resolved
+	Citations int // "PAGE.md §N" citations resolved
+}
+
 // Check walks root and returns every reference that does not resolve, sorted.
 func Check(root string) ([]Problem, error) {
+	problems, _, err := CheckCounted(root)
+	return problems, err
+}
+
+// CheckCounted is Check with the counts of what it examined.
+func CheckCounted(root string) ([]Problem, Counts, error) {
+	var counts Counts
 	pages := map[string]*page{}
 	byBase := map[string][]string{}
 	var files []string
@@ -131,7 +147,10 @@ func Check(root string) ([]Problem, error) {
 		files = append(files, rel)
 		if strings.HasSuffix(rel, ".md") {
 			data, err := os.ReadFile(p)
-			if err != nil || isBinary(data) {
+			if err != nil {
+				return err
+			}
+			if isBinary(data) {
 				return nil
 			}
 			pg := &page{slugs: map[string]bool{}, numbers: map[string]bool{}}
@@ -163,21 +182,29 @@ func Check(root string) ([]Problem, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, counts, err
 	}
 	sort.Strings(files)
+	counts.Pages = len(pages)
 
 	var problems []Problem
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil || isBinary(data) {
+		if err != nil {
+			return nil, counts, err
+		}
+		if isBinary(data) {
 			continue
 		}
 		text := string(data)
 		if _, ok := pages[rel]; ok {
-			problems = append(problems, checkLinks(rel, text, root, pages)...)
+			found, n := checkLinks(rel, text, root, pages)
+			problems = append(problems, found...)
+			counts.Links += n
 		}
-		problems = append(problems, checkCitations(rel, text, pages, byBase)...)
+		found, n := checkCitations(rel, text, pages, byBase)
+		problems = append(problems, found...)
+		counts.Citations += n
 	}
 	sort.Slice(problems, func(i, j int) bool {
 		if problems[i].File != problems[j].File {
@@ -188,26 +215,54 @@ func Check(root string) ([]Problem, error) {
 		}
 		return problems[i].Ref < problems[j].Ref
 	})
-	return problems, nil
+	return problems, counts, nil
 }
 
 func isBinary(data []byte) bool {
 	return slices.Contains(data, 0)
 }
 
+// fenceRun is the run of three or more backticks or tildes a line opens with,
+// and what follows it. A line that opens with no such run returns "".
+func fenceRun(trimmed string) (run, rest string) {
+	if trimmed == "" || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return "", ""
+	}
+	n := 0
+	for n < len(trimmed) && trimmed[n] == trimmed[0] {
+		n++
+	}
+	if n < 3 {
+		return "", ""
+	}
+	return trimmed[:n], trimmed[n:]
+}
+
 // checkLinks scans one page line by line, skipping fenced code blocks so a Go
-// call like errors.AsType[T](err) is not read as a markdown link.
-func checkLinks(rel, text, root string, pages map[string]*page) []Problem {
+// call like errors.AsType[T](err) is not read as a markdown link. It returns
+// the problems and the count of relative links it resolved.
+//
+// A fence closes on a run of the same character at least as long as the one
+// that opened it, with nothing after it (CommonMark), so a four-backtick block
+// that shows a three-backtick fence is one block. A fence still open at the
+// end of the page is a problem by name: every link after it went unread, and
+// the old toggle on any fence-looking line let that pass in silence.
+func checkLinks(rel, text, root string, pages map[string]*page) ([]Problem, int) {
 	var problems []Problem
-	inFence := false
+	links := 0
+	open, openLine := "", 0
 	for i, raw := range strings.Split(text, "\n") {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
+		run, rest := fenceRun(trimmed)
+		if open != "" {
+			if run != "" && run[0] == open[0] && len(run) >= len(open) && strings.TrimSpace(rest) == "" {
+				open = ""
+			}
 			continue
 		}
-		if inFence {
+		if run != "" {
+			open, openLine = run, i+1
 			continue
 		}
 		line = inlineRe.ReplaceAllString(line, "")
@@ -218,9 +273,13 @@ func checkLinks(rel, text, root string, pages map[string]*page) []Problem {
 			}
 			ref := m[0][2 : len(m[0])-1]
 			problems = append(problems, resolveLink(rel, i+1, ref, target, root, pages)...)
+			links++
 		}
 	}
-	return problems
+	if open != "" {
+		problems = append(problems, Problem{File: rel, Line: openLine, Ref: open, Reason: "fence-unclosed"})
+	}
+	return problems, links
 }
 
 func resolveLink(rel string, line int, ref, target, root string, pages map[string]*page) []Problem {
@@ -244,10 +303,12 @@ func resolveLink(rel string, line int, ref, target, root string, pages map[strin
 	return nil
 }
 
-func checkCitations(rel, text string, pages map[string]*page, byBase map[string][]string) []Problem {
+func checkCitations(rel, text string, pages map[string]*page, byBase map[string][]string) ([]Problem, int) {
 	var problems []Problem
+	cites := 0
 	for i, raw := range strings.Split(text, "\n") {
 		for _, m := range citeRe.FindAllStringSubmatch(raw, -1) {
+			cites++
 			pg := resolvePage(m[1], pages, byBase)
 			switch {
 			case pg == nil:
@@ -257,7 +318,7 @@ func checkCitations(rel, text string, pages map[string]*page, byBase map[string]
 			}
 		}
 	}
-	return problems
+	return problems, cites
 }
 
 // resolvePage maps a citation's page token to a page. A token may be the

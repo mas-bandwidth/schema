@@ -4391,6 +4391,26 @@ backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
 the resolved value and keep the schema form in a comment, as the built-in
 backends do.
 
+Some constructs are gated centrally: `Generate` refuses a unit that uses
+`timestamp`, `| required`, `forms` or another key `compiler.CarryConstructs()`
+lists, before your generator runs, unless the target carries it. A generator
+that does (or only reads the construct's metadata) says so by implementing
+`compiler.ConstructCarrier`; `compiler.UnitConstructs(unit)` names what a unit
+uses:
+
+```go
+func (docs) Carries() []string { return []string{"timestamp"} } // read once, at Register
+```
+
+The declaration is the generator's whole answer: a construct it does not name
+is still refused, and a key that is not one of `CarryConstructs()` fails
+`Register`.
+
+`Register` calls `Names()` and `Carries()` once each and keeps its own copy of
+what they returned. Editing those slices afterwards, or answering differently
+on a later call, changes neither the names that select your generator nor the
+constructs it is handed: to change either, register on a new `Compiler`.
+
 `compiler.UserAgent()` reports which build of the compiler is running, for a
 tool that stamps its own output.
 
