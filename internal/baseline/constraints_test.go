@@ -235,7 +235,7 @@ var irFacts = map[string]classified{
 	"FieldType.Unbounded": rows("map key capacity declared"),
 	// ---- ir.Enum ----
 	"Enum.Name":              not("a declaration's name is not on the wire; a rename is the member row's"),
-	"Enum.SchemaName":        not("a declared name a backend respelled is not on the wire; the declaration keeps it for diagnostics and descriptors"),
+	"Enum.SchemaName":        not("the declared spelling of a name a backend respelled; a name is not on the wire"),
 	"Enum.Variants":          rows("enum variant removed", "key enum variant removed"),
 	"Enum.Was":               not("the alias that keeps a variant's id"),
 	"Enum.Max":               not("the type wire's range; a save names a variant by its name id"),
@@ -247,7 +247,7 @@ var irFacts = map[string]classified{
 	"Enum.VariantDeprecated": rows("enum variant deprecated"),
 	// ---- ir.Flags ----
 	"Flags.Name":        not("a declaration's name is not on the wire"),
-	"Flags.SchemaName":  not("a declared name a backend respelled is not on the wire"),
+	"Flags.SchemaName":  not("the declared spelling of a name a backend respelled; a name is not on the wire"),
 	"Flags.Variants":    rows("flags variant moved"),
 	"Flags.WireBits":    not("the type wire's mask width; a save's mask is held by the positions the flags section records"),
 	"Flags.Doc":         not("metadata no codec reads"),
