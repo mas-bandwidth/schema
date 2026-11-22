@@ -54,6 +54,11 @@ OWES) and is repeated here as the rule for the suite:
   pass.
 - A surface a port declares absent must be one the specification lets it
   refuse. An absence on a required surface is a failure, not a gap.
+- Every pinned wire-fuzz vector is RUN. `testdata/wire/tables/fuzz-vectors/INDEX.txt`
+  names every `*.bin` beside it, and every line of it names a file that exists;
+  `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
+  and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
+  A new vector is added to the index in the commit that adds the file.
 
 ## 3. The driver protocol
 
