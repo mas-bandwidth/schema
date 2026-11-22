@@ -745,6 +745,11 @@ func (g *wireGen) emitIntClamp(f *ir.Field, value, p, ind string) {
 		lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
 		g.pf("%sif (_u64Above(%s, %s)) { %s.report.refuse('out_of_range'); }\n", ind, value, lit, p)
 	}
+	if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// a mask bit at or above the reader's W refuses (docs/SPEC-TABLES.md §4,
+		// A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+		g.pf("%sif ((%s >>> %d) != 0) { %s.report.refuse('out_of_range'); }\n", ind, value, fl.WireBits, p)
+	}
 }
 
 // emitGetElemBad reads one array element at the DECLARED element kind ek and
@@ -835,7 +840,7 @@ func (g *wireGen) emitElemInt(f *ir.Field, signedExpr string, signed bool, out, 
 	if signed {
 		expr = signedExpr
 	}
-	if !f.HasIntRange && (f.Type.Kind != ir.TBits || f.Type.Width >= 64) {
+	if fl := flagsRef(f); !f.HasIntRange && (f.Type.Kind != ir.TBits || f.Type.Width >= 64) && (fl == nil || fl.WireBits >= 64) {
 		g.pf("%s%s.add(%s);\n", ind, out, expr)
 		return
 	}

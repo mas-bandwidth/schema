@@ -3298,6 +3298,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
 			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit)
 		}
+		if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+			// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): flags append at the end, so
+			// old data never carries one, and an old reader does not read new data;
+			// every widened unsigned kind lands here too
+			g.pf("%s\t\tif ((value >>> %d) != 0) { r.report.refuse('out_of_range'); return; }\n", ind, fl.WireBits)
+		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -4239,6 +4246,14 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		return
+	}
+	if fl := flagsRef(f); fl != nil {
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+		// HOLDS A MASK TO ITS WIDTH): a save never writes a bit its own load refuses
+		if fl.WireBits < 64 {
+			g.pf("%sassert((%s >>> %d) == 0);\n", ind, expr, fl.WireBits)
+		}
 		return
 	}
 	if f.Type.Blob() {

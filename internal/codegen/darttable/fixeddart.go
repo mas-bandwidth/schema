@@ -842,6 +842,12 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 }
 
 func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, expr, ind string) {
+	// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+	// HOLDS A MASK TO ITS WIDTH): a fixed or message save never stores a bit its
+	// own load refuses. Debug only, as every write check in Dart is.
+	if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		pf("%sassert((%s >>> %d) == 0);\n", ind, expr, fl.WireBits)
+	}
 	if lo, hi, ok := ir.TableRawRange(f); ok {
 		switch {
 		case fixedIs128(f.Type):
@@ -1064,6 +1070,20 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 				g.pf("%s}\n", ind)
 			}
 			return
+		case *ir.Flags:
+			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE READ out_of_range
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
+			// flags append at the end, so old data never carries one, and an old
+			// reader does not read new data. The bits past W are dropped only so
+			// the refused record holds no bit its type cannot name.
+			if r.WireBits < 64 {
+				g.load(ind, expr, fixedOff(base, at), f.Type)
+				g.pf("%sif ((%s >>> %d) != 0) {\n", ind, expr, r.WireBits)
+				g.pf("%s  %s &= 0x%x;\n", ind, expr, (uint64(1)<<uint(r.WireBits))-1)
+				g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
+				g.pf("%s}\n", ind)
+				return
+			}
 		}
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
