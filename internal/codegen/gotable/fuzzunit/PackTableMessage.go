@@ -788,7 +788,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 							}
 						}
 					}
@@ -1108,7 +1108,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TickRate = uint32(v)
+						value.TickRate = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.TickRate != 60) {
@@ -1603,7 +1603,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 					}
 					{
 						v := payload29.Unsigned(entry.Shape.Kind)
-						value.Version = uint32(v)
+						value.Version = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Version != 1) {
@@ -1827,7 +1827,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 							}
 							if (*p) != 0 {
 								slotDefault = false

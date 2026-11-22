@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A table-armed union whose arm holds another union by value is only one
@@ -74,7 +75,7 @@ func nestedTableUnionCompile(t *testing.T, sources map[string]string, header str
 		cxx = "c++"
 	}
 	args := []string{"-std=c++17", "-O0", "-I" + dir, probePath, "-o", filepath.Join(dir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the generated header does not compile: %v\n%s", err, out)
 	}
 }

@@ -26,7 +26,7 @@ func TestMatchedScalarWidthShape(t *testing.T) {
 	}
 	for _, want := range []string{
 		"r.Get16()",
-		"r.Get32()",
+		"r.getI32()",
 		"r.Has(2)",
 		"r.Has(4)",
 		"tableKindWidens(kind, 7)",

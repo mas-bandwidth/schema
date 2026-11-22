@@ -2,13 +2,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaWritersRefuseASharedBlob holds §2.5 on the Java leg: a blob is owned
@@ -212,7 +213,7 @@ public final class BlobSharedDriver {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	wire, err := filepath.Abs(filepath.Join(repo, "testdata", "wire", "tables", "blob_shared.bin"))
@@ -223,7 +224,7 @@ public final class BlobSharedDriver {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "BlobSharedDriver", wire, swire).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "BlobSharedDriver", wire, swire).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

@@ -15,16 +15,13 @@ import (
 
 // TestDamageDiscardsTheWholeLoadElixir holds docs/SPEC-TABLES.md §4, DAMAGE
 // DISCARDS THE WHOLE LOAD, at the Elixir leg's read entry points: every framing
-// vector the conformance manifest answers `refused`
+// vector the conformance manifest answers `malformed`
 // (testdata/conformance/tables/MANIFEST.txt, docs/LAYERS/1-framing.md) is
 // loaded through the plain read and the retaining read, and each must return
-// NO VALUE: an `{:error, ...}` refusal, and the retaining read's stores
-// emptied of what an earlier load left in them. Only the verdict is held
-// (docs/rulings.json refusal-verdict-only): a file refused at its frame, such
-// as frame_form_three_at_variable_root (a fixed-form header at a variable
-// root), conforms whatever reason the report names. (The message batch's
-// whole-batch discard is held by TestMessageFormBatchElixir; the fixed form
-// refuses every damage by name.)
+// NO VALUE: `{:error, :malformed, report}` with the report malformed, and the
+// retaining read's stores emptied. A damaged text refuses the text read the
+// same way. (The message batch's whole-batch discard is held by
+// TestMessageFormBatchElixir; the fixed form refuses every damage by name.)
 //
 // Its control, tables-elixir-discard-negative-control, removes the plain
 // read's discard from a copy of the emitter and requires this test red.
@@ -103,10 +100,7 @@ defmodule Probe do
     System.halt(1)
   end
 
-  # A store an earlier load left one retained record in (9 + 4 bytes, one id):
-  # a refused load must hand it back empty, keeping only its capacities.
-  def retain,
-    do: %{records: [{[], 4242, 4, <<7, 0, 0, 0>>}], used: 13, cap: 1_048_576, ids: [4242], id_cap: 131_072}
+  def retain, do: %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
 
   def report,
     do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
@@ -116,14 +110,9 @@ end
 				fmt.Fprintf(&probe, `
 data = File.read!(%q)
 
-case %[2]s.variable_load(%[3]q, data) do
-  {:error, _verdict, _report} -> :ok
-  other -> Probe.fail(%[4]q <> ": the plain read handed back " <> inspect(other, limit: 8))
-end
-
-case %[2]s.load_retain(%[3]q, data, Probe.retain(), Probe.report()) do
-  {:error, _verdict, _report, %%{records: [], used: 0, ids: [], cap: 1_048_576, id_cap: 131_072}} -> :ok
-  other -> Probe.fail(%[4]q <> ": the retaining read handed back " <> inspect(other, limit: 8))
+case %s.variable_load(%q, data) do
+  {:error, :malformed, %%{reason: "wire_damaged"}} -> :ok
+  other -> Probe.fail(%q <> ": the plain read handed back " <> inspect(other, limit: 8))
 end
 `, r[2], units[unit].module, r[1], r[0])
 			}

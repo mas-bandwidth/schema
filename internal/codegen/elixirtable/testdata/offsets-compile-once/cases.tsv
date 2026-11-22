@@ -1,0 +1,32 @@
+# The offsets gate's variant runner over a committed multi-module unit
+# (PR #4484, finding F-209): internal/codegen/elixirtable/offsets_compile_once_test.go
+# reads every row. runOrdinaryVariants is the runner TestOffsetsComposeFromHalvesElixir's
+# block-ordinary and cook-ordinary subtests measure through.
+#
+# kind	name	key	value
+#
+# variant   name = a variant, value = the text that replaces the runtime's
+#           composition line (Runtime.ex's `hi * 0x100000000 + lo`); the runs
+#           are made in this order
+# runtime   name = the file each variant replaces and compiles again
+# compiled  name = a file of the unit, value = how many times it is compiled
+#           over all the variants together: a shared module once, the runtime
+#           once per variant (the control: the counter counts, and every
+#           variant ran its own runtime). A runner that compiles the whole
+#           unit per variant compiles every shared module once per variant.
+# answer    name = a variant, key = an ANSWER label probe.exs prints, value =
+#           the answer that variant owes; the word is lo = 2, hi = 1
+variant	real	-	hi * 0x100000000 + lo
+variant	control	-	lo
+variant	boxed	-	hi * 0x100000000 + lo + 0x7FFFFFFF00000000 - 0x7FFFFFFF00000000
+runtime	Runtime.ex	-	-
+compiled	BuildVersion.ex	-	1
+compiled	Shared.ex	-	1
+compiled	Reader.ex	-	1
+compiled	Runtime.ex	-	3
+answer	real	offset_of	4294967298
+answer	control	offset_of	2
+answer	boxed	offset_of	4294967298
+answer	real	build	offsets-compile-once
+answer	control	build	offsets-compile-once
+answer	boxed	build	offsets-compile-once

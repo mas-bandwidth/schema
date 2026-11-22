@@ -1,0 +1,6 @@
+package probe
+
+table Event
+{
+    opened_at timestamp
+}

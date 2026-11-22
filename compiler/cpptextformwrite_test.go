@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCPPTextFormDocumentEdits drives the C++ hand-editable text form's
@@ -68,14 +70,14 @@ func TestCPPTextFormDocumentEdits(t *testing.T) {
 			t.Fatal(err)
 		}
 		args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", dir, driver, filepath.Join(dir, "ProbeTable.cpp"), "-o", filepath.Join(dir, "probe")}
-		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 			t.Fatalf("compile: %v\n%s", err, out)
 		}
 		return harness{dir: dir}
 	}
 	run := func(t *testing.T, h harness, args ...string) ([]byte, error) {
 		t.Helper()
-		return exec.Command(filepath.Join(h.dir, "probe"), args...).CombinedOutput()
+		return testproc.Command(t, filepath.Join(h.dir, "probe"), args...).CombinedOutput()
 	}
 	// The subtests run in parallel in one probe directory, and os.WriteFile
 	// truncates before it writes, so each subtest writes its own input file:

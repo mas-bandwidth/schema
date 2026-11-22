@@ -1,0 +1,4 @@
+# new reach is listed and never refuses
+refused	false
+uncompared	table message form, unit same, instance s2: v3.0.2 refuses it
+uncompared	table variable form, unit same, instance s5: v3.0.2 refuses it

@@ -1,0 +1,21 @@
+# LUAU-1 (review 2026-11-21): how the Luau generators spell a string literal.
+# TestLuauStringLit reads every row.
+# id	input	want
+#
+# input: the Go string, written as a Go double-quoted literal (strconv.Unquote).
+# want: the Luau literal luau.StringLit must emit, byte for byte. Go's %q is
+#       kept wherever it is also Luau; \u{X} replaces the \uXXXX and
+#       \UXXXXXXXX that Luau rejects.
+#
+# controls: spellings Go's %q and Luau share
+plain	"plain"	"plain"
+quote-backslash	"a \"quoted\" \\ b"	"a \"quoted\" \\ b"
+tab-nl-cr	"tab\tnl\ncr\r"	"tab\tnl\ncr\r"
+ascii-controls	"\x00\x1b\x7f"	"\x00\x1b\x7f"
+em-dash	"em — dash"	"em — dash"
+invalid-byte	"bad\xffbyte"	"bad\xffbyte"
+# the defect: runes Go's %q writes as \uXXXX or \UXXXXXXXX
+soft-hyphen	"soft­hyphen"	"soft\u{ad}hyphen"
+line-separator	"line sep"	"line\u{2028}sep"
+nel	"nel\u0085"	"nel\u{85}"
+astral-tag	"astral\U000E0001"	"astral\u{e0001}"

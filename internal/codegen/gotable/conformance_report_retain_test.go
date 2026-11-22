@@ -30,6 +30,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type goReportRow struct {
@@ -77,7 +79,7 @@ func goEnsureGeneratedTables(t *testing.T, root string) {
 	_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", "build/conformance-go")
+	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-go")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("make build/conformance-go: %v\n%s", err, out)
@@ -95,12 +97,12 @@ func goBuildDriver(t *testing.T, root, overlayPath string) string {
 	args = append(args, "-o", bin, ".")
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd := testproc.CommandContext(t, ctx, "go", args...)
 	cmd.Dir = filepath.Join(root, "test", "conformance", "go")
 	if _, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 		goEnsureGeneratedTables(t, root)
-		retry := exec.CommandContext(ctx, "go", args...)
+		retry := testproc.CommandContext(t, ctx, "go", args...)
 		retry.Dir = cmd.Dir
 		if out2, err2 := retry.CombinedOutput(); err2 != nil {
 			t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err2, out2)
@@ -169,7 +171,7 @@ func goDriverRunSurface(t *testing.T, root, bin, manifest, surface string) strin
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, manifest, surface, out)
+	cmd := testproc.CommandContext(t, ctx, bin, manifest, surface, out)
 	cmd.Dir = root
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("driver %s: %v\n%s", surface, err, b)

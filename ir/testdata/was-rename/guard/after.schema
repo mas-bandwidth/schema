@@ -1,0 +1,15 @@
+package demo
+
+type Player
+{
+    enabled bool | was = "active"
+    if enabled
+    {
+        score int32 | min = 0, max = 1000
+    }
+}
+
+table Roster
+{
+    lead Player
+}

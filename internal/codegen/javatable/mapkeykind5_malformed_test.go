@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A kind pass rewrites a map key's wire kind (Slots: int32 4 -> 5, Runs:
@@ -121,10 +122,10 @@ public final class Driver {
 			sort.Strings(src)
 			javac, java := javaTools(t)
 			args := append([]string{"--release", "17", "-d", classes}, src...)
-			if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("javac: %v\n%s", err, out)
 			}
-			out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", wp).CombinedOutput()
+			out, err := testproc.Command(t, java, "-ea", "-cp", classes, "Driver", wp).CombinedOutput()
 			if err != nil {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
@@ -247,10 +248,10 @@ public final class RepeatedKeyWidenDriver {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "RepeatedKeyWidenDriver", wp).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "RepeatedKeyWidenDriver", wp).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

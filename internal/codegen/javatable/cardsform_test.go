@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestOtherVariableConstructsAreRefusedByName retains its historical gate name.
@@ -101,11 +102,11 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	cmd := exec.Command(javac, args...)
+	cmd := testproc.Command(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver", filepath.Join(dir, "card-populated.wire")).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver", filepath.Join(dir, "card-populated.wire")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
@@ -149,10 +150,10 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "Cross.java"))
 	cargs := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := exec.Command(javac, cargs...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, cargs...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (cross): %v\n%s", err, out)
 	}
-	if out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Cross").CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Cross").CombinedOutput(); err != nil {
 		t.Fatalf("java (cross): %v\n%s", err, out)
 	} else if !strings.Contains(string(out), "ok") {
 		t.Fatalf("cross driver: %s", out)
@@ -305,10 +306,10 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver",
 		filepath.Join(dir, "card-populated.wire"), filepath.Join(dir, "card-populated.json")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

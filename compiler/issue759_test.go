@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Issue #759: packet C stored bool as int, four bytes, while table C stored
@@ -155,7 +157,7 @@ func issue759SyntaxCheckWire(t *testing.T, files map[string][]byte) {
 		"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow",
 		"-fsyntax-only", "-I", dir, "-I", serializeC, tu,
 	}
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("wire syntax: %v\n%s", err, out)
 	}
 }
