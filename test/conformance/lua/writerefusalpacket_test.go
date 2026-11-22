@@ -31,7 +31,7 @@ func TestWriteRefusalPacketLua(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the upper bound was relaxed and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "scalar_high") {
+	if !strings.Contains(out, "FAILED: scalar_high") {
 		t.Fatalf("negative control: the packet surface went red, but not at the scalar's refused row\n%s", out)
 	}
 }

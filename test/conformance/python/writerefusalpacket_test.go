@@ -39,7 +39,7 @@ func TestWriteRefusalPacketPython(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the generated range check was emptied and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "const_wrong") {
+	if !strings.Contains(out, "FAILED: const_wrong") {
 		t.Fatalf("negative control: the packet surface went red, but not at const_wrong\n%s", out)
 	}
 }

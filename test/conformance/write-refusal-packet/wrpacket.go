@@ -132,6 +132,6 @@ func Check(t testing.TB, out string, rows []Row, exempt map[string]string) {
 		t.Errorf("FAILED: the probe answered rows rows.txt does not hold: %s", strings.Join(stray, " "))
 	}
 	if t.Failed() {
-		t.Fatalf("write-refusal-packet: the probe's verdicts differ from rows.txt\n%s", out)
+		t.Fatalf("write-refusal-packet: the probe verdicts differ from rows.txt")
 	}
 }

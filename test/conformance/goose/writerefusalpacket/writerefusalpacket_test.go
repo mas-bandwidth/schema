@@ -43,7 +43,7 @@ func TestWriteRefusalPacketGoose(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the upper-bound comparison moved and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "scalar_at_max") {
+	if !strings.Contains(out, "FAILED: scalar_at_max") {
 		t.Fatalf("negative control: the packet surface went red, but not at the boundary case\n%s", out)
 	}
 }
@@ -64,7 +64,7 @@ func runWriteRefusalPacketGoose(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the generated packet writer)")
 	if goose, why := gooserun.Compiler(); goose == "" {
-		t.Skipf("the Goose compiler does not resolve: %s", why)
+		t.Fatalf("the Goose compiler does not resolve: %s", why)
 	}
 	dir := wrpacket.Generate(t, root, "goose", nil)
 	if err := os.WriteFile(filepath.Join(dir, "main.goose"), probe, 0o600); err != nil {

@@ -2563,7 +2563,9 @@ through the text writer. The fifth, `write-refusal-packet`, holds the packet
 `bits(7)` past its width, an enum ordinal, a union tag, a counted array's
 count, a `string`'s length and content, and a constant or reserved-range
 field's only lawful value. It starts
-with the Go leg; `TestWriteRefusalPacket` in test/conformance/harness runs the
+with the Go leg, and the every-build scripting legs answer the same rows from
+test/conformance/write-refusal-packet (see test/conformance/README.md);
+`TestWriteRefusalPacket` in test/conformance/harness runs the
 battery and a negative control that changes the emitter's upper-bound
 comparison, requiring the boundary row to go red. The four table-form batteries
 cover a ranged integer above and below its range, a `bits(6)` past its width, a

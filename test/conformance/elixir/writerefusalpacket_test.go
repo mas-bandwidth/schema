@@ -36,7 +36,7 @@ func TestWriteRefusalPacketElixir(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the upper-bound comparison moved and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "scalar_at_max") {
+	if !strings.Contains(out, "FAILED: scalar_at_max") {
 		t.Fatalf("negative control: the packet surface went red, but not at the boundary case\n%s", out)
 	}
 }

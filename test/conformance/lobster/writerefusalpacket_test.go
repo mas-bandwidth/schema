@@ -54,7 +54,7 @@ func TestWriteRefusalPacketLobster(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the upper-bound assert moved and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "scalar_at_max") {
+	if !strings.Contains(out, "FAILED: scalar_at_max") {
 		t.Fatalf("negative control: the packet surface went red, but not at the boundary case\n%s", out)
 	}
 }
@@ -69,7 +69,7 @@ func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the Lobster toolchain (it runs the generated packet writer)")
 	if _, why := lobsterrun.Interpreter(); why != "" {
-		t.Skipf("the Lobster toolchain does not resolve: %s", why)
+		t.Fatalf("the Lobster toolchain does not resolve: %s", why)
 	}
 	dir := wrpacket.Generate(t, root, "lobster", compiler.Options{})
 	probe, err := os.ReadFile("writerefusalpacket.lobster")

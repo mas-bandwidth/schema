@@ -66,7 +66,7 @@ func TestWriteRefusalPacketJS(t *testing.T) {
 			if !failed {
 				t.Fatalf("negative control %s: the emitter was sabotaged and the packet surface stayed green\n%s", c.name, out)
 			}
-			if !strings.Contains(out, c.row) {
+			if !strings.Contains(out, "FAILED: "+c.row) {
 				t.Fatalf("negative control %s: the surface went red, but not at %s\n%s", c.name, c.row, out)
 			}
 			if !strings.Contains(out, "--- FAIL: "+surface+"/"+c.tier) {
