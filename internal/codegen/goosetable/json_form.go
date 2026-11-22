@@ -429,7 +429,7 @@ func (e *jsonEmit) read(f *ir.Field, pl place, desc, depth string, tail bool) []
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
-			return []string{ret(fmt.Sprintf("schema_rt::json_read_enum(jr, %s, %s)", pl.val, desc))}
+			return []string{ret(fmt.Sprintf("schema_rt::json_read_enum(jr, %s, %s, %v)", pl.val, desc, tail))}
 		case *ir.Flags:
 			return []string{ret(fmt.Sprintf("schema_rt::json_read_flags(jr, %s, %s, %s)", pl.val, e.names(r.Name, r.Variants), depth))}
 		case *ir.Struct:

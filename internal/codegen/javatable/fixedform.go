@@ -1739,6 +1739,12 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
 			g.pf("%s    if (q > %dL) { q = 0L; %s }\n", ind, len(r.Variants), scatterRefuse(rep, walked, "outOfRange"))
+			for i := range r.Variants {
+				if variantDeprecated(r, i) {
+					// §2.15: a deprecated variant reads as the default, uncounted
+					g.pf("%s    if (q == %dL) { q = %sL; }\n", ind, i+1, deprecatedLanding(f))
+				}
+			}
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return

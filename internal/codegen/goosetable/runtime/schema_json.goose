@@ -1369,8 +1369,11 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
 }
 
 // json_read_enum places an enum by its variant NAME: `None` is 0, and a name
-// this build cannot name reads as None and counts unknown (§16.2).
-fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
+// this build cannot name reads as None and counts unknown (§16.2). A variant
+// marked `| deprecated` reads as the field's declared default, or as the
+// ELEMENT default None when `element` (an array's element), and is never
+// unknown (§2.15).
+fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&, element: bool) -> bool {
     var key: u8[256] = [0; 256];
     let n, ok = json_scan_into(jr, key[..JsonMaxKey], false);
     if !ok { return false; }
@@ -1382,6 +1385,10 @@ fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     var v: i64 = 0;
     while v < f.variants.len {
         if json_name_is(f.variants[v].name, name) {
+            if f.variants[v].deprecated {
+                slot = (if !element && f.has_def { f.def_i.lo } else { 0 }) as! T;
+                return true;
+            }
             slot = (v + 1) as! T;
             return true;
         }
@@ -1869,6 +1876,8 @@ fn json_write_enum<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
         return true;
     }
     if x > (f.variants.len as! u64) { return false; }
+    // a strict write refuses a deprecated variant, in every build (§2.15)
+    if f.variants[(x - 1) as! i64].deprecated { return false; }
     json_put_string(out, f.variants[(x - 1) as! i64].name);
     return true;
 }

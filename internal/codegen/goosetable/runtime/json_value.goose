@@ -2111,7 +2111,7 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     }
     if d.shape == ShapeEnum {
         var v: u64 = 0;
-        if !json_read_enum(c.jr, v, d) { return false; }
+        if !json_read_enum(c.jr, v, d, element) { return false; }
         if v != 0 && jv_deprecated(c.unit, d.ref, d.variants[(v - 1) as! i64].id) {
             // a deprecated variant reads as the declared default, never unknown
             v = if !element && d.has_def { d.def_i.lo } else { 0 };
