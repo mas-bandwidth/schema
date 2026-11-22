@@ -1887,7 +1887,7 @@ report  twin_a2_root            tbla2       Root     testdata/conformance/tables
 report  twin_k1_root            tblk1       Root     testdata/conformance/tables/wire/twin_k1_root.bin
 report  twin_k2_root            tblk2       Root     testdata/conformance/tables/wire/twin_k2_root.bin
 report  twin_scalars2_simstate  tblscalars2 SimState testdata/conformance/tables/wire/twin_scalars2_simstate.bin
-framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framing/frame_empty_table.bin read testdata/conformance/tables/framing/listdemo_ints_default.json
-framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/frame_empty_table.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
-framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/frame_empty_table.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
-framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/frame_empty_table.bin read testdata/conformance/tables/framing/listdemo_army_default.json
+framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framing/twin_listdemo_ints_empty.bin read testdata/conformance/tables/framing/listdemo_ints_default.json
+framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
+framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/twin_listdemo_squad_empty.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
+framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/twin_listdemo_army_empty.bin read testdata/conformance/tables/framing/listdemo_army_default.json
