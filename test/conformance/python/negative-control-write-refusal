@@ -1,0 +1,81 @@
+#!/bin/sh
+# THE PYTHON LEG's write-refusal negative controls (docs/SPEC.md 5.1,
+# test/conformance/README.md; docs/PORTING.md I11).
+#
+# Python refuses in every build, so each control removes ONE refusal from a COPY
+# of the generated tree (every unit carries its own _schema runtime) and aims the
+# driver at the copy through PYTHON_CONFORMANCE_GENERATED. Nothing tracked is
+# written to. The matrix must go red on the one surface the statement serves
+# while a surface that does not run it stays green.
+#
+#   write-refusal          save.py: the variable writer no longer validates the
+#                          value tree before it encodes: write-refusal red,
+#                          wire green.
+#   write-refusal-fixed    fixedform.py: the fixed writer no longer holds an
+#                          integer or enum to its declared range:
+#                          write-refusal-fixed red, wire green.
+#   write-refusal-message  message.py: SaveMessages no longer validates the
+#                          value tree before it encodes: write-refusal-message
+#                          red, message green.
+set -eu
+
+mode=${1:-}
+case "$mode" in
+write-refusal)
+	file=save.py
+	anchor='    _validate(value, value.descriptor, "", set())'
+	patch='    pass  # SABOTAGED: no variable-form write validation'
+	red=write-refusal green=wire
+	;;
+write-refusal-fixed)
+	file=fixedform.py
+	anchor='        if value < lo or value > hi or (check and value in spec.get("deprecated", [])):'
+	patch='        if False:  # SABOTAGED: no fixed-form range check'
+	red=write-refusal-fixed green=wire
+	;;
+write-refusal-message)
+	file=message.py
+	anchor='        _validate(value, getattr(value, "descriptor"), "", set())'
+	patch='        pass  # SABOTAGED: no message write validation'
+	red=write-refusal-message green=message
+	;;
+*) echo "usage: $0 write-refusal|write-refusal-fixed|write-refusal-message" >&2; exit 2 ;;
+esac
+
+root=$(pwd)
+python_bin=${PYTHON:-$root/dist/python-3.15.2/bin/python3.15}
+src=build/conformance-python
+work=build/conformance-python-nc-$mode
+rm -rf "$work"
+mkdir -p "$work"
+cp -R "$src" "$work/gen"
+
+patched=0
+for f in $(find "$work/gen" -path "*/_schema/$file"); do
+	if ! grep -qxF -e "$anchor" "$f"; then
+		continue
+	fi
+	awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$f" > "$f.new"
+	mv "$f.new" "$f"
+	patched=$((patched + 1))
+done
+if [ "$patched" = 0 ]; then
+	echo "NEGATIVE CONTROL FAILED: $mode anchor matched nothing under $src" >&2
+	exit 1
+fi
+
+printf '#!/bin/sh\nexec env PYTHON_CONFORMANCE_GENERATED=%s/%s/gen PYTHON=%s %s/test/conformance/python/driver "$@"\n' "$root" "$work" "$python_bin" "$root" > "$work/driver"
+chmod +x "$work/driver"
+printf 'python %s/%s/driver\n' "$root" "$work" > "$work/drivers.txt"
+
+if ./build/conformance-harness run --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: $mode left Python conformance green" >&2
+	cat "$work/log" >&2
+	exit 1
+fi
+grep -q "python / $red" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $red did not go red"; exit 1; }
+grep -Eq "^ *$red +FAIL" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $red is not marked FAIL"; exit 1; }
+for s in $green; do
+	grep -Eq "^ *$s +pass" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $s did not stay green"; exit 1; }
+done
+echo "Python $mode negative control: detected by python / $red"

@@ -1,0 +1,88 @@
+#!/bin/sh
+# THE SQUIRREL LEG's write-refusal negative controls (docs/SPEC.md 5.1,
+# test/conformance/README.md; docs/PORTING.md I11).
+#
+# Squirrel refuses in every build, so each control removes ONE refusal from a
+# COPY of the generated corpus and aims the driver at the copy through
+# $SCHEMA_SQUIRREL_CONFORMANCE. Nothing tracked is written to. The matrix must
+# go red on the one surface the statement serves while a surface that does not
+# run it stays green.
+#
+#   write-refusal          the fixed writer of WeaponConfig no longer holds
+#                          penetration to its declared range 0..10:
+#                          write-refusal red (wref_range_high, wref_range_low),
+#                          wire green.
+#   write-refusal-fixed    the same writer no longer holds channel to its
+#                          bits(6) width: write-refusal-fixed red
+#                          (fref_bits_wide), wire green.
+#   write-refusal-message  every unit's message runtime no longer holds an
+#                          integer to the field's declared range:
+#                          write-refusal-message red (mref_range_high,
+#                          mref_range_low), message green.
+#
+# usage: sh test/conformance/squirrel/write-refusal-control <mode>
+# The working directory is the repository root.
+set -eu
+
+mode=${1:-}
+case "$mode" in
+write-refusal)
+	file=tabledemo/TabledemoTables.nut
+	a1='  if (typeof v.Penetration != "integer" || v.Penetration < 0 || v.Penetration > 10) { _M.FixedField <- "WeaponConfig.penetration"; return "invalid_value"; }'
+	p1='  // SABOTAGED: no ranged penetration check'
+	a2='' p2=''
+	red=write-refusal green=wire
+	;;
+write-refusal-fixed)
+	file=tabledemo/TabledemoTables.nut
+	a1='  if (typeof v.Channel != "integer" || v.Channel < 0 || v.Channel > 63) { _M.FixedField <- "WeaponConfig.channel"; return "invalid_value"; }'
+	p1='  // SABOTAGED: no bits-width channel check'
+	a2='' p2=''
+	red=write-refusal-fixed green=wire
+	;;
+write-refusal-message)
+	file=*/schema_table_message.nut
+	a1='      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) return false;'
+	p1='      if (false) return false; // SABOTAGED: no message range check'
+	a2='    } else if (x < fd.lo || x > fd.hi) return false;'
+	p2='    } else if (false) return false; // SABOTAGED: no message range check'
+	red=write-refusal-message green=message
+	;;
+*) echo "usage: $0 write-refusal|write-refusal-fixed|write-refusal-message" >&2; exit 2 ;;
+esac
+
+root=$(pwd)
+src=build/conformance-squirrel
+out=build/squirrel-wref-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+cp -R "$src" "$out/gen"
+
+patched=0
+for f in "$out"/gen/$file; do
+	[ -f "$f" ] || continue
+	before=$(cksum < "$f")
+	awk -v a1="$a1" -v p1="$p1" -v a2="$a2" -v p2="$p2" '
+		$0 == a1 { print p1; next }
+		a2 != "" && $0 == a2 { print p2; next }
+		{ print }' "$f" > "$f.new"
+	mv "$f.new" "$f"
+	[ "$before" = "$(cksum < "$f")" ] || patched=$((patched + 1))
+done
+if [ "$patched" = 0 ]; then
+	echo "NEGATIVE CONTROL FAILED: $mode anchor matched nothing under $src" >&2
+	exit 1
+fi
+
+printf 'squirrel test/conformance/squirrel/driver\n' > "$out/drivers.txt"
+if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/gen" ./build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: $mode left Squirrel conformance green" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+grep -q "squirrel / $red" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $red did not go red"; exit 1; }
+grep -Eq "^ *$red +FAIL" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $red is not marked FAIL"; exit 1; }
+for s in $green; do
+	grep -Eq "^ *$s +pass" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $s did not stay green"; exit 1; }
+done
+echo "Squirrel $mode negative control: detected by squirrel / $red"

@@ -83,3 +83,23 @@ conformance-negative-control-luau-framing: build/conformance-harness $(LUAU_CONF
 conformance-negative-control-luau-cycle: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control cycle
+
+# THE WRITE CONTRACT's controls on the Luau leg (docs/SPEC.md 5.1): Luau refuses
+# in every build, so each removes one refusal from a COPY of the generated
+# units (under a mirror of the repository, as the units control does) and
+# requires its write-refusal surface red while the wire (or message) surface
+# stays green. test/conformance/luau/write-refusal-control says what each plants.
+.PHONY: conformance-negative-control-luau-write-refusal conformance-negative-control-luau-write-refusal-fixed conformance-negative-control-luau-write-refusal-message
+conformance-negative-control-luau-write-refusal: build/conformance-harness build/conformance-luau $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/write-refusal-control write-refusal
+
+conformance-negative-control-luau-write-refusal-fixed: build/conformance-harness build/conformance-luau $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/write-refusal-control write-refusal-fixed
+
+conformance-negative-control-luau-write-refusal-message: build/conformance-harness build/conformance-luau $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/write-refusal-control write-refusal-message
+
+test-luau: conformance-negative-control-luau-write-refusal conformance-negative-control-luau-write-refusal-fixed conformance-negative-control-luau-write-refusal-message

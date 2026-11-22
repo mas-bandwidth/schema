@@ -156,3 +156,20 @@ tables-squirrel-release:
 .PHONY: conformance-negative-control-squirrel-absent
 conformance-negative-control-squirrel-absent: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@SQ="$(SQ)" sh test/conformance/squirrel/absent-negative-control
+
+# THE WRITE CONTRACT's controls on the Squirrel leg (docs/SPEC.md 5.1):
+# Squirrel refuses in every build, so each removes one refusal from a COPY of
+# the generated corpus and requires its write-refusal surface red while the wire
+# (or message) surface stays green. test/conformance/squirrel/write-refusal-control
+# says what each plants.
+.PHONY: conformance-negative-control-squirrel-write-refusal conformance-negative-control-squirrel-write-refusal-fixed conformance-negative-control-squirrel-write-refusal-message
+conformance-negative-control-squirrel-write-refusal: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal
+
+conformance-negative-control-squirrel-write-refusal-fixed: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal-fixed
+
+conformance-negative-control-squirrel-write-refusal-message: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal-message
+
+test-squirrel: conformance-negative-control-squirrel-write-refusal conformance-negative-control-squirrel-write-refusal-fixed conformance-negative-control-squirrel-write-refusal-message

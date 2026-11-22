@@ -1,0 +1,83 @@
+#!/bin/sh
+# THE RUBY LEG's write-refusal negative controls (docs/SPEC.md 5.1,
+# test/conformance/README.md; docs/PORTING.md I11).
+#
+# Ruby refuses in every build, so each control removes ONE refusal from a COPY
+# of the generated tree (every unit carries its own runtime) and aims the driver
+# at the copy through RUBY_CONFORMANCE_GENERATED. Nothing tracked is written to.
+# The matrix must go red on the one surface the statement serves while a surface
+# that does not run it stays green.
+#
+#   write-refusal          _table/save.rb: the variable writer no longer
+#                          validates the value graph before it encodes:
+#                          write-refusal red, wire green.
+#   write-refusal-fixed    _fixed.rb: the fixed writer no longer holds an
+#                          integer or enum to its declared range:
+#                          write-refusal-fixed red, wire green.
+#   write-refusal-message  _table/message.rb: SaveMessages no longer validates
+#                          the value graph before it encodes:
+#                          write-refusal-message red, message green (a value no
+#                          longer validated reaches the vocabulary lookup and the
+#                          driver stops there, which the surface reports red).
+set -eu
+
+mode=${1:-}
+case "$mode" in
+write-refusal)
+	file=save.rb
+	anchor="      validate_table_graph(value, obj_class(value).descriptor, '', SchemaTable.map_h)"
+	patch='      value.itself # SABOTAGED: no variable-form write validation'
+	red=write-refusal green=wire
+	;;
+write-refusal-fixed)
+	file=_fixed.rb
+	anchor='      if value < lo || value > hi || (check && deprecated&.include?(value))'
+	patch='      if value.equal?(self) # SABOTAGED: no fixed-form range check'
+	red=write-refusal-fixed green=wire
+	;;
+write-refusal-message)
+	file=message.rb
+	anchor="        validate_table_graph(v, root.descriptor, '', SchemaTable.map_h)"
+	patch='        v.itself # SABOTAGED: no message write validation'
+	red=write-refusal-message green=message
+	;;
+*) echo "usage: $0 write-refusal|write-refusal-fixed|write-refusal-message" >&2; exit 2 ;;
+esac
+
+root=$(pwd)
+ruby_bin=${RUBY:-$root/dist/ruby-4.0.9/bin/ruby}
+src=build/conformance-ruby
+work=build/conformance-ruby-nc-$mode
+rm -rf "$work"
+mkdir -p "$work"
+cp -R "$src" "$work/gen"
+
+patched=0
+for f in $(find "$work/gen" -name "$file"); do
+	if ! grep -qxF -e "$anchor" "$f"; then
+		continue
+	fi
+	awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$f" > "$f.new"
+	mv "$f.new" "$f"
+	patched=$((patched + 1))
+done
+if [ "$patched" = 0 ]; then
+	echo "NEGATIVE CONTROL FAILED: $mode anchor matched nothing under $src" >&2
+	exit 1
+fi
+
+printf '#!/bin/sh\nexec env RUBY_CONFORMANCE_GENERATED=%s/%s/gen RUBY=%s %s/test/conformance/ruby/driver "$@"\n' "$root" "$work" "$ruby_bin" "$root" > "$work/driver"
+chmod +x "$work/driver"
+printf 'ruby %s/%s/driver\n' "$root" "$work" > "$work/drivers.txt"
+
+if ./build/conformance-harness run --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: $mode left Ruby conformance green" >&2
+	cat "$work/log" >&2
+	exit 1
+fi
+grep -q "ruby / $red" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $red did not go red"; exit 1; }
+grep -Eq "^ *$red +FAIL" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $red is not marked FAIL"; exit 1; }
+for s in $green; do
+	grep -Eq "^ *$s +pass" "$work/log" || { cat "$work/log"; echo "NEGATIVE CONTROL FAILED: $s did not stay green"; exit 1; }
+done
+echo "Ruby $mode negative control: detected by ruby / $red"
