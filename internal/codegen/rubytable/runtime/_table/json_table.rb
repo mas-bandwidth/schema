@@ -499,7 +499,7 @@ module SchemaRuntimeUnit
           raise Refused.new('text_holds_zero', field.name) if k.include?("\x00")
 
           parsed_key = if key_field.codec == 'string'
-                         if !key_field.unbounded && k.bytesize > [255, key_field.size].min
+                         if !key_field.unbounded && k.bytesize > key_field.size
                            raise Refused.new('length_over_bound', field.name)
                          end
 
@@ -765,9 +765,9 @@ module SchemaRuntimeUnit
     end
 
     def self.render_json_value(field, item, depth, counts, labels)
-      structural = %w[pointer table array pointer_array union_array map keyed
-                      union].include?(field.codec) || field.json_flags
-      if depth > MAX_DEPTH && !(field.codec == 'pointer' && item.nil?) && structural
+      # the write cap counts table values only (SPEC-TABLES W2): an empty array,
+      # map, union or flags value nests nothing and is written at any depth
+      if depth > MAX_DEPTH && %w[pointer table].include?(field.codec) && !(field.codec == 'pointer' && item.nil?)
         raise InvalidValue.new(field.name, 'nested past the depth cap')
       end
       if field.codec == 'optional'

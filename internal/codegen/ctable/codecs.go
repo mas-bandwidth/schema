@@ -458,6 +458,24 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 	return guards
 }
 
+// storedFloatBits names the function whose bits a float store writes: a
+// COMPRESSED float's (a declared range) is table_stored_float_bits or
+// table_stored_double_bits, which write +0 for its -0 (docs/SPEC-TABLES.md
+// §3.3; docs/rulings.json fixed-compressed-negzero), and a plain float's is
+// the bits as held, so its -0 rides bit-exact. Every writer — variable, fixed,
+// message, cook — spells its float store through here.
+func storedFloatBits(f *ir.Field, wide bool) string {
+	switch {
+	case f.HasFloatRange && wide:
+		return "table_stored_double_bits"
+	case f.HasFloatRange:
+		return "table_stored_float_bits"
+	case wide:
+		return "table_double_to_bits"
+	}
+	return "table_float_to_bits"
+}
+
 // Fixed scalars share the current wire writer; enum identities and nested
 // frames are handled by wireScalarWrite and wirePayload before this helper.
 func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string) {
@@ -471,13 +489,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		}
-		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
+		g.pf("%stable_writer_put32( w, %s( %s ) );\n", ind, storedFloatBits(f, false), expr)
 	case tkF64:
 		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
 		}
-		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
+		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
 		if f.Required {
