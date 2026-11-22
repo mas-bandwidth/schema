@@ -434,6 +434,12 @@ String _jsonFloat(double v, bool single) {
   if (v.isNaN || v.isInfinite) {
     throw StateError('float $v has no JSON spelling (docs/SPEC-TABLES.md §16.2)');
   }
+  // a float32 field past float32 range is refused (FL-23, docs/SPEC-TABLES.md
+  // §16.3): a debug assert in Dart
+  assert(
+    !single || (_f32Bits(v) & 0x7f800000) != 0x7f800000,
+    'float $v is past float32 range (docs/SPEC-TABLES.md §16.3)',
+  );
   final low = single ? 6 : 15;
   final high = single ? 9 : 17;
   for (var digits = low; ; digits++) {
