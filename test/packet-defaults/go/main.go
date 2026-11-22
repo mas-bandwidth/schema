@@ -1,4 +1,4 @@
-// Verify constructor storage and the eight C++ packet goldens. Reads also
+// Verify constructor storage and the ten C++ packet goldens. Reads also
 // exercise reused storage: field prefixes overlay, absent branches clear,
 // and every union selection constructs its payload with declared defaults.
 package main
@@ -13,11 +13,17 @@ import (
 
 	d "packetdefaults"
 	p "packetplain"
+	hexadd "constanthexadecimaladdition"
+	unsub "constantunsignedsubtraction"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 var failed bool
+
+// pinsRead is every pin name a driver check read; main requires it to cover
+// every .bin of the directory.
+var pinsRead = map[string]bool{}
 
 func check(ok bool, name string) {
 	if !ok {
@@ -92,6 +98,7 @@ func readWire[T comparable](name string, wire []byte, bits int64, initial, want 
 
 func golden[T comparable](directory, name string, value, initial, want T,
 	write func(*serialize.WriteStream, *T) error, read func(*serialize.ReadStream, *T) error) {
+	pinsRead[name] = true
 	wire, bits, ok := writeWire(name, value, write)
 	if !ok {
 		return
@@ -112,6 +119,14 @@ func golden[T comparable](directory, name string, value, initial, want T,
 	check(bits == expectedBits, name+": C++ golden bits")
 	// Decode the oracle's bytes, not the Go writer's output.
 	readWire(name, expected, expectedBits, initial, want, read)
+}
+
+// constantPin: a fresh Value (defaults from constants) writes the pinned bytes
+// and bit count, and the pin reads back over zeroed storage to a fresh Value.
+func constantPin[T comparable](directory, name string, fresh T,
+	write func(*serialize.WriteStream, *T) error, read func(*serialize.ReadStream, *T) error) {
+	var zero T
+	golden(directory, name, fresh, zero, fresh, write, read)
 }
 
 func roundTrip[T comparable](name string, value, initial, want T,
@@ -228,6 +243,9 @@ func run(directory string) {
 	emptyWant.EmptyNameLength, emptyWant.EmptyTokenLength, emptyWant.EmptyCaps = 0, 0, 0
 	golden(directory, "sample-empty", d.Sample{}, overlay, emptyWant, d.WriteSample, d.ReadSample)
 
+	constantPin(directory, "hexadecimal-addition", hexadd.NewValue(), hexadd.WriteValue, hexadd.ReadValue)
+	constantPin(directory, "unsigned-subtraction", unsub.NewValue(), unsub.WriteValue, unsub.ReadValue)
+
 	// Every selection starts from the declared defaults, even with the same
 	// tag. Received prefixes overlay those fresh buffers; no previous poison
 	// survives, and the unselected arm keeps its storage unchanged.
@@ -271,14 +289,28 @@ func run(directory string) {
 	}
 }
 
+// checkEveryPinRead fails loudly for any .bin of the directory no check read.
+func checkEveryPinRead(directory string) {
+	bins, err := filepath.Glob(filepath.Join(directory, "*.bin"))
+	if !checkErr(err, "list pins") {
+		return
+	}
+	check(len(bins) > 0, "the pins directory is not empty")
+	for _, bin := range bins {
+		name := strings.TrimSuffix(filepath.Base(bin), ".bin")
+		check(pinsRead[name], "pin "+name+" was never read by the driver")
+	}
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stderr, "usage: %s <golden-directory>\n", os.Args[0])
 		os.Exit(2)
 	}
 	run(os.Args[1])
+	checkEveryPinRead(os.Args[1])
 	if failed {
 		os.Exit(1)
 	}
-	fmt.Println("packet defaults Go: constructors, eight C++ goldens and reused storage OK")
+	fmt.Println("packet defaults Go: constructors, ten C++ goldens and reused storage OK")
 }
