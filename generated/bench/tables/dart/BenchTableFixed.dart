@@ -2485,12 +2485,12 @@ class TableReport {
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
 /// (§3.3) — the length, emitted beside the bytes.
-int announceMeasure() => tableAnnouncementLength;
+int announceMeasure() => tableAnnouncementTooLarge ? -1 : tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
 /// length, or -1 when the buffer is too small. Nothing here allocates.
 int announce(Uint8List buffer) {
-  if (buffer.length < tableAnnouncementLength) {
+  if (tableAnnouncementTooLarge || buffer.length < tableAnnouncementLength) {
     return -1;
   }
   buffer.setRange(0, tableAnnouncementLength, tableAnnouncement);
@@ -3031,6 +3031,7 @@ final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
 const int tableAnnouncementLength = 871;
+const bool tableAnnouncementTooLarge = false;
 /// The unit's own build version, emitted beside the announcement.
 const int tableBuildVersion = 4484788518692264406;
 

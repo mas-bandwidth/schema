@@ -108,6 +108,7 @@ defmodule Benchtable.TableMessage do
                   0x0D, 0x00, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD, 0xFF, 0xFF,
                   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>
   @entries_here 70
+  @announcement_too_large false
 
   # this unit's own build version and records, as its message writer lays
   # them out (docs/SPEC-TABLES.md §3.3 (a), (b)): the bound batch's rules
@@ -212,10 +213,10 @@ defmodule Benchtable.TableMessage do
   The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
   §3.3): a form-`1` file whose body carries the build version and the vocabulary.
   """
-  def announce, do: @announcement
+  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
 
   @doc "The announcement's byte count, a constant of the unit."
-  def announce_measure, do: byte_size(@announcement)
+  def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
 
   @doc "This unit's own entry count: the capacity a receiver that talks only to its own build declares."
   def entries_here, do: @entries_here
