@@ -126,9 +126,9 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 			t.Fatalf("retain selection omitted %s", name)
 		}
 	}
-	fieldName := loadUnit(t, "package names\ntable Root { ordinary int32 }\n")
+	fieldName := loadUnit(t, "package namesx\ntable Root { ordinary int32 }\n")
 	fieldName.Tables["Root"].Fields[0].Name = "load_retain" // exercise the emitter's own selection-aware name check
-	typeName := loadUnit(t, "package names\ntable Alias { n int32 }\n")
+	typeName := loadUnit(t, "package namesx\ntable Alias { n int32 }\n")
 	alias := typeName.Tables["Alias"]
 	delete(typeName.Tables, "Alias")
 	alias.Name = "TableRetain"
@@ -146,7 +146,7 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, field := range []string{"from_json", "to_json"} {
-		named := loadUnit(t, "package names\ntable Root { ordinary int32 }\n")
+		named := loadUnit(t, "package namesx\ntable Root { ordinary int32 }\n")
 		named.Tables["Root"].Fields[0].Name = field
 		if _, err := GenerateSurface(named, wire); err != nil {
 			t.Fatalf("wire-only JSON name refused: %v", err)

@@ -15,7 +15,7 @@ func TestIssue710DefaultsAndFloatDerivation(t *testing.T) {
 		{"x float32 | min = 0, max = 4294967200, resolution = 1", "step derivation"},
 	} {
 		t.Run(tc.want+tc.field[:1], func(t *testing.T) {
-			errs := runUnit(t, map[string]string{"T.schema": "package p\ntype T { " + tc.field + " }\n"})
+			errs := runUnit(t, map[string]string{"T.schema": "package px\ntype T { " + tc.field + " }\n"})
 			if !strings.Contains(fmt.Sprint(errs), tc.want) {
 				t.Fatalf("got %v, want %q", errs, tc.want)
 			}
@@ -26,7 +26,7 @@ func TestIssue710DefaultsAndFloatDerivation(t *testing.T) {
 		"x float32 | min = 0, max = 1, resolution = 2",
 		"x float32 | min = 0, max = 16777217, resolution = 1",
 	} {
-		if errs := runUnit(t, map[string]string{"T.schema": "package p\ntype T { " + field + " }\n"}); len(errs) != 0 {
+		if errs := runUnit(t, map[string]string{"T.schema": "package px\ntype T { " + field + " }\n"}); len(errs) != 0 {
 			t.Fatalf("valid %s: %v", field, errs)
 		}
 	}

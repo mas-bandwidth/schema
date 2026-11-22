@@ -19,39 +19,39 @@ func TestValueDefaultAndTableWasRefusals(t *testing.T) {
 	}{
 		// ---- string and bytes defaults (SPEC §4.2) ----
 		{name: "a string default past the capacity", want: "past the field's capacity of 4",
-			src: "package t\ntable Tab { s string(4) = \"hello\" }\n"},
+			src: "package tx\ntable Tab { s string(4) = \"hello\" }\n"},
 		{name: "a bytes default past the capacity", want: "past the field's capacity of 2",
-			src: "package t\ntable Tab { b bytes(2) = \"abc\" }\n"},
+			src: "package tx\ntable Tab { b bytes(2) = \"abc\" }\n"},
 		{name: "a string default that is not UTF-8", want: "is not valid UTF-8",
-			src: "package t\ntable Tab { s string(8) = \"\xff\" }\n"},
+			src: "package tx\ntable Tab { s string(8) = \"\xff\" }\n"},
 		{name: "a quoted default on an integer", want: "a quoted string is a string(N) or bytes(N) default",
-			src: "package t\ntable Tab { n int32 = \"7\" }\n"},
+			src: "package tx\ntable Tab { n int32 = \"7\" }\n"},
 		// ---- flags defaults ----
 		{name: "a brace list on a scalar", want: "a brace list is a FLAGS default",
-			src: "package t\ntable Tab { n int32 = { A } }\n"},
+			src: "package tx\ntable Tab { n int32 = { A } }\n"},
 		{name: "a brace list on an enum", want: "a brace list is a FLAGS default",
-			src: "package t\nenum E { A }\ntable Tab { e E = { A } }\n"},
+			src: "package tx\nenum E { A }\ntable Tab { e E = { A } }\n"},
 		{name: "a flags default naming no variant", want: "Swim is not a variant of flags Caps",
-			src: "package t\nflags Caps { Jump }\ntable Tab { c Caps = { Swim } }\n"},
+			src: "package tx\nflags Caps { Jump }\ntable Tab { c Caps = { Swim } }\n"},
 		{name: "a flags default repeating a variant", want: "repeats in the default",
-			src: "package t\nflags Caps { Jump }\ntable Tab { c Caps = { Jump, Jump } }\n"},
+			src: "package tx\nflags Caps { Jump }\ntable Tab { c Caps = { Jump, Jump } }\n"},
 		{name: "an integer default on a flags field", want: "defaults cover bool, integer, float, enum, string, bytes and flags fields",
-			src: "package t\nflags Caps { Jump }\ntable Tab { c Caps = 1 }\n"},
+			src: "package tx\nflags Caps { Jump }\ntable Tab { c Caps = 1 }\n"},
 		// ---- was on a declaration (docs/SPEC-TABLES.md §5) ----
 		{name: "was on a type declaration", want: "was on a type declaration is refused",
-			src: "package t\ntype P | was = \"Q\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntype P | was = \"Q\"\n{\n    x int32\n}\n"},
 		{name: "a table's was naming its own name", want: "names the table's own current name",
-			src: "package t\ntable Tab | was = \"Tab\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | was = \"Tab\"\n{\n    x int32\n}\n"},
 		{name: "a table's was with an empty string", want: "names nothing",
-			src: "package t\ntable Tab | was = \"\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | was = \"\"\n{\n    x int32\n}\n"},
 		{name: "a table's was takes a quoted string", want: "was takes the table's old name as a quoted string",
-			src: "package t\ntable Tab | was = Old\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | was = Old\n{\n    x int32\n}\n"},
 		{name: "a table's was written bare", want: "attribute was requires a value",
-			src: "package t\ntable Tab | was\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | was\n{\n    x int32\n}\n"},
 		{name: "a table's was colliding with a live table", want: "collide on table-wire type id",
-			src: "package t\ntable Old { x int32 }\ntable Tab | was = \"Old\"\n{\n    y int32\n}\ntable Root\n{\n    a *Old\n    b *Tab\n}\n"},
+			src: "package tx\ntable Old { x int32 }\ntable Tab | was = \"Old\"\n{\n    y int32\n}\ntable Root\n{\n    a *Old\n    b *Tab\n}\n"},
 		{name: "a valued key a table declaration does not take is refused by name", want: "is not an attribute a table declaration takes",
-			src: "package t\ntable Tab | resolution = \"x\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | resolution = \"x\"\n{\n    x int32\n}\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestValueDefaultAndTableWasRefusals(t *testing.T) {
 	}
 }
 
-const wasRowsSrc = `package t
+const wasRowsSrc = `package tx
 
 flags Caps { Jump, Crouch, Fly }
 

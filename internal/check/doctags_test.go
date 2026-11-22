@@ -24,7 +24,7 @@ func checkUnit(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
-const annotated = `package t
+const annotated = `package tx
 
 /// starter gold
 const StarterGold = 500 | tuning
@@ -144,7 +144,7 @@ func tagsOf(tags [][]string) string {
 
 // An unannotated unit carries the empty spelling on every record: "" and nil.
 func TestUnannotatedUnitCarriesNothing(t *testing.T) {
-	u := checkUnit(t, "package t\nconst X = 1\nenum E { A }\ntype T { x int32 }\ntable R { y int32 }\nunion U { t T }\n")
+	u := checkUnit(t, "package tx\nconst X = 1\nenum E { A }\ntype T { x int32 }\ntable R { y int32 }\nunion U { t T }\n")
 	if u.Consts["X"].Doc != "" || u.Consts["X"].Tags != nil || u.Enums["E"].Doc != "" || u.Enums["E"].Tags != nil ||
 		u.Enums["E"].VariantDocs[0] != "" || u.Enums["E"].VariantTags[0] != nil ||
 		u.Structs["T"].Doc != "" || u.Structs["T"].Tags != nil || u.Structs["T"].Fields[0].Doc != "" || u.Structs["T"].Fields[0].Tags != nil ||

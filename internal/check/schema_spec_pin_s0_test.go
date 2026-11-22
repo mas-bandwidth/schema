@@ -19,7 +19,7 @@ import (
 // makes this the variable class's reach rather than a parser accident.
 func TestVariableTableCarriesWhatTheOtherTwoRefuse(t *testing.T) {
 	t.Parallel()
-	u := buildUnit(t, `package t
+	u := buildUnit(t, `package tx
 table Node { x int32 }
 table Big
 {
@@ -48,11 +48,11 @@ table Big
 		name string
 		src  string
 	}{
-		{"a map", "package t\nfixed table F { m map[uint32]int32 }\n"},
-		{"an unbounded array", "package t\nfixed table F { xs []int32 }\n"},
-		{"a pointer", "package t\ntable Node { x int32 }\nfixed table F { next *Node }\n"},
-		{"an unbounded byte buffer", "package t\nfixed table F { blob *bytes }\n"},
-		{"an unbounded string", "package t\nfixed table F { label *string }\n"},
+		{"a map", "package tx\nfixed table F { m map[uint32]int32 }\n"},
+		{"an unbounded array", "package tx\nfixed table F { xs []int32 }\n"},
+		{"a pointer", "package tx\ntable Node { x int32 }\nfixed table F { next *Node }\n"},
+		{"an unbounded byte buffer", "package tx\nfixed table F { blob *bytes }\n"},
+		{"an unbounded string", "package tx\nfixed table F { label *string }\n"},
 	} {
 		if got := refuse(t, tc.src); got == "" {
 			t.Errorf("%s: a fixed table accepted a construct that makes a body variable size", tc.name)

@@ -10,7 +10,7 @@ import (
 
 func TestRequiredRefusedForEveryTargetButGo(t *testing.T) {
 	t.Parallel()
-	u := unitFromSource(t, "package t\ntable Ship\n{\n    name string(32) | required\n}\n")
+	u := unitFromSource(t, "package tx\ntable Ship\n{\n    name string(32) | required\n}\n")
 	c := New()
 	allTargets := c.Targets()
 	if len(allTargets) == 0 {

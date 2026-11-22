@@ -162,6 +162,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return out, nil
 }
 
+// CheckNames is every module-name refusal of Generate, for schema check (SPEC
+// §4.6): a table-free unit generates nothing here, so it is refused nothing.
+func CheckNames(u *ir.Unit) error {
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	if err := Refuse(u); err != nil {
+		return err
+	}
+	return checkViewModule(u)
+}
+
 // Refuse is the constructs this surface refuses before it writes: a module
 // name that collides with a schema file's module or a runtime module (folding
 // case, as macOS and Windows do).

@@ -29,13 +29,13 @@ func buildUnit(t *testing.T, src string) *ir.Unit {
 }
 
 func TestJsonKeyCannotHoldZero(t *testing.T) {
-	bad := "package t\ntable Tab { a int32 | json = \"a\x00b\" }\n"
+	bad := "package tx\ntable Tab { a int32 | json = \"a\x00b\" }\n"
 	errs := checkerErrors(t, bad)
 	if len(errs) != 1 || !strings.Contains(errs[0], "U+0000") {
 		t.Fatalf("json key containing U+0000: want one named refusal, got %v", errs)
 	}
 
-	good := "package t\ntable Tab { a int32 | json = \"a\x01b\" }\n"
+	good := "package tx\ntable Tab { a int32 | json = \"a\x01b\" }\n"
 	if got := ir.TableFieldJsonKey(buildUnit(t, good).Tables["Tab"].Fields[0]); got != "a\x01b" {
 		t.Fatalf("nearby valid json key = %q", got)
 	}
@@ -54,70 +54,70 @@ func TestTableRefusals(t *testing.T) {
 		file string
 	}{
 		{name: "a type field cannot reference a table", want: "is a table, not a wire type",
-			src: "package t\ntable Tab { x int32 }\ntype P { tab Tab }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype P { tab Tab }\n"},
 		{name: "was on a type field is refused by name", want: "was is a table-wire concept",
-			src: "package t\ntype P { speed float32 | was = \"velocity\" }\n"},
+			src: "package tx\ntype P { speed float32 | was = \"velocity\" }\n"},
 		{name: "was naming the field's own current name", want: "names the field's own current name",
-			src: "package t\ntable Tab { speed float32 | was = \"speed\" }\n"},
+			src: "package tx\ntable Tab { speed float32 | was = \"speed\" }\n"},
 		{name: "was with an empty string", want: "names nothing",
-			src: "package t\ntable Tab { speed float32 | was = \"\" }\n"},
+			src: "package tx\ntable Tab { speed float32 | was = \"\" }\n"},
 		{name: "was takes a quoted string", want: "was takes the field's old name as a quoted string",
-			src: "package t\ntable Tab { speed float32 | was = velocity }\n"},
+			src: "package tx\ntable Tab { speed float32 | was = velocity }\n"},
 		{name: "json outside a table closure is refused by name", want: "the text form is the table closure's",
-			src: "package t\ntype P { a int32 | json = \"b\" }\n"},
+			src: "package tx\ntype P { a int32 | json = \"b\" }\n"},
 		{name: "json keys collide inside one table", want: "collide on the JSON key",
-			src: "package t\ntable Tab {\n    a int32 | json = \"b\"\n    b int32\n}\n"},
+			src: "package tx\ntable Tab {\n    a int32 | json = \"b\"\n    b int32\n}\n"},
 		{name: "two json attributes naming one key", want: "collide on the JSON key",
-			src: "package t\ntable Tab {\n    a int32 | json = \"k\"\n    b int32 | json = \"k\"\n}\n"},
+			src: "package tx\ntable Tab {\n    a int32 | json = \"k\"\n    b int32 | json = \"k\"\n}\n"},
 		{name: "json takes a quoted string", want: "json takes the field's text key as a quoted string",
-			src: "package t\ntable Tab { a int32 | json = b }\n"},
+			src: "package tx\ntable Tab { a int32 | json = b }\n"},
 		{name: "json with an empty string", want: "json = \"\" names nothing",
-			src: "package t\ntable Tab { a int32 | json = \"\" }\n"},
+			src: "package tx\ntable Tab { a int32 | json = \"\" }\n"},
 		// the `&` prefix is the text form's (§16.7): `&node` is how a
 		// shared node is named, so no field may take a key that begins with it
 		{name: "json key with the reserved prefix", want: "a key beginning with `&` is reserved to the text form",
-			src: "package t\ntable Tab { a int32 | json = \"&a\" }\n"},
+			src: "package tx\ntable Tab { a int32 | json = \"&a\" }\n"},
 		{name: "effective wire ids collide (was aliases a live sibling)", want: "collide on table-wire id",
-			src: "package t\ntable Tab {\n    a int32 | was = \"b\"\n    b int32\n}\n"},
+			src: "package tx\ntable Tab {\n    a int32 | was = \"b\"\n    b int32\n}\n"},
 		{name: "a table nesting itself is a composition cycle", want: "type composition cycle",
-			src: "package t\ntable Tab { inner Tab }\n"},
+			src: "package tx\ntable Tab { inner Tab }\n"},
 		{name: "a table cycle through a chain", want: "type composition cycle",
-			src: "package t\ntable Aaa { b Bbb }\ntable Bbb { a Aaa }\n"},
+			src: "package tx\ntable Aaa { b Bbb }\ntable Bbb { a Aaa }\n"},
 		{name: "const(value, bits) in a table body", want: "const(value, bits) is a packet-wire construct",
-			src: "package t\ntable Tab {\n    const(7, 4)\n    x int32\n}\n"},
+			src: "package tx\ntable Tab {\n    const(7, 4)\n    x int32\n}\n"},
 		{name: "reserved(bits) in a table body", want: "reserved(bits) is a packet-wire construct",
-			src: "package t\ntable Tab {\n    reserved(4)\n    x int32\n}\n"},
+			src: "package tx\ntable Tab {\n    reserved(4)\n    x int32\n}\n"},
 		{name: "align in a table body", want: "align is a packet-wire construct",
-			src: "package t\ntable Tab {\n    align\n    x int32\n}\n"},
+			src: "package tx\ntable Tab {\n    align\n    x int32\n}\n"},
 		// a TABLE arm is legal inside a table closure (docs/SPEC-TABLES.md §2.6) and
 		// refused outside one, by name, from both sides: the type body that
 		// holds such a union, and the union no table reaches
 		{name: "a table-armed union in a type body", want: "a union in a `type` body takes `type` payloads only",
-			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { u U }\n"},
+			src: "package tx\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { u U }\n"},
 		{name: "a table-armed union no table reaches", want: "no table reaches U",
-			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\n"},
+			src: "package tx\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\n"},
 		{name: "a table-armed union in a type a table reaches", want: "a union in a `type` body takes `type` payloads only",
-			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
+			src: "package tx\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
 		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
-			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
+			src: "package tx\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
 		{name: "enum max is the declaration's refusal even in a table", want: "takes no | max",
-			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
+			src: "package tx\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
 		{name: "a keyed array of unions stays a named follow-on", want: "an enum-keyed array of unions",
-			src: "package t\nenum E { A, B }\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [E]U }\n"},
+			src: "package tx\nenum E { A, B }\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [E]U }\n"},
 		{name: "a declaration colliding with the table runtime", want: "generated TABLE-wire runtime",
-			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
 		// the Go text-transport helpers (docs/SPEC-TABLES.md §16.8, §11): the Go backend
 		// emits <Name>SaveText and <Name>LoadText, so a schema declaring Root and
 		// either name must be refused by name at the checker, not redeclared in
 		// the generated package
 		{name: "a declaration colliding with the text transport's save", want: "TabSaveText",
-			src: "package t\ntable Tab { x int32 }\ntype TabSaveText { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabSaveText { y int32 }\n"},
 		{name: "a declaration colliding with the text transport's load", want: "TabLoadText",
-			src: "package t\ntable Tab { x int32 }\ntype TabLoadText { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabLoadText { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
 		// THE FIXED FORM'S SPELLINGS (docs/SPEC-TABLES.md §3.4, §11), and the
 		// point of these two rows is the one the whole list rests on: the
 		// READ-SIDE BOUNDS are emitted only for a type that declares something
@@ -126,9 +126,9 @@ func TestTableRefusals(t *testing.T) {
 		// ordinary edit, and a name free before it must not become a collision
 		// after it.
 		{name: "a declaration colliding with the fixed form's read-side bounds", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedBounds { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabFixedBounds { y int32 }\n"},
 		{name: "a declaration colliding with the fixed form's per-type bounds body", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedBoundsBody { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TabFixedBoundsBody { y int32 }\n"},
 		// THE PER-ENUM IDENTITY PAIR (docs/SPEC-TABLES.md §5, §11). C++ and C#
 		// overload the pair on the enum's own type; JavaScript has no
 		// overloading and no nested scope to hide it in, so each enum brings
@@ -137,15 +137,15 @@ func TestTableRefusals(t *testing.T) {
 		// — a name free today must not become a collision the day a table
 		// gains one.
 		{name: "a declaration colliding with an enum's table identity id", want: "identity pair",
-			src: "package t\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumIdGrade { y int32 }\n"},
+			src: "package tx\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumIdGrade { y int32 }\n"},
 		{name: "a declaration colliding with an enum's table identity value", want: "identity pair",
-			src: "package t\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumValueGrade { y int32 }\n"},
+			src: "package tx\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumValueGrade { y int32 }\n"},
 		{name: "the identity pair is claimed for an enum no table field names", want: "identity pair",
-			src: "package t\nenum Grade { A, B }\ntable Tab { x int32 }\ntype TableEnumIdGrade { y int32 }\n"},
+			src: "package tx\nenum Grade { A, B }\ntable Tab { x int32 }\ntype TableEnumIdGrade { y int32 }\n"},
 		{name: "a declaration colliding with the text form's generic walk", want: "generated TABLE-wire runtime",
-			src: "package t\ntable Tab { x int32 }\ntype TableJson { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TableJson { y int32 }\n"},
 		{name: "a declaration colliding with the block layout check", want: "generated TABLE-wire runtime",
-			src: "package t\ntable Tab { x int32 }\ntype TableBlockLayout { y int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype TableBlockLayout { y int32 }\n"},
 
 		// THE RUST CONSTANT SPACE (docs/SPEC-TABLES.md §11). Rust spells a
 		// constant SCREAMING_SNAKE, and the spelling is MANY-TO-ONE:
@@ -158,221 +158,221 @@ func TestTableRefusals(t *testing.T) {
 		// ambiguous_glob_imports, which is deny-by-default and
 		// future-incompatible.
 		{name: "a lowercase const lowering onto a runtime constant", want: "TABLE_COOK_MAGIC",
-			src: "package t\ntable Tab { x int32 }\nconst table_cook_magic = 1\n"},
+			src: "package tx\ntable Tab { x int32 }\nconst table_cook_magic = 1\n"},
 		{name: "a SCREAMING const lowering onto a runtime constant", want: "TABLE_BLOCK_MAGIC",
-			src: "package t\ntable Tab { x int32 }\nconst TABLE_BLOCK_MAGIC = 1\n"},
+			src: "package tx\ntable Tab { x int32 }\nconst TABLE_BLOCK_MAGIC = 1\n"},
 		{name: "a lowercase const lowering onto the build version", want: "BUILD_VERSION",
-			src: "package t\ntable Tab { x int32 }\nconst build_version = 1\n"},
+			src: "package tx\ntable Tab { x int32 }\nconst build_version = 1\n"},
 		{name: "a lowercase const lowering onto a table's block extent", want: "TAB_BLOCK_MAX_BYTES",
-			src: "package t\ntable Tab { x int32 }\nconst tab_block_max_bytes = 1\n"},
+			src: "package tx\ntable Tab { x int32 }\nconst tab_block_max_bytes = 1\n"},
 
 		// ---- pointers (docs/SPEC-TABLES.md §11) ----
 		{name: "a pointer to a type is refused by name", want: "may only target a `table`",
-			src: "package t\ntype P { x int32 }\ntable Tab { p *P }\n"},
+			src: "package tx\ntype P { x int32 }\ntable Tab { p *P }\n"},
 		{name: "a pointer to an enum is refused by name", want: "may only target a `table`",
-			src: "package t\nenum E { A }\ntable Tab { e *E }\n"},
+			src: "package tx\nenum E { A }\ntable Tab { e *E }\n"},
 		{name: "a pointer inside a type body is refused by name", want: "pointers are a TABLE construct",
-			src: "package t\ntable Tab { x int32 }\ntype P { t *Tab }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype P { t *Tab }\n"},
 		{name: "a pointer field takes no specified default", want: "a pointer field takes no specified default",
-			src: "package t\ntable Node { x int32 }\ntable Tab { head *Node = 0 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntable Tab { head *Node = 0 }\n"},
 		// every generated name-first spelling is claimed, including the ones a
 		// value-only table never emits: adding a pointer to a table must not
 		// turn a legal declaration elsewhere into a collision
 		{name: "a declaration colliding with the pointer allocation entry", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeEmplace { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeEmplace { y int32 }\n"},
 		{name: "a declaration colliding with the pack walker", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodePack { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodePack { y int32 }\n"},
 		{name: "a declaration colliding with the pack sizer", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodePackMeasure { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodePackMeasure { y int32 }\n"},
 		{name: "a declaration colliding with the numbering walk", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeNumber { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeNumber { y int32 }\n"},
 		{name: "a declaration colliding with a load's type-id dispatch", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeNodeStorage { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeNodeStorage { y int32 }\n"},
 		{name: "a declaration colliding with the builder load path", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeLoadBuilder { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeLoadBuilder { y int32 }\n"},
 		{name: "a declaration colliding with the cook's read side", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeOpen { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeOpen { y int32 }\n"},
 		{name: "a declaration colliding with the cook's write side", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeCookMeasure { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeCookMeasure { y int32 }\n"},
 		{name: "a declaration colliding with the descriptor storage", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeTableInfo { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeTableInfo { y int32 }\n"},
 		{name: "a declaration colliding with the descriptor field storage", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeTableFields { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeTableFields { y int32 }\n"},
 		{name: "a declaration colliding with the prefill", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeReset { y int32 }\n"},
+			src: "package tx\ntable Node { x int32 }\ntype NodeReset { y int32 }\n"},
 
 		// a table named after a Builder member would emit a header that cannot
 		// compile — a member function hides the type name it shares
 		{name: "a table named after a builder member", want: "collides with a member of the generated",
-			src: "package t\ntable Alloc { x int32 }\n"},
+			src: "package tx\ntable Alloc { x int32 }\n"},
 		{name: "a table named after the builder's lock", want: "collides with a member of the generated",
-			src: "package t\ntable Lock { x int32 }\n"},
+			src: "package tx\ntable Lock { x int32 }\n"},
 		{name: "a table named after the arena member", want: "collides with a member of the generated",
-			src: "package t\ntable arena { x int32 }\n"},
+			src: "package tx\ntable arena { x int32 }\n"},
 
 		// ---- optional fields, `?T` (docs/SPEC-TABLES.md §2.3, §11) ----
 		{name: "an optional in a type body is refused by name", want: "optionals are a TABLE construct",
-			src: "package t\ntype P { tier ?int32 }\n"},
+			src: "package tx\ntype P { tier ?int32 }\n"},
 		{name: "an optional pointer is refused by name", want: "a pointer is ALREADY optional",
-			src: "package t\ntable Node { x int32 }\ntable Tab { head ?*Node }\n"},
+			src: "package tx\ntable Node { x int32 }\ntable Tab { head ?*Node }\n"},
 		// a BYTE BUFFER is a pointer, and the refusal must quote the spelling
 		// the author wrote — `?*bytes`, not the bounded `?bytes(N)` they did
 		// not write (docs/SPEC-TABLES.md §2.5)
 		{name: "an optional byte buffer names the spelling written", want: "field b: ?*bytes marks a pointer optional",
-			src: "package t\ntable Tab { b ?*bytes }\n"},
+			src: "package tx\ntable Tab { b ?*bytes }\n"},
 		{name: "an optional string buffer names the spelling written", want: "field s: ?*string marks a pointer optional",
-			src: "package t\ntable Tab { s ?*string }\n"},
+			src: "package tx\ntable Tab { s ?*string }\n"},
 		{name: "an optional array of pointers is a named follow-on", want: "? on an array of pointers is a named follow-on",
-			src: "package t\ntable Node { x int32 }\ntable Tab { xs ?[..4]*Node }\n"},
+			src: "package tx\ntable Node { x int32 }\ntable Tab { xs ?[..4]*Node }\n"},
 		{name: "an optional array of unions is a named follow-on", want: "? on an array of unions is a named follow-on",
-			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { xs ?[..4]U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U { a A }\ntable Tab { xs ?[..4]U }\n"},
 		{name: "an optional array takes no specified default", want: "an optional field takes no specified default",
-			src: "package t\ntable Tab { xs ?[..4]int32 = 5 }\n"},
+			src: "package tx\ntable Tab { xs ?[..4]int32 = 5 }\n"},
 		{name: "an optional array whose element closure is variable is a named follow-on", want: "? on a value whose closure is variable-length",
-			src: "package t\ntable Leaf { value int32\n    next *Leaf }\ntable Tab { xs ?[..2]Leaf }\n"},
+			src: "package tx\ntable Leaf { value int32\n    next *Leaf }\ntable Tab { xs ?[..2]Leaf }\n"},
 		{name: "an optional string is a named follow-on", want: "? on string(N) is a named follow-on",
-			src: "package t\ntable Tab { s ?string(8) }\n"},
+			src: "package tx\ntable Tab { s ?string(8) }\n"},
 		{name: "an optional bytes is a named follow-on", want: "? on bytes(N) is a named follow-on",
-			src: "package t\ntable Tab { b ?bytes(8) }\n"},
+			src: "package tx\ntable Tab { b ?bytes(8) }\n"},
 		{name: "an optional union is refused by name", want: "a union is ALREADY optional",
-			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { u ?U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U { a A }\ntable Tab { u ?U }\n"},
 		{name: "an optional takes no specified default", want: "an optional field takes no specified default",
-			src: "package t\ntable Tab { tier ?int32 = 5 }\n"},
+			src: "package tx\ntable Tab { tier ?int32 = 5 }\n"},
 		{name: "a field colliding with an optional's presence companion", want: "the generated presence companion",
-			src: "package t\ntype Inner { x int32 }\ntable Tab {\n    settings ?Inner\n    settings_present bool\n}\n"},
+			src: "package tx\ntype Inner { x int32 }\ntable Tab {\n    settings ?Inner\n    settings_present bool\n}\n"},
 
 		// ---- enum-keyed arrays, `[E]T` (docs/SPEC-TABLES.md §2.4, §11) ----
 		{name: "a keyed array bound naming flags is refused by name", want: "names a `flags` declaration",
-			src: "package t\nflags F { A, B }\ntable Tab { xs [F]int32 }\n"},
+			src: "package tx\nflags F { A, B }\ntable Tab { xs [F]int32 }\n"},
 		{name: "a bounded enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
-			src: "package t\nenum E { A, B }\ntable Tab { xs [..E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs [..E]int32 }\n"},
 		{name: "a ranged enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
-			src: "package t\nenum E { A, B }\ntable Tab { xs [1..E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs [1..E]int32 }\n"},
 		{name: "a keyed array of pointers stays a named follow-on", want: "an enum-keyed array of pointers",
-			src: "package t\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
+			src: "package tx\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
 		{name: "an optional keyed array is a named follow-on", want: "?[E]int32 is a named follow-on",
-			src: "package t\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
 		// a BOUNDED enum-key is refused by §2.4 with the ? and without it, so
 		// the keyed refusal's "drop the ?" is not true advice here — dropping
 		// the ? alone lands on §2.4's refusal — and both bounded spellings
 		// take the refusal that names the bound
 		{name: "an optional up-to enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
-			src: "package t\nenum E { A, B }\ntable Tab { xs ?[..E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs ?[..E]int32 }\n"},
 		{name: "an optional ranged enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
-			src: "package t\nenum E { A, B }\ntable Tab { xs ?[A..E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs ?[A..E]int32 }\n"},
 		{name: "an optional literal-ranged enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
-			src: "package t\nenum E { A, B }\ntable Tab { xs ?[2..E]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Tab { xs ?[2..E]int32 }\n"},
 		// a KEY is a closure vocabulary: it rides under a variant hash exactly
 		// as a value does, so the §5 id-collision refusal is owed to it even
 		// when the enum reaches the closure ONLY as a key. An enum's | max is
 		// refused at its declaration whether or not a key reaches it.
 		{name: "enum max on an enum reaching a closure only as a key", want: "takes no | max",
-			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+			src: "package tx\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 		{name: "the key-only max refusal names the enum declaration", want: "enum E takes no | max",
-			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+			src: "package tx\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
 		// ---- maps, `map[K]V` (docs/SPEC-TABLES.md §2.8, §11) ----
 		//
 		// Keys are BOUNDED STRINGS and INTEGERS, and nothing else: a key is an
 		// identity, so everything below is refused because it cannot BE one.
 		{name: "a map in a type body is refused by name", want: "a MAP is a table-only construct",
-			src: "package t\ntype P { m map[uint32]int32 }\n"},
+			src: "package tx\ntype P { m map[uint32]int32 }\n"},
 		// the fixture enum is NOT named E, so the row proves the diagnostic
 		// SUBSTITUTES the enum the author wrote rather than printing a literal
 		{name: "an enum key is refused naming [E]T", want: "an ENUM key is refused — that is [ShipType]T's job",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
 		{name: "the enum-key suggestion names the value the author wrote", want: "declare [ShipType]int32, and [ShipType]?int32",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]int32 }\n"},
 		// AND IT NEVER SUGGESTS A SPELLING THIS CHECKER REFUSES: [E]*T and
 		// [E]U are named follow-ons, an array of arrays has no spelling, and
 		// a bound silently dropped would name a different declaration
 		{name: "the enum-key suggestion keeps the value's array bound", want: "[..4]int32 is not one",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType][..4]int32 }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType][..4]int32 }\n"},
 		{name: "the enum-key suggestion never names a keyed array of pointers", want: "*V is not one",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntable V { a int32 }\ntable Tab { m map[ShipType]*V }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntable V { a int32 }\ntable Tab { m map[ShipType]*V }\n"},
 		{name: "the enum-key suggestion never names a keyed array of unions", want: "U is not one",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[ShipType]U }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[ShipType]U }\n"},
 		{name: "the enum-key suggestion never names a keyed array of maps", want: "map[uint8]int32 is not one",
-			src: "package t\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]map[uint8]int32 }\n"},
+			src: "package tx\nenum ShipType { Fighter, Bomber }\ntable Tab { m map[ShipType]map[uint8]int32 }\n"},
 		{name: "a bool key is refused by name", want: "a `bool` key is refused — two slots",
-			src: "package t\ntable Tab { m map[bool]int32 }\n"},
+			src: "package tx\ntable Tab { m map[bool]int32 }\n"},
 		{name: "a float32 key is refused by name", want: "no total order survives a byte compare",
-			src: "package t\ntable Tab { m map[float32]int32 }\n"},
+			src: "package tx\ntable Tab { m map[float32]int32 }\n"},
 		{name: "a float64 key is refused by name", want: "no total order survives a byte compare",
-			src: "package t\ntable Tab { m map[float64]int32 }\n"},
+			src: "package tx\ntable Tab { m map[float64]int32 }\n"},
 		{name: "a flags key is refused by name", want: "a mask names a SET, not one thing",
-			src: "package t\nflags F { A, B }\ntable Tab { m map[F]int32 }\n"},
+			src: "package tx\nflags F { A, B }\ntable Tab { m map[F]int32 }\n"},
 		{name: "a bits(N) key is refused by name", want: "a bits(N) key is refused",
-			src: "package t\ntable Tab { m map[bits(9)]int32 }\n"},
+			src: "package tx\ntable Tab { m map[bits(9)]int32 }\n"},
 		{name: "a bytes(N) key is refused by name", want: "a bytes(N) key is refused",
-			src: "package t\ntable Tab { m map[bytes(4)]int32 }\n"},
+			src: "package tx\ntable Tab { m map[bytes(4)]int32 }\n"},
 		{name: "a fixed-point key is refused by name", want: "a fixed-point key is refused",
-			src: "package t\ntable Tab { m map[fixed(16, 16)]int32 }\n"},
+			src: "package tx\ntable Tab { m map[fixed(16, 16)]int32 }\n"},
 		{name: "a 128-bit integer key is refused by name", want: "a 128-bit integer is not a map key",
-			src: "package t\ntable Tab { m map[int128]int32 }\n"},
+			src: "package tx\ntable Tab { m map[int128]int32 }\n"},
 		{name: "a type key is refused by name", want: "a `type` key is refused",
-			src: "package t\ntype P { a int32 }\ntable Tab { m map[P]int32 }\n"},
+			src: "package tx\ntype P { a int32 }\ntable Tab { m map[P]int32 }\n"},
 		{name: "a table key is refused by name", want: "a `table` key is refused",
-			src: "package t\ntable K { a int32 }\ntable Tab { m map[K]int32 }\n"},
+			src: "package tx\ntable K { a int32 }\ntable Tab { m map[K]int32 }\n"},
 		{name: "a pointer key is refused by name", want: "a POINTER key is refused",
-			src: "package t\ntable K { a int32 }\ntable Tab { m map[*K]int32 }\n"},
+			src: "package tx\ntable K { a int32 }\ntable Tab { m map[*K]int32 }\n"},
 		{name: "a union key is refused by name", want: "a UNION key is refused",
-			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[U]int32 }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U { a A }\ntable Tab { m map[U]int32 }\n"},
 		{name: "an optional key is refused by name", want: "an OPTIONAL key is refused",
-			src: "package t\ntable Tab { m map[?uint32]int32 }\n"},
+			src: "package tx\ntable Tab { m map[?uint32]int32 }\n"},
 		// NOTHING QUALIFIES A KEY: the grammar takes the spelling so the
 		// diagnostic is the page's sentence rather than a parse error
 		{name: "a qualification on the key is refused by name", want: "`| max` does not apply to a map KEY",
-			src: "package t\ntable Tab { m map[uint32 | max = 4]int32 }\n"},
+			src: "package tx\ntable Tab { m map[uint32 | max = 4]int32 }\n"},
 		{name: "a min on the key is refused by name", want: "`| min` does not apply to a map KEY",
-			src: "package t\ntable Tab { m map[uint32 | min = 1]int32 }\n"},
+			src: "package tx\ntable Tab { m map[uint32 | min = 1]int32 }\n"},
 		{name: "a default on the key is refused by name", want: "a map KEY takes no default",
-			src: "package t\ntable Tab { m map[uint32 = 5]int32 }\n"},
+			src: "package tx\ntable Tab { m map[uint32 = 5]int32 }\n"},
 		// the map itself takes no bound, no default and no attribute: a map's
 		// count is unbounded by design; `?map` is the optional map (§2.8),
 		// refused only where any map is and beside `| required`
 		{name: "a bounded map is refused by name", want: "a map takes no array bound",
-			src: "package t\ntable Tab { m [..4]map[uint32]int32 }\n"},
+			src: "package tx\ntable Tab { m [..4]map[uint32]int32 }\n"},
 		{name: "a fixed array of maps is refused by name", want: "a map takes no array bound",
-			src: "package t\ntable Tab { m [4]map[uint32]int32 }\n"},
+			src: "package tx\ntable Tab { m [4]map[uint32]int32 }\n"},
 		{name: "an optional map in a type body is refused by name", want: "a MAP is a table-only construct",
-			src: "package t\ntype P { m ?map[uint32]int32 }\n"},
+			src: "package tx\ntype P { m ?map[uint32]int32 }\n"},
 		{name: "an optional map in a fixed table is refused by name", want: "is a map",
-			src: "package t\nfixed table Tab { m ?map[uint32]int32 }\n"},
+			src: "package tx\nfixed table Tab { m ?map[uint32]int32 }\n"},
 		{name: "an optional map marked required is refused by name", want: "| required is refused with ?",
-			src: "package t\ntable Tab { m ?map[uint32]int32 | required }\n"},
+			src: "package tx\ntable Tab { m ?map[uint32]int32 | required }\n"},
 		{name: "an optional map as a map's value is refused by name", want: "an optional map as a map's VALUE is refused",
-			src: "package t\ntable Tab { m map[uint8]?map[uint8]int32 }\n"},
+			src: "package tx\ntable Tab { m map[uint8]?map[uint8]int32 }\n"},
 		{name: "an optional map claims its presence companion", want: "the generated presence companion",
-			src: "package t\ntable Tab {\n m ?map[uint32]int32\n m_present bool\n}\n"},
+			src: "package tx\ntable Tab {\n m ?map[uint32]int32\n m_present bool\n}\n"},
 		{name: "a default on a map is refused by name", want: "a map takes no specified default",
-			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
+			src: "package tx\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
-			src: "package t\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
+			src: "package tx\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
 		// the by-value cycle reaches THROUGH the entry, and a map of *Self is
 		// the ordinary legal recursion through a pointer
 		{name: "a map of ITSELF closes a by-value cycle", want: "type composition cycle",
-			src: "package t\ntable Tab { m map[uint32]Tab }\n"},
+			src: "package tx\ntable Tab { m map[uint32]Tab }\n"},
 		{name: "a map of a table that holds the map closes one too", want: "type composition cycle",
-			src: "package t\ntable A { m map[uint32]B }\ntable B { n map[uint32]A }\n"},
+			src: "package tx\ntable A { m map[uint32]B }\ntable B { n map[uint32]A }\n"},
 		// the <Table><Field>Entry name is CLAIMED on the table that declares
 		// the map, on the terms <field>_present is claimed for an optional
 		{name: "a declared table under the claimed entry name is refused", want: "the entry name is CLAIMED",
-			src: "package t\ntable TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+			src: "package tx\ntable TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
 		{name: "a declared type under the claimed entry name is refused", want: "the entry name is CLAIMED",
-			src: "package t\ntype TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+			src: "package tx\ntype TabShipsEntry { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
 		// and the REST of the map surface is claimed on the declaring table
 		// the same way the block form's row accessors are (§2.8, §11)
 		{name: "a declaration under the claimed Find name is refused", want: "TabShipsFind",
-			src: "package t\ntype TabShipsFind { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
+			src: "package tx\ntype TabShipsFind { x int32 }\ntable Tab { ships map[uint32]int32 }\n"},
 		{name: "a declaration under the claimed IndexFind name is refused", want: "TabShipsIndexFind",
-			src: "package t\nenum TabShipsIndexFind { A, B }\ntable Tab { ships map[uint32]int32 }\n"},
+			src: "package tx\nenum TabShipsIndexFind { A, B }\ntable Tab { ships map[uint32]int32 }\n"},
 		// and the map's RUNTIME names are claimed as every other runtime
 		// name is: whenever a unit declares a table
 		{name: "a declaration named TableMap is refused", want: "TABLE-wire runtime",
-			src: "package t\nenum TableMap { A, B }\ntable Tab { x int32 }\n"},
+			src: "package tx\nenum TableMap { A, B }\ntable Tab { x int32 }\n"},
 		{name: "a declaration named TableMapIndex is refused", want: "TABLE-wire runtime",
-			src: "package t\nenum TableMapIndex { A, B }\ntable Tab { x int32 }\n"},
+			src: "package tx\nenum TableMapIndex { A, B }\ntable Tab { x int32 }\n"},
 
 		// ---- UNBOUNDED ARRAYS (docs/SPEC-TABLES.md §2.9, §11) ----
 		//
@@ -380,72 +380,72 @@ func TestTableRefusals(t *testing.T) {
 		// either the construct's own placement rule or the bounded array's
 		// own diagnostic met one spelling over.
 		{name: "a []T in a type body is refused by name", want: "an UNBOUNDED ARRAY is a table-only construct",
-			src: "package t\ntype P { xs []int32 }\n"},
+			src: "package tx\ntype P { xs []int32 }\n"},
 		{name: "a []T as a union arm is refused by name", want: "a []T is not an arm",
-			src: "package t\ntable E { a uint32 }\nunion U { xs []E }\ntable Tab { u U }\n"},
+			src: "package tx\ntable E { a uint32 }\nunion U { xs []E }\ntable Tab { u U }\n"},
 		{name: "[..]T names []T as the fix", want: "[..]T is not the unbounded array",
-			src: "package t\ntable E { a uint32 }\ntable Tab { xs [..]E }\n"},
+			src: "package tx\ntable E { a uint32 }\ntable Tab { xs [..]E }\n"},
 		{name: "[Min..]T names []T as the fix", want: "[Min..]T is not the unbounded array",
-			src: "package t\ntable E { a uint32 }\ntable Tab { xs [0..]E }\n"},
+			src: "package tx\ntable E { a uint32 }\ntable Tab { xs [0..]E }\n"},
 		{name: "?[]T is refused by name", want: "there is no ?[]T",
-			src: "package t\ntable E { a uint32 }\ntable Tab { xs ?[]E }\n"},
+			src: "package tx\ntable E { a uint32 }\ntable Tab { xs ?[]E }\n"},
 		{name: "a default on a []T is refused by name", want: "a []T takes no specified default",
-			src: "package t\ntable Tab { xs []int32 = 0 }\n"},
+			src: "package tx\ntable Tab { xs []int32 = 0 }\n"},
 		// the bounded spellings of the construct itself, and the element set's
 		// own four refusals, each on the bounded array's own diagnostic
 		{name: "[][]T is an array of arrays", want: "an array of arrays is not supported in v1",
-			src: "package t\ntable Tab { xs [][]int32 }\n"},
+			src: "package tx\ntable Tab { xs [][]int32 }\n"},
 		{name: "[..N][]T is an array of arrays", want: "an array of arrays is not supported in v1",
-			src: "package t\ntable Tab { xs [..4][]int32 }\n"},
+			src: "package tx\ntable Tab { xs [..4][]int32 }\n"},
 		{name: "[N][]T is an array of arrays", want: "an array of arrays is not supported in v1",
-			src: "package t\ntable Tab { xs [4][]int32 }\n"},
+			src: "package tx\ntable Tab { xs [4][]int32 }\n"},
 		{name: "[]map takes the map's own bound refusal", want: "a map takes no array bound",
-			src: "package t\ntable Tab { xs []map[uint32]int32 }\n"},
+			src: "package tx\ntable Tab { xs []map[uint32]int32 }\n"},
 		{name: "[]*bytes takes the byte buffer's own array refusal", want: "an array of byte buffers is a named follow-on",
-			src: "package t\ntable Tab { xs []*bytes }\n"},
+			src: "package tx\ntable Tab { xs []*bytes }\n"},
 		// a table that holds a [] of ITSELF by value closes a by-value cycle,
 		// and a []*Self is the ordinary legal recursion through a pointer
 		{name: "a [] of ITSELF closes a by-value cycle", want: "type composition cycle",
-			src: "package t\ntable Tab { xs []Tab }\n"},
+			src: "package tx\ntable Tab { xs []Tab }\n"},
 		{name: "a [] of a table that holds one closes a by-value cycle too", want: "type composition cycle",
-			src: "package t\ntable A { xs []B }\ntable B { ys []A }\n"},
+			src: "package tx\ntable A { xs []B }\ntable B { ys []A }\n"},
 		// AN UNBOUNDED ARRAY CLAIMS THREE NAMES against its field, and the
 		// difference from the map's eight is the key on both sides
 		{name: "a declaration under the claimed Add name is refused", want: "TabXsAdd",
-			src: "package t\ntable TabXsAdd { a int32 }\ntable Tab { xs []int32 }\n"},
+			src: "package tx\ntable TabXsAdd { a int32 }\ntable Tab { xs []int32 }\n"},
 		{name: "a declaration under the claimed Each name is refused", want: "TabXsEach",
-			src: "package t\ntype TabXsEach { a int32 }\ntable Tab { xs []int32 }\n"},
+			src: "package tx\ntype TabXsEach { a int32 }\ntable Tab { xs []int32 }\n"},
 		{name: "a declaration under the claimed Erase name is refused", want: "TabXsErase",
-			src: "package t\nenum TabXsErase { A, B }\ntable Tab { xs []int32 }\n"},
+			src: "package tx\nenum TabXsErase { A, B }\ntable Tab { xs []int32 }\n"},
 		{name: "a declaration named TableList is refused", want: "TABLE-wire runtime",
-			src: "package t\nenum TableList { A, B }\ntable Tab { x int32 }\n"},
+			src: "package tx\nenum TableList { A, B }\ntable Tab { x int32 }\n"},
 
 		{name: "a pointer to an undeclared table", want: "undefined type",
-			src: "package t\ntable Tab { head *Ghost }\n"},
+			src: "package tx\ntable Tab { head *Ghost }\n"},
 		{name: "by-value recursion stays refused with pointers in the language",
 			want: "type composition cycle",
-			src:  "package t\ntable Node { x int32\n  self Node }\n"},
+			src:  "package tx\ntable Node { x int32\n  self Node }\n"},
 		{name: "by-value recursion through a chain stays refused",
 			want: "type composition cycle",
-			src:  "package t\ntable A { b B }\ntable B { a A }\n"},
+			src:  "package tx\ntable A { b B }\ntable B { a A }\n"},
 
 		// the Dart backend's table verbs are MEMBERS of the value, so a field
 		// whose Dart spelling is one of them is refused on every closure member
 		{name: "a table field spelled as a Dart table verb", want: "collides with the generated Dart table verb `measure`",
-			src: "package t\ntable Tab { measure int32 }\n"},
+			src: "package tx\ntable Tab { measure int32 }\n"},
 		{name: "a type a table reaches, with a field spelled as a Dart table verb", want: "collides with the generated Dart table verb `toJson`",
-			src: "package t\ntype P { to_json int32 }\ntable Tab { p P }\n"},
+			src: "package tx\ntype P { to_json int32 }\ntable Tab { p P }\n"},
 
 		// THE UNIT REGISTRY (docs/SPEC-TABLES.md §8.3, §8.5, §11), three
 		// refusals the view brought and nothing held
 		{name: "a declaration colliding with a unit-scope registry name", want: "generated unit registry",
-			src: "package t\ntype ViewVariant { x int32 }\n"},
+			src: "package tx\ntype ViewVariant { x int32 }\n"},
 		{name: "the C unit registry function in a table-free unit", want: "generated unit registry",
-			src: "package t\ntype unit_view { x int32 }\n"},
+			src: "package tx\ntype unit_view { x int32 }\n"},
 		{name: "the JavaScript package-derived variable registry", want: "generated JavaScript unit registry",
 			src: "package t\ntable Root { value *bytes }\ntype TUnitRegistry { x int32 }\n"},
 		{name: "a declaration colliding with an out-of-closure type's view descriptor", want: "generated view descriptor",
-			src: "package t\ntable Tab { x int32 }\ntype Orphan { y int32 }\ntype OrphanTableFields { z int32 }\n"},
+			src: "package tx\ntable Tab { x int32 }\ntype Orphan { y int32 }\ntype OrphanTableFields { z int32 }\n"},
 		{name: "a schema file named for the unit's view file", want: "the same name as the unit's view file",
 			file: "TView.schema", src: "package t\ntable Tab { x int32 }\n"},
 	}
@@ -473,7 +473,7 @@ func TestTableRefusals(t *testing.T) {
 // claim, and a table-free unit keeps `measure`, `to_json` and the rest for its
 // own fields.
 func TestDartVerbClaimNeedsATable(t *testing.T) {
-	buildUnit(t, "package t\ntype P { measure int32\n  to_json int32 }\n")
+	buildUnit(t, "package tx\ntype P { measure int32\n  to_json int32 }\n")
 }
 
 // TestTableRuntimeClaimSplitsOnTheViewFile (schema#672, narrowing #363): the
@@ -495,7 +495,7 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 		t.Fatal("tablenames.ClaimedInEveryUnit() is empty: the loop below would check nothing")
 	}
 	for _, name := range allClaimedInEveryUnit {
-		src := "package t\ntype " + name + " { y int32 }\n"
+		src := "package tx\ntype " + name + " { y int32 }\n"
 		errs := runUnit(t, map[string]string{"T.schema": src})
 		if len(errs) == 0 {
 			t.Errorf("a table-free unit declaring %s was accepted: the view file defines it (docs/SPEC-TABLES.md §8.2)", name)
@@ -515,7 +515,7 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 		t.Fatal("tablenames.ClaimedWithATable() is empty: the loop below would check nothing")
 	}
 	for _, name := range allClaimedWithATable {
-		src := "package t\ntype Holder { y int32 }\nenum " + name + " { A, B }\n"
+		src := "package tx\ntype Holder { y int32 }\nenum " + name + " { A, B }\n"
 		for _, e := range runUnit(t, map[string]string{"T.schema": src}) {
 			if strings.Contains(e.Error(), "TABLE-wire runtime") || strings.Contains(e.Error(), "view file") {
 				t.Errorf("a packet-only unit declaring %s drew the table claim: %v", name, e)
@@ -528,7 +528,7 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 		t.Fatal("tablenames.ClaimedWithATable() is empty: the loop below would check nothing")
 	}
 	for _, name := range allClaimedWithATables {
-		src := "package t\ntable Tab { x int32 }\nenum " + name + " { A, B }\n"
+		src := "package tx\ntable Tab { x int32 }\nenum " + name + " { A, B }\n"
 		errs := runUnit(t, map[string]string{"T.schema": src})
 		if len(errs) == 0 {
 			t.Errorf("a unit with a table declaring %s was accepted: the generated table sources define that name", name)
@@ -537,20 +537,20 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 	// (4) THE #363 PAIR, measured. TABLE_COOK_MAGIC and TableReport are not
 	// names a table-free unit's outputs define and not names the view file
 	// spells, so the refusal #363 gave them narrows to a unit with a table.
-	if errs := runUnit(t, map[string]string{"T.schema": "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
+	if errs := runUnit(t, map[string]string{"T.schema": "package tx\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
 		t.Errorf("a table-free unit must keep TABLE_COOK_MAGIC and TableReport: %v", errs)
 	}
-	if errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Tab { x int32 }\nconst TABLE_COOK_MAGIC = 7\n"}); len(errs) == 0 {
+	if errs := runUnit(t, map[string]string{"T.schema": "package tx\ntable Tab { x int32 }\nconst TABLE_COOK_MAGIC = 7\n"}); len(errs) == 0 {
 		t.Error("a unit with a table declaring TABLE_COOK_MAGIC was accepted")
 	}
 	// and the RUST CONSTANT SPACE is claimed on the same terms as the
 	// spelling it lowers from: beside a table, and not before
 	for _, name := range []string{"table_cook_magic", "TABLE_BLOCK_MAGIC", "build_version"} {
-		free := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
+		free := "package tx\nconst " + name + " = 1\ntype P { x int32 }\n"
 		if errs := runUnit(t, map[string]string{"T.schema": free}); len(errs) > 0 {
 			t.Errorf("a table-free unit must keep %s: %v", name, errs)
 		}
-		beside := "package t\ntable Tab { x int32 }\nconst " + name + " = 1\n"
+		beside := "package tx\ntable Tab { x int32 }\nconst " + name + " = 1\n"
 		if errs := runUnit(t, map[string]string{"T.schema": beside}); len(errs) == 0 {
 			t.Errorf("a unit with a table declaring %s was accepted", name)
 		}
@@ -559,8 +559,8 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 	// a table-free unit and beside a table alike: the claim is the registry's
 	// list and nothing wider
 	for _, src := range []string{
-		"package t\nconst tab_block_max_bytes = 1\ntype P { x int32 }\n",
-		"package t\ntable Holder { x int32 }\nconst tab_block_max_bytes = 1\n",
+		"package tx\nconst tab_block_max_bytes = 1\ntype P { x int32 }\n",
+		"package tx\ntable Holder { x int32 }\nconst tab_block_max_bytes = 1\n",
 	} {
 		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
 			t.Errorf("a name the runtime does not spell must stay legal: %v", errs)
@@ -583,7 +583,7 @@ func TestRustConstantSpaceIsClaimedForEveryRuntimeConstant(t *testing.T) {
 	}
 	for _, name := range names {
 		lowered := strings.ToLower(ir.RustConstName(name))
-		src := "package t\ntable Tab { x int32 }\nconst " + lowered + " = 1\n"
+		src := "package tx\ntable Tab { x int32 }\nconst " + lowered + " = 1\n"
 		errs := runUnit(t, map[string]string{"T.schema": src})
 		if len(errs) == 0 {
 			t.Errorf("a declaration named %s was accepted beside a table — it lowers to the runtime's own %s, "+
@@ -792,7 +792,7 @@ func TestTableFieldIds(t *testing.T) {
 		}
 	}
 
-	u := buildUnit(t, "package t\ntable Tab { speed float32 | was = \"velocity\" }\n")
+	u := buildUnit(t, "package tx\ntable Tab { speed float32 | was = \"velocity\" }\n")
 	f := u.Tables["Tab"].Fields[0]
 	if got := ir.TableFieldId(f); got != ir.FieldId("velocity") {
 		t.Errorf("was alias not honored: id %#04x, want hash of the old name %#04x", got, ir.FieldId("velocity"))
@@ -830,7 +830,7 @@ func TestTablesInvisibleToPacketIR(t *testing.T) {
 // closure, and the mode propagates UP through by-value nesting only
 // (docs/SPEC-TABLES.md §2).
 func TestTableModeDerivation(t *testing.T) {
-	u := buildUnit(t, `package t
+	u := buildUnit(t, `package tx
 
 type Plain
 {
@@ -897,7 +897,7 @@ fixed table StaysFixed
 // point of the freedom tables were given — the by-value cycle refusal must
 // exempt it (docs/SPEC-TABLES.md §2).
 func TestPointerRecursionIsLegal(t *testing.T) {
-	u := buildUnit(t, "package t\ntable Node\n{\n    v    int32\n    next *Node\n}\n")
+	u := buildUnit(t, "package tx\ntable Node\n{\n    v    int32\n    next *Node\n}\n")
 	f := u.Tables["Node"].Fields[1]
 	if !f.Type.Pointer {
 		t.Fatal("the *Node field did not resolve as a pointer")
@@ -913,7 +913,7 @@ func TestPointerRecursionIsLegal(t *testing.T) {
 // name stays available — a member function would otherwise hide the type name
 // it shares and the header would not compile.
 func TestCanonicalRootTableNameIsLegal(t *testing.T) {
-	u := buildUnit(t, "package t\ntable Node\n{\n    v    int32\n    next *Node\n}\n\ntable Root\n{\n    head *Node\n}\n")
+	u := buildUnit(t, "package tx\ntable Node\n{\n    v    int32\n    next *Node\n}\n\ntable Root\n{\n    head *Node\n}\n")
 	if u.Tables["Root"] == nil {
 		t.Fatal("table Root did not survive checking")
 	}
@@ -929,7 +929,7 @@ func TestCanonicalRootTableNameIsLegal(t *testing.T) {
 // one direction the claim list cannot police itself in: an unclaimed name is
 // invisible unless something asks for it.
 func TestRetiredOpenWalkIsFree(t *testing.T) {
-	u := buildUnit(t, "package t\ntable Node { x int32 }\ntype NodeOpenWalk { y int32 }\n")
+	u := buildUnit(t, "package tx\ntable Node { x int32 }\ntype NodeOpenWalk { y int32 }\n")
 	if u.Structs["NodeOpenWalk"] == nil {
 		t.Fatal("type NodeOpenWalk did not survive checking: the retired claim is still being made")
 	}
@@ -940,9 +940,9 @@ func TestRetiredOpenWalkIsFree(t *testing.T) {
 // storage cap, not a wire ceiling (docs/SPEC-TABLES.md §2.2, §3).
 func TestTableWideExtents(t *testing.T) {
 	cases := map[string]string{
-		"a string past 65535":       "package t\ntable Tab { s string(70000) }\n",
-		"bytes past 65535":          "package t\ntable Tab { b bytes(100000) }\n",
-		"an array count past 65535": "package t\ntable Tab { xs [..70000]int32 }\n",
+		"a string past 65535":       "package tx\ntable Tab { s string(70000) }\n",
+		"bytes past 65535":          "package tx\ntable Tab { b bytes(100000) }\n",
+		"an array count past 65535": "package tx\ntable Tab { xs [..70000]int32 }\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -980,8 +980,8 @@ func TestTableVariantIds(t *testing.T) {
 func TestTableFileDag(t *testing.T) {
 	t.Run("a two-file cycle is refused, naming the closing declaration", func(t *testing.T) {
 		errs := runUnit(t, map[string]string{
-			"A.schema": "package p\ntable AlphaHolder { b Beta }\ntable Alpha { v int32 }\n",
-			"B.schema": "package p\ntable Beta { a Alpha }\n",
+			"A.schema": "package px\ntable AlphaHolder { b Beta }\ntable Alpha { v int32 }\n",
+			"B.schema": "package px\ntable Beta { a Alpha }\n",
 		})
 		if len(errs) == 0 {
 			t.Fatal("a cross-file table reference cycle was accepted")
@@ -997,8 +997,8 @@ func TestTableFileDag(t *testing.T) {
 
 	t.Run("a cycle closed through a union arm is refused", func(t *testing.T) {
 		errs := runUnit(t, map[string]string{
-			"A.schema": "package p\ntable Holder { b Beta }\ntype Leaf { v int32 }\n",
-			"B.schema": "package p\nunion Pick\n{\n    leaf Leaf\n}\ntable Beta { p Pick }\n",
+			"A.schema": "package px\ntable Holder { b Beta }\ntype Leaf { v int32 }\n",
+			"B.schema": "package px\nunion Pick\n{\n    leaf Leaf\n}\ntable Beta { p Pick }\n",
 		})
 		if len(errs) == 0 {
 			t.Fatal("a cycle closed through a union arm was accepted")
@@ -1015,8 +1015,8 @@ func TestTableFileDag(t *testing.T) {
 	// cross-file graph and same-file pointer recursion both stay legal
 	t.Run("an acyclic cross-file graph is legal", func(t *testing.T) {
 		if errs := runUnit(t, map[string]string{
-			"A.schema": "package p\ntable Holder { b Beta }\n",
-			"B.schema": "package p\ntable Beta { v int32 }\n",
+			"A.schema": "package px\ntable Holder { b Beta }\n",
+			"B.schema": "package px\ntable Beta { v int32 }\n",
 		}); len(errs) > 0 {
 			t.Fatalf("an acyclic cross-file table graph must be legal: %v", errs)
 		}
@@ -1024,7 +1024,7 @@ func TestTableFileDag(t *testing.T) {
 
 	t.Run("same-file recursion through a pointer stays legal", func(t *testing.T) {
 		if errs := runUnit(t, map[string]string{
-			"A.schema": "package p\ntable Node { v int32\n  next *Node }\n",
+			"A.schema": "package px\ntable Node { v int32\n  next *Node }\n",
 		}); len(errs) > 0 {
 			t.Fatalf("same-file pointer recursion must stay legal: %v", errs)
 		}
@@ -1032,8 +1032,8 @@ func TestTableFileDag(t *testing.T) {
 
 	t.Run("a table-free unit is not graphed at all", func(t *testing.T) {
 		if errs := runUnit(t, map[string]string{
-			"A.schema": "package p\ntype Holder { b Beta }\n",
-			"B.schema": "package p\ntype Beta { v int32 }\n",
+			"A.schema": "package px\ntype Holder { b Beta }\n",
+			"B.schema": "package px\ntype Beta { v int32 }\n",
 		}); len(errs) > 0 {
 			t.Fatalf("a table-free unit must not be graphed: %v", errs)
 		}
@@ -1168,7 +1168,7 @@ fixed table Msg { body Body }
 // TestTableArmModeRunsThroughArms is §2.2's rule for §2.6: a union of FIXED
 // table arms leaves its holder fixed, and one VARIABLE arm makes it variable.
 func TestTableArmModeRunsThroughArms(t *testing.T) {
-	fixed := buildUnit(t, `package t
+	fixed := buildUnit(t, `package tx
 fixed table Open { path string(16) }
 union Body
 {
@@ -1179,7 +1179,7 @@ fixed table Msg { body Body }
 	if v := ir.VariableTables(fixed); v["Msg"] {
 		t.Fatalf("a union of fixed table arms made its holder variable: %v", v)
 	}
-	variable := buildUnit(t, `package t
+	variable := buildUnit(t, `package tx
 table Chunk { next *Chunk }
 fixed table Open { path string(16) }
 union Body
@@ -1201,7 +1201,7 @@ table Msg { body Body }
 // fixed-point family under one kind per storage width and signedness, the raw
 // scaled integer riding at the storage width.
 func TestEveryScalarRidesInATable(t *testing.T) {
-	u := buildUnit(t, "package t\n"+
+	u := buildUnit(t, "package tx\n"+
 		"type Inner\n{\n    q fixed(2, 30) = 1.0 | min = -1, max = 1\n}\n"+
 		"table Tab\n{\n"+
 		"    a fixed(4, 4)      | min = -8, max = 7\n"+
@@ -1250,7 +1250,7 @@ func TestEveryScalarRidesInATable(t *testing.T) {
 // are pointer slots per element, they make their holder variable-length, and
 // their element rides under kind 17.
 func TestPointerArraysAreLegal(t *testing.T) {
-	u := buildUnit(t, `package t
+	u := buildUnit(t, `package tx
 fixed table Node { x int32 }
 table Tab
 {
@@ -1284,7 +1284,7 @@ table Tab
 // the array exactly as through a field, and the enum-keyed spelling `[E]U`
 // stays a named follow-on.
 func TestUnionArraysAreLegal(t *testing.T) {
-	u := buildUnit(t, `package t
+	u := buildUnit(t, `package tx
 type P { x int32 }
 fixed table Node { y int32 }
 union U
@@ -1353,91 +1353,91 @@ func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 		{
 			name:  "a field name that takes the reserved node-table id",
 			plant: map[string]uint64{"head": reserved},
-			src:   "package t\ntable Tab { head int32 }\n",
+			src:   "package tx\ntable Tab { head int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a `was` alias that takes the reserved node-table id",
 			plant: map[string]uint64{"old_head": reserved},
-			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
+			src:   "package tx\ntable Tab { head int32 | was = \"old_head\" }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a table name that takes the reserved node-table id",
 			plant: map[string]uint64{"Tab": reserved},
-			src:   "package t\ntable Tab { x int32 }\n",
+			src:   "package tx\ntable Tab { x int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a table's `was` alias that takes the reserved node-table id",
 			plant: map[string]uint64{"old_tab": reserved},
-			src:   "package t\ntable Tab | was = \"old_tab\"\n{\n    x int32\n}\n",
+			src:   "package tx\ntable Tab | was = \"old_tab\"\n{\n    x int32\n}\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a field name that takes the reserved build-version id",
 			plant: map[string]uint64{"head": reservedBuildVersion},
-			src:   "package t\ntable Tab { head int32 }\n",
+			src:   "package tx\ntable Tab { head int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a `was` alias that takes the reserved build-version id",
 			plant: map[string]uint64{"old_head": reservedBuildVersion},
-			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
+			src:   "package tx\ntable Tab { head int32 | was = \"old_head\" }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a table name that takes the reserved build-version id",
 			plant: map[string]uint64{"Tab": reservedBuildVersion},
-			src:   "package t\ntable Tab { x int32 }\n",
+			src:   "package tx\ntable Tab { x int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a field name that takes the reserved vocabulary id",
 			plant: map[string]uint64{"head": reservedVocabulary},
-			src:   "package t\ntable Tab { head int32 }\n",
+			src:   "package tx\ntable Tab { head int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a `was` alias that takes the reserved vocabulary id",
 			plant: map[string]uint64{"old_head": reservedVocabulary},
-			src:   "package t\ntable Tab { head int32 | was = \"old_head\" }\n",
+			src:   "package tx\ntable Tab { head int32 | was = \"old_head\" }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "a table name that takes the reserved vocabulary id",
 			plant: map[string]uint64{"Tab": reservedVocabulary},
-			src:   "package t\ntable Tab { x int32 }\n",
+			src:   "package tx\ntable Tab { x int32 }\n",
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
 			name:  "two tables of one closure colliding on the type id",
 			plant: map[string]uint64{"Tab": 0x0123456789abcdef, "Other": 0x0123456789abcdef},
-			src:   "package t\ntable Tab { x int32 }\ntable Other { y int32 }\n",
+			src:   "package tx\ntable Tab { x int32 }\ntable Other { y int32 }\n",
 			want:  "collide on table-wire type id",
 		},
 		{
 			name:  "two fields of one table colliding on the wire id",
 			plant: map[string]uint64{"a": 0x0123456789abcdef, "b": 0x0123456789abcdef},
-			src:   "package t\ntable Tab {\n    a int32\n    b int32\n}\n",
+			src:   "package tx\ntable Tab {\n    a int32\n    b int32\n}\n",
 			want:  "collide on table-wire id",
 		},
 		{
 			name:  "two enum variants colliding on the wire id",
 			plant: map[string]uint64{"A": 0x0123456789abcdef, "B": 0x0123456789abcdef},
-			src:   "package t\nenum E { A, B }\ntable Tab { e E }\n",
+			src:   "package tx\nenum E { A, B }\ntable Tab { e E }\n",
 			want:  "collide on table-wire id",
 		},
 		{
 			name:  "two union arms colliding on the wire id",
 			plant: map[string]uint64{"one": 0x0123456789abcdef, "two": 0x0123456789abcdef},
-			src:   "package t\nunion U {\n    one int32\n    two float32\n}\ntable Tab { u U }\n",
+			src:   "package tx\nunion U {\n    one int32\n    two float32\n}\ntable Tab { u U }\n",
 			want:  "collide on table-wire id",
 		},
 		{
 			name:  "an enum a closure reaches only as an array KEY",
 			plant: map[string]uint64{"A": 0x0123456789abcdef, "B": 0x0123456789abcdef},
-			src:   "package t\nenum E { A, B }\ntable Tab { s [E]int32 }\n",
+			src:   "package tx\nenum E { A, B }\ntable Tab { s [E]int32 }\n",
 			want:  "collide on table-wire id",
 		},
 	}
@@ -1477,7 +1477,7 @@ func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 // one: it is the element's range, and the checker judges it on the bounded
 // array's own terms.
 func TestListQualificationBoundsTheElement(t *testing.T) {
-	u := buildUnit(t, "package t\ntable Tab { xs []int32 | min = 0, max = 4 }\n")
+	u := buildUnit(t, "package tx\ntable Tab { xs []int32 | min = 0, max = 4 }\n")
 	f := u.Tables["Tab"].Fields[0]
 	if !f.IsList() {
 		t.Fatalf("xs is not an unbounded array: %+v", f.Array)
@@ -1501,16 +1501,16 @@ func TestWStringIsRefusedByName(t *testing.T) {
 		src  string
 		fix  string
 	}{
-		{name: "a type field", src: "package t\ntype T { w wstring(8) }\n", fix: "declare string(N)"},
-		{name: "a table field", src: "package t\ntable Root { w wstring(8) }\n", fix: "declare string(N)"},
-		{name: "a union arm", src: "package t\nunion U\n{\n    w wstring(8)\n}\ntable Root { u U }\n", fix: "declare string(N)"},
-		{name: "a fixed array element", src: "package t\ntype T { w [4]wstring(8) }\n", fix: "declare string(N)"},
-		{name: "an unbounded list element", src: "package t\ntable Root { w []wstring(8) }\n", fix: "declare string(N)"},
-		{name: "a map value", src: "package t\ntable Root { m map[uint32]wstring(8) }\n", fix: "declare string(N)"},
-		{name: "a map key", src: "package t\ntable Root { m map[wstring(8)]uint32 }\n", fix: "declare string(N)"},
-		{name: "an optional", src: "package t\ntable Root { w ?wstring(8) }\n", fix: "declare string(N)"},
-		{name: "the blob spelling", src: "package t\ntable Root { w *wstring }\n", fix: "declare *string"},
-		{name: "the bare word", src: "package t\ntable Root { w wstring }\n", fix: "declare string(N)"},
+		{name: "a type field", src: "package tx\ntype T { w wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a table field", src: "package tx\ntable Root { w wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a union arm", src: "package tx\nunion U\n{\n    w wstring(8)\n}\ntable Root { u U }\n", fix: "declare string(N)"},
+		{name: "a fixed array element", src: "package tx\ntype T { w [4]wstring(8) }\n", fix: "declare string(N)"},
+		{name: "an unbounded list element", src: "package tx\ntable Root { w []wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a map value", src: "package tx\ntable Root { m map[uint32]wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a map key", src: "package tx\ntable Root { m map[wstring(8)]uint32 }\n", fix: "declare string(N)"},
+		{name: "an optional", src: "package tx\ntable Root { w ?wstring(8) }\n", fix: "declare string(N)"},
+		{name: "the blob spelling", src: "package tx\ntable Root { w *wstring }\n", fix: "declare *string"},
+		{name: "the bare word", src: "package tx\ntable Root { w wstring }\n", fix: "declare string(N)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1525,7 +1525,7 @@ func TestWStringIsRefusedByName(t *testing.T) {
 		})
 	}
 	// `wstring` stays a reserved word: it names no declaration either.
-	errs := runUnit(t, map[string]string{"T.schema": "package t\ntype wstring { x int32 }\n"})
+	errs := runUnit(t, map[string]string{"T.schema": "package tx\ntype wstring { x int32 }\n"})
 	if len(errs) == 0 {
 		t.Fatal("wstring was accepted as a declaration name")
 	}
@@ -1546,7 +1546,7 @@ func TestWStringIsRefusedByName(t *testing.T) {
 // table wire reports it — which is what leaves `flags` as the only vocabulary
 // the connect gate still has to hold.
 func TestPositionalKeyedArrayIsTheTableBodysRefusalAlone(t *testing.T) {
-	const inType = `package t
+	const inType = `package tx
 
 enum ShipType { Fighter, Bomber }
 
@@ -1711,22 +1711,22 @@ func TestEmptyEnumKeyedArrayRefused(t *testing.T) {
 	}{
 		{
 			name: "variable table keyed by empty enum",
-			src:  "package p\nenum E {}\ntable T { x [E]int32 }\n",
+			src:  "package px\nenum E {}\ntable T { x [E]int32 }\n",
 			want: "field x: [E] keys an array by an empty enum",
 		},
 		{
 			name: "fixed table keyed by empty enum",
-			src:  "package p\nenum E {}\nfixed table T { x [E]int32 }\n",
+			src:  "package px\nenum E {}\nfixed table T { x [E]int32 }\n",
 			want: "field x: [E] keys an array by an empty enum",
 		},
 		{
 			name: "type body keyed by empty enum",
-			src:  "package p\nenum E {}\ntype S { x [E]int32 }\n",
+			src:  "package px\nenum E {}\ntype S { x [E]int32 }\n",
 			want: "field x: [E] keys an array by an empty enum",
 		},
 		{
 			name: "scalar and positional array of empty enum stay valid",
-			src:  "package p\nenum E {}\ntable T { e E\n es [4]E\n el []E }\n",
+			src:  "package px\nenum E {}\ntable T { e E\n es [4]E\n el []E }\n",
 			want: "",
 		},
 	} {

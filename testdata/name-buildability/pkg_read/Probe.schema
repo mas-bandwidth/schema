@@ -1,0 +1,6 @@
+package read
+
+type Inner
+{
+    a uint8
+}

@@ -38,6 +38,10 @@ type SourceFile struct {
 }
 
 type checker struct {
+	// noEmitterRules skips the registered emitter name rules
+	// (UnitWithoutEmitterRules).
+	noEmitterRules bool
+
 	files []SourceFile
 	unit  *ir.Unit
 	errs  []error
@@ -128,19 +132,32 @@ func oneHeaderPath(v string) bool {
 // arrive in any order; the unit is processed in sorted-basename order, so
 // everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
+	return unit(files, false)
+}
+
+// UnitWithoutEmitterRules is Unit without the registered emitter name rules
+// (SPEC §4.6): for the tests that prove an emitter refuses a name itself at
+// generate, which a unit built in memory meets, and for the compiler's
+// control units.
+func UnitWithoutEmitterRules(files []SourceFile) (*ir.Unit, []error) {
+	return unit(files, true)
+}
+
+func unit(files []SourceFile, noEmitterRules bool) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:         files,
-		astDecls:      map[string]ast.Decl{},
-		declFile:      map[string]string{},
-		constant:      map[string]*constEntry{},
-		enums:         map[string]*ir.Enum{},
-		flagsD:        map[string]*ir.Flags{},
-		structs:       map[string]*ir.Struct{},
-		unions:        map[string]*ir.Union{},
-		tables:        map[string]*ir.Struct{},
-		mapEntriesFor: map[string][]*ir.Struct{},
+		noEmitterRules: noEmitterRules,
+		files:          files,
+		astDecls:       map[string]ast.Decl{},
+		declFile:       map[string]string{},
+		constant:       map[string]*constEntry{},
+		enums:          map[string]*ir.Enum{},
+		flagsD:         map[string]*ir.Flags{},
+		structs:        map[string]*ir.Struct{},
+		unions:         map[string]*ir.Union{},
+		tables:         map[string]*ir.Struct{},
+		mapEntriesFor:  map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},

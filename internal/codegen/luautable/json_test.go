@@ -367,7 +367,7 @@ print(buffer.tostring(json.ToJson("Box", back)))
 // ToJson, and again through Save and Load.
 func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 	t.Parallel()
-	const schema = "package p\nenum E { A, B }\ntable Box\n{\n\tm map[string]E\n\tl []E\n\tb []bool\n\tz map[string]*bytes\n}\n"
+	const schema = "package px\nenum E { A, B }\ntable Box\n{\n\tm map[string]E\n\tl []E\n\tb []bool\n\tz map[string]*bytes\n}\n"
 	g := generateFiles(t, map[string]string{"Carton.schema": schema})
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonElemProbe), 0o644); err != nil {
 		t.Fatal(err)

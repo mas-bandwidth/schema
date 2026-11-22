@@ -1,0 +1,6 @@
+package descriptor
+
+table Rec
+{
+    value uint32
+}

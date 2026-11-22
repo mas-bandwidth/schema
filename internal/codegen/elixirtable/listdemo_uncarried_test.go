@@ -60,7 +60,7 @@ func TestListdemoNamesUncarriedRoots(t *testing.T) {
 		t.Error("Table.ex does not export carried?/1")
 	}
 
-	only := listdemoFrom(t, `package p
+	only := listdemoFrom(t, `package px
 
 fixed table Item
 {

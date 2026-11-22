@@ -19,33 +19,33 @@ func TestWasRowRefusals(t *testing.T) {
 		src  string
 	}{
 		{name: "a variant's was naming its own name", want: "names the variant's own current name",
-			src: "package t\nenum E\n{\n    A | was = \"A\"\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | was = \"A\"\n}\ntable Tab { e E }\n"},
 		{name: "a variant's was with an empty string", want: "names nothing",
-			src: "package t\nenum E\n{\n    A | was = \"\"\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | was = \"\"\n}\ntable Tab { e E }\n"},
 		{name: "a variant's was takes a quoted string", want: "was takes the variant's old name as a quoted string",
-			src: "package t\nenum E\n{\n    A | was = B\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | was = B\n}\ntable Tab { e E }\n"},
 		{name: "a variant's was written bare", want: "attribute was requires a value",
-			src: "package t\nenum E\n{\n    A | was\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | was\n}\ntable Tab { e E }\n"},
 		{name: "a variant takes no other valued key", want: "is not an attribute a variant takes",
-			src: "package t\nenum E\n{\n    A | max = 3\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | max = 3\n}\ntable Tab { e E }\n"},
 		{name: "a variant's was colliding with a live variant", want: "collide on table-wire id",
-			src: "package t\nenum E\n{\n    A,\n    B | was = \"A\"\n}\ntable Tab { e E }\n"},
+			src: "package tx\nenum E\n{\n    A,\n    B | was = \"A\"\n}\ntable Tab { e E }\n"},
 		{name: "a variant's was outside a table closure", want: "no table reaches E",
-			src: "package t\nenum E\n{\n    A | was = \"Z\"\n}\ntype P { e E }\n"},
+			src: "package tx\nenum E\n{\n    A | was = \"Z\"\n}\ntype P { e E }\n"},
 		{name: "a flags variant takes no was", want: "takes no was",
-			src: "package t\nflags F\n{\n    A | was = \"Z\"\n}\ntable Tab { f F }\n"},
+			src: "package tx\nflags F\n{\n    A | was = \"Z\"\n}\ntable Tab { f F }\n"},
 		{name: "an arm's was naming its own name", want: "names the field's own current name",
-			src: "package t\ntype A { x int32 }\nunion U\n{\n    a A | was = \"a\"\n}\ntable Tab { u U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U\n{\n    a A | was = \"a\"\n}\ntable Tab { u U }\n"},
 		{name: "a payload-free arm's was naming its own name", want: "names the variant's own current name",
-			src: "package t\nunion U\n{\n    a | was = \"a\"\n}\ntable Tab { u U }\n"},
+			src: "package tx\nunion U\n{\n    a | was = \"a\"\n}\ntable Tab { u U }\n"},
 		{name: "an arm's was colliding with a live arm", want: "collide on table-wire id",
-			src: "package t\ntype A { x int32 }\nunion U\n{\n    a A\n    b A | was = \"a\"\n}\ntable Tab { u U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U\n{\n    a A\n    b A | was = \"a\"\n}\ntable Tab { u U }\n"},
 		{name: "an arm's was outside a table closure", want: "no table reaches U",
-			src: "package t\ntype A { x int32 }\nunion U\n{\n    a A | was = \"z\"\n}\ntype P { u U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U\n{\n    a A | was = \"z\"\n}\ntype P { u U }\n"},
 		{name: "a type field's was outside a table closure", want: "no table reaches P",
-			src: "package t\ntype P { speed float32 | was = \"velocity\" }\n"},
+			src: "package tx\ntype P { speed float32 | was = \"velocity\" }\n"},
 		{name: "a type field's was colliding inside the type", want: "collide on table-wire id",
-			src: "package t\ntype P\n{\n    a int32\n    b int32 | was = \"a\"\n}\ntable Tab { p P }\n"},
+			src: "package tx\ntype P\n{\n    a int32\n    b int32 | was = \"a\"\n}\ntable Tab { p P }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestWasRowRefusals(t *testing.T) {
 	}
 }
 
-const wasRowsRenamedSrc = `package t
+const wasRowsRenamedSrc = `package tx
 
 enum Grade
 {

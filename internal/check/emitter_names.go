@@ -35,7 +35,7 @@ func RegisterEmitterNameRule(target string, rule func(*ir.Unit) error) {
 
 // checkEmitterNames refuses a unit some target's emitter refuses by name.
 func (c *checker) checkEmitterNames() {
-	if len(c.files) == 0 {
+	if len(c.files) == 0 || c.noEmitterRules {
 		return
 	}
 	emitterNameRulesMu.Lock()

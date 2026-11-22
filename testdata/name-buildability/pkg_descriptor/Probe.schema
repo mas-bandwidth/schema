@@ -1,0 +1,6 @@
+package descriptor
+
+type Inner
+{
+    a uint8
+}

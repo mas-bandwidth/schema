@@ -13,7 +13,7 @@ import (
 // Flags occupy kind 9, including inside arrays. A name on the declaration
 // cannot change a kind-pair rule the bytes alone settle (SPEC-TABLES §4).
 func TestFlagsElementWidening(t *testing.T) {
-	source := `package p
+	source := `package px
  enum Key { First, Second }
  table Root { arrays [2]uint8
  list []uint8

@@ -164,7 +164,7 @@ print(hex(out :: buffer))
 // Luau save must renumber every one of them in the order the bytes are
 // written, as Go's EncodeRetain does (the arm's id before the arm's new one), and must never copy an enum reference
 // by its old index.
-const retainOrderOld = `package order
+const retainOrderOld = `package orderx
 enum Mode { Low, High }
 table Child { n int32 }
 table Box { n int32 }
@@ -175,7 +175,7 @@ table Root { child Child
  pick Pick }
 `
 
-const retainOrderNew = `package order
+const retainOrderNew = `package orderx
 enum Mode { Low, High }
 table Child { n int32
  later int32 }

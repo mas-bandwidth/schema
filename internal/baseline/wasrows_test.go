@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 )
 
-const wasRowsBaseSrc = `package rows
+const wasRowsBaseSrc = `package rowsx
 
 enum Grade { Bronze, Silver, Gold }
 

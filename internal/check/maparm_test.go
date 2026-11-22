@@ -13,7 +13,7 @@ func TestMapAsUnionArmIsRefusedByName(t *testing.T) {
 	t.Parallel()
 	const want = "a map is not an arm"
 	errs := runUnit(t, map[string]string{
-		"Bad.schema": "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n",
+		"Bad.schema": "package tx\nunion U { m map[uint8]int32 }\ntable Root { u U }\n",
 	})
 	var got string
 	for _, e := range errs {
@@ -32,7 +32,7 @@ func TestMapAsUnionArmIsRefusedByName(t *testing.T) {
 	}
 
 	// the repair: an arm names a table that holds the map
-	good := "package t\ntable Holder { m map[uint8]int32 }\nunion U { m Holder }\ntable Root { u U }\n"
+	good := "package tx\ntable Holder { m map[uint8]int32 }\nunion U { m Holder }\ntable Root { u U }\n"
 	if errs := runUnit(t, map[string]string{"Good.schema": good}); len(errs) > 0 {
 		t.Fatalf("a table arm holding the map was refused: %v", errs)
 	}

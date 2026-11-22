@@ -18,7 +18,7 @@ import (
 // over the GoalList schema of TestStringArraysRefusedOffGo.
 func TestLuauJsonArrayRoot(t *testing.T) {
 	t.Parallel()
-	const schemaSrc = `package p
+	const schemaSrc = `package px
 
 table Goal
 {

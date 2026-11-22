@@ -54,7 +54,7 @@ func TestLuauTableLoadKeyedMapAndClampRules(t *testing.T) {
 	}
 	report := "string.format(\"%d,%d,%d,%d,%d,%s\", report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed))"
 
-	const keyedSchema = "package p\nenum K { A, B, C }\ntable Box\n{\n\tarr [K]int32\n}\n"
+	const keyedSchema = "package px\nenum K { A, B, C }\ntable Box\n{\n\tarr [K]int32\n}\n"
 
 	t.Run("keyed-unnamed", func(t *testing.T) {
 		t.Parallel()
@@ -114,7 +114,7 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 
 	t.Run("map-kind-mismatch", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Carton.schema": "package p\ntable Box\n{\n\tm map[uint8]uint8\n}\n"})
+		g := generateFiles(t, map[string]string{"Carton.schema": "package px\ntable Box\n{\n\tm map[uint8]uint8\n}\n"})
 		field := ir.TableWireId("m")
 		keyID, valueID := ir.TableWireId("key"), ir.TableWireId("value")
 		entry1 := leb(2)
@@ -154,7 +154,7 @@ print(#v.M .. "|" .. %s)`, report)
 
 	t.Run("clamp-utf8", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Carton.schema": "package p\ntable Box\n{\n\ts string(4)\n}\n"})
+		g := generateFiles(t, map[string]string{"Carton.schema": "package px\ntable Box\n{\n\ts string(4)\n}\n"})
 		field := ir.TableWireId("s")
 		payload := leb(5)
 		payload = append(payload, 'a', 'b', 0xE2, 0x82, 0xAC)

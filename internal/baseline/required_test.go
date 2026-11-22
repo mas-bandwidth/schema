@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-const requiredRowsSrc = `package rows
+const requiredRowsSrc = `package rowsx
 
 table Ship
 {
@@ -61,7 +61,7 @@ func TestRequiredIsJudgedByTheTablesBaseline(t *testing.T) {
 	t.Run("moves neither the protocol id nor the build version", func(t *testing.T) {
 		// §2.3: the protocol id hashes the `type` wire and the build version
 		// the cook projection; the marker changes neither
-		const src = "package rows\ntype P\n{\n    x int32\n}\n" + "table Ship\n{\n    name string(32)\n    score int32 | required\n}\n"
+		const src = "package rowsx\ntype P\n{\n    x int32\n}\n" + "table Ship\n{\n    name string(32)\n    score int32 | required\n}\n"
 		with := unit(t, src)
 		without := unit(t, editOf(t, src, "score int32 | required", "score int32"))
 		if with.ProtocolId != without.ProtocolId {

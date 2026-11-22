@@ -11,7 +11,7 @@ import (
 func TestRequiredFieldNeedsNoDefault(t *testing.T) {
 	t.Parallel()
 	t.Run("required spelling checks clean", func(t *testing.T) {
-		checkUnit(t, `package t
+		checkUnit(t, `package tx
 table Exact
 {
     ver uint8 | min = 7, max = 7, required
@@ -19,7 +19,7 @@ table Exact
 `)
 	})
 	t.Run("unrequired spelling keeps the diagnostic", func(t *testing.T) {
-		errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Exact\n{\n    ver uint8 | min = 7, max = 7\n}\n"})
+		errs := runUnit(t, map[string]string{"T.schema": "package tx\ntable Exact\n{\n    ver uint8 | min = 7, max = 7\n}\n"})
 		if len(errs) == 0 {
 			t.Fatal("compiled clean — non-required exact range did not demand a default")
 		}

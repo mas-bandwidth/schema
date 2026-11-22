@@ -17,7 +17,7 @@ import (
 // that framing damage prevents resolving the pointer, so no pointee kind
 // mismatch is erroneously counted.
 func TestIssue751PointerArmTrailingFraming(t *testing.T) {
-	src := `package p
+	src := `package px
 table Chunk {
     data bytes(8)
     next *Chunk

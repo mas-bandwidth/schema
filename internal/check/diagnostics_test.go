@@ -53,32 +53,32 @@ func TestDiagnostics(t *testing.T) {
 	}{
 		// ---- literals every leg reads alike (SPEC §4.1) ----
 		{name: "decimal size with a leading zero", want: "leading zero",
-			src: "package t\ntype P { name string(010) }\n"},
+			src: "package tx\ntype P { name string(010) }\n"},
 		{name: "decimal default with a leading zero", want: "leading zero",
-			src: "package t\ntable T { v int32 = 07 }\n"},
+			src: "package tx\ntable T { v int32 = 07 }\n"},
 		// ---- cycles: infinite size, infinite folding ----
 		{name: "type cycle, mutual", want: "type composition cycle",
-			src: "package t\ntype A { b B }\ntype B { a A }\n"},
+			src: "package tx\ntype A { b B }\ntype B { a A }\n"},
 		{name: "type cycle, self", want: "type composition cycle",
-			src: "package t\ntype A { again A }\n"},
+			src: "package tx\ntype A { again A }\n"},
 		{name: "type cycle, through a fixed array", want: "type composition cycle",
-			src: "package t\ntype A { b [4]B }\ntype B { a A }\n"},
+			src: "package tx\ntype A { b [4]B }\ntype B { a A }\n"},
 		{name: "const cycle", want: "reference cycle",
-			src: "package t\nconst A = B + 1\nconst B = A + 1\n"},
+			src: "package tx\nconst A = B + 1\nconst B = A + 1\n"},
 		{name: "const cycle, three-way (the stack-overflow repro)", want: "reference cycle",
-			src: "package t\nconst A = B + C\nconst B = C\nconst C = B\n"},
+			src: "package tx\nconst A = B + C\nconst B = C\nconst C = B\n"},
 
 		// ---- back-references: forward, sideways, wrong type ----
 		{name: "back-reference that goes forward", want: "dominance",
-			src: "package t\ntype T {\n    if flag { x uint8 }\n    flag bool\n}\n"},
+			src: "package tx\ntype T {\n    if flag { x uint8 }\n    flag bool\n}\n"},
 		{name: "back-reference into a sibling branch", want: "dominance",
-			src: "package t\ntype T {\n    a bool\n    if a { inner bool }\n    if inner { x uint8 }\n}\n"},
+			src: "package tx\ntype T {\n    a bool\n    if a { inner bool }\n    if inner { x uint8 }\n}\n"},
 		{name: "back-reference to an undeclared field", want: "dominance",
-			src: "package t\ntype T {\n    if ghost { x uint8 }\n}\n"},
+			src: "package tx\ntype T {\n    if ghost { x uint8 }\n}\n"},
 		{name: "if condition is not a bool", want: "must be a bool",
-			src: "package t\ntype T {\n    n uint8\n    if n { x uint8 }\n}\n"},
+			src: "package tx\ntype T {\n    n uint8\n    if n { x uint8 }\n}\n"},
 		{name: "if condition is a bool array", want: "must be a bool",
-			src: "package t\ntype T {\n    flags [4]bool\n    if flags { x uint8 }\n}\n"},
+			src: "package tx\ntype T {\n    flags [4]bool\n    if flags { x uint8 }\n}\n"},
 
 		// ---- a guard nested under its own negation (schema#268) ----
 		// Nested guards CONJOIN, so `if on { if !on { ... } }` emits
@@ -88,39 +88,39 @@ func TestDiagnostics(t *testing.T) {
 		// under the inner guard ever rides, in any target, so the answer is
 		// owed at the source rather than by one backend's warning.
 		{name: "a guard nested under its own negation", want: "can never ride",
-			src: "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
 		{name: "a guard nested under its own negation, in a table", want: "can never ride",
-			src: "package t\ntable T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntable T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
 		{name: "a guard nested under the else of its own condition", want: "can never ride",
-			src: "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n"},
 		{name: "an else side that contradicts its enclosing guard", want: "can never ride",
-			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 } else { y int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if on {\n        if on { x int32 } else { y int32 }\n    }\n}\n"},
 		{name: "a self-negating guard two blocks down", want: "can never ride",
-			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other {\n            if !on { x int32 }\n        }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    other bool\n    if on {\n        if other {\n            if !on { x int32 }\n        }\n    }\n}\n"},
 		{name: "a negated guard taken the other way under itself", want: "can never ride",
-			src: "package t\ntype T {\n    on bool\n    if !on {\n        if on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if !on {\n        if on { x int32 }\n    }\n}\n"},
 
 		// ---- ranges and storage ----
 		{name: "range does not fit storage", want: "does not fit its declared storage",
-			src: "package t\ntype T { h int8 | min = 0, max = 1000 }\n"},
+			src: "package tx\ntype T { h int8 | min = 0, max = 1000 }\n"},
 		{name: "implicit const past int64 (FuzzGeneratedCompiles 0c59b1fd)", want: "does not fit int64, the default constant storage",
-			src: "package t\nconst A = 20000000000000000000\n"},
+			src: "package tx\nconst A = 20000000000000000000\n"},
 		{name: "implicit const past int64, uint64 range (constexpr narrowing repro)", want: "does not fit int64, the default constant storage",
-			src: "package t\nconst A = 18446744073709551615\n"},
+			src: "package tx\nconst A = 18446744073709551615\n"},
 		{name: "implicit const below int64 min", want: "does not fit int64, the default constant storage",
-			src: "package t\nconst A = -9223372036854775809\n"},
+			src: "package tx\nconst A = -9223372036854775809\n"},
 		{name: "min without max", want: "min without max",
-			src: "package t\ntype T { h int16 | min = 0 }\n"},
+			src: "package tx\ntype T { h int16 | min = 0 }\n"},
 		{name: "inverted range", want: "inverted range",
-			src: "package t\ntype T { h int16 | min = 6, max = 5 }\n"},
+			src: "package tx\ntype T { h int16 | min = 6, max = 5 }\n"},
 		{name: "unknown attribute", want: "unknown attribute",
-			src: "package t\ntype T { h int16 | flavor = 3 }\n"},
+			src: "package tx\ntype T { h int16 | flavor = 3 }\n"},
 		{name: "resolution on an integer", want: "resolution applies to float",
-			src: "package t\ntype T { h int16 | min = 0, max = 10, resolution = 1 }\n"},
+			src: "package tx\ntype T { h int16 | min = 0, max = 10, resolution = 1 }\n"},
 		{name: "range on an enum field", want: "derives its range",
-			src: "package t\nenum E { A }\ntype T { e E | min = 0, max = 1 }\n"},
+			src: "package tx\nenum E { A }\ntype T { e E | min = 0, max = 1 }\n"},
 		{name: "float64 compressed in a plain type", want: "compressed float is float32",
-			src: "package t\ntype T { v float64 | min = 0, max = 1, resolution = 0.1 }\n"},
+			src: "package tx\ntype T { v float64 | min = 0, max = 1, resolution = 0.1 }\n"},
 
 		// ---- a range that excludes zero (issue #346) ----
 		// Zero initialization is the language's rule, so a field whose range
@@ -128,217 +128,217 @@ func TestDiagnostics(t *testing.T) {
 		// write side refuses the fresh value and a read-side clamp substitutes
 		// one the author never wrote. The fix is a declared default in range.
 		{name: "a range above zero with no default", want: "excludes zero",
-			src: "package t\ntype T { x uint8 | min = 1, max = 255 }\n"},
+			src: "package tx\ntype T { x uint8 | min = 1, max = 255 }\n"},
 		{name: "a range below zero with no default", want: "excludes zero",
-			src: "package t\ntype T { x int8 | min = -100, max = -1 }\n"},
+			src: "package tx\ntype T { x int8 | min = -100, max = -1 }\n"},
 		{name: "a degenerate range that excludes zero", want: "excludes zero",
-			src: "package t\ntype T { x int32 | min = 7, max = 7 }\n"},
+			src: "package tx\ntype T { x int32 | min = 7, max = 7 }\n"},
 		{name: "a fixed range in whole units that excludes zero", want: "excludes zero",
-			src: "package t\ntype T { x fixed(16, 16) | min = 3, max = 8 }\n"},
+			src: "package tx\ntype T { x fixed(16, 16) | min = 3, max = 8 }\n"},
 		{name: "a ufixed range that excludes zero", want: "excludes zero",
-			src: "package t\ntype T { x ufixed(16, 16) | min = 3, max = 3 }\n"},
+			src: "package tx\ntype T { x ufixed(16, 16) | min = 3, max = 3 }\n"},
 		{name: "an int128 range that excludes zero", want: "excludes zero",
-			src: "package t\ntype T { x int128 | min = 1, max = 1267650600228229401496703205376 }\n"},
+			src: "package tx\ntype T { x int128 | min = 1, max = 1267650600228229401496703205376 }\n"},
 		{name: "a compressed-float range that excludes zero", want: "excludes zero",
-			src: "package t\ntype T { v float32 | min = 1, max = 2, resolution = 0.01 }\n"},
+			src: "package tx\ntype T { v float32 | min = 1, max = 2, resolution = 0.01 }\n"},
 		{name: "a table field's range that excludes zero", want: "excludes zero",
-			src: "package t\ntable T { hp uint8 | min = 1, max = 100 }\n"},
+			src: "package tx\ntable T { hp uint8 | min = 1, max = 100 }\n"},
 		// an ARRAY takes no specified default, so for an array the only fix is
 		// a range that reaches zero — the diagnostic must say so rather than
 		// naming a fix the language refuses
 		{name: "an array of a range that excludes zero", want: "widen the range to reach zero",
-			src: "package t\ntype T { xs [4]uint8 | min = 1, max = 255 }\n"},
+			src: "package tx\ntype T { xs [4]uint8 | min = 1, max = 255 }\n"},
 		// the declared default is itself range-checked, on both range kinds
 		{name: "a float default outside its compressed range", want: "is outside its range",
-			src: "package t\ntype T { v float32 = 5 | min = 1, max = 2, resolution = 0.01 }\n"},
+			src: "package tx\ntype T { v float32 = 5 | min = 1, max = 2, resolution = 0.01 }\n"},
 
 		// ---- widths and bounds ----
 		{name: "bits zero", want: "outside [1, 64]",
-			src: "package t\ntype T { b bits(0) }\n"},
+			src: "package tx\ntype T { b bits(0) }\n"},
 		{name: "bits sixty-five", want: "outside [1, 64]",
-			src: "package t\ntype T { b bits(65) }\n"},
+			src: "package tx\ntype T { b bits(65) }\n"},
 		{name: "const value overflows its width", want: "does not fit",
-			src: "package t\ntype T { const(256, 8) }\n"},
+			src: "package tx\ntype T { const(256, 8) }\n"},
 		{name: "negative wire constant", want: "does not fit",
-			src: "package t\ntype T { const(-1, 8) }\n"},
+			src: "package tx\ntype T { const(-1, 8) }\n"},
 		{name: "string below two", want: "below 2",
-			src: "package t\ntype T { s string(1) }\n"},
+			src: "package tx\ntype T { s string(1) }\n"},
 
 		{name: "a map as a union arm is refused by name", want: "a map is not an arm",
-			src: "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
+			src: "package tx\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
 		{name: "array bound zero", want: "below 1",
-			src: "package t\ntype T { a [0]uint8 }\n"},
+			src: "package tx\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",
-			src: "package t\ntype T { a [5..3]uint8 }\n"},
+			src: "package tx\ntype T { a [5..3]uint8 }\n"},
 		// bounds are capped one at a time (SPEC §4.3) and their PRODUCT is
 		// capped too (SPEC §4.6, docs/SPEC-TABLES.md §11): three nested arrays
 		// of legal bounds are a wire width no arithmetic represents
 		{name: "nested array bounds whose product passes the cap", want: "past the cap of 8796093022208 bits",
-			src: "package t\ntype L { v uint64 }\ntype I { a [2147483647]L }\ntype M { a [2147483647]I }\n"},
+			src: "package tx\ntype L { v uint64 }\ntype I { a [2147483647]L }\ntype M { a [2147483647]I }\n"},
 		// ---- the qualification section (SPEC §4.2) ----
 		{name: "the retired field attribute block names its replacement", want: "qualifiers follow | to the end of the line",
-			src: "package t\ntype T { h int16 " + "[min = 0, max = 5] }\n"},
+			src: "package tx\ntype T { h int16 " + "[min = 0, max = 5] }\n"},
 		{name: "the retired declaration attribute block names its replacement", want: "the body opens on the next line",
-			src: "package t\nenum E " + "[max = 5] { A }\n"},
+			src: "package tx\nenum E " + "[max = 5] { A }\n"},
 		{name: "empty qualification section", want: "empty qualification section",
-			src: "package t\ntype T { h int16 | }\n"},
+			src: "package tx\ntype T { h int16 | }\n"},
 		{name: "a constant's qualification carries tags and nothing else", want: "this line takes no valued key at all",
-			src: "package t\nconst X = 1 | max = 2\n"},
+			src: "package tx\nconst X = 1 | max = 2\n"},
 		{name: "a union declaration's qualification carries tags and nothing else", want: "this line takes no valued key at all",
-			src: "package t\nunion U | max = 4\n{\n    a bool\n}\n"},
+			src: "package tx\nunion U | max = 4\n{\n    a bool\n}\n"},
 		{name: "a payload-free arm takes tags and was and no other valued key", want: "is not an attribute a variant takes",
-			src: "package t\nunion U\n{\n    a | json = \"x\"\n}\n"},
+			src: "package tx\nunion U\n{\n    a | json = \"x\"\n}\n"},
 		{name: "an enum variant takes tags and was and no other valued key", want: "is not an attribute a variant takes",
-			src: "package t\nenum E\n{\n    A | max = 4\n}\n"},
+			src: "package tx\nenum E\n{\n    A | max = 4\n}\n"},
 		{name: "a flags variant takes tags and nothing else", want: "this line takes no valued key at all",
-			src: "package t\nflags F\n{\n    A | max = 4\n}\n"},
+			src: "package tx\nflags F\n{\n    A | max = 4\n}\n"},
 		// ---- the open namespace cannot swallow a typo in the closed one (SPEC §4.2) ----
 		{name: "a bare valued key on a line where it was never legal is refused, not a tag", want: "requires a value",
-			src: "package t\ntype T { s string(8) | min }\n"},
+			src: "package tx\ntype T { s string(8) | min }\n"},
 		{name: "a bare cpp_native is refused, not a tag", want: "requires a value",
-			src: "package t\ntype T { n int32 | cpp_native }\n"},
+			src: "package tx\ntype T { n int32 | cpp_native }\n"},
 		{name: "a bare json on a constant is refused, not a tag", want: "requires a value",
-			src: "package t\nconst X = 1 | json\n"},
+			src: "package tx\nconst X = 1 | json\n"},
 		{name: "a repeated tag is refused", want: "tag ui repeated",
-			src: "package t\ntype T { n int32 | ui, ui }\n"},
+			src: "package tx\ntype T { n int32 | ui, ui }\n"},
 		{name: "a repeated tag on a declaration is refused", want: "tag ui repeated",
-			src: "package t\ntable T | ui, ui\n{\n    n int32\n}\n"},
+			src: "package tx\ntable T | ui, ui\n{\n    n int32\n}\n"},
 		{name: "a tag that repeats a valued key on the line is refused", want: "requires a value",
-			src: "package t\ntype T { n int32 | min = 0, max = 1, min }\n"},
+			src: "package tx\ntype T { n int32 | min = 0, max = 1, min }\n"},
 		{name: "doc is not a tag", want: "doc is not a tag",
-			src: "package t\ntype T { n int32 | doc }\n"},
+			src: "package tx\ntype T { n int32 | doc }\n"},
 		{name: "doc is not an attribute", want: "doc is not an attribute",
-			src: "package t\ntype T { n int32 | doc = \"the count\" }\n"},
+			src: "package tx\ntype T { n int32 | doc = \"the count\" }\n"},
 		{name: "doc is not an attribute on a declaration", want: "doc is not an attribute",
-			src: "package t\nenum E | doc = \"x\"\n{\n    A\n}\n"},
+			src: "package tx\nenum E | doc = \"x\"\n{\n    A\n}\n"},
 		{name: "round is refused bare", want: "round is not part of the language",
-			src: "package t\ntype T { n int32 | round }\n"},
+			src: "package tx\ntype T { n int32 | round }\n"},
 		{name: "a block comment cannot sit right of |", want: "cannot sit right of |",
-			src: "package t\ntype T { h int16 | min = 0, /* c */ max = 5 }\n"},
+			src: "package tx\ntype T { h int16 | min = 0, /* c */ max = 5 }\n"},
 		{name: "the retired <= bound names its replacement", want: "spell it [..N], the range literal",
-			src: "package t\ntype T { a [" + "<= 4]uint8 }\n"}, // spliced so the migration sweep never respells this fixture
+			src: "package tx\ntype T { a [" + "<= 4]uint8 }\n"}, // spliced so the migration sweep never respells this fixture
 		{name: "bound above int32", want: "counts live in int32",
-			src: "package t\ntype T { a [..5000000000]uint8 }\n"},
+			src: "package tx\ntype T { a [..5000000000]uint8 }\n"},
 		{name: "string bound above int32", want: "lengths live in int32",
-			src: "package t\ntype T { s string(5000000000) }\n"},
+			src: "package tx\ntype T { s string(5000000000) }\n"},
 		{name: "division by zero in a constant", want: "division by zero",
-			src: "package t\nconst Z = 0\nconst A = 5 / Z\n"},
+			src: "package tx\nconst Z = 0\nconst A = 5 / Z\n"},
 
 		// ---- fixed point and the 128-bit family (SPEC §4.3, §4.6) ----
 		{name: "fixed I+F is not a storage width", want: "must equal a storage width",
-			src: "package t\ntype T { x fixed(16, 15) | min = 0, max = 1 }\n"},
+			src: "package tx\ntype T { x fixed(16, 15) | min = 0, max = 1 }\n"},
 		{name: "fixed with zero integer bits", want: "at least one integer bit",
-			src: "package t\ntype T { x fixed(0, 32) | min = 0, max = 1 }\n"},
+			src: "package tx\ntype T { x fixed(0, 32) | min = 0, max = 1 }\n"},
 		{name: "fixed with negative fractional bits", want: "cannot be negative",
-			src: "package t\ntype T { x fixed(24, -8) | min = 0, max = 1 }\n"},
+			src: "package tx\ntype T { x fixed(24, -8) | min = 0, max = 1 }\n"},
 		{name: "fixed without bounds", want: "requires | min = A, max = B",
-			src: "package t\ntype T { x fixed(48, 16) }\n"},
+			src: "package tx\ntype T { x fixed(48, 16) }\n"},
 		{name: "fixed bounds outside the Q format", want: "do not fit fixed(8, 8)",
-			src: "package t\ntype T { x fixed(8, 8) | min = -300, max = 300 }\n"},
+			src: "package tx\ntype T { x fixed(8, 8) | min = -300, max = 300 }\n"},
 		{name: "fixed with resolution", want: "resolution applies to float",
-			src: "package t\ntype T { x fixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
+			src: "package tx\ntype T { x fixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
 		// fixed defaults are LEGAL (whole units, exact) — the
 		// good corner below pins the accepted form; what stays
 		// illegal is inexactness and range violation (cases at the bottom).
 		// ---- ufixed(I, F): the unsigned sibling. Same shape rules, unsigned domain, and
 		// the diagnostics name the ufixed spelling. ----
 		{name: "ufixed bounds below zero", want: "do not fit ufixed(16, 16)",
-			src: "package t\ntype T { x ufixed(16, 16) | min = -1, max = 5 }\n"},
+			src: "package tx\ntype T { x ufixed(16, 16) | min = -1, max = 5 }\n"},
 		{name: "ufixed with zero integer bits", want: "at least one integer bit",
-			src: "package t\ntype T { x ufixed(0, 32) | min = 0, max = 1 }\n"},
+			src: "package tx\ntype T { x ufixed(0, 32) | min = 0, max = 1 }\n"},
 		{name: "ufixed I+F is not a storage width", want: "must equal a storage width",
-			src: "package t\ntype T { x ufixed(16, 15) | min = 0, max = 1 }\n"},
+			src: "package tx\ntype T { x ufixed(16, 15) | min = 0, max = 1 }\n"},
 		{name: "ufixed without bounds", want: "ufixed(48, 16) requires | min = A, max = B",
-			src: "package t\ntype T { x ufixed(48, 16) }\n"},
+			src: "package tx\ntype T { x ufixed(48, 16) }\n"},
 		{name: "ufixed bounds above the unsigned domain", want: "do not fit ufixed(8, 8)",
-			src: "package t\ntype T { x ufixed(8, 8) | min = 0, max = 300 }\n"},
+			src: "package tx\ntype T { x ufixed(8, 8) | min = 0, max = 300 }\n"},
 		{name: "ufixed(64, 0) bounds clamp at int64's ceiling", want: "do not fit ufixed(64, 0)",
-			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
+			src: "package tx\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
-			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
+			src: "package tx\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
 		{name: "a table declaration takes tags and was and forms and json and no other valued key", want: "the valued vocabulary is typed and closed per compiler version, and here it is forms, integrity, json and was",
-			src: "package t\ntable T | pinned, min = 3\n{\n    x int32\n}\n"},
+			src: "package tx\ntable T | pinned, min = 3\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
-			src: "package t\nmessage M { x uint8 }\n"},
+			src: "package tx\nmessage M { x uint8 }\n"},
 		{name: "object is not part of the language", want: "objects are not part of the language",
-			src: "package t\nobject O { x uint8 }\n"},
+			src: "package tx\nobject O { x uint8 }\n"},
 		{name: "contexts are not part of the language", want: "contexts are not part of the language",
-			src: "package t\ncontexts { client, server }\n"},
+			src: "package tx\ncontexts { client, server }\n"},
 		{name: "round is not part of the language", want: "round is not part of the language",
-			src: "package t\ntype T { x float32 | min = 0, max = 1, resolution = 0.1, round = up }\n"},
+			src: "package tx\ntype T { x float32 | min = 0, max = 1, resolution = 0.1, round = up }\n"},
 		{name: "bare round is refused by name too", want: "round is not part of the language",
-			src: "package t\ntype T { x float32 | min = 0, max = 1, resolution = 0.1, round }\n"},
+			src: "package tx\ntype T { x float32 | min = 0, max = 1, resolution = 0.1, round }\n"},
 		{name: "a UTF-8 BOM is refused", want: "UTF-8 BOM rejected",
-			src: "\xEF\xBB\xBFpackage t\n"},
+			src: "\xEF\xBB\xBFpackage tx\n"},
 		{name: "ufixed with resolution", want: "resolution applies to float",
-			src: "package t\ntype T { x ufixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
+			src: "package tx\ntype T { x ufixed(16, 16) | min = 0, max = 1, resolution = 0.1 }\n"},
 
 		{name: "bare int128", want: "int128 requires",
-			src: "package t\ntype T { x int128 }\n"},
+			src: "package tx\ntype T { x int128 }\n"},
 		{name: "uint128 with a range", want: "not valid on uint128",
-			src: "package t\ntype T { x uint128 | min = 0, max = 5 }\n"},
+			src: "package tx\ntype T { x uint128 | min = 0, max = 5 }\n"},
 		{name: "int128 range above its storage", want: "does not fit its declared storage int128",
-			src: "package t\ntype T { x int128 | min = 0, max = 340282366920938463463374607431768211456 }\n"},
+			src: "package tx\ntype T { x int128 | min = 0, max = 340282366920938463463374607431768211456 }\n"},
 
 		// ---- enums, flags, contexts ----
 		{name: "variant named None", want: "None",
-			src: "package t\nenum E { None, A }\n"},
+			src: "package tx\nenum E { None, A }\n"},
 		{name: "variant named Max", want: "carries its extent as the member Max",
-			src: "package t\nenum E { A, Max }\n"},
+			src: "package tx\nenum E { A, Max }\n"},
 		{name: "a decl collides with an enum's generated Max extent (Go)", want: "generated Max extent",
-			src: "package t\nenum Team { Red }\nconst TeamMax = 3\n"},
+			src: "package tx\nenum Team { Red }\nconst TeamMax = 3\n"},
 		{name: "enum max below variant count", want: "takes no | max",
-			src: "package t\nenum E | max = 2\n{ A, B, C }\n"},
+			src: "package tx\nenum E | max = 2\n{ A, B, C }\n"},
 		{name: "headroom enum with non-variant wire values", want: "takes no | max",
-			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { e E }\n"},
+			src: "package tx\nenum E | max = 15\n{ A, B }\ntype T { e E }\n"},
 		{name: "Max reference to a non-enum", want: "is not an enum",
-			src: "package t\ntype V { x uint8 }\nconst N = V.Max + 1\n"},
+			src: "package tx\ntype V { x uint8 }\nconst N = V.Max + 1\n"},
 		{name: "Max reference to a flags declaration", want: "has no .Max",
-			src: "package t\nflags F { A, B }\nconst N = F.Max\n"},
+			src: "package tx\nflags F { A, B }\nconst N = F.Max\n"},
 		{name: "Count reference to a non-enum, non-flags declaration", want: "neither an enum nor a flags declaration",
-			src: "package t\ntype V { x uint8 }\nconst N = V.Count\n"},
+			src: "package tx\ntype V { x uint8 }\nconst N = V.Count\n"},
 		{name: "Count reference undefined", want: "undefined enum or flags",
-			src: "package t\nconst N = F.Count\n"},
+			src: "package tx\nconst N = F.Count\n"},
 		{name: "Count reference to an enum", want: "has no Count",
-			src: "package t\nenum E { A }\nconst N = E.Count\n"},
+			src: "package tx\nenum E { A }\nconst N = E.Count\n"},
 		{name: "65 flags variants overflow uint64 storage", want: "one bit per variant, up to 64",
-			src: "package t\nflags F { " + flags65 + " }\n"},
+			src: "package tx\nflags F { " + flags65 + " }\n"},
 		// ---- unions (SPEC §4.8) ----
 		{name: "union variant named none (exported spelling)", want: "every union has None = 0 implicitly",
-			src: "package t\nunion U {\n    none Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    none Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variant named max (exported spelling)", want: "carries its extent as the member Max",
-			src: "package t\nunion U {\n    max_ Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    max_ Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variant exporting Type", want: "the tag member's own name",
-			src: "package t\nunion U {\n    type_ Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    type_ Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variant exporting the union's name", want: "C# refuses (CS0542)",
-			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
-			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after Go initialisms", want: "both become ID in the generated Go",
-			src: "package t\nunion U {\n    id Box\n    i_d Box\n}\ntype Box { x uint8 }\n"},
+			src: "package tx\nunion U {\n    id Box\n    i_d Box\n}\ntype Box { x uint8 }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
 		// such a union has no packet wire yet (§11, §15)
 		{name: "an enum arm outside a table closure", want: "no table reaches U",
-			src: "package t\nunion U {\n    e E\n}\nenum E { A }\n"},
+			src: "package tx\nunion U {\n    e E\n}\nenum E { A }\n"},
 		{name: "a union arm outside a table closure", want: "no table reaches U",
-			src: "package t\nunion U {\n    v V\n}\nunion V { }\n"},
+			src: "package tx\nunion U {\n    v V\n}\nunion V { }\n"},
 		{name: "a scalar arm outside a table closure", want: "no table reaches U",
-			src: "package t\nunion U {\n    tally int32\n}\n"},
+			src: "package tx\nunion U {\n    tally int32\n}\n"},
 		{name: "a table-closure union held in a type body", want: "a union in a `type` body takes `type` payloads only",
-			src: "package t\nunion U {\n    tally int32\n}\ntype Holder { u U }\ntable Root { h Holder }\n"},
+			src: "package tx\nunion U {\n    tally int32\n}\ntype Holder { u U }\ntable Root { h Holder }\n"},
 		// what an ARM may not carry, each refused at the arm (§2.6, §11)
 		{name: "a default on an arm", want: "ZERO-ESTABLISHES at selection",
-			src: "package t\nunion U {\n    tally int32 = 3\n}\ntable Root { u U }\n"},
+			src: "package tx\nunion U {\n    tally int32 = 3\n}\ntable Root { u U }\n"},
 		{name: "an optional arm", want: "SELECTION IS THE ARM'S PRESENCE",
-			src: "package t\nunion U {\n    tally ?int32\n}\ntable Root { u U }\n"},
+			src: "package tx\nunion U {\n    tally ?int32\n}\ntable Root { u U }\n"},
 		{name: "was on an arm of a union no table reaches", want: "no table reaches",
-			src: "package t\ntype A { x int32 }\nunion U {\n    a A | was = \"z\"\n}\ntype Root { u U }\n"},
+			src: "package tx\ntype A { x int32 }\nunion U {\n    a A | was = \"z\"\n}\ntype Root { u U }\n"},
 		{name: "json on an arm", want: "json on an arm is a named follow-on",
-			src: "package t\nunion U {\n    tally int32 | json = \"n\"\n}\ntable Root { u U }\n"},
+			src: "package tx\nunion U {\n    tally int32 | json = \"n\"\n}\ntable Root { u U }\n"},
 		{name: "an enum-keyed array arm", want: "an enum-keyed array is not an arm",
-			src: "package t\nenum E { A, B }\nunion U {\n    slots [E]int32\n}\ntable Root { u U }\n"},
+			src: "package tx\nenum E { A, B }\nunion U {\n    slots [E]int32\n}\ntable Root { u U }\n"},
 
 		// `[E.Max]T` IS REFUSED IN A TABLE BODY and `[E]T` is the table form
 		// (§2.4, §11): an ordinal-indexed array is a POSITIONAL vocabulary and
@@ -346,20 +346,20 @@ func TestDiagnostics(t *testing.T) {
 		// spelling, so the refusal is per BODY and the pair is held together
 		// in TestPositionalKeyedArrayIsTheTableBodysRefusalAlone.
 		{name: "[E.Max]T in a table body", want: "is refused in a table body",
-			src: "package t\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
 		{name: "[E.Max]T in a table body, one word of the fix", want: "spell it [E]int32",
-			src: "package t\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
+			src: "package tx\nenum E { A, B }\ntable Root { slots [E.Max]int32 }\n"},
 		{name: "[E.Max]T in a table body, of a declared type", want: "spell it [E]Cfg",
-			src: "package t\nenum E { A, B }\ntype Cfg { hp uint16 }\ntable Root { slots [E.Max]Cfg }\n"},
+			src: "package tx\nenum E { A, B }\ntype Cfg { hp uint16 }\ntable Root { slots [E.Max]Cfg }\n"},
 		{name: "an arm whose range excludes zero", want: "the value it establishes at selection is outside it",
-			src: "package t\nunion U {\n    tally int32 | min = 1, max = 10\n}\ntable Root { u U }\n"},
+			src: "package tx\nunion U {\n    tally int32 | min = 1, max = 10\n}\ntable Root { u U }\n"},
 		{name: "union payload undefined", want: "undefined type",
-			src: "package t\nunion U {\n    b Box\n}\n"},
+			src: "package tx\nunion U {\n    b Box\n}\n"},
 		{name: "union composition cycle", want: "type composition cycle",
-			src: "package t\nunion U {\n    b Box\n}\ntype Box { u U }\n"},
+			src: "package tx\nunion U {\n    b Box\n}\ntype Box { u U }\n"},
 
 		{name: "a decl colliding with a union's generated tag enum", want: "generated tag enum",
-			src: "package t\nunion U { }\ntype UType { x uint8 }\n"},
+			src: "package tx\nunion U { }\ntype UType { x uint8 }\n"},
 
 		// ---- objects ----
 		// an unbounded fixed component is already illegal by §4.3 (bounds are
@@ -374,72 +374,72 @@ func TestDiagnostics(t *testing.T) {
 		// the typo. One case per valued attribute — the guard is a table, and
 		// a table with an untested entry is a table that will lose one.
 		{name: "min written without a value", want: "requires a value",
-			src: "package t\ntype T { n int32 | min, max = 10 }\n"},
+			src: "package tx\ntype T { n int32 | min, max = 10 }\n"},
 		{name: "max written without a value", want: "requires a value",
-			src: "package t\ntype T { n int32 | min = 0, max }\n"},
+			src: "package tx\ntype T { n int32 | min = 0, max }\n"},
 		{name: "resolution written without a value", want: "requires a value",
-			src: "package t\ntype T { x float32 | min = 0, max = 1, resolution }\n"},
+			src: "package tx\ntype T { x float32 | min = 0, max = 1, resolution }\n"},
 		{name: "was written without a value", want: "requires a value",
-			src: "package t\ntable T { x int32 | was }\n"},
+			src: "package tx\ntable T { x int32 | was }\n"},
 
 		// An enum's | max is refused at the declaration before any reference
 		// in it is resolved, so even a self- or mutual-reference is the enum
 		// rule rather than a reference cycle (SPEC §4.2).
 		{name: "enum | max naming itself", want: "takes no | max",
-			src: "package t\nenum Alpha | max = Alpha.Max\n{ One }\n"},
+			src: "package tx\nenum Alpha | max = Alpha.Max\n{ One }\n"},
 		{name: "enum | max naming each other across files", want: "takes no | max",
 			srcs: map[string]string{
-				"A_e.schema": "package t\nenum Alpha | max = Zed.Max\n{ One, Two }\n",
-				"Z_e.schema": "package t\nenum Zed | max = Alpha.Max\n{ Three }\n"},
+				"A_e.schema": "package tx\nenum Alpha | max = Zed.Max\n{ One, Two }\n",
+				"Z_e.schema": "package tx\nenum Zed | max = Alpha.Max\n{ Three }\n"},
 		},
 		{name: "enum | max mutual references in one file", want: "takes no | max",
-			src: "package t\nenum A | max = B.Max\n{ One }\nenum B | max = C.Max\n{ Two }\nenum C | max = A.Max\n{ Three }\n"},
+			src: "package tx\nenum A | max = B.Max\n{ One }\nenum B | max = C.Max\n{ Two }\nenum C | max = A.Max\n{ Three }\n"},
 		// cycle guards: every resolver that can re-enter itself must REJECT,
 		// not recurse. Before the guard these crashed the compiler with a
 		// raw "fatal error: stack overflow" — no diagnostic, no position.
 		{name: "constant self-cycle", want: "reference cycle",
-			src: "package t\nconst A = A + 1\n"},
+			src: "package tx\nconst A = A + 1\n"},
 		{name: "constant mutual cycle", want: "reference cycle",
-			src: "package t\nconst A = B + 1\nconst B = A + 1\n"},
+			src: "package tx\nconst A = B + 1\nconst B = A + 1\n"},
 
 		{name: "duplicate declaration", want: "duplicate declaration",
-			src: "package t\ntype A { x uint8 }\nenum A { B }\n"},
+			src: "package tx\ntype A { x uint8 }\nenum A { B }\n"},
 		{name: "duplicate field across branches", want: "duplicate field",
-			src: "package t\ntype T {\n    c bool\n    if c { x uint8 } else { x uint8 }\n}\n"},
+			src: "package tx\ntype T {\n    c bool\n    if c { x uint8 } else { x uint8 }\n}\n"},
 		{name: "reserved word in a target language", want: "reserved word",
-			src: "package t\ntype T { class uint8 }\n"},
+			src: "package tx\ntype T { class uint8 }\n"},
 		{name: "Go export-casing collision", want: "both become AtRest",
-			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
+			src: "package tx\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
 		{name: "Go initialism collision", want: "both become ObjectID in the generated Go",
-			src: "package t\ntype T {\n    object_id bool\n    object_i_d bool\n}\n"},
+			src: "package tx\ntype T {\n    object_id bool\n    object_i_d bool\n}\n"},
 		{name: "Go initialism collision between declarations", want: "both generate the Go symbol ProbeID",
-			src: "package t\nconst ProbeId = 1\nconst ProbeID = 2\n"},
+			src: "package tx\nconst ProbeId = 1\nconst ProbeID = 2\n"},
 		{name: "a decl collides with an enum's flat variant constant (Go)", want: "variant constant",
-			src: "package t\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
+			src: "package tx\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
 		{name: "a decl collides with a flags mask constant", want: "mask constant",
-			src: "package t\nflags Caps { Fast }\nconst CapsFast = 1\n"},
+			src: "package tx\nflags Caps { Fast }\nconst CapsFast = 1\n"},
 		{name: "a decl collides with a flags name function", want: "name functions",
-			src: "package t\nflags Caps { Fast }\ntype FlagNamesCaps { x uint8 }\n"},
+			src: "package tx\nflags Caps { Fast }\ntype FlagNamesCaps { x uint8 }\n"},
 		{name: "two flags whose Rust name-function spellings collide", want: "both generate the symbol flag_name_ab_caps",
-			src: "package t\nflags ABCaps { Fast }\nflags AbCaps { Slow }\ntype T { a ABCaps\n b AbCaps }\n"},
+			src: "package tx\nflags ABCaps { Fast }\nflags AbCaps { Slow }\ntype T { a ABCaps\n b AbCaps }\n"},
 		{name: "two decls whose GENERATED symbols collide", want: "both generate the symbol WriteFooMaxBits",
-			src: "package t\ntype WriteFoo { x uint8 }\ntype FooMaxBits { y uint8 }\n"},
+			src: "package tx\ntype WriteFoo { x uint8 }\ntype FooMaxBits { y uint8 }\n"},
 		{name: "a decl shadows a name generated Rust references unqualified", want: "references unqualified",
-			src: "package t\ntype Default { x uint8 }\n"},
+			src: "package tx\ntype Default { x uint8 }\n"},
 		{name: "two enum variants collide as Rust associated constants", want: "associated constant FOO_BAR",
-			src: "package t\nenum E { FOOBar, FooBar }\ntype T { e E }\n"},
+			src: "package tx\nenum E { FOOBar, FooBar }\ntype T { e E }\n"},
 		{name: "field collides with its sibling's length companion", want: "length companion",
-			src: "package t\ntype T {\n    text string(8)\n    text_length uint8\n}\n"},
+			src: "package tx\ntype T {\n    text string(8)\n    text_length uint8\n}\n"},
 		{name: "field collides with its sibling's count companion", want: "count companion",
-			src: "package t\ntype T {\n    items [..4]uint8\n    items_count uint8\n}\n"},
+			src: "package tx\ntype T {\n    items [..4]uint8\n    items_count uint8\n}\n"},
 		{name: "field export equals its declaring type's name (C# CS0542)", want: "enclosing type",
-			src: "package t\ntype Timescale { timescale float64 }\n"},
+			src: "package tx\ntype Timescale { timescale float64 }\n"},
 		{name: "float triple degenerate at float32", want: "degenerate at float32",
-			src: "package t\ntype T { x float32 | min = 1.0, max = 1.00000001, resolution = 0.000000001 }\n"},
+			src: "package tx\ntype T { x float32 | min = 1.0, max = 1.00000001, resolution = 0.000000001 }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
-			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
+			src: "package tx\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
 		{name: "top quantization step dequantizes to an infinity", want: "dequantizes past the largest float32",
-			src: "package t\ntype Edge { x float32 = 30423614405477505635920876929024.0 | min = 30423614405477505635920876929024.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
+			src: "package tx\ntype Edge { x float32 = 30423614405477505635920876929024.0 | min = 30423614405477505635920876929024.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 
 		// ---- package names that cannot compile (the compile fuzzer's
 		// `package exit` specimen). Without the rule, the
@@ -475,55 +475,55 @@ func TestDiagnostics(t *testing.T) {
 		// range is a parse error; constant arithmetic is overflow-guarded).
 		// NaN has no spelling at all — its arm is TestNonFiniteTripleNaN. ----
 		{name: "compressed float min -Inf at float32", want: "min = -1e+39 overflows float32",
-			src: "package t\ntype T { x float32 | min = -1e39, max = 1e39, resolution = 1e30 }\n"},
+			src: "package tx\ntype T { x float32 | min = -1e39, max = 1e39, resolution = 1e30 }\n"},
 		{name: "compressed float min +Inf at float32", want: "min = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 | min = 1e39, max = 2e39, resolution = 1e30 }\n"},
+			src: "package tx\ntype T { x float32 | min = 1e39, max = 2e39, resolution = 1e30 }\n"},
 		{name: "compressed float max +Inf at float32", want: "max = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 | min = 0.0, max = 1e39, resolution = 1e30 }\n"},
+			src: "package tx\ntype T { x float32 | min = 0.0, max = 1e39, resolution = 1e30 }\n"},
 		// (a -Inf max cannot be its own diagnostic: min < max puts min below
 		// it, so the min arm always fires first — the parameter is still
 		// covered, by ordering rather than by a separate message)
 		{name: "compressed float resolution +Inf at float32", want: "resolution = 1e+39 overflows float32",
-			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e39 }\n"},
+			src: "package tx\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e39 }\n"},
 		{name: "compressed float min +Inf at float64, integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 | min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
+			src: "package tx\ntype T { x float32 | min = 1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
 		{name: "compressed float min -Inf at float64, negated integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 | min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
+			src: "package tx\ntype T { x float32 | min = -1" + strings.Repeat("0", 400) + ", max = 1.0, resolution = 0.1 }\n"},
 		// The through-a-const vehicle is refused EARLIER since the extremes guard
 		// landed: an implicitly-typed const past int64 fails at its own
 		// declaration, so the float64-finiteness arm can no longer be reached
 		// through a const — the schema is refused either way, and the float64
 		// arm keeps its coverage via the integer-literal cases beside this one.
 		{name: "compressed float max +Inf at float64, through a const", want: "does not fit int64, the default constant storage",
-			src: "package t\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 | min = 0.0, max = Big, resolution = 0.1 }\n"},
+			src: "package tx\nconst Big = 1" + strings.Repeat("0", 400) + "\ntype T { x float32 | min = 0.0, max = Big, resolution = 0.1 }\n"},
 		{name: "compressed float resolution +Inf at float64, integer literal", want: "does not fit float64",
-			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + " }\n"},
+			src: "package tx\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1" + strings.Repeat("0", 400) + " }\n"},
 		{name: "enum max above the 32-bit tag wire", want: "takes no | max",
-			src: "package t\nenum E | max = 2147483648\n{ A }\ntype T { e E }\n"},
+			src: "package tx\nenum E | max = 2147483648\n{ A }\ntype T { e E }\n"},
 		{name: "a decl named Schema collides with the C# Schema class", want: "C# Schema class",
-			src: "package t\ntype Schema { x uint8 }\n"},
+			src: "package tx\ntype Schema { x uint8 }\n"},
 		{name: "a decl collides with a type's generated Zero helper (C#)", want: "both generate the symbol ZeroChat",
-			src: "package t\ntype Chat { }\ntype ZeroChat { x uint8 }\n"},
+			src: "package tx\ntype Chat { }\ntype ZeroChat { x uint8 }\n"},
 		{name: "a decl collides with a type's generated Init helper", want: "both generate the symbol InitChat",
-			src: "package t\ntype Chat { }\ntype InitChat { x uint8 }\n"},
+			src: "package tx\ntype Chat { }\ntype InitChat { x uint8 }\n"},
 		{name: "a const collides with a type's generated Init helper", want: "both generate the symbol InitChat",
-			src: "package t\ntype Chat { }\nconst InitChat = 1\n"},
+			src: "package tx\ntype Chat { }\nconst InitChat = 1\n"},
 		{name: "a decl collides with a type's generated init helper (Dart)", want: "both generate the symbol initChat",
-			src: "package t\ntype Chat { }\ntype initChat { x uint8 }\n"},
+			src: "package tx\ntype Chat { }\ntype initChat { x uint8 }\n"},
 		{name: "a camel-case const collides with a type's generated init helper (Dart)", want: "both generate the symbol initChat",
-			src: "package t\ntype Chat { }\nconst initChat = 1\n"},
+			src: "package tx\ntype Chat { }\nconst initChat = 1\n"},
 		{name: "a snake-case const collides with a type's generated init helper (Dart)", want: "both generate the symbol initChat",
-			src: "package t\ntype Chat { }\nconst init_chat = 1\n"},
+			src: "package tx\ntype Chat { }\nconst init_chat = 1\n"},
 		{name: "a normalized flags mask collides with a type's generated init helper (Dart)", want: "both generate the symbol initChat",
-			src: "package t\ntype Chat { }\nflags init_ { Chat }\n"},
+			src: "package tx\ntype Chat { }\nflags init_ { Chat }\n"},
 		{name: "two types whose Rust snake spellings collide", want: "both generate the symbol write_ab_test",
-			src: "package t\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
+			src: "package tx\ntype ABTest { x uint8 }\ntype AbTest { y uint8 }\n"},
 		{name: "two consts whose Rust constant spellings collide", want: "both generate the symbol AB_MAX",
-			src: "package t\nconst ABMax = 1\nconst AbMax = 2\n"},
+			src: "package tx\nconst ABMax = 1\nconst AbMax = 2\n"},
 		{name: "a const collides with an enum's C variant #define", want: "variant constant Ludicrous (C form)",
-			src: "package t\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
+			src: "package tx\nenum DriveMode { Ludicrous }\nconst DriveModeLudicrous = 1\ntype T { m DriveMode }\n"},
 		{name: "two enums whose C debug-name functions collide", want: "both generate the symbol enum_name_ab_mode",
-			src: "package t\nenum ABMode { X }\nenum AbMode { Y }\ntype T { x uint8 }\n"},
+			src: "package tx\nenum ABMode { X }\nenum AbMode { Y }\ntype T { x uint8 }\n"},
 		{name: "package mismatch across files", want: "does not match",
 			srcs: map[string]string{
 				"A.schema": "package a\ntype T { x uint8 }\n",
@@ -532,25 +532,25 @@ func TestDiagnostics(t *testing.T) {
 
 		// ---- defaults ----
 		{name: "default out of range", want: "outside its range",
-			src: "package t\ntype T { h int16 = 99 | min = 0, max = 10 }\n"},
+			src: "package tx\ntype T { h int16 = 99 | min = 0, max = 10 }\n"},
 		{name: "default on an array", want: "array takes no specified default",
-			src: "package t\ntype T { a [4]uint8 = 1 }\n"},
+			src: "package tx\ntype T { a [4]uint8 = 1 }\n"},
 		{name: "enum default is not a variant", want: "names a variant",
-			src: "package t\nenum E { A }\ntype T { e E = Zzz }\n"},
+			src: "package tx\nenum E { A }\ntype T { e E = Zzz }\n"},
 		{name: "bool default is not a bool", want: "true or false",
-			src: "package t\ntype T { b bool = 3 }\n"},
+			src: "package tx\ntype T { b bool = 3 }\n"},
 
 		// ---- native type mapping (SPEC §4.2) ----
 		{name: "cpp_native without cpp_include", want: "cpp_native and cpp_include go together",
-			src: "package t\ntype V | cpp_native = VMath { x float64 }\n"},
+			src: "package tx\ntype V | cpp_native = VMath { x float64 }\n"},
 		{name: "cpp_include without cpp_native", want: "cpp_native and cpp_include go together",
-			src: "package t\ntype V | cpp_include = \"v.h\" { x float64 }\n"},
+			src: "package tx\ntype V | cpp_include = \"v.h\" { x float64 }\n"},
 		{name: "cpp_native takes an identifier", want: "cpp_native takes an identifier",
-			src: "package t\ntype V | cpp_native = \"VMath\", cpp_include = \"v.h\" { x float64 }\n"},
+			src: "package tx\ntype V | cpp_native = \"VMath\", cpp_include = \"v.h\" { x float64 }\n"},
 		{name: "cpp_include takes a string", want: "cpp_include takes a quoted header path",
-			src: "package t\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
+			src: "package tx\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
 		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
-			src: "package t\ntype V | vec3 = 4 { x float64 }\n"},
+			src: "package tx\ntype V | vec3 = 4 { x float64 }\n"},
 		// ---- a mapping that can never ride (schema#451) ----
 		// The mapping is off inside the mapped type's own generated header
 		// (the hand type derives from the generated basis, so a mapped
@@ -559,9 +559,9 @@ func TestDiagnostics(t *testing.T) {
 		// carries no trace of it, and nothing says so. That is the first
 		// thing most people try (docs/USAGE.md, Per-language notes: C++).
 		{name: "cpp_native in a unit of one file", want: "can never ride",
-			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Body { p V }\n"},
+			src: "package tx\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Body { p V }\n"},
 		{name: "cpp_native in a unit of one file, referenced by nothing", want: "can never ride",
-			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n"},
+			src: "package tx\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n"},
 		// ---- §11's claimed runtime names, including the GO port's LOWERCASE
 		// ---- family. Unexported is not private: a Go package is one namespace,
 		// ---- so `const tableJsonMaxDepth = 5` beside a table generates a
@@ -585,13 +585,13 @@ func TestDiagnostics(t *testing.T) {
 		// addStructSymbols turns all three red: the unit compiles clean and the
 		// generated Elixir module defines read_frame_bits twice.
 		{name: "a type whose read entry is another type's bits entry",
-			src:  "package t\ntype Frame { x uint8 }\ntype FrameBits { y uint8 }\n",
+			src:  "package tx\ntype Frame { x uint8 }\ntype FrameBits { y uint8 }\n",
 			want: "both generate the symbol read_frame_bits"},
 		{name: "a union whose read entry is another union's bits entry",
-			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\nunion FrameBits\n{\n    a A\n    b A\n}\n",
+			src:  "package tx\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\nunion FrameBits\n{\n    a A\n    b A\n}\n",
 			want: "both generate the symbol read_frame_bits"},
 		{name: "a type whose read entry is a union's bits entry",
-			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\ntype FrameBits { y uint8 }\n",
+			src:  "package tx\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\ntype FrameBits { y uint8 }\n",
 			want: "both generate the symbol read_frame_bits"},
 		// ---- the ANNOUNCEMENT and REFUSAL vocabulary, beside a table ----
 		// These are the table wire's own names, and they are claimed where the
@@ -639,15 +639,15 @@ func TestDiagnostics(t *testing.T) {
 		// own, so every later use expands to something else and nothing in the
 		// build says so. These are the shapes that reach one.
 		{name: "an enum variant folding to the packet emitter's own macro", want: "SILENT REWRITE",
-			src: "package t\nenum Schema { Unused }\ntype H { g Schema }\n"},
+			src: "package tx\nenum Schema { Unused }\ntype H { g Schema }\n"},
 		{name: "an enum variant folding to the table backend's alignof macro", want: "SILENT REWRITE",
-			src: "package t\nenum SchemaTable { Alignof }\ntype H { g SchemaTable }\n"},
+			src: "package tx\nenum SchemaTable { Alignof }\ntype H { g SchemaTable }\n"},
 		{name: "a constant folding to the table backend's force-inline macro", want: "SILENT REWRITE",
 			src: "package t\nconst SchemaTTableInline = 1\ntype H { x uint8 }\n"},
 		{name: "a declaration spelling a generated include guard", want: "SILENT REWRITE",
 			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_h { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
-			src: "package t\ntype schema_thing { x uint8 }\n"},
+			src: "package tx\ntype schema_thing { x uint8 }\n"},
 
 		// ---- a unit base name that spells a C standard header (#521 G-20) ----
 		// The C++ and C emitters both name a unit's header `<Base>.h`, so
@@ -703,14 +703,14 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// THE TOP STEP AT THE LARGEST FLOAT32 IS FINITE from a zero min: the
 		// finite-decode refusal reaches only a top step that rounds past it.
 		{name: "a compressed float whose top step is the largest float32",
-			src: "package t\ntype Edge { x float32 | min = 0.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
+			src: "package tx\ntype Edge { x float32 | min = 0.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 		{name: "near-miss spellings of the table runtime's names",
-			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+			src: "package tx\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
 		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is
 		// claimed and nothing wider, so a near miss (FrameBit -> read_frame_bit)
 		// and a bare `Bits` (read_bits) beside `type Frame` stay legal.
 		{name: "near-miss spellings of the Elixir bits entry",
-			src: "package t\ntype Frame { x uint8 }\ntype FrameBit { y uint8 }\ntype Bits { z uint8 }\n"},
+			src: "package tx\ntype Frame { x uint8 }\ntype FrameBit { y uint8 }\ntype Bits { z uint8 }\n"},
 		// THE PACKET-ONLY UNIT KEEPS THE TABLE RUNTIME'S OWN NAMES
 		// (docs/SPEC-TABLES.md §11). The every-unit claim rests on one
 		// reason, that the view file defines the name, and the announcement
@@ -719,34 +719,34 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// A packet-only author reads SPEC §4.6 and declares from the whole
 		// namespace that page leaves open.
 		{name: "the announcement and refusal vocabulary in a packet-only unit",
-			src: "package t\ntype Announce { n int32 }\nconst ok = 1\n"},
+			src: "package tx\ntype Announce { n int32 }\nconst ok = 1\n"},
 		{name: "the cooked and read-report names in a packet-only unit",
-			src: "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { n int32 }\n"},
+			src: "package tx\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { n int32 }\n"},
 		{name: "the Go and C lowercase runtime families in a packet-only unit",
-			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
+			src: "package tx\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
 		{name: "the accelerators' shared runtimes and the build version in a packet-only unit",
-			src: "package t\ntype BlockRuntime { n int32 }\ntype CookRuntime { n int32 }\nconst BuildVersion = 1\n"},
+			src: "package tx\ntype BlockRuntime { n int32 }\ntype CookRuntime { n int32 }\nconst BuildVersion = 1\n"},
 		// THE MAPPING THE PAGE BLESSES (schema#451, docs/USAGE.md): a sibling
 		// declared beside the mapped type keeps the basis type, and that is
 		// not an error as long as the unit has a file the mapping can ride
 		// from. What is refused is the mapping that can never ride at all.
 		{name: "cpp_native referenced from another file of the unit",
 			srcs: map[string]string{
-				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n",
-				"B.schema": "package t\ntype Body { p V }\n",
+				"A.schema": "package tx\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n",
+				"B.schema": "package tx\ntype Body { p V }\n",
 			}},
 		{name: "cpp_native with a sibling in the declaring file that keeps the basis type",
 			srcs: map[string]string{
-				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
-				"B.schema": "package t\ntype Far { q V }\n",
+				"A.schema": "package tx\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
+				"B.schema": "package tx\ntype Far { q V }\n",
 			}},
 		// A QUALIFIED native name is accepted and kept whole (schema#451):
 		// `math::Vec2` is the global engine type's own spelling, so no global
 		// alias is needed. It rides from another file like the bare form.
 		{name: "cpp_native with a ::-qualified name",
 			srcs: map[string]string{
-				"A.schema": "package t\ntype V | cpp_native = math::Vec2, cpp_include = \"math/vec2.h\" { x float64 }\n",
-				"B.schema": "package t\ntype Body { p V }\n",
+				"A.schema": "package tx\ntype V | cpp_native = math::Vec2, cpp_include = \"math/vec2.h\" { x float64 }\n",
+				"B.schema": "package tx\ntype Body { p V }\n",
 			}},
 		// A BASE NAME THAT ONLY LOOKS LIKE A C HEADER (#521 G-20). The list is
 		// the C standard's own and is compared whole: a name that merely
@@ -759,80 +759,80 @@ func TestGoodCornersStillCompile(t *testing.T) {
 				"Timer.schema": "package geom\ntype R { z float32 }\n",
 			}},
 		{name: "nested if with cond in the same branch",
-			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
 		// The self-negation refusal (schema#268) is about ONE name taken both
 		// ways down one path. A guard that AGREES with its enclosing guard is
 		// redundant and rides; two different names never conjoin to false; and
 		// two sibling branches on one name are the ordinary either-or shape.
 		{name: "a guard that agrees with its enclosing guard",
-			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if on {\n        if on { x int32 }\n    }\n}\n"},
 		{name: "a negated guard that agrees with its enclosing negation",
-			src: "package t\ntype T {\n    on bool\n    if !on {\n        if !on { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if !on {\n        if !on { x int32 }\n    }\n}\n"},
 		{name: "a nested guard on another name",
-			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if !other { x int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    other bool\n    if on {\n        if !other { x int32 }\n    }\n}\n"},
 		{name: "sibling branches on one name",
-			src: "package t\ntype T {\n    on bool\n    if on { x int32 }\n    if !on { y int32 }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    if on { x int32 }\n    if !on { y int32 }\n}\n"},
 		{name: "the else side of a nested guard that agrees with nothing above it",
-			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other { x int32 } else { y int32 }\n    }\n}\n"},
+			src: "package tx\ntype T {\n    on bool\n    other bool\n    if on {\n        if other { x int32 } else { y int32 }\n    }\n}\n"},
 		{name: "fixed default in whole units, exactly representable (the reopened door)",
-			src: "package t\ntype Q { w fixed(2, 30) = 1.0 | min = -1, max = 1\n x fixed(16, 16) = 0.5 | min = 0, max = 100\n y fixed(48, 16) = 3 | min = -10, max = 10 }\n"},
+			src: "package tx\ntype Q { w fixed(2, 30) = 1.0 | min = -1, max = 1\n x fixed(16, 16) = 0.5 | min = 0, max = 100\n y fixed(48, 16) = 3 | min = -10, max = 10 }\n"},
 		{name: "field named flags at block scope",
-			src: "package t\nflags F { A }\ntype T { flags F }\n"},
+			src: "package tx\nflags F { A }\ntype T { flags F }\n"},
 		{name: "64 flags variants fill uint64 storage exactly",
-			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
+			src: "package tx\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
 		{name: "F.Count in a constant expression",
-			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
+			src: "package tx\nflags F { A, B }\nconst N = F.Count\n"},
 		{name: "a // comment terminates the qualification section",
-			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
+			src: "package tx\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
 		{name: "a qualified declaration's body opens on the next line",
-			src: "package t\nenum E | tagged\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
+			src: "package tx\nenum E | tagged\n{ A, B }\ntype Q | tagged\n{\n    e E\n}\n"},
 		{name: "both brace placements parse (Allman canonical, same-line tolerated)",
-			src: "package t\ntype A {\n    x uint8\n}\ntype B\n{\n    a bool\n    if a {\n        y uint8\n    }\n    if !a\n    {\n        z uint8\n    }\n}\n"},
+			src: "package tx\ntype A {\n    x uint8\n}\ntype B\n{\n    a bool\n    if a {\n        y uint8\n    }\n    if !a\n    {\n        z uint8\n    }\n}\n"},
 		{name: "empty type",
-			src: "package t\ntype T { }\n"},
+			src: "package tx\ntype T { }\n"},
 		{name: "full-range uint64",
-			src: "package t\ntype T { n uint64 | min = 0, max = 18446744073709551615 }\n"},
+			src: "package tx\ntype T { n uint64 | min = 0, max = 18446744073709551615 }\n"},
 		{name: "fixed at every storage width, F = 0, and the sign-bit-only corner",
-			src: "package t\ntype T {\n    a fixed(8, 8) | min = -100, max = 100\n    b fixed(16, 16) | min = -180, max = 180\n    c fixed(32, 0) | min = 0, max = 1000000\n    d fixed(48, 16) | min = -30000, max = 30000\n    e fixed(112, 16) | min = -1000000, max = 1000000\n    f fixed(1, 63) | min = -1, max = 0\n}\n"},
+			src: "package tx\ntype T {\n    a fixed(8, 8) | min = -100, max = 100\n    b fixed(16, 16) | min = -180, max = 180\n    c fixed(32, 0) | min = 0, max = 1000000\n    d fixed(48, 16) | min = -30000, max = 30000\n    e fixed(112, 16) | min = -1000000, max = 1000000\n    f fixed(1, 63) | min = -1, max = 0\n}\n"},
 		{name: "ufixed at every storage width, the full unsigned domains, and the one-bit corner",
-			src: "package t\ntype T {\n    a ufixed(8, 8) | min = 0, max = 255\n    b ufixed(16, 16) | min = 0, max = 360\n    c ufixed(32, 0) | min = 0, max = 4294967295\n    d ufixed(48, 16) | min = 0, max = 281474976710655\n    e ufixed(112, 16) | min = 0, max = 2000000\n    f ufixed(1, 63) | min = 0, max = 1\n    g ufixed(16, 16) = 3 | min = 3, max = 3\n}\n"},
+			src: "package tx\ntype T {\n    a ufixed(8, 8) | min = 0, max = 255\n    b ufixed(16, 16) | min = 0, max = 360\n    c ufixed(32, 0) | min = 0, max = 4294967295\n    d ufixed(48, 16) | min = 0, max = 281474976710655\n    e ufixed(112, 16) | min = 0, max = 2000000\n    f ufixed(1, 63) | min = 0, max = 1\n    g ufixed(16, 16) = 3 | min = 3, max = 3\n}\n"},
 		{name: "ufixed default in whole units, exactly representable",
-			src: "package t\ntype T { x ufixed(2, 30) = 1.0 | min = 0, max = 1\n y ufixed(16, 16) = 0.5 | min = 0, max = 100 }\n"},
+			src: "package tx\ntype T { x ufixed(2, 30) = 1.0 | min = 0, max = 1\n y ufixed(16, 16) = 0.5 | min = 0, max = 100 }\n"},
 		{name: "a ufixed composite as an ordinary field type",
-			src: "package t\ntype V { x ufixed(48, 16) | min = 0, max = 100\n y ufixed(48, 16) | min = 0, max = 100 }\ntype T { p V\n b bool }\n"},
+			src: "package tx\ntype V { x ufixed(48, 16) | min = 0, max = 100\n y ufixed(48, 16) | min = 0, max = 100 }\ntype T { p V\n b bool }\n"},
 		{name: "int128 with a range only 128 bits can hold, and raw uint128",
-			src: "package t\ntype T {\n    flux int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376\n    id   uint128\n}\n"},
+			src: "package tx\ntype T {\n    flux int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376\n    id   uint128\n}\n"},
 		// issue #346's legal side: a range that REACHES zero at either end
 		// needs nothing, and a range that excludes zero is legal the moment a
 		// default inside it is declared — on every range-carrying kind
 		{name: "a range touching zero at either end takes no default",
-			src: "package t\ntype T {\n    a uint8 | min = 0, max = 10\n    b int8  | min = -10, max = 0\n    c int8  | min = -10, max = 10\n    d int8  | min = 0, max = 0\n}\n"},
+			src: "package tx\ntype T {\n    a uint8 | min = 0, max = 10\n    b int8  | min = -10, max = 0\n    c int8  | min = -10, max = 10\n    d int8  | min = 0, max = 0\n}\n"},
 		{name: "a range that excludes zero, with a default in range",
-			src: "package t\ntype T {\n    a uint8   = 1  | min = 1, max = 255\n    b int8    = -7 | min = -100, max = -1\n    c int32   = 7  | min = 7, max = 7\n    d fixed(16, 16) = 3 | min = 3, max = 8\n    e ufixed(16, 16) = 3 | min = 3, max = 3\n    f int128  = 1  | min = 1, max = 1267650600228229401496703205376\n    v float32 = 1.5 | min = 1, max = 2, resolution = 0.01\n}\n"},
+			src: "package tx\ntype T {\n    a uint8   = 1  | min = 1, max = 255\n    b int8    = -7 | min = -100, max = -1\n    c int32   = 7  | min = 7, max = 7\n    d fixed(16, 16) = 3 | min = 3, max = 8\n    e ufixed(16, 16) = 3 | min = 3, max = 3\n    f int128  = 1  | min = 1, max = 1267650600228229401496703205376\n    v float32 = 1.5 | min = 1, max = 2, resolution = 0.01\n}\n"},
 		{name: "a table field's excluding range, with a default in range",
-			src: "package t\ntable T { hp uint8 = 100 | min = 1, max = 100 }\n"},
+			src: "package tx\ntable T { hp uint8 = 100 | min = 1, max = 100 }\n"},
 		{name: "an array whose range reaches zero stays legal",
-			src: "package t\ntype T { xs [4]uint8 | min = 0, max = 255 }\n"},
+			src: "package tx\ntype T { xs [4]uint8 | min = 0, max = 255 }\n"},
 		{name: "128-bit defaults inside their range",
-			src: "package t\ntype T {\n    a int128 = -5 | min = -10, max = 10\n    b uint128 = 7\n}\n"},
+			src: "package tx\ntype T {\n    a int128 = -5 | min = -10, max = 10\n    b uint128 = 7\n}\n"},
 		{name: "field named message_type on a plain type",
-			src: "package t\ntype T { message_type uint8 }\n"},
+			src: "package tx\ntype T { message_type uint8 }\n"},
 		{name: "a type named WriteFoo with no type Foo anywhere",
-			src: "package t\ntype WriteFoo { x uint8 }\n"},
+			src: "package tx\ntype WriteFoo { x uint8 }\n"},
 		// consts are order-free across files (SPEC §4.2) — including the
 		// classification of a bare referrer against an explicitly
 		// float-typed referent. Both name orders must compile: resolution
 		// runs in NAME order, so these two cases put the referent on either
 		// side of the referrer.
 		{name: "bare const referencing a float-typed const that resolves later",
-			src: "package t\nconst Aaa = Mid + 1\nconst Mid float64 = 3\n"},
+			src: "package tx\nconst Aaa = Mid + 1\nconst Mid float64 = 3\n"},
 		{name: "bare const referencing a float-typed const that resolves earlier",
-			src: "package t\nconst Zzz = Mid + 1\nconst Mid float64 = 3\n"},
+			src: "package tx\nconst Zzz = Mid + 1\nconst Mid float64 = 3\n"},
 		{name: "the same, across files in both directions",
 			srcs: map[string]string{
-				"A_use.schema":   "package t\nconst Alpha = Zeta + 1\n",
-				"Z_decl.schema":  "package t\nconst Zeta float64 = 3\n",
-				"M_other.schema": "package t\nconst Mu = Zeta * 2\n",
+				"A_use.schema":   "package tx\nconst Alpha = Zeta + 1\n",
+				"Z_decl.schema":  "package tx\nconst Zeta float64 = 3\n",
+				"M_other.schema": "package tx\nconst Mu = Zeta * 2\n",
 			}},
 	}
 	for _, tc := range cases {
@@ -855,7 +855,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 // exercised the only way a NaN can exist in the checker's input: planted
 // directly in the AST. Defense in depth, proven rather than assumed.
 func TestNonFiniteTripleNaN(t *testing.T) {
-	src := "package t\ntype T { x float32 | min = 0.5, max = 1.0, resolution = 0.25 }\n"
+	src := "package tx\ntype T { x float32 | min = 0.5, max = 1.0, resolution = 0.25 }\n"
 	f, perrs := parser.Parse("T.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatal(perrs[0])
@@ -913,14 +913,14 @@ func TestPackageNameNeighborsAccepted(t *testing.T) {
 // needs taking a name away from every schema for free.
 func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 	for _, src := range []string{
-		"package t\nenum SchemaKind { Alpha, Beta }\ntype H { g SchemaKind }\n",
-		"package t\nconst SchemaVersion = 3\ntype H { x uint8 }\n",
-		"package t\ntype SchemaPoint { x float32 }\n",
-		"package t\nflags SchemaPerks { Fast, Slow }\ntype H { p SchemaPerks }\n",
+		"package tx\nenum SchemaKind { Alpha, Beta }\ntype H { g SchemaKind }\n",
+		"package tx\nconst SchemaVersion = 3\ntype H { x uint8 }\n",
+		"package tx\ntype SchemaPoint { x float32 }\n",
+		"package tx\nflags SchemaPerks { Fast, Slow }\ntype H { p SchemaPerks }\n",
 		// and the one that only LOOKS like the lowercase reservation: the
 		// prefix is `schema_`, so a name that merely starts with `schema` and
 		// carries no underscore is untouched
-		"package t\ntype schematic { x uint8 }\n",
+		"package tx\ntype schematic { x uint8 }\n",
 	} {
 		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
 			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)
@@ -940,7 +940,7 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
 	for _, reserved := range []string{"None", "Max"} {
 		errs := runUnit(t, map[string]string{
-			"Bad.schema": "package t\nenum E { " + reserved + ", Fighter }\n",
+			"Bad.schema": "package tx\nenum E { " + reserved + ", Fighter }\n",
 		})
 		if len(errs) != 1 {
 			t.Errorf("variant %s: want 1 diagnostic, got %d:", reserved, len(errs))
@@ -962,7 +962,7 @@ func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
 // (C form) collides with enum E's generated variant constants (C form)".
 func TestCollidingEnumVariantKeepsItsPerTargetDiagnostics(t *testing.T) {
 	errs := runUnit(t, map[string]string{
-		"Bad.schema": "package t\nenum E { none, Fighter }\n",
+		"Bad.schema": "package tx\nenum E { none, Fighter }\n",
 	})
 	if len(errs) != 2 {
 		t.Fatalf("want the Rust and C collisions, got %d: %v", len(errs), errs)
@@ -990,7 +990,7 @@ func TestCollidingEnumVariantKeepsItsPerTargetDiagnostics(t *testing.T) {
 // Reverting the unionNamedBy record turns this red at two diagnostics.
 func TestOptionalUnionDrawsOneDiagnostic(t *testing.T) {
 	errs := runUnit(t, map[string]string{
-		"Bad.schema": "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable T { u ?U }\n",
+		"Bad.schema": "package tx\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable T { u ?U }\n",
 	})
 	if len(errs) != 1 {
 		t.Errorf("want 1 diagnostic, got %d:", len(errs))
@@ -1008,8 +1008,8 @@ func TestOptionalUnionDrawsOneDiagnostic(t *testing.T) {
 // table arm that no closure names at all, and one held by a `type` body.
 func TestUnreachedTableArmUnionIsStillRefused(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"named by nothing", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable C { z int32 }\n"},
-		{"held by a type body", "package t\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntype T { u U }\n"},
+		{"named by nothing", "package tx\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntable C { z int32 }\n"},
+		{"held by a type body", "package tx\ntable A { x int32 }\ntable B { y int32 }\nunion U { a A\n b B }\ntype T { u U }\n"},
 	} {
 		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
 		var found bool
@@ -1033,9 +1033,9 @@ func TestUnreachedTableArmUnionIsStillRefused(t *testing.T) {
 // Reverting the wording turns this red on all three.
 func TestTableRefusalsNameTheIdTableWire(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"const(value, bits)", "package t\ntable T { const(0xC7, 8)\n x int32 }\n"},
-		{"reserved(bits)", "package t\ntable T { x int32\n reserved(4)\n y int32 }\n"},
-		{"align", "package t\ntable T { x int32\n align\n y int32 }\n"},
+		{"const(value, bits)", "package tx\ntable T { const(0xC7, 8)\n x int32 }\n"},
+		{"reserved(bits)", "package tx\ntable T { x int32\n reserved(4)\n y int32 }\n"},
+		{"align", "package tx\ntable T { x int32\n align\n y int32 }\n"},
 	} {
 		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
 		if len(errs) == 0 {
@@ -1063,8 +1063,8 @@ func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
 		name, src, want string
 		col             int
 	}{
-		{"integer type, float expression", "package t\nconst C int32 = 1.5\n", "but a float expression", 17},
-		{"float32 overflow", "package t\nconst D float32 = 1.0e300\n", "does not fit its declared type float32", 19},
+		{"integer type, float expression", "package tx\nconst C int32 = 1.5\n", "but a float expression", 17},
+		{"float32 overflow", "package tx\nconst D float32 = 1.0e300\n", "does not fit its declared type float32", 19},
 	} {
 		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
 		if len(errs) != 1 {
@@ -1089,8 +1089,8 @@ func TestConstValueDiagnosticsPointAtTheExpression(t *testing.T) {
 func TestArrayOfTablesArmIsRefused(t *testing.T) {
 	const want = "a union arm is one table, not an array of tables"
 	for _, tc := range []struct{ name, src string }{
-		{"a bounded array of tables", "package t\ntable Leaf { items []int32 }\nunion U { few [..2]Leaf }\ntable Root { u U }\n"},
-		{"a fixed array of tables", "package t\ntable Leaf { x int32 }\nunion U { few [2]Leaf }\ntable Root { u U }\n"},
+		{"a bounded array of tables", "package tx\ntable Leaf { items []int32 }\nunion U { few [..2]Leaf }\ntable Root { u U }\n"},
+		{"a fixed array of tables", "package tx\ntable Leaf { x int32 }\nunion U { few [2]Leaf }\ntable Root { u U }\n"},
 	} {
 		errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
 		var found bool
@@ -1104,9 +1104,9 @@ func TestArrayOfTablesArmIsRefused(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct{ name, src string }{
-		{"a table arm", "package t\ntable Leaf { items []int32 }\nunion U { one Leaf }\ntable Root { u U }\n"},
-		{"a scalar-array arm", "package t\nunion U { samples [..8]float32 }\ntable Root { u U }\n"},
-		{"a bounded array of pointers arm", "package t\ntable Leaf { x int32 }\nunion U { many [..2]*Leaf }\ntable Root { u U }\n"},
+		{"a table arm", "package tx\ntable Leaf { items []int32 }\nunion U { one Leaf }\ntable Root { u U }\n"},
+		{"a scalar-array arm", "package tx\nunion U { samples [..8]float32 }\ntable Root { u U }\n"},
+		{"a bounded array of pointers arm", "package tx\ntable Leaf { x int32 }\nunion U { many [..2]*Leaf }\ntable Root { u U }\n"},
 	} {
 		if errs := runUnit(t, map[string]string{"Good.schema": tc.src}); len(errs) != 0 {
 			t.Errorf("%s: refused: %v", tc.name, errs)
@@ -1125,12 +1125,12 @@ func TestSelfNegatingGuardNamesBothGuards(t *testing.T) {
 	}{
 		{
 			name: "the negation nested under the plain guard",
-			src:  "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n",
+			src:  "package tx\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n",
 			want: []string{"if !on can never ride", "if on", "Bad.schema:4:8"},
 		},
 		{
 			name: "the plain guard nested under the else",
-			src:  "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n",
+			src:  "package tx\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n",
 			want: []string{"if on can never ride", "the else of if on", "Bad.schema:4:8"},
 		},
 	} {
@@ -1153,7 +1153,7 @@ func TestSelfNegatingGuardNamesBothGuards(t *testing.T) {
 // size diagnostic owned by an entry is placed at the table that declares the
 // map, however deeply the maps nest.
 func TestMapEntrySizeDiagnosticCarriesTablePosition(t *testing.T) {
-	const big = "package t\ntype L { v uint64 }\ntype I { a [2147483647]L }\n"
+	const big = "package tx\ntype L { v uint64 }\ntype I { a [2147483647]L }\n"
 	for _, tc := range []struct {
 		name, src string
 		want      []string

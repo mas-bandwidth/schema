@@ -1,0 +1,7 @@
+package probe
+
+enum Kind
+{ Alpha, Beta }
+
+flags kind
+{ One, Two }

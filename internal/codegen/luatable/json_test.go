@@ -302,7 +302,7 @@ func TestLuaJsonNegativeControl(t *testing.T) {
 	// the writer's shortest spelling differs from the sabotaged one
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "F.schema")
-	if err := os.WriteFile(schemaPath, []byte(`package f
+	if err := os.WriteFile(schemaPath, []byte(`package fx
 table F { v float32 }
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -387,7 +387,7 @@ func TestLuaJsonReadsNullReferences(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "N.schema")
-	if err := os.WriteFile(schemaPath, []byte(`package n
+	if err := os.WriteFile(schemaPath, []byte(`package nx
 union Payload
 {
     data *bytes

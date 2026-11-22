@@ -1,0 +1,6 @@
+package next
+
+table Rec
+{
+    value uint32
+}
