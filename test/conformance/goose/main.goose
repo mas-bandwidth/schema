@@ -496,6 +496,46 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
 
 
 
+// surface_message_prior: a PRIOR WRITER's batch read under today's
+// declarations (testdata/conformance/tables/FORMAT.md, `message-prior`), handed
+// on its own keywords, prior-connection and prior-message. A row may owe a
+// refusal, so the answer is what the read returned: the batch re-saved, or the
+// line `<case> refused <reason>` (the glue's -3, a refused LoadMessages), which
+// the driver writes as <case>.refused and the harness never compares
+// (docs/rulings.json refusal-verdict-only).
+fn surface_message_prior(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 6 || f[0] != "prior-message" { continue; }
+        var conn: i64 = -1;
+        for i in lines.len {
+            let c = words(lines[i]);
+            if c.len >= 5 && c[0] == "prior-connection" && c[1] == f[2] && c[2] == unit { conn = i; }
+        }
+        if conn < 0 { continue; }
+        let c = words(lines[conn]);
+        var ann: u8[>..] = [];
+        load_file(c[4], ann);
+        var wire: u8[>..] = [];
+        load_file(f[5], wire);
+        var out: u8[>..] = [];
+        let n = conformance_message(f[3], ann, wire, out);
+        if n == -1 {
+            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+            continue;
+        }
+        if n == -3 {
+            write_stdout(str(f[1], " refused load_messages\n"));
+            continue;
+        }
+        if n < 0 {
+            write_stderr(str("driver: ", f[1], " does not round-trip (", n, ")\n"));
+            exit(1);
+        }
+        answer(f[1], out);
+    }
+}
+
 fn wref_loaded_hex(s: const u8[:], out: u8[>..]&) -> bool {
     if (s.len % 2) != 0 { return false; }
     var i: i64 = 0;
@@ -806,7 +846,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
         return;
     }
     if argv.len != 4 {
@@ -821,6 +861,7 @@ fn main() {
     if argv[1] == "framing" { surface_framing(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
     if argv[1] == "message" { surface_message(lines, unit); return; }
+    if argv[1] == "message-prior" { surface_message_prior(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
