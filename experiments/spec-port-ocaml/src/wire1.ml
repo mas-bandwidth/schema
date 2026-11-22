@@ -250,7 +250,7 @@ let number (root : struct_d) (v : value) : (node * ty) list * (int, int) Hashtbl
       let es = Array.copy es in
       Array.sort (fun (a, _) (b, _) -> key_compare kt a b) es;
       Array.iter (fun (_, x) -> walk vt x open_) es
-    | Union un, VUnion (o, x) when o > 0 ->
+    | Union un, VUnion (o, x) when o > 0 && o <= Array.length un.u_arms ->
       (match un.u_arms.(o - 1).a_ty with Some at -> walk at x open_ | None -> ())
     | Ptr s, VPtr (Some n) ->
       if List.mem n.nid open_ then refuse "data_cycle";

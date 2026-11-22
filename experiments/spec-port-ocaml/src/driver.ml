@@ -80,7 +80,7 @@ let unit_root key rootname =
 
 type img = One of value | Batch of value list
 
-let load_wire ?(framing = false) (l : loaded) (root : struct_d) (s : string) : img =
+let load_wire ?(framing = false) ?(capacity = 1 lsl 30) (l : loaded) (root : struct_d) (s : string) : img =
   if framing && root.s_fixed && String.length s > 0 && s.[0] = '\001' then begin
     (* SPEC-GAP 7: SPEC-TABLES §2.2 says a fixed root refuses form 1 as
        previous_form, and the report rows previous_form_* hold that; the framing rows read form-1 files at fixed roots and
@@ -89,7 +89,7 @@ let load_wire ?(framing = false) (l : loaded) (root : struct_d) (s : string) : i
     Batch [ v ]
   end else if root.s_fixed then
     let lin = try Hashtbl.find l.lock root.s_name with Not_found -> [] in
-    Batch (Fixed.load_records root lin s ~capacity:(1 lsl 30))
+    Batch (Fixed.load_records root lin s ~capacity)
   else begin
     let v, _, _ = Wire1.load l.u root s in
     One v
@@ -207,6 +207,22 @@ let rec set (t : ty) (v : value) (path : step list) (kind : string) (arg : strin
     let xs = Array.copy xs in
     if i >= Array.length xs then raise (Absent "index past the array");
     xs.(i) <- set et xs.(i) rest kind arg; VArr xs
+  (* SPEC-GAP 10: FORMAT.md defines a path as field names and [i]; the rows
+     also name a map entry as [i].key / [i].value and a union arm by name *)
+  | F n :: rest, Union un, VUnion (o, x) ->
+    let idx = ref (-1) in
+    Array.iteri (fun i (a : arm_d) -> if a.a_name = n then idx := i) un.u_arms;
+    if !idx < 0 then raise (Absent ("no arm " ^ n));
+    let at = match un.u_arms.(!idx).a_ty with Some at -> at | None -> raise (Absent "payload-free arm") in
+    let cur = if o = !idx + 1 then x else (match at with
+        | Struct s -> VStruct (Array.map (fun f -> f.f_default) s.s_fields) | _ -> zero_value at) in
+    VUnion (!idx + 1, set at cur rest kind arg)
+  | I i :: F part :: rest, Map (kt, vt), VMap es when part = "key" || part = "value" ->
+    let es = Array.copy es in
+    if i >= Array.length es then raise (Absent "entry past the map");
+    let k, x = es.(i) in
+    es.(i) <- (if part = "key" then (set kt k rest kind arg, x) else (k, set vt x rest kind arg));
+    VMap es
   | I i :: rest, Keyed (_, et), VKeyed xs ->
     let xs = Array.copy xs in xs.(i) <- set et xs.(i) rest kind arg; VKeyed xs
   | _ -> raise (Absent "path shape")
@@ -333,7 +349,8 @@ let main () =
       | ("report" | "framing"), k :: case :: ukey :: rootname :: wire :: _ when k = surface ->
         run_case outdir case (fun () ->
             let l, root = unit_root ukey rootname in
-            verdict_surface outdir case root (fun () -> load_wire ~framing:(surface = "framing") l root (read_file wire)))
+            verdict_surface outdir case root (fun () -> (* SPEC-GAP 11: the plain read is a batch of one; report row fixedevo_v3_batch2 owes refused *)
+                load_wire ~framing:(surface = "framing") ~capacity:1 l root (read_file wire)))
       | "json-hostile", "json-hostile" :: case :: ukey :: rootname :: tree :: _ ->
         run_case outdir case (fun () ->
             let _, root = unit_root ukey rootname in

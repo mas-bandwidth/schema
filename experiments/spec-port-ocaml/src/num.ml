@@ -70,6 +70,8 @@ let round_ratio ~mbits ~emin ~emax_bits num den : float option =
     else Some (Float.ldexp (float_of_string (Big.to_string !qv)) !e)
   end
 
+let ndig d = String.length (Big.to_string d)
+
 let ratio_of_decimal (digits : Big.t) (exp : int) =
   if exp >= 0 then (Big.mul digits (Big.pow10 exp), Big.one)
   else (digits, Big.pow10 (- exp))
@@ -79,8 +81,8 @@ let f32_of_token (tok : string) : float option =
   let neg, d, e = decompose tok in
   let r =
     if Big.is_zero d then Some 0.0
-    else if e > 50 then None
-    else if e < -400 then Some 0.0
+    else if e + ndig d > 40 then None
+    else if e + ndig d < -47 then Some 0.0
     else begin
       let num, den = ratio_of_decimal d e in
       (* float32: 24-bit significand, subnormal ulp 2^-149, max < 2^128 *)
@@ -94,8 +96,8 @@ let f64_of_token (tok : string) : float option =
   let neg, d, e = decompose tok in
   let r =
     if Big.is_zero d then Some 0.0
-    else if e > 400 then None
-    else if e < -800 then Some 0.0
+    else if e + ndig d > 310 then None
+    else if e + ndig d < -326 then Some 0.0
     else begin
       let num, den = ratio_of_decimal d e in
       round_ratio ~mbits:53 ~emin:(-1074) ~emax_bits:1024 num den
@@ -148,6 +150,10 @@ let fixed_text (r : Big.t) (f : int) : string =
 (* a fixed field's token in whole units -> raw, only if exact *)
 let fixed_raw_of_token (tok : string) (f : int) : Big.t option =
   let neg, d, e = decompose tok in
+  if Big.is_zero d then Some Big.zero
+  else if e + ndig d > 45 then None            (* past any 128-bit storage *)
+  else if e < 0 && - e > 2 * ndig d + 2 then None   (* 5^-e cannot divide d: not exact *)
+  else
   let num, den = ratio_of_decimal d e in
   let num = Big.shift_left num f in
   let q, r = Big.quo_rem num den in
