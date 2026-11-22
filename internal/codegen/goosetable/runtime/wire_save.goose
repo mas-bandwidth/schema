@@ -818,6 +818,15 @@ fn field_map(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64) {
     // entries in any order, the wire never does
     let mark = c.sorted.len;
     map_entry_order(c.data, c.vals, c.unit.tables[t].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
+    // a key twice is a file every reader refuses as damage (§2.8): the save
+    // refuses it as invalid_value, as the reference does (tableMapCursor)
+    for k in c.vals[s].len - 1 {
+        if map_key_cmp(c.data, c.unit.tables[t].fields[0], c.vals[c.vals[c.sorted[mark + k]].first], c.vals[c.vals[c.sorted[mark + k + 1]].first]) >= 0 {
+            refuse(c, SaveRefuseInvalidValue);
+            c.sorted.resize(mark);
+            return;
+        }
+    }
     for k in c.vals[s].len {
         let el = c.out.len;
         body(c, t, c.sorted[mark + k], false);
