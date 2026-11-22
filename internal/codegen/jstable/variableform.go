@@ -296,7 +296,7 @@ export class TableVariableReport {
 // THE STRICT READ'S REASONS (docs/SPEC-TABLES.md §6.5, the refusal-names
 // table): each member's value is the enum's own value name, so a reason
 // compares by identity and spells itself with no lookup.
-export const TableRefuseReason = Object.freeze({
+export const TableRefuseReason = globalThis.Object.freeze({
   UnknownForm: "unknown_form",
   IntegrityMismatch: "integrity_mismatch",
   NonFiniteFloat: "non_finite_float",
@@ -316,7 +316,7 @@ export const TableRefuseReason = Object.freeze({
 // answers -1 rather than growing. mark and rollback are how a writer decides
 // ELISION without spending an entry (internal/tablewire ids.go).
 class TableVariableIds {
-  constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  constructor(retain) { this.list = []; this.index = new globalThis.Map(); this.retain = retain || null; }
   ref(id, retained) {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
@@ -342,15 +342,15 @@ class TableVariableWriter {
   u8(v) { this.b.push(v & 0xff); }
   u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
   leb(v) {
-    v = Number(v);
-    while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
+    v = globalThis.Number(v);
+    while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = globalThis.Math.floor(v / 128); }
     this.b.push(v & 0x7f);
   }
   raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
   i32(v) { this.u32(v | 0); }
-  u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
-  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  u64(v) { for (let i = 0; i < 8; i++) { this.b.push(globalThis.Number(v & 0xffn)); v = v >> 8n; } }
+  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(globalThis.Number(v & 0xffn)); v = v >> 8n; } }
   f32(v) {
     const d = TableVariableScratch;
     d.setFloat32(0, v, true);
@@ -361,7 +361,7 @@ class TableVariableWriter {
     d.setFloat64(0, v, true);
     for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
   }
-  toArray() { return new Uint8Array(this.b); }
+  toArray() { return new globalThis.Uint8Array(this.b); }
 }
 
 // THE READER: a cursor over the wire, everything little-endian (§3).
@@ -380,7 +380,7 @@ class TableVariableReader {
       if (this.at >= this.end) { this.bad = true; this.at = start; return 0; }
       const x = this.b[this.at++];
       if (i === 9 && x > 1) { this.bad = true; this.at = start; return 0; }
-      r += (x & 0x7f) * Math.pow(2, s);
+      r += (x & 0x7f) * globalThis.Math.pow(2, s);
       if ((x & 0x80) === 0) {
         if (i > 0 && x === 0) { this.bad = true; this.at = start; return 0; }
         return r;
@@ -401,18 +401,18 @@ class TableVariableReader {
   i16() { const v = this.b[this.at] | (this.b[this.at + 1] << 8); this.at += 2; return (v & 0x8000) ? (v - 0x10000) : v; }
   u64() {
     let v = 0n;
-    for (let i = 0; i < 8; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    for (let i = 0; i < 8; i++) { v |= globalThis.BigInt(this.b[this.at + i]) << globalThis.BigInt(8 * i); }
     this.at += 8;
     return v;
   }
-  i64() { return BigInt.asIntN(64, this.u64()); }
+  i64() { return globalThis.BigInt.asIntN(64, this.u64()); }
   u128() {
     let v = 0n;
-    for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    for (let i = 0; i < 16; i++) { v |= globalThis.BigInt(this.b[this.at + i]) << globalThis.BigInt(8 * i); }
     this.at += 16;
     return v;
   }
-  i128() { return BigInt.asIntN(128, this.u128()); }
+  i128() { return globalThis.BigInt.asIntN(128, this.u128()); }
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -441,7 +441,7 @@ function TableVariableUtf8Decode(bytes) {
   for (let i = 0; i < bytes.length;) {
     const b0 = bytes[i];
     if (b0 === 0) { return { s, ok: false }; }
-    if (b0 < 0x80) { s += String.fromCharCode(b0); i++; continue; }
+    if (b0 < 0x80) { s += globalThis.String.fromCharCode(b0); i++; continue; }
     let need, cp;
     if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
     else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
@@ -455,7 +455,7 @@ function TableVariableUtf8Decode(bytes) {
     }
     const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
     if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return { s, ok: false }; }
-    s += String.fromCodePoint(cp);
+    s += globalThis.String.fromCodePoint(cp);
     i += 1 + need;
   }
   return { s, ok: true };
@@ -551,7 +551,7 @@ function TableVariableJsonString(s) {
       const lo = s.charCodeAt(i + 1);
       if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
     }
-    if (c === 0 || (c >= 0xd800 && c <= 0xdfff)) { throw new RangeError("TableVariableNotText"); }
+    if (c === 0 || (c >= 0xd800 && c <= 0xdfff)) { throw new globalThis.RangeError("TableVariableNotText"); }
     switch (c) {
       case 0x22: out += '\\"'; break;
       case 0x5c: out += '\\\\'; break;
@@ -664,17 +664,17 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return "null"
 	case f.IsMap():
 		// a map is a JavaScript Map from key to value (§2.8)
-		return "new Map()"
+		return "new globalThis.Map()"
 	case unionOf(f) != nil && f.Array == ir.ArrayNone:
 		// None is null; an arm is { arm: "<name>", value } (§2.6)
 		return "null"
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
-		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		// a counted array is BORN AT ITS MINIMUM count (docs/SPEC.md §5), each
 		// slot at the element's default
-		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -693,7 +693,7 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	case ir.TString:
 		return jsStr(string(f.DefBytes))
 	case ir.TBytes:
-		return "new Uint8Array(" + jsByteList(f.DefBytes) + ")"
+		return "new globalThis.Uint8Array(" + jsByteList(f.DefBytes) + ")"
 	case ir.TFloat32, ir.TFloat64:
 		return floatDefault(f)
 	}
@@ -942,7 +942,7 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		declared = append(declared, jsId(ir.TableWireId(st.WireName())))
 	}
 	sort.Strings(declared)
-	g.pf("const TableVariableDeclaredTypes = new Set([%s]);\n", strings.Join(declared, ", "))
+	g.pf("const TableVariableDeclaredTypes = new globalThis.Set([%s]);\n", strings.Join(declared, ", "))
 	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n")
 	g.pf("TableVariableFreeze(TableVariableCodecs);\n")
 	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
@@ -1035,7 +1035,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		}
 		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", bound, jsStr(string(f.DefBytes)))
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(&b, "s: \"bytes\", js: \"s\", list: false, bound: %d, ek: %d, def: new Uint8Array(%s) }",
+		fmt.Fprintf(&b, "s: \"bytes\", js: \"s\", list: false, bound: %d, ek: %d, def: new globalThis.Uint8Array(%s) }",
 			f.Type.Size, ir.TableKindU8, jsByteList(f.DefBytes))
 	case f.Type.Kind == ir.TBool:
 		def := "false"
@@ -1289,13 +1289,13 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	}
 	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
 	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
-	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
+	g.pf("  const dv = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
-	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
+	g.pf("  if (count > TableVariableEntryBound || count > globalThis.BigInt(globalThis.Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
+	g.pf("  const first = bytes.length - 8 - globalThis.Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
-	g.pf("  const seen = new Set();\n")
-	g.pf("  for (let i = 0; i < Number(count); i++) {\n")
+	g.pf("  const seen = new globalThis.Set();\n")
+	g.pf("  for (let i = 0; i < globalThis.Number(count); i++) {\n")
 	g.pf("    const id = dv.getBigUint64(first + i * 8, true);\n")
 	g.pf("    if (seen.has(id)) { return %s; }\n", refused)
 	g.pf("    seen.add(id);\n")

@@ -209,7 +209,7 @@ func TestUnpackBatchRefusesOverlappingDestinations(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := os.Lstat(y); err == nil {
-			t.Skip("this volume takes Out and out for one directory, so they are one destination here")
+			t.Skip("this volume takes Out and out for one directory, so they are one destination here: the control runs on Linux")
 		}
 		if err := os.Remove(x); err != nil {
 			t.Fatal(err)

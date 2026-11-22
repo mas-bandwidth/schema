@@ -120,7 +120,7 @@ const TableFixedNoGuard = -1;
 
 // WHY A READ WAS REFUSED, by name. None of these is one of §4's six events:
 // in each of them nothing was decoded and there is nothing to count.
-export const TableFixedRefusal = Object.freeze({
+export const TableFixedRefusal = globalThis.Object.freeze({
   None: 0,
   // THE THREE DIRECTIONS a form byte can be wrong in, named apart (§3)
   PreviousForm: 1,      // form 1, the variable form: a wire this backend does not carry
@@ -244,20 +244,20 @@ export function TableFixedResetReport(report) {
 // layout whose plan does not fit is a refusal by name, never a growth.
 export class TableFixedPlan {
   constructor(entryCapacity, imageBytes, remapCapacity) {
-    this.entries = new Int32Array(entryCapacity * TableFixedLanes);
+    this.entries = new globalThis.Int32Array(entryCapacity * TableFixedLanes);
     this.capacity = entryCapacity | 0;
     this.count = 0;
     // the reader's own storage: this build's declared order at its own widths
-    this.image = new Uint8Array(imageBytes | 0);
-    this.view = new DataView(this.image.buffer);
+    this.image = new globalThis.Uint8Array(imageBytes | 0);
+    this.view = new globalThis.DataView(this.image.buffer);
     // cover and holes: scratch for TableFixedHoles, one allocation at
     // construction and never per record. holes is (off, size) pairs.
-    this.cover = new Uint8Array(imageBytes | 0);
-    this.holes = new Int32Array(((imageBytes | 0) + 1) * 2);
+    this.cover = new globalThis.Uint8Array(imageBytes | 0);
+    this.holes = new globalThis.Int32Array(((imageBytes | 0) + 1) * 2);
     // the remap tables an TableFixedOpOrdinal entry resolves through, laid down here
     // rather than above the entries: JavaScript has no pointer to alias two
     // arrays through, so the pool is its own array and aux is an index into it
-    this.remap = new Int32Array((remapCapacity | 0) || 1024);
+    this.remap = new globalThis.Int32Array((remapCapacity | 0) || 1024);
     this.remapUsed = 0;
     this.recordBytes = 0;
     // the WRITER's declared body size, every compiled entry bounded by it
@@ -274,7 +274,7 @@ export class TableFixedPlan {
     // (guard, arg, argw) link per enclosing union arm or optional payload.
     // Optional links use arg = -1 for nonzero presence; chainAt is its pool offset,
     // once per arm, or -1. Sized once for the layout's 64.
-    this.chain = new Int32Array(65 * 3);
+    this.chain = new globalThis.Int32Array(65 * 3);
     this.chainLen = 0;
     this.chainAt = -1;
     // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
@@ -298,7 +298,7 @@ export class TableFixedPlan {
 // and the paired bench still names it.
 export class TableFixedPlanCache {
   constructor() {
-    this.plans = new Map();
+    this.plans = new globalThis.Map();
   }
   get(hashLo, hashHi) {
     return this.plans.get(hashHi * 4294967296 + (hashLo >>> 0));
@@ -319,7 +319,7 @@ export class TableFixedPlanCache {
 // because a BigInt would allocate, and a hash is compared ONCE PER RECORD:
 // getBigUint64 on that path is one allocation per record, which is the same
 // reason the block form reads its own sixty-four-bit fields as two uint32s.
-const TableFixedHashOut = new Int32Array(2); // single threaded per realm, consumed in the call that fills it
+const TableFixedHashOut = new globalThis.Int32Array(2); // single threaded per realm, consumed in the call that fills it
 
 export function TableFixedHashOf(bytes, at, length) {
   let hLo = 0x84222325, hHi = 0xcbf29ce4; // the fnv1a64 offset basis
@@ -334,7 +334,7 @@ export function TableFixedHashOf(bytes, at, length) {
     const mid = (p00 >>> 16) + (p01 & 0xffff) + (p10 & 0xffff);
     const lo = ((p00 & 0xffff) | (mid << 16)) >>> 0;
     const hi = (p11 + (p01 >>> 16) + (p10 >>> 16) + (mid >>> 16)) >>> 0;
-    hHi = (hi + Math.imul(hLo, 0x00000100) + Math.imul(hHi, 0x000001b3)) >>> 0;
+    hHi = (hi + globalThis.Math.imul(hLo, 0x00000100) + globalThis.Math.imul(hHi, 0x000001b3)) >>> 0;
     hLo = lo;
   }
   TableFixedHashOut[0] = hLo | 0;
@@ -580,7 +580,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const tagW = (meta >>> 8) !== 0 ? (meta >>> 8) : size;
         if (v === 0 && arms !== 0 && s + tagW <= src.length) {
           let raw = 0;
-          for (let k = 0; k < tagW; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
+          for (let k = 0; k < tagW; k++) { raw += src[s + k] * globalThis.Math.pow(2, 8 * k); }
           // A TAG PAST THE WRITER'S OWN ARM SET IS OUT OF RANGE (§4.6): it
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
@@ -702,7 +702,7 @@ export function TableFixedHoles(plan, entryCount, cover, holes) {
 
 // the sixteen-byte conversion scratch — the flat packet tier's SC twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that fills it.
-const TableFixedConv = new DataView(new ArrayBuffer(16));
+const TableFixedConv = new globalThis.DataView(new globalThis.ArrayBuffer(16));
 
 // ---- THE LAYOUT ------------------------------------------------------------
 
@@ -1108,9 +1108,9 @@ function TableFixedLayRemap(plan, values, n) {
 // and a leg that reproduced it would silently remap a writer's 256th variant to
 // None as though the reader did not name it. The scratch grows at COMPILE time,
 // which on this leg is module load and off every load path (§5.9 #3).
-let TableFixedRemapScratch = new Int32Array(256);
+let TableFixedRemapScratch = new globalThis.Int32Array(256);
 function TableFixedRemapRoom(n) {
-  if (n > TableFixedRemapScratch.length) { TableFixedRemapScratch = new Int32Array(n); }
+  if (n > TableFixedRemapScratch.length) { TableFixedRemapScratch = new globalThis.Int32Array(n); }
   return TableFixedRemapScratch;
 }
 
@@ -1227,7 +1227,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // wraps to a huge bound — which the record bound below refuses WHOLE, the
       // same answer the reference's record_bound_case gives. A signed subtraction
       // here would underflow to a negative bound and let the over-reach through.
-      const theirN = theirElem ? Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
+      const theirN = theirElem ? globalThis.Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
@@ -1468,7 +1468,7 @@ export class TableFixedKnownLayout {
     this.recordBytes = recordBytes | 0;
     // the lock's bytes as a view, made ONCE at module load, so the per-read
     // layout compare moves in 32-bit lanes and allocates nothing
-    this.layoutView = new DataView(layout.buffer, layout.byteOffset, layout.length);
+    this.layoutView = new globalThis.DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 
@@ -1479,7 +1479,7 @@ export class TableFixedKnownLayout {
 // three.
 export function TableFixedDecodeLayout(text) {
   const raw = atob(text);
-  const out = new Uint8Array(raw.length);
+  const out = new globalThis.Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
   return out;
 }
@@ -1498,7 +1498,7 @@ export function TableFixedSelect(known, hashLo, hashHi) {
 // is written, the prefill included.
 export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
   report.refused = refusal;
-  report.layoutHash = (BigInt(hashHi >>> 0) << 32n) | BigInt(hashLo >>> 0);
+  report.layoutHash = (globalThis.BigInt(hashHi >>> 0) << 32n) | globalThis.BigInt(hashLo >>> 0);
   return -1;
 }
 

@@ -7,7 +7,7 @@ function TableVariableTextListLength(record) {
   return record.value === null ? 0 : TableVariableUtf8Encode(record.value).length;
 }
 function TableVariableTextListValid(fd, values) {
-  if (!Array.isArray(values) || (!fd.list && values.length > fd.bound) || values.length > 0x7fffffff) { return false; }
+  if (!globalThis.Array.isArray(values) || (!fd.list && values.length > fd.bound) || values.length > 0x7fffffff) { return false; }
   const vf = fd.e.c.fields[0];
   let total = 0;
   for (const record of values) {

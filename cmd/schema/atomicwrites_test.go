@@ -585,7 +585,7 @@ func TestNoCommandDamagesAFileItRewrites(t *testing.T) {
 func TestGenerateOverAReadOnlyFile(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
-		t.Skip("root writes a read-only file")
+		t.Skip("root writes into a read-only file")
 	}
 	var generate atomicCase
 	for _, tc := range atomicCases {

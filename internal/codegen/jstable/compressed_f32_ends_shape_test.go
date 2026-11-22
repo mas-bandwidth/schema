@@ -50,7 +50,7 @@ func TestJavaScriptCompressedF32EndsShape(t *testing.T) {
 		// the control: a plain float32 has no range
 		`f32: true, lo: null, hi: null, nf: "V.p"`,
 		// the required test narrows a float32 first
-		`const x = d.s === "float" && d.f32 ? Math.fround(value) : value;`,
+		`const x = d.s === "float" && d.f32 ? globalThis.Math.fround(value) : value;`,
 	} {
 		if !strings.Contains(variable, want) {
 			t.Errorf("ProbeVariable.js lacks %s", want)
@@ -69,14 +69,14 @@ func TestJavaScriptCompressedF32EndsShape(t *testing.T) {
 		t.Error("the text read does not narrow a float32 before its range test")
 	}
 	for _, want := range []string{
-		"if (Math.fround(value.r) < " + lo + " || Math.fround(value.r) > " + hi + ") { return false; }",
-		"if (Math.fround(value.xs[i1]) < " + lo + " || Math.fround(value.xs[i1]) > " + hi + ") { return false; }",
+		"if (globalThis.Math.fround(value.r) < " + lo + " || globalThis.Math.fround(value.r) > " + hi + ") { return false; }",
+		"if (globalThis.Math.fround(value.xs[i1]) < " + lo + " || globalThis.Math.fround(value.xs[i1]) > " + hi + ") { return false; }",
 	} {
 		if !strings.Contains(fixed, want) {
 			t.Errorf("ProbeTable.js lacks %s", want)
 		}
 	}
-	if strings.Contains(fixed, "Math.fround(value.p) <") || strings.Contains(fixed, "value.p < ") {
+	if strings.Contains(fixed, "globalThis.Math.fround(value.p) <") || strings.Contains(fixed, "value.p < ") {
 		t.Error("ProbeTable.js holds the plain float to a range")
 	}
 }

@@ -181,8 +181,8 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 		// SIXTEEN BYTES, THE LOW 64-BIT HALF FIRST, which is this wire's order
 		// for the family everywhere else (docs/SPEC-TABLES.md §3). JavaScript
 		// holds a 128-bit value as one BigInt, so the halves are split here.
-		g.pf("%s%s.setBigUint64(%s, BigInt.asUintN(64, %s), true);\n", ind, view, at, expr)
-		g.pf("%s%s.setBigUint64(%s, BigInt.asUintN(64, %s >> 64n), true);\n", ind, view, off(at, 8), expr)
+		g.pf("%s%s.setBigUint64(%s, globalThis.BigInt.asUintN(64, %s), true);\n", ind, view, at, expr)
+		g.pf("%s%s.setBigUint64(%s, globalThis.BigInt.asUintN(64, %s >> 64n), true);\n", ind, view, off(at, 8), expr)
 		return
 	}
 	call, le := fixedSetter(t)
@@ -437,7 +437,7 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	case f.Array == ir.ArrayCounted:
 		g.emitCheckValueArray(expr, ind)
 		count := expr + "Count"
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
 			ind, count, count, count, count, f.ArrayBound)
 		g.emitCheckValueLoop(f, count, expr, ind)
 	case f.Type.Kind == ir.TString:
@@ -453,14 +453,14 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 // owes an untyped caller: a value that is not the array the module indexes is
 // refused, never indexed as if it were one.
 func (g *fixedGen) emitCheckValueArray(expr, ind string) {
-	g.pf("%sif (!Array.isArray(%s) && !(%s instanceof Uint8Array)) { return false; }\n", ind, expr, expr)
+	g.pf("%sif (!globalThis.Array.isArray(%s) && !(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr, expr)
 }
 
 func (g *fixedGen) emitCheckValueText(f *ir.Field, expr, ind string) {
 	if !g.emitCheckValueBytes(f, expr, ind) {
 		return
 	}
-	g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, new DataView(%s.buffer, %s.byteOffset, %s.byteLength), 0, %sLength)) { return false; }\n",
+	g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, new globalThis.DataView(%s.buffer, %s.byteOffset, %s.byteLength), 0, %sLength)) { return false; }\n",
 		ind, expr, expr, expr, expr)
 }
 
@@ -470,9 +470,9 @@ func (g *fixedGen) emitCheckValueText(f *ir.Field, expr, ind string) {
 // the buffer actually holds. It answers whether the caller can then read the
 // used units (a text has one more content rule to hold).
 func (g *fixedGen) emitCheckValueBytes(f *ir.Field, expr, ind string) bool {
-	g.pf("%sif (!(%s instanceof Uint8Array)) { return false; }\n", ind, expr)
+	g.pf("%sif (!(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr)
 	length := expr + "Length"
-	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+	g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
 		ind, length, length, length, length, f.Type.Size)
 	g.pf("%sif (%s.length < %s) { return false; }\n", ind, expr, length)
 	return true
@@ -496,7 +496,7 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 			return
 		case *ir.Union:
 			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
-			g.pf("%sif (!Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d) { return false; }\n",
+			g.pf("%sif (!globalThis.Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d) { return false; }\n",
 				ind, expr, expr, expr, len(r.Variants))
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
@@ -510,7 +510,7 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 			g.pf("%s  default: break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
-			g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+			g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
 				ind, expr, expr, expr, r.Max)
 			return
 		case *ir.Flags:
@@ -523,17 +523,17 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	case ir.TBool:
 		return
 	case ir.TFloat32:
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n",
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n",
 			ind, expr, expr)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
 			// THE RANGE IS HELD AT FLOAT32 (§3.3): the value the store
 			// narrows is the value the range holds, against the float32
 			// nearest each end
-			g.pf("%sif (Math.fround(%s) < %s || Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
+			g.pf("%sif (globalThis.Math.fround(%s) < %s || globalThis.Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
 		return
 	case ir.TFloat64:
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) { return false; }\n",
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(%s)) { return false; }\n",
 			ind, expr, expr)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
 			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
@@ -544,7 +544,7 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	if asBig {
 		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
 	} else {
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
 	}
 	// THE WRITER CHECKS BOTH DECLARED ENDS, never the reader's elision: a
 	// bound sitting on the storage width's own limit is still a bound the
@@ -578,9 +578,9 @@ func (g *fixedGen) storeTag(ind, at string, width int64, expr string) {
 		g.pf("%sview.setUint16(%s, %s, true);\n", ind, at, expr)
 	case 8:
 		g.pf("%s{\n", ind)
-		g.pf("%s  const t = Number(%s);\n", ind, expr)
+		g.pf("%s  const t = globalThis.Number(%s);\n", ind, expr)
 		g.pf("%s  view.setUint32(%s, t >>> 0, true);\n", ind, at)
-		g.pf("%s  view.setUint32((%s) + 4, Math.floor(t / 4294967296) >>> 0, true);\n", ind, at)
+		g.pf("%s  view.setUint32((%s) + 4, globalThis.Math.floor(t / 4294967296) >>> 0, true);\n", ind, at)
 		g.pf("%s}\n", ind)
 	default:
 		g.pf("%sview.setUint32(%s, %s, true);\n", ind, at, expr)
@@ -1718,7 +1718,7 @@ func (g *fixedGen) emitFieldStorage(f *ir.Field, ind, target string) {
 		g.pf("%s%s.%s = %s;\n", ind, target, name, fixedArrayLiteral(f, f.ArrayBound))
 		g.pf("%s%s.%sCount = %d;\n", ind, target, name, f.ArrayMin)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.pf("%s%s.%s = new Uint8Array(%d);\n", ind, target, name, f.Type.Size)
+		g.pf("%s%s.%s = new globalThis.Uint8Array(%d);\n", ind, target, name, f.Type.Size)
 		g.emitDefaultTextBytes(f, ind, target)
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))
 	default:
@@ -1782,12 +1782,12 @@ func fixedDefaultTextLength(f *ir.Field) int64 {
 
 func fixedArrayLiteral(f *ir.Field, count int64) string {
 	if cls := fixedElementClass(f.Type); cls != "" {
-		return fmt.Sprintf("Array.from({ length: %d }, () => new %s())", count, cls)
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => new %s())", count, cls)
 	}
 	if fixedStorageBytes(f.Type) == 1 && f.Type.Kind == ir.TInt && !f.Type.Signed {
-		return fmt.Sprintf("new Uint8Array(%d)", count)
+		return fmt.Sprintf("new globalThis.Uint8Array(%d)", count)
 	}
-	return fmt.Sprintf("new Array(%d).fill(%s)", count, fixedElementZero(f))
+	return fmt.Sprintf("new globalThis.Array(%d).fill(%s)", count, fixedElementZero(f))
 }
 
 // emitFieldReset restores one field in place, never replacing its storage.
