@@ -412,7 +412,7 @@ jobs:
             # silently") in the workflows, the makefiles, and every script
             # under make/, tools/ and bench/ (extensionless ones too). A diff
             # touching any of those runs it.
-            if grep -qE '(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/workflows/|^(make|tools|bench)/' <<<"$files"; then
+            if grep -qE '(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/workflows/|^(make|tools|bench)/([^/]+/)*[^/.]+$' <<<"$files"; then
               case " $packages " in *" ./internal/recipescan "*) ;; *) packages="$packages ./internal/recipescan" ;; esac
             fi
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
