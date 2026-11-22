@@ -106,14 +106,14 @@ fixed table Point {
     let r12a = schema_rt::fixed_refusal_name(rep.reason);
     let n12b = probe::PointFixedLoad(dst, f12b, rep);
     let r12b = schema_rt::fixed_refusal_name(rep.reason);
-    let untouched = dst[0].X == 77 && dst[0].Y == 88 && dst[1].X == 77 && dst[1].Y == 88;
+    let defaulted = dst[0].X == 1 && dst[0].Y == 2 && dst[1].X == 1 && dst[1].Y == 2;
     print("F1 ", n1a, " ", r1a, " ", n1b, " ", r1b);
     print("F2 ", n2, " ", r2);
     print("F3 ", n3a, " ", r3a, " ", n3b, " ", r3b);
     print("F4 ", n4, " ", r4);
     print("F7 ", n7, " ", r7);
     print("F8 ", n8, " ", r8);
-    print("F12 ", n12a, " ", r12a, " ", n12b, " ", r12b, " ", untouched);
+    print("F12 ", n12a, " ", r12a, " ", n12b, " ", r12b, " ", defaulted);
 }
 `, nil)
 	want := strings.Join([]string{
@@ -150,7 +150,7 @@ fixed table Point {
     let n = probe::PointFixedLoad(dst, clean, rep);
     var er = schema_rt::FixedEvolveReport { .. };
     let en = probe::PointFixedEvolveLoad(dst, clean, er);
-    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", en, " ", schema_rt::fixed_evolve_refusal_name(er.reason), " ", dst[0].X == 77 && dst[1].Y == 88);
+    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", en, " ", schema_rt::fixed_evolve_refusal_name(er.reason), " ", dst[0].X == 1 && dst[0].Y == 2 && dst[1].X == 1 && dst[1].Y == 2);
 }
 `, nil)
 	if got != "-1 batch_too_large -1 batch_too_large true" {
@@ -224,7 +224,7 @@ func TestGooseFixedProofRetiredRuntime(t *testing.T) {
 	// R10 & R15: an older reader given a newer writer's file does not walk the
 	// stranger's layout or forward-clamp; it refuses layout_unknown with the file's hash.
 	got := gooseVersionProbe(t, gooseVersionCase{
-		reader: older, root: "Lineage", capacity: 1, data: newData, fresh: true,
+		reader: older, root: "Lineage", capacity: 1, poison: true, data: newData, fresh: true,
 	})
 	got.refuses(t, "layout_unknown", true, gooseFileHash(newData))
 	_ = newer
