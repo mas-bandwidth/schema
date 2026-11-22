@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -49,10 +50,23 @@ func bindsName(module, name string) bool {
 		regexp.MustCompile(`(?m)^import\s*\{[^}]*\b`+name+`\b[^}]*\}`).MatchString(module)
 }
 
+var plainCalls sync.Map // name -> *regexp.Regexp, compiled once
+
+func plainCall(name string) *regexp.Regexp {
+	if re, ok := plainCalls.Load(name); ok {
+		return re.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(`(?:^|[^.$\w])` + name + `\.`)
+	plainCalls.Store(name, re)
+	return re
+}
+
 func shadowedCall(module, code string, names ...string) bool {
 	code = stringLiteral.ReplaceAllString(code, `""`)
 	for _, n := range names {
-		if bindsName(module, n) && regexp.MustCompile(`(?:^|[^.$\w])`+n+`\.`).MatchString(code) {
+		// the cheap per-line match first: the module scan runs only for a line
+		// that calls the name, never for every line of every module
+		if plainCall(n).MatchString(code) && bindsName(module, n) {
 			return true
 		}
 	}
