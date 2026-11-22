@@ -203,7 +203,7 @@ const tableRegionWriteSource = `
             UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
             w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f, i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : StoredRaw(value.Raw(f, i), f), Width(f.Kind)); }
     }
     static void RegionWritePayload(ref Writer w, NativeValue value, TableFieldInfo f, ref RegionIds ids)
     {

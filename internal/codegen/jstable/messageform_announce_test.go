@@ -268,7 +268,7 @@ func jsRunAnnounceProbe(t *testing.T, node string, u *ir.Unit, extra map[string]
 	maps.Copy(files, tables)
 	home := ""
 	for name, data := range tables {
-		if strings.Contains(string(data), "TableMessageAnnouncement = new Uint8Array(") {
+		if strings.Contains(string(data), "TableMessageAnnouncement = new globalThis.Uint8Array(") {
 			home = name
 		}
 	}
@@ -341,7 +341,7 @@ func homeModule(t *testing.T, u *ir.Unit) string {
 		t.Fatalf("generate: %v", err)
 	}
 	for _, b := range files {
-		if strings.Contains(string(b), "TableMessageAnnouncement = new Uint8Array(") {
+		if strings.Contains(string(b), "TableMessageAnnouncement = new globalThis.Uint8Array(") {
 			return string(b)
 		}
 	}
@@ -349,7 +349,7 @@ func homeModule(t *testing.T, u *ir.Unit) string {
 	return ""
 }
 
-var announceArrayRe = regexp.MustCompile(`TableMessageAnnouncement = new Uint8Array\(\[([^\]]*)\]\)`)
+var announceArrayRe = regexp.MustCompile(`TableMessageAnnouncement = new globalThis\.Uint8Array\(\[([^\]]*)\]\)`)
 
 func emittedAnnouncement(t *testing.T, src string) []byte {
 	t.Helper()

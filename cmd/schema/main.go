@@ -897,6 +897,13 @@ testgen refuse a file that resolves to a schema source. The answer is the
 file system's, so a symlink or another spelling of the same entry is refused
 too, and nothing is written.
 
+unpack writes every tree or none: the tree argument and each --batch tree
+must be a directory of its own (two that are one directory, or one inside
+another, are refused before anything is written, whether or not they exist
+yet), and a failure writing any tree puts the others back as they were and
+leaves no directory it made. An entry in a tree that names no field is never
+touched.
+
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
 <Base>Table_gen_test.lua and Squirrel one <Base>Table_gen_test.nut per schema
