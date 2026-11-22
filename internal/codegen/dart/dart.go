@@ -228,9 +228,13 @@ func checkNames(u *ir.Unit) error {
 }
 
 type gen struct {
-	unit *ir.Unit
-	file *ir.File
-	home bool // this file carries protocolId and the unit-level target notes
+	// fieldNames holds the Dart names of the struct being emitted: inside its
+	// class a field shadows a top-level constant of the same name, so a default
+	// or bound naming such a constant folds to its value instead.
+	fieldNames map[string]bool
+	unit       *ir.Unit
+	file       *ir.File
+	home       bool // this file carries protocolId and the unit-level target notes
 
 	body strings.Builder
 
@@ -572,6 +576,11 @@ func (g *gen) emitClass(d *ir.Struct) {
 		g.bpf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	}
 	prevGuard := ""
+	g.fieldNames = map[string]bool{}
+	for _, f := range d.Fields {
+		g.fieldNames[dartName(f.Name)] = true
+	}
+	defer func() { g.fieldNames = nil }()
 	for _, f := range d.Fields {
 		if f.Guard != prevGuard {
 			if f.Guard != "" {
@@ -919,6 +928,11 @@ func dartIntLit(v *big.Int) string {
 func (g *gen) renderInt(e ast.Expr, folded *big.Int) string {
 	if e == nil || ir.ExprHasEnumMax(e) || !g.renderable(e) || !g.exprExact(e) {
 		return dartIntLit(folded)
+	}
+	for _, name := range ir.ExprConsts(e) {
+		if g.fieldNames[dartName(name)] {
+			return dartIntLit(folded)
+		}
 	}
 	return g.renderExpr(e)
 }
