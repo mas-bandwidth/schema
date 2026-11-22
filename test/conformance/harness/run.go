@@ -751,7 +751,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 	results := map[string]map[string]*result{}
-	var langs []string
+	// legFailures are what a whole LEG came to rather than one surface: a leg
+	// that answered no row at all.
+	legFailures := map[string][]string{}
+	var langs, skippedLangs []string
 	for i, d := range drivers {
 		// THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN. It is the
 		// first driver in the COMMITTED registry — the discovered one, where
@@ -771,6 +774,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			// on the same rule as the matrix below: a stdout that cannot be
 			// written to is not a verdict this gate can improve on
 			_, _ = io.WriteString(w, "conformance SKIPS the "+d.lang+" leg: --skip names it (SCHEMA_SKIP_LEGS)\n")
+			skippedLangs = append(skippedLangs, d.lang)
 			continue
 		}
 		langs = append(langs, d.lang)
@@ -819,6 +823,19 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				return false, err
 			}
 			if code == 2 {
+				if why := crashNotAbsence(out, stderr); why != "" {
+					// EXIT 2 IS ALSO HOW A GO PANIC ENDS. An absence says it
+					// before it answers anything; a driver that wrote answers
+					// and then exited 2, or that printed a runtime panic, died
+					// mid-stream, and reading it as "absent" would hide it.
+					for _, e := range legWant {
+						r.verdict(e.name, "fail")
+						r.mark(e.name, outcomeFail)
+					}
+					r.failures = append(r.failures, fmt.Sprintf("the driver exited 2 (absent) but %s: a crash, not an absence\n%s",
+						why, indent(stderr, "    ")))
+					continue
+				}
 				r.absent = true
 				for _, e := range legWant {
 					r.verdict(e.name, "absent")
@@ -832,13 +849,20 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				continue
 			}
 			if code != 0 {
+				// A CRASH NAMES ITS ROWS. Whatever the driver wrote before it
+				// died is not scored: a surface run is one answer, and half of
+				// it is not a partial pass. The failure says how it died and
+				// which rows it left unanswered, so the crash localises.
+				var unanswered []string
 				for _, e := range legWant {
 					r.verdict(e.name, "fail")
-				}
-				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
-				for _, e := range legWant {
 					r.mark(e.name, outcomeFail)
+					if !answered(out, e.name) {
+						unanswered = append(unanswered, e.name)
+					}
 				}
+				r.failures = append(r.failures, fmt.Sprintf("%s; %d of %d row(s) unanswered%s\n%s",
+					describeExit(code), len(unanswered), len(legWant), nameRows(unanswered), indent(stderr, "    ")))
 				continue
 			}
 			for _, line := range exemptions {
@@ -851,6 +875,15 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if opts.strictRows && len(legWant) == 0 {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"the leg lists the %s surface and the corpus gave it 0 rows to run: a surface that ran no rows is not a pass", s))
+			}
+			// AN ANSWER TO A ROW THE CORPUS DID NOT SEND IS A FAILURE. A file
+			// in the output directory that no row owns is a driver answering
+			// a different corpus (a stale manifest, a renamed case, a typo in
+			// its own case table), and a harness that only reads the files it
+			// expects would never see it.
+			for _, name := range strayAnswers(out, legWant) {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"%s: the driver answered a row the corpus did not send on the %s surface", name, s))
 			}
 			for _, e := range legWant {
 				pass, named, missing := r.pass, r.named, r.missing
@@ -876,6 +909,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				opts.claims.enforce(d.lang, s, legWant, r)
 			}
 		}
+		if why := answeredNothing(d.lang, results[d.lang]); why != "" {
+			legFailures[d.lang] = append(legFailures[d.lang], why)
+		}
 	}
 
 	// A run that compared no leg proved nothing: --only naming no registered
@@ -893,7 +929,111 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 	}
-	return report(w, langs, results), nil
+	return reportRun(w, langs, results, legFailures, skippedLangs), nil
+}
+
+// answered says whether the driver left any answer for row name in out: the
+// answer file itself or its `<name>.absent`.
+func answered(out, name string) bool {
+	for _, p := range []string{name, name + ".absent"} {
+		if _, err := os.Stat(filepath.Join(out, p)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// nameRows lists rows in a failure line, the first ten by name and the rest
+// as a count, so a crash over a 166-row surface stays one readable line.
+func nameRows(rows []string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	const shown = 10
+	if len(rows) <= shown {
+		return ": " + strings.Join(rows, ", ")
+	}
+	return fmt.Sprintf(": %s and %d more", strings.Join(rows[:shown], ", "), len(rows)-shown)
+}
+
+// describeExit says how a driver ended when it did not exit 0 or 2. A signal
+// is named as one: "exited -1" reads like a code the driver chose.
+func describeExit(code int) string {
+	if code < 0 {
+		return "the driver was killed by a signal (crashed mid-stream)"
+	}
+	return fmt.Sprintf("the driver exited %d", code)
+}
+
+// crashNotAbsence says why an exit 2 is not the absence the contract gives
+// that code: the driver had already written answers, or its stderr carries a
+// Go runtime panic (which exits 2). Empty means it reads as an absence.
+func crashNotAbsence(out, stderr string) string {
+	if entries, err := os.ReadDir(out); err == nil && len(entries) > 0 {
+		return fmt.Sprintf("it had already written %d answer file(s)", len(entries))
+	}
+	if strings.Contains(stderr, "panic: ") && strings.Contains(stderr, "goroutine ") {
+		return "its stderr carries a Go runtime panic"
+	}
+	return ""
+}
+
+// strayAnswers is every top-level file in out that no row of want owns. A row
+// owns its answer file and every `<name>.<suffix>` beside it (`.absent`,
+// `.wire`, and whatever a surface adds); anything else answers a row the
+// corpus never sent. An unreadable directory is itself named.
+func strayAnswers(out string, want []expectation) []string {
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		return []string{fmt.Sprintf("(output directory unreadable: %v)", err)}
+	}
+	var stray []string
+	for _, ent := range entries {
+		name := ent.Name()
+		owned := false
+		for _, e := range want {
+			if name == e.name || strings.HasPrefix(name, e.name+".") {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			stray = append(stray, name)
+		}
+	}
+	sort.Strings(stray)
+	return stray
+}
+
+// answeredNothing is the verdict on a leg that answered NO row on any surface
+// it was asked: every surface left out of `list`, exited 2, or answered every
+// case `.absent`. Absence is the completion tracker for a port that carries
+// something; a leg that carries nothing is not a port in progress, it is a
+// driver that is not there — the spec-only Zig port's driver printed nothing
+// and the harness said "every registered surface passes" (PR #4726). A leg
+// already failing names its own failures, so this adds nothing there.
+func answeredNothing(lang string, byS map[string]*result) string {
+	sent, got, surfacesAsked := 0, 0, 0
+	for _, s := range surfaces {
+		r := byS[s]
+		if r == nil {
+			continue
+		}
+		if len(r.failures) > 0 {
+			return ""
+		}
+		surfacesAsked++
+		sent += r.total
+		got += r.pass + r.named
+	}
+	if got > 0 {
+		return ""
+	}
+	if surfacesAsked == 0 {
+		return "the leg was asked no surface (--surfaces selected none it runs): a leg that answered nothing is not a pass"
+	}
+	return fmt.Sprintf("the leg answered none of the %d row(s) sent on %d surface(s) — every surface absent or every case `.absent`: a leg that answered nothing is not a pass",
+		sent, surfacesAsked)
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker
@@ -1134,11 +1274,32 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("`%s list` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
+	// `list` IS AN ANSWER AND IS HELD TO ONE. An empty list is a driver that
+	// answers nothing — exit 0 and no output reads exactly like a port that
+	// implements no surface, and every cell would print `absent` over a green
+	// footer. A name that is no surface is a driver promising a surface the
+	// harness never asks for (a typo, or a stale name), which it would
+	// otherwise drop in silence while the real surface went absent.
 	out := map[string]bool{}
+	var unknown []string
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
-		if s := strings.TrimSpace(line); s != "" {
-			out[s] = true
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
 		}
+		if !slices.Contains(surfaces, s) {
+			unknown = append(unknown, s)
+			continue
+		}
+		out[s] = true
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("`%s list` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
+			strings.Join(argv, " "), len(unknown), strings.Join(unknown, ", "), strings.Join(surfaces, ","))
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("`%s list` exited 0 and named no surface: a driver that answers nothing is not a pass",
+			strings.Join(argv, " "))
 	}
 	return out, nil
 }
@@ -1178,6 +1339,18 @@ func describeDiff(name string, want, got []byte) string {
 // ABSENT one — cannot lose a failure recorded against it and the success footer
 // cannot print beside one.
 func report(w io.Writer, langs []string, results map[string]map[string]*result) bool {
+	return reportRun(w, langs, results, nil, nil)
+}
+
+// The two footers a run that failed nothing can print.
+const (
+	everySurfacePasses = "tables conformance: every registered surface passes"
+	notAllAnswered     = "tables conformance: no failures, and NOT every row was answered"
+)
+
+// reportRun is report with what only a whole run knows: the failures that
+// belong to a leg rather than a surface, and the legs --skip left out.
+func reportRun(w io.Writer, langs []string, results map[string]map[string]*result, legFailures map[string][]string, skipped []string) bool {
 	var b strings.Builder
 	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
 	width := 18
@@ -1227,8 +1400,10 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 			case r.missing > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
-				// being rounded away into a smaller total
-				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing)
+				// being rounded away into a smaller total. The denominator is
+				// every row SENT: "pass 16/16 +4a" read as a full pass of a
+				// surface that sent 20.
+				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total, r.missing)
 			default:
 				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total)
 			}
@@ -1249,11 +1424,43 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 			}
 		}
 	}
+	for _, l := range langs {
+		for _, f := range legFailures[l] {
+			lines = append(lines, fmt.Sprintf("  %s / (every surface): %s", l, f))
+		}
+	}
 	sort.Strings(lines)
-	if len(lines) > 0 {
+
+	// THE FOOTER SAYS WHAT RAN. "every registered surface passes" is printed
+	// only when every row of every surface run was answered and passed, and no
+	// leg was skipped. Absence is not failure (README.md), and it is not a pass
+	// either: a run with absences or skipped legs says so, by leg and surface,
+	// in place of the success line.
+	var notAnswered []string
+	for _, l := range langs {
+		for _, s := range surfaces {
+			r := results[l][s]
+			if r == nil || len(r.failures) > 0 {
+				continue
+			}
+			switch {
+			case r.absent:
+				notAnswered = append(notAnswered, fmt.Sprintf("  %s / %s: ABSENT, the whole surface (%d row(s) not answered)", l, s, r.total))
+			case r.missing > 0:
+				notAnswered = append(notAnswered, fmt.Sprintf("  %s / %s: %d of %d row(s) ABSENT", l, s, r.missing, r.total))
+			}
+		}
+	}
+	for _, l := range skipped {
+		notAnswered = append(notAnswered, fmt.Sprintf("  %s: SKIPPED, no surface run (--skip)", l))
+	}
+	switch {
+	case len(lines) > 0:
 		fmt.Fprintf(&b, "FAILURES\n%s\n\n", strings.Join(lines, "\n"))
-	} else {
-		b.WriteString("tables conformance: every registered surface passes\n")
+	case len(notAnswered) > 0:
+		fmt.Fprintf(&b, "%s — absent is not a pass:\n%s\n", notAllAnswered, strings.Join(notAnswered, "\n"))
+	default:
+		b.WriteString(everySurfacePasses + "\n")
 	}
 	// the matrix goes out in one write; a stdout that cannot be written to is
 	// not a verdict this gate can improve on

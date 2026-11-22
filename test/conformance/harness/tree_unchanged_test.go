@@ -18,6 +18,12 @@ import (
 // file, before the tests run and again after, and any file added, removed or
 // changed fails the run by name.
 func TestMain(m *testing.M) {
+	// THE TEST BINARY AS A FAKE DRIVER (footgun_test.go): the harness runs it
+	// as `<exe> <manifest> <surface> [outdir]`, so it answers and exits before
+	// any test, flag parse or tree fingerprint.
+	if mode := os.Getenv(fakeDriverEnv); mode != "" {
+		os.Exit(fakeDriver(mode, os.Args[1:]))
+	}
 	root, err := treeRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
