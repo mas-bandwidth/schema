@@ -5161,7 +5161,9 @@ namespace Blockhome
                 int total = MessageCount(bytes, vocabulary, report);
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
-                if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+                // the capacity refusal included, and nothing is decoded.
+                if (total > values.Length) { return Refuse(report, "batch_too_large"); }
                 bool damagedBefore = report.Damaged;
                 report.Damaged = false;
                 BitReader r = new BitReader(bytes); r.At = 16;

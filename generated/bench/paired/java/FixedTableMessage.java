@@ -245,7 +245,7 @@ public final class FixedTableMessage {
         if (count > cap) {
             report.refused = true;
             report.reason = "batch_too_large";
-            return count;
+            return 0;
         }
         TableMessage.Reader r = new TableMessage.Reader(data, 2, vocab, report);
         for (int i = 0; i < count; i++) {

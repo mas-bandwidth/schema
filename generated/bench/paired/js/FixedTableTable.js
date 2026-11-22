@@ -579,7 +579,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
-  if (count < 0) { return -1; }
+  if (count < 0) { return 0; }
   if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return 0; }
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
@@ -588,7 +588,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       if (report.NonFiniteFloat) {
         for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
-        return -1;
+        return 0;
       }
       // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
       // the count says 0 and every body the walk touched goes back to its
