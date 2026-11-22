@@ -40,7 +40,9 @@ fn probe(file: const u8[:], set_y: bool) {
     var vals2: schema_rt::LoadVal[>..] = [];
     var nodes2: schema_rt::LoadNode[>..] = [];
     var report2 = schema_rt::LoadReport { .. };
-    let again = schema_rt::load_table(conformance_unit(), "Root", out[0..out.len], vals2, nodes2, report2);
+    var copy: u8[>..] = [];
+    copy.append(out[0..out.len]);
+    let again = schema_rt::load_table(conformance_unit(), "Root", copy[0..copy.len], vals2, nodes2, report2);
     let count = (out[out.len - 8] as! i64) + (out[out.len - 7] as! i64) * 256;
     write_stdout(str(file, " y=", (if set_y { 1 } else { 0 }), " wrote ", count, " ", (if again >= 0 && !report2.body_damaged { "read" } else { "damaged" }), "\n"));
 }
