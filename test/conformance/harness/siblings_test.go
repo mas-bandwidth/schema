@@ -47,3 +47,16 @@ func TestRequireSiblingsAcceptsPresentAndUnlistedLegs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRequireSiblingsResolvesFromTheRepoRoot holds that the default sibling
+// paths are read from the repository root, not from the directory the test runs
+// in (the harness package directory): once make deps has staged them, every leg
+// is accepted. Without them it fails naming make deps, never skips.
+func TestRequireSiblingsResolvesFromTheRepoRoot(t *testing.T) {
+	for _, s := range siblingRuntimes {
+		t.Setenv(s.env, "")
+	}
+	if err := requireSiblings([]string{"cpp", "c", "cs", "go", "rust", "js"}); err != nil {
+		t.Fatalf("siblings staged by make deps were refused from the package directory: %v", err)
+	}
+}

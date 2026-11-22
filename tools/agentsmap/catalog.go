@@ -42,6 +42,7 @@ var catalog = []Entry{
 	e("editors", "TextMate grammar, VS Code, Linguist kit", "go test ./editors/...", "go test ./editors/..."),
 	e("examples", "type-wire corpus", "go test ./internal/goldens", "make check"),
 	e("examples128", "int128/fixed corpus", "go test ./internal/goldens", "make check"),
+	e("experiments", "spec-only port experiments, one folder per language", "none", "none"),
 	e("generated", "committed per-language output", "test/generated-tree/verify", "make generated-current"),
 	e("images", "README art", "none", "none"),
 	page("internal", "compiler internals", "go test ./internal/...", "go test ./internal/..."),
