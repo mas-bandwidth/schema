@@ -3343,6 +3343,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             in.bad = true;
             return false;
         }
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2): the union object is one
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
@@ -3372,7 +3378,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3397,7 +3403,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3422,13 +3428,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3439,7 +3445,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
