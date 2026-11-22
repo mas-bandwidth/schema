@@ -255,7 +255,8 @@ if (mode == "list") {
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
                      "cook-write", "message", "retain", "retain-save",
-                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
+                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
+                     "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"]) print(name + "\n");
   return;
 }
 
@@ -853,7 +854,8 @@ if (mode == "retain" || mode == "retain-save") {
 // driver script asks `list` before a surface and answers exit 2 for the rest.
 
 // THE WRITE CONTRACT (docs/SPEC.md §5.1): the four write-refusal surfaces.
-if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-refusal-message" || mode == "write-refusal-json") {
+if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-refusal-message" || mode == "write-refusal-json" ||
+    mode == "write-refusal-cook" || mode == "write-refusal-block") {
   local wrefHex = function(text) {
     if ((text.len() % 2) != 0) throw "hex " + text + " is not whole bytes";
     local out = "";
@@ -903,6 +905,26 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       }
     }
     return dst;
+  };
+  // the value at a path of plain field names, each optionally indexed
+  local wrefResolve = function(T, root, v, path) {
+    local tname = root, owner = v, start = 0;
+    for (local i = 0; i <= path.len(); i++) {
+      if (i != path.len() && path[i] != 46) continue;
+      local seg = path.slice(start, i);
+      start = i + 1;
+      local br = seg.find("[");
+      local fname = br == null ? seg : seg.slice(0, br);
+      local idx = br == null ? null : seg.slice(br + 1, seg.len() - 1).tointeger();
+      local fd = null;
+      foreach (cand in T.Descriptors[tname].fields) { if (cand.name == fname) { fd = cand; break; } }
+      if (fd == null) throw path + ": no field " + fname + " in " + tname;
+      owner = owner[fd.member];
+      if (idx != null) owner = owner[idx];
+      tname = fd.shape == "map" ? fd.entry : ((idx != null && fd.elem != null) ? fd.elem.table : fd.table);
+      if (owner == null) return null;
+    }
+    return owner;
   };
   local wrefSet = function(T, root, v, path, what, text) {
     local segments = [];
@@ -963,7 +985,33 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
         else holder[key] = n;
       } else if (what == "float") {
         holder[key] = wrefFloat(text);
-      } else if (what == "count") {
+      } else if ((what == "count" || what == "elems") && text.tointeger() < 0) {
+        // A NEGATIVE COUNT (SF-28): a Squirrel array is a native list, so the
+        // value handed to the writer is the number itself, which is no list
+        holder[key] = text.tointeger();
+      } else if (what == "mask") {
+        // a flags value is held as its raw bits, an integer
+        holder[key] = text.tointeger();
+      } else if (what == "dupkey") {
+        // A SQUIRREL MAP IS AN ARRAY OF ENTRIES, so one key held twice is a
+        // copy of the first entry appended; `dupkey 0` leaves the map as loaded
+        if (fd.shape != "map") throw path + ": dupkey on a field that is no map";
+        if (text == "1") {
+          local entries = holder[key];
+          if (entries.len() < 1) throw path + ": dupkey on an empty map";
+          entries.append(wrefClone(T, fd.entry, entries[0]));
+        } else if (text != "0") {
+          throw path + ": dupkey takes 0 or 1, not " + text;
+        }
+      } else if (what == "point") {
+        // the pointer at `path` is set to the node the pointer at path `text`
+        // points at: the same object, so a node enclosing `path` is a cycle
+        local target = wrefResolve(T, root, v, text);
+        if (target == null) throw path + ": the pointer at " + text + " points at no node";
+        holder[key] = target;
+      } else if (what == "count" || what == "elems") {
+        // `elems` is the same edit on a fixed [N]T or keyed [E]T, which this
+        // leg holds as a native array too
         local n = text.tointeger();
         local arr = holder[key];
         while (arr.len() < n) {
@@ -1008,13 +1056,68 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
     if (!generated(unit)) { writeAbsent(cname); continue; }
     local opened = openUnit(unit);
     local T = opened[1];
-    local got = strictLoad(opened, root, readBytes(wirepath));
-    local v = got[0];
-    if (v == null) throw cname + ": strictLoad refused " + wirepath;
+    local v;
+    if (wirepath == "-") {
+      // THE ROOT'S FRESH VALUE (SF-05, SF-06): a root with no file form
+      v = T.Descriptors[root].make();
+    } else {
+      local got = strictLoad(opened, root, readBytes(wirepath));
+      v = got[0];
+      if (v == null) throw cname + ": strictLoad refused " + wirepath;
+    }
     wrefSet(T, root, v, path, what, text);
     local answer = "refused\n";
     try {
-      if (mode == "write-refusal" || mode == "write-refusal-fixed") {
+      if (mode == "write-refusal-cook") {
+        // THE COOK WRITER (SPEC-TABLES §7.6): CookMeasure, then Cook in
+        // little-endian order (1) into exactly the measure
+        local size = T.CookMeasure(root, v);
+        if (size >= 1) {
+          local buf = blob(size);
+          if (T.Cook(root, v, buf, 1)) answer = "wrote\n";
+        }
+      } else if (mode == "write-refusal-block") {
+        // THE BLOCK BUILDER (SPEC-TABLES §19.1): Create, Begin with the
+        // value's count of every out-of-line array, then Set the edited
+        // field from the value (a record array element by element, each
+        // element's fields in turn). `wrote` when Begin and every Set
+        // succeed; the rest of the block does not bear on the verdict.
+        if (path.find(".") != null || path.find("[") != null) throw "driver: " + cname + ": a nested block path is not carried by this driver";
+        local B = opened[0].require("schema_table_blockbuild");
+        local storage = B.Create(T, root, null, null, 0);
+        if (storage == null) throw "driver: " + cname + ": the block builder has no form for " + root;
+        local form = T.blockForms[root];
+        local counts = {};
+        foreach (a in form.arrays) {
+          local am = memberOf(T, root, a.name);
+          local av = v[am];
+          counts[a.name] <- typeof av == "array" ? av.len() : av;
+        }
+        local block = B.Begin(T, root, storage, counts, {});
+        if (block != null) {
+          local f = null;
+          foreach (cand in form.projection.fields) { if (cand.name == path) { f = cand; break; } }
+          if (f == null) throw "driver: " + cname + ": no block field " + path + " in " + root;
+          local val = v[memberOf(T, root, path)];
+          local ok = true;
+          if (f.outOfLine) {
+            // its count went to Begin
+          } else if (f.table != null && f.isArray) {
+            for (local i = 0; i < val.len(); i++) {
+              foreach (sub in T.Descriptors[f.table].fields) {
+                if (!B.Set(T, block, null, block.Base, path + "[" + i + "]." + sub.name, val[i][sub.member])) ok = false;
+              }
+            }
+          } else if (f.table != null) {
+            foreach (sub in T.Descriptors[f.table].fields) {
+              if (!B.Set(T, block, null, block.Base, path + "." + sub.name, val[sub.member])) ok = false;
+            }
+          } else {
+            ok = B.Set(T, block, null, block.Base, path, val);
+          }
+          if (ok) answer = "wrote\n";
+        }
+      } else if (mode == "write-refusal" || mode == "write-refusal-fixed") {
         local isFixed = T.Descriptors[root].fixed;
         if (mode == "write-refusal-fixed" && !isFixed) throw cname + ": not fixed";
         if (isFixed) {
@@ -1051,9 +1154,165 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
         }
       }
     } catch (e) {
+      // a raised error is the runtime's refusal; the driver's own failures
+      // are named `driver:` and are never answered as one
+      if (typeof e == "string" && e.find("driver: ") == 0) throw e;
       answer = "refused\n";
     }
     writeText(outdir + "/" + cname, answer);
+  }
+  return;
+}
+
+// THE 2026-11-22 SURFACES (test/conformance/README.md; docs/SPEC-CONFORMANCE.md §2).
+
+// announce <case> <unit> <root> <mode> <input>: `write` is the unit's
+// AnnounceMeasure then Announce into a buffer of exactly the measure;
+// `strict` and `lenient` read the file into a fresh vocabulary with its
+// Strict slot set or left unset (the runtime's own flag); `send` is
+// MeasureMessages then SaveMessages of one value, which take no vocabulary at
+// all in this leg (the batch is written under the unit's own).
+if (mode == "announce") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 6 || f[0] != "announce") continue;
+    local cname = f[1], unit = f[2], root = f[3], how = f[4], input = f[5];
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local T = openUnit(unit)[1];
+    if (how == "write") {
+      if (!("Announce" in T) || !("AnnounceMeasure" in T)) throw cname + ": the unit has no Announce";
+      local n = T.AnnounceMeasure();
+      if (n < 0) { writeText(outdir + "/" + cname, "refused\n"); continue; }
+      local out = blob(n);
+      if (T.Announce(out) != n) { writeText(outdir + "/" + cname, "refused\n"); continue; }
+      writeBytes(outdir + "/" + cname, out);
+    } else if (how == "strict" || how == "lenient") {
+      local voc = {};
+      if (how == "strict") voc.Strict <- true;
+      local answer;
+      try {
+        answer = T.AnnounceRead(voc, readBytes(input), {}) ? "read\n" : "refused\n";
+      } catch (e) {
+        answer = "threw\n";
+      }
+      writeText(outdir + "/" + cname, answer);
+    } else if (how == "send") {
+      local v;
+      if (input == "-") {
+        v = T.Descriptors[root].make();
+      } else {
+        local got = strictLoad(openUnit(unit), root, readBytes(input));
+        v = got[0];
+        if (v == null) throw cname + ": strictLoad refused " + input;
+      }
+      local answer = null;
+      try {
+        local sz = T[root + "MeasureMessages"]([v], {});
+        if (sz >= 0) {
+          local out = blob(sz);
+          if (T[root + "SaveMessages"]([v], out, {}) == sz) answer = out;
+        }
+      } catch (e) {
+        answer = null;
+      }
+      if (answer == null) writeText(outdir + "/" + cname, "refused\n");
+      else writeBytes(outdir + "/" + cname, answer);
+    } else {
+      throw cname + ": " + how + " is not an announce mode";
+    }
+  }
+  return;
+}
+
+// read-into <case> <unit> <root> <form> <lawful> <damaged> <count> <announcement>
+//
+// THE FIXED LOAD AND LoadMessages READ INTO THE CALLER'S STORAGE (an array of
+// <count> fresh values); the variable <Root>Load and the text <Root>FromJson
+// answer a fresh value beside the caller's report, so for those the driver
+// holds the value, a read that succeeds replaces it, and a refused read
+// answers none and leaves it as it was. <Root>FixedLoad takes no report.
+// fixed-nocap: <Root>FixedLoad(bytes, out, cap) always takes the caller's
+// storage, whose length is a capacity the caller states, so no capacity can
+// be omitted: `unrepresentable` (FL-17).
+if (mode == "read-into") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 9 || f[0] != "read-into") continue;
+    local cname = f[1], unit = f[2], root = f[3], form = f[4], lawful = f[5], damaged = f[6], count = f[7], announcement = f[8];
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local T = openUnit(unit)[1];
+    if (form == "fixed-nocap") {
+      writeText(outdir + "/" + cname, "unrepresentable\n");
+      continue;
+    }
+    local n = count.tointeger();
+    if (n < 1) throw cname + ": " + count + " is not a count";
+    local values = array(n);
+    for (local i = 0; i < n; i++) values[i] = T.Descriptors[root].make();
+    local report = newReport();
+    local voc = null;
+    if (form == "message") {
+      voc = {};
+      if (!T.AnnounceRead(voc, readBytes(announcement), {})) throw cname + ": the announcement was refused: " + announcement;
+    }
+    local readOnce = function(path) {
+      local bytes = readBytes(path);
+      local got = null, ok = false;
+      try {
+        if (form == "variable") {
+          got = T[root + "Load"](bytes, report);
+          ok = got != null;
+        } else if (form == "json") {
+          got = T[root + "FromJson"](bytes, report);
+          ok = got != null;
+        } else if (form == "fixed") {
+          ok = T[root + "FixedLoad"](bytes, values, n) >= 0;
+        } else if (form == "message") {
+          ok = T[root + "LoadMessages"](values, voc, bytes, report) >= 1;
+        } else {
+          throw "driver: " + cname + ": " + form + " is not a read-into form";
+        }
+      } catch (e) {
+        if (typeof e == "string" && e.find("driver: ") == 0) throw e;
+        return "threw\n";
+      }
+      local refusedHere = (("refused" in report) && report.refused) || (("bodyDamaged" in report) && report.bodyDamaged) ||
+                          (("reason" in report) && report.reason != null && report.reason != "");
+      if (!ok || refusedHere) return "refused\n";
+      if (form == "variable" || form == "json") values[0] = got;
+      return "read\n";
+    };
+    local out = readOnce(lawful);
+    out += readOnce(damaged);
+    foreach (i, val in values) {
+      local text = T[root + "ToJson"](val);
+      if (text == null) throw cname + ": ToJson refused value " + i;
+      out += text;
+    }
+    out += readOnce(lawful);
+    writeText(outdir + "/" + cname, out);
+  }
+  return;
+}
+
+// json-write-into <case> <unit> <root> <wire>
+//
+// SQUIRREL HAS NO PROCESS LOCALE CALL (its standard library has no
+// setlocale), so the harness's SCHEMA_COMMA_LOCALE cannot be made this
+// process's own; the rows still run. <Root>ToJson answers a fresh string,
+// never into a caller buffer, so there is no tail to check (FL-15): the
+// answer is the text it returned.
+if (mode == "json-write-into") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 5 || f[0] != "json-write-into") continue;
+    local cname = f[1], unit = f[2], root = f[3], wirepath = f[4];
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local got = strictLoad(opened, root, readBytes(wirepath));
+    if (got[0] == null) throw cname + ": load refused " + wirepath;
+    local text = opened[1][root + "ToJson"](got[0]);
+    writeText(outdir + "/" + cname, text == null ? "refused\n" : text);
   }
   return;
 }

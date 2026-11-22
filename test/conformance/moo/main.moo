@@ -223,6 +223,12 @@ local ctx = {
 		local W: any = load(ROOT .. generated .. "/" .. key .. "/table_save")
 		return W.save(d, v)
 	end,
+	-- the <Base>Table module carrying root's <Root>Fixed data, or nil
+	fixedTable = fixedTable,
+	-- the names of a unit's <Base>Table modules
+	tableList = function(key: string): { string }
+		return tableModules[key] or {}
+	end,
 	-- a named absence: the case the leg cannot write for a reason the corpus names
 	refuse = function(case: string, reason: string)
 		print(case .. " absent " .. reason)

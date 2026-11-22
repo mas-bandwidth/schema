@@ -37,7 +37,8 @@ local SURFACE_ORDER = {
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
   "block-reason", "write-refusal", "write-refusal-fixed",
-  "write-refusal-message", "write-refusal-json",
+  "write-refusal-message", "write-refusal-json", "write-refusal-cook",
+  "write-refusal-block", "announce", "read-into", "json-write-into",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -106,7 +107,8 @@ local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 -- later require runs against another unit's search path; the order is stable
 -- so every unit loads the same modules the same way
 local RUNTIME = {
-  "block", "cook", "cookwrite", "json", "load", "message", "retain", "save",
+  "block", "blockbuild", "cook", "cookwrite", "json", "load", "message",
+  "retain", "save",
 }
 
 -- the unit's table module is <Package>Tables.lua beside its runtime; the
@@ -1022,8 +1024,9 @@ local function wrefWalk(u, root, v, path)
   end
 end
 
--- set the one field: every value a row names is one this leg's storage holds,
--- so no row answers `unrepresentable`
+-- set the one field. Every value a row names is one this leg's storage holds
+-- but a map key held twice (`dupkey 1`): answers true where the value is
+-- unrepresentable, nothing otherwise
 local function wrefSet(u, root, v, path, what, text)
   local owner, fd, index = wrefWalk(u, root, v, path)
   if fd.shape == "map_entry" then
@@ -1064,12 +1067,40 @@ local function wrefSet(u, root, v, path, what, text)
     holder[key] = math.tointeger(tonumber(text))
   elseif what == "float" then
     holder[key] = wrefFloat(text)
-  elseif what == "count" then
-    local arr = holder[key] or {}
+  elseif what == "count" or what == "elems" then
+    -- `elems` is the same edit on a fixed [N]T or a keyed [E]T, which this
+    -- leg holds as a plain Lua list too (more elements are copies of element
+    -- 1, fewer drop the tail). A negative count is a value that is NO list
+    -- (SF-28): a Lua field holds any value, so the number itself is handed to
+    -- the writer, which must refuse it.
     local n = math.tointeger(tonumber(text))
-    for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
-    for i = #arr, n + 1, -1 do arr[i] = nil end
-    holder[key] = arr
+    if n == nil then fail(path .. ": " .. what .. " " .. text .. " is not an integer") end
+    if n < 0 then
+      holder[key] = n
+    else
+      local arr = holder[key] or {}
+      for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
+      for i = #arr, n + 1, -1 do arr[i] = nil end
+      holder[key] = arr
+    end
+  elseif what == "mask" then
+    -- a flags value is held as its raw bits, an integer
+    holder[key] = math.tointeger(tonumber(text))
+  elseif what == "dupkey" then
+    -- A LUA MAP IS A LUA TABLE KEYED BY THE MAP'S KEY, so it cannot hold one
+    -- key twice: `dupkey 1` is unrepresentable here, `dupkey 0` leaves the
+    -- map as loaded
+    if fd.shape ~= "map" then fail(path .. ": dupkey on a field that is no map") end
+    if text == "1" then return true end
+    if text ~= "0" then fail(path .. ": dupkey takes 0 or 1, not " .. text) end
+  elseif what == "point" then
+    -- the pointer at `path` is set to the node the pointer at path `text`
+    -- points at: the same Lua table, so a node enclosing `path` is a cycle
+    local towner, tfd, tindex = wrefWalk(u, root, v, text)
+    local target = towner[tfd.name]
+    if tindex ~= nil then target = target[tindex] end
+    if type(target) ~= "table" then fail(path .. ": the pointer at " .. text .. " points at no node") end
+    holder[key] = target
   elseif what == "length" then
     holder[key] = string.rep("a", math.tointeger(tonumber(text)))
   elseif what == "bytes" then
@@ -1120,6 +1151,38 @@ local function wrefFixedSave(u, root, v)
   return answer
 end
 
+-- THE COOK WRITER (docs/SPEC-TABLES.md §7.6): CookMeasure, then Cook in
+-- little-endian order (ORDERS[1]) into exactly the measure; `wrote` when both
+-- complete. A nil or a raised error from either is the refusal.
+local function wrefCook(u, root, v)
+  local ok, size = pcall(u.cookwrite.CookMeasure, u.T, root, v)
+  if not ok or size == nil or size == false or size < 1 then return "refused\n" end
+  local answer, cooked = wrefWrite(u.cookwrite.Cook, u.T, root, v, size, ORDERS[1][1])
+  if answer == "wrote\n" and #cooked ~= size then
+    return "wrote " .. #cooked .. " bytes against a measure of " .. size .. "\n"
+  end
+  return answer
+end
+
+-- THE BLOCK BUILDER (docs/SPEC-TABLES.md §19.1). The Lua builder is
+-- blockbuild.Begin(T, root, counts): it takes the COUNT of each out-of-line
+-- array and writes the prologue and the triples, never a row, so a field
+-- value, an inline text's used length or an inline fixed array's element
+-- count is never handed to it. A row whose edit is one of those answers
+-- `unrepresentable`; a count of an out-of-line array is handed to Begin as
+-- the value holds it.
+local function wrefBlock(u, root, v, path, what)
+  local owner, fd = wrefWalk(u, root, v, path)
+  if what ~= "count" or path:find("[.%[]") or fd.shape ~= "array" or fd.fixed then
+    return "unrepresentable\n"
+  end
+  local arr = owner[fd.name]
+  local counts = {}
+  counts[fd.name] = type(arr) == "table" and #arr or arr
+  local answer = wrefWrite(u.blockbuild.Begin, u.T, root, counts)
+  return answer
+end
+
 local function surfaceWriteRefusal(all, outdir, surface)
   for _, f in ipairs(kind(all, surface)) do
     -- <surface> <case> <unit> <root> <wire> <path> <kind> <value>
@@ -1133,11 +1196,24 @@ local function surfaceWriteRefusal(all, outdir, surface)
     if not u then
       absent(outdir, name, NOT_GENERATED)
     else
-      local v, why = strictRead(u, root, mustRead(wire))
-      if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
-      wrefSet(u, root, v, path, what, text)
+      local v, why
+      if wire == "-" then
+        -- THE ROOT'S FRESH VALUE (SF-05, SF-06): a root with no file form
+        local new = u.T["New" .. root]
+        if new == nil then fail(name .. ": no New" .. root .. " in the unit") end
+        v = new()
+      else
+        v, why = strictRead(u, root, mustRead(wire))
+        if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
+      end
       local answer
-      if surface == "write-refusal" then
+      if wrefSet(u, root, v, path, what, text) then
+        answer = "unrepresentable\n"
+      elseif surface == "write-refusal-cook" then
+        answer = wrefCook(u, root, v)
+      elseif surface == "write-refusal-block" then
+        answer = wrefBlock(u, root, v, path, what)
+      elseif surface == "write-refusal" then
         if isFixed(u, root) then
           answer = wrefFixedSave(u, root, v)
         else
@@ -1160,6 +1236,191 @@ local function surfaceWriteRefusal(all, outdir, surface)
         end
       end
       writeBytes(outdir .. "/" .. name, answer)
+    end
+  end
+end
+
+---------------------------------------------------------------------------
+-- THE 2026-11-22 SURFACES (test/conformance/README.md; docs/SPEC-CONFORMANCE.md §2)
+---------------------------------------------------------------------------
+
+-- an unannounced vocabulary of the unit: one empty slot per entry
+local function freshVocabulary(u)
+  local vocab = {}
+  for i = 1, (u.T.MessageEntries or 0) do vocab[i] = {} end
+  return vocab
+end
+
+-- announce <case> <unit> <root> <mode> <input>
+--
+-- `write`: THE LUA LEG HAS NO RUNTIME ANNOUNCEMENT WRITER (no AnnounceMeasure,
+-- no Announce): the emitter writes the unit's announcement as the constant
+-- T.Announcement, which is what this side sends. The answer is those bytes,
+-- or `refused` where the unit carries none. `strict` and `lenient`: a fresh
+-- vocabulary, vocab.strict set or left unset (the runtime's own flag,
+-- runtime/message.lua announceRead), reads the file. `send`: SaveMessages of
+-- one value against a vocabulary no announcement was read into.
+local function surfaceAnnounce(all, outdir)
+  for _, f in ipairs(kind(all, "announce")) do
+    local name, key, root, mode, input = f[2], f[3], f[4], f[5], f[6]
+    -- a unit whose generated module does not load answers that, by row,
+    -- and the surface goes on
+    local loaded, u = pcall(unit, key)
+    if not loaded then
+      io.stderr:write("driver: " .. name .. ": unit " .. key .. " did not load: " .. tostring(u) .. "\n")
+      writeBytes(outdir .. "/" .. name, "unit did not load\n")
+    elseif not u then
+      absent(outdir, name, NOT_GENERATED)
+    elseif mode == "write" then
+      local bytes = u.T.Announcement
+      writeBytes(outdir .. "/" .. name, bytes ~= nil and bytes or "refused\n")
+    elseif mode == "strict" or mode == "lenient" then
+      local vocab = freshVocabulary(u)
+      if mode == "strict" then vocab.strict = true end
+      local ok, read = pcall(u.T.AnnounceRead, vocab, mustRead(input), newReport())
+      local answer
+      if not ok then
+        answer = "threw\n"
+      elseif read then
+        answer = "read\n"
+      else
+        answer = "refused\n"
+      end
+      writeBytes(outdir .. "/" .. name, answer)
+    elseif mode == "send" then
+      local v, why
+      if input == "-" then
+        v = u.T["New" .. root]()
+      else
+        v, why = strictRead(u, root, mustRead(input))
+        if v == nil then fail(name .. ": load refused " .. input .. " (" .. tostring(why) .. ")") end
+      end
+      local answer, out = wrefWrite(u.T.SaveMessages, root, freshVocabulary(u), { v })
+      writeBytes(outdir .. "/" .. name, answer == "wrote\n" and out or answer)
+    else
+      fail(name .. ": " .. mode .. " is not an announce mode")
+    end
+  end
+end
+
+-- read-into <case> <unit> <root> <form> <lawful> <damaged> <count> <announcement>
+--
+-- THE READ THAT TAKES THE CALLER'S VALUE is the variable form's
+-- load.Load(T, root, bytes, report, state, into). The text read, the fixed
+-- form's FixedLoad and LoadMessages take no caller value: each answers fresh
+-- values (docs/SPEC-TABLES.md, the Lua row), so the driver holds its values
+-- in a list, a read that succeeds replaces them with what it answered, and a
+-- refused read answers none, leaving the list as it was. FixedLoad takes no
+-- report and refuses by raising, which this surface answers `threw` (FL-29).
+local function surfaceReadInto(all, outdir)
+  for _, f in ipairs(kind(all, "read-into")) do
+    local name, key, root, form, lawful, damaged, count, announcement =
+      f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]
+    local u = unit(key)
+    if not u then
+      absent(outdir, name, NOT_GENERATED)
+    elseif form == "fixed-nocap" then
+      -- FL-17: no capacity argument at all; the omitted capacity is the file's
+      local ok, out = pcall(u.T.FixedLoad, root, mustRead(lawful))
+      if not ok then
+        writeBytes(outdir .. "/" .. name, "threw\n")
+      elseif out == nil then
+        writeBytes(outdir .. "/" .. name, "refused\n")
+      else
+        writeBytes(outdir .. "/" .. name, "read\n" .. #out .. "\n")
+      end
+    else
+      local n = math.tointeger(tonumber(count))
+      if n == nil or n < 1 then fail(name .. ": " .. tostring(count) .. " is not a count") end
+      local new = u.T["New" .. root]
+      if new == nil then fail(name .. ": no New" .. root .. " in the unit") end
+      local values = {}
+      for i = 1, n do values[i] = new() end
+      local report = newReport()
+      local vocab
+      if form == "message" then
+        vocab = freshVocabulary(u)
+        if not u.T.AnnounceRead(vocab, mustRead(announcement), newReport()) then
+          fail(name .. ": the announcement was refused: " .. announcement)
+        end
+      end
+      -- one read: answers its line, replacing the values with what a
+      -- fresh-value read answered
+      local function readOnce(path)
+        local bytes = mustRead(path)
+        local ok, got
+        if form == "variable" then
+          ok, got = pcall(u.load.Load, u.T, root, bytes, report, nil, values[1])
+          if ok and got ~= nil and got ~= values[1] then values[1] = got end
+        elseif form == "json" then
+          ok, got = pcall(u.json.FromJson, u.T, root, bytes, report)
+        elseif form == "fixed" then
+          ok, got = pcall(u.T.FixedLoad, root, bytes, n)
+        elseif form == "message" then
+          ok, got = pcall(u.T.LoadMessages, root, vocab, bytes, report)
+        else
+          fail(name .. ": " .. form .. " is not a read-into form")
+        end
+        if not ok then return "threw\n" end
+        -- THE REFUSAL is nil, or (LoadMessages) an empty list beside the
+        -- report's reason: either way the report says so
+        local reason = report.reason or report.Reason
+        if got == nil or (reason ~= nil and reason ~= "") or (report.refused or 0) ~= 0 or report.damaged then
+          return "refused\n"
+        end
+        if form == "json" then
+          values[1] = got
+        elseif form == "fixed" or form == "message" then
+          values = got
+        end
+        return "read\n"
+      end
+      local parts = {}
+      parts[#parts + 1] = readOnce(lawful)
+      parts[#parts + 1] = readOnce(damaged)
+      for i = 1, #values do
+        local text, why = u.json.ToJson(u.T, root, values[i])
+        if text == nil then fail(name .. ": ToJson refused value " .. i .. ": " .. tostring(why)) end
+        parts[#parts + 1] = text
+      end
+      parts[#parts + 1] = readOnce(lawful)
+      writeBytes(outdir .. "/" .. name, table.concat(parts))
+    end
+  end
+end
+
+-- json-write-into <case> <unit> <root> <wire>
+--
+-- THE PROCESS LOCALE IS THE COMMA-DECIMAL ONE THE HARNESS NAMES (FL-14): Lua's
+-- string.format and tostring format a float through the C library under the
+-- process's LC_NUMERIC, so os.setlocale is the call that makes the rule real.
+-- A refused setlocale fails the surface. The Lua text writer answers a fresh
+-- string, never into a caller buffer, so there is no tail to check (FL-15):
+-- the answer is the text it returned.
+local function surfaceJsonWriteInto(all, outdir)
+  local rows = kind(all, "json-write-into")
+  if #rows == 0 then return end
+  local name = os.getenv("SCHEMA_COMMA_LOCALE")
+  if name == nil or name == "" then fail("json-write-into: SCHEMA_COMMA_LOCALE is not set") end
+  if os.setlocale(name) == nil then fail("json-write-into: os.setlocale refused " .. name) end
+  if string.format("%.1f", 1.5) ~= "1,5" then
+    fail("json-write-into: the locale " .. name .. " is set but formats 1.5 as " .. string.format("%.1f", 1.5))
+  end
+  for _, f in ipairs(rows) do
+    local case, key, root, wire = f[2], f[3], f[4], f[5]
+    local u = unit(key)
+    if not u then
+      absent(outdir, case, NOT_GENERATED)
+    else
+      local v, why = strictRead(u, root, mustRead(wire))
+      if v == nil then fail(case .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
+      local text, jwhy = u.json.ToJson(u.T, root, v)
+      if text == nil then
+        io.stderr:write("driver: " .. case .. ": ToJson refused the value: " .. tostring(jwhy) .. "\n")
+        writeBytes(outdir .. "/" .. case, "refused\n")
+      else
+        writeBytes(outdir .. "/" .. case, text)
+      end
     end
   end
 end
@@ -1208,5 +1469,8 @@ elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
 elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
 elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
 elseif surface:find("^write%-refusal") then surfaceWriteRefusal(all, outdir, surface)
+elseif surface == "announce" then surfaceAnnounce(all, outdir)
+elseif surface == "read-into" then surfaceReadInto(all, outdir)
+elseif surface == "json-write-into" then surfaceJsonWriteInto(all, outdir)
 end
 os.exit(0)
