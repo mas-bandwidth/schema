@@ -100,6 +100,11 @@ typedef struct ludicrous_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the

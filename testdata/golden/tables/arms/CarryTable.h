@@ -155,6 +155,9 @@ enum TableRefuseReason : int32_t
 constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+// STRICT MODE's one refusal (§3.3): a strict vocabulary's announcement whose
+// build version is not this unit's own. The report carries both versions.
+constexpr TableRefuseReason build_version_mismatch = (TableRefuseReason) 0x20000003; // a strict announcement whose build version is not this unit's own
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -215,6 +218,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason no_vocabulary = ::armdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::armdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::armdemo::vocabulary_too_large;
+    static constexpr TableRefuseReason build_version_mismatch = ::armdemo::build_version_mismatch;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -277,6 +281,11 @@ struct TableReport
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on reason build_version_mismatch, the peer's announced build version
+    // (remote) and this unit's own (own). Zero on every other path.
+    uint64_t build_version_remote = 0;
+    uint64_t build_version_own = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
@@ -2622,6 +2631,11 @@ struct TableVocabulary
     mutable uint64_t seen_clock = 0;
     mutable int32_t seen_depth = 0;
     mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
+    // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
+    // once by the FIRST AnnounceRead and never after. Set, an announcement
+    // whose build version is not this unit's own is refused as
+    // build_version_mismatch and sets no vocabulary.
+    bool strict = false;
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -2816,6 +2830,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
         to->damaged = true;
+        return false;
+    }
+    // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // The unit's own build version is spelled here as the literal BuildVersion
+    // holds, because the cook runtime that declares BuildVersion follows this one.
+    if ( vocabulary.strict && version != 0x7b02dc001c8b6f3full )
+    {
+        to->refused = true;
+        to->reason = build_version_mismatch;
+        to->build_version_remote = version;
+        to->build_version_own = 0x7b02dc001c8b6f3full;
         return false;
     }
 

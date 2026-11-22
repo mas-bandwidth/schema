@@ -1383,6 +1383,11 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		}
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
+		if pat := deprecatedPattern(f.Type.Ref.(*ir.Enum)); pat != "" {
+			// the WRITE rule refuses a deprecated variant (§2.15); Rust write
+			// checks are debug asserts only
+			fmt.Fprintf(b, "%sdebug_assert!(!matches!(%s, %s), %q);\n", ind, unparen(x), pat, "invalid_value: "+f.Name+" holds a deprecated variant")
+		}
 		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), unparen(x))
 	default:
 		if fl := isFlags(f); fl != nil {
@@ -1436,7 +1441,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 				lo, hi := rustFloatBounds(f)
 				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, lo, x, hi)
 			}
-			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, unparen(rustFloatStored(f, x)))
+			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, rustFloatStoredArg(f, x))
 		case ir.TFixed:
 			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// WHOLE UNITS, exact, from the raw integer (§16.2); a storage
@@ -1721,6 +1726,9 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		// replaces the array outright
 		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
+		// A PLACED ARRAY IS ONE LEVEL (the Go reference reads its elements one
+		// level down, docs/SPEC-TABLES.md §16.2), counted against the depth cap
+		fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
 		if f.IsTextList() && f.TextTotal > 0 {
 			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
@@ -1764,12 +1772,13 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s        if c == b']' { jr.p += 1; break; }\n", in)
 		fmt.Fprintf(b, "%s        jr.damaged = true; break;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
+		fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-			// fewer elements than the declared minimum refuses the read
-			// (internal/tabletext readArray, count_over_bound)
+			// fewer elements than the declared minimum refuses, as the wire's
+			// count does (the oracle's count_over_bound, §16.2)
 			fmt.Fprintf(b, "%s    if %s { jr.damaged = true; }\n", in, lenUnder(field, f.ArrayMin))
 		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
@@ -1815,6 +1824,35 @@ func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind strin
 		g.emitTextReadScalar(b, f, "e", ind)
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	}
+}
+
+// lenUnder is the test that a collection holds fewer than min elements,
+// spelled is_empty() at a minimum of one (clippy's len_zero).
+func lenUnder(x string, min int64) string {
+	if min == 1 {
+		return x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() < %d", x, min)
+}
+
+// lenAtLeast is lenUnder's negation, spelled !is_empty() at a minimum of one.
+func lenAtLeast(x string, min int64) string {
+	if min == 1 {
+		return "!" + x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() >= %d", x, min)
+}
+
+// deprecatedPattern is the match pattern of an enum's deprecated variants
+// (docs/SPEC-TABLES.md §2.15), "" when it has none.
+func deprecatedPattern(e *ir.Enum) string {
+	var pats []string
+	for i, v := range e.Variants {
+		if variantDeprecated(e, i) {
+			pats = append(pats, e.Name+"::"+rustVariant(v))
+		}
+	}
+	return strings.Join(pats, " | ")
 }
 
 // scalarOnly is the element of an array field, as a field of its own.
@@ -1869,6 +1907,11 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
 		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_variant_name() {\n", in)
 		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
+		if pat := deprecatedPattern(e); pat != "" {
+			// a deprecated variant keeps its name and reads as the field's
+			// declared default, never unknown (docs/SPEC-TABLES.md §2.15)
+			fmt.Fprintf(b, "%s            Some(%s) => %s,\n", in, pat, deprecatedReadDefault(f))
+		}
 		fmt.Fprintf(b, "%s            Some(x) => x,\n", in)
 		fmt.Fprintf(b, "%s            None => { jr.unknown += 1; %s::None },\n", in, e.Name)
 		fmt.Fprintf(b, "%s        };\n", in)
@@ -1883,6 +1926,8 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			// key does
 			fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 			fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
+			// the names array is one level, as the Go reference counts it
+			fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 			fmt.Fprintf(b, "%s    let mut bits: u64 = 0;\n", in)
 			fmt.Fprintf(b, "%s    loop {\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
@@ -1901,6 +1946,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 			fmt.Fprintf(b, "%s        jr.damaged = true; break;\n", in)
 			fmt.Fprintf(b, "%s    }\n", in)
+			fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 			fmt.Fprintf(b, "%s    %s = bits;\n", in, dst)
 			fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 			return
@@ -1952,9 +1998,14 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 	fmt.Fprintf(b, "/// %s — one %s as one pretty-printed text (docs/SPEC-TABLES.md §16.1):\n", write, st.Name)
 	fmt.Fprintf(b, "/// TWO passes over one walk, so a node's first write knows whether it will\n")
-	fmt.Fprintf(b, "/// be named again and takes its `&node` label there (§16.7).\n")
+	fmt.Fprintf(b, "/// be named again and takes its `&node` label there (§16.7). A value the\n")
+	fmt.Fprintf(b, "/// form cannot spell is the writer's refusal: a debug build asserts, and\n")
+	fmt.Fprintf(b, "/// every build returns no text for it, as %s_checked returns None.\n", write)
 	fmt.Fprintf(b, "pub fn %s(v: &%s) -> String {\n", write, st.Name)
-	fmt.Fprintf(b, "    %s(v).out\n", fn(st.Name, "to_json_both"))
+	fmt.Fprintf(b, "    let w = %s(v);\n", fn(st.Name, "to_json_both"))
+	fmt.Fprintf(b, "    // Rust write checks are debug asserts only (docs/SPEC-TABLES.md §16.3)\n")
+	fmt.Fprintf(b, "    debug_assert!(!w.refused, \"%s: the writer refused the value; use %s_checked\");\n", write, write)
+	fmt.Fprintf(b, "    if w.refused { String::new() } else { w.out }\n")
 	fmt.Fprintf(b, "}\n\n")
 	fmt.Fprintf(b, "/// %s_checked — the same text, or None for a value the form cannot spell:\n", write)
 	fmt.Fprintf(b, "/// a graph nested past the depth cap, or a float with no JSON spelling\n")
@@ -1974,7 +2025,9 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read\n")
 	fmt.Fprintf(b, "/// (string_not_utf8, docs/SPEC-TABLES.md §16.3) rather than reading as U+FFFD.\n")
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
-	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
+	// EACH READ'S OWN REPORT: the caller's is zeroed first, as the Go
+	// reference's read does (*report = TableReport{}), so nothing accumulates
+	fmt.Fprintf(b, "    *report = TableReport::default();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
 	if !st.FixedDeclared {
 		// a VARIABLE root's text carries labels (§16.7), so the label rules

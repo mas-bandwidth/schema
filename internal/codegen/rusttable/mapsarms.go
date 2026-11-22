@@ -535,8 +535,7 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
 		if f.ArrayMin > 0 {
-			// under the declared minimum is a debug assert (§3; Rust write
-			// checks are debug asserts only)
+			// Rust write checks are debug asserts only (docs/SPEC.md §5.1, row 3)
 			fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", ind, lenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
 		}
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
@@ -1119,7 +1118,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 		bound = f.Type.Size
 	}
 	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-		// a count under the declared minimum is damage (§3)
+		// under the declared minimum refuses, as past the bound does (§4)
 		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i3, f.ArrayMin)
 	}
 	switch {
@@ -1228,6 +1227,9 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
+	// THE KEYED OBJECT IS ONE LEVEL (the Go reference reads each slot one
+	// level down, docs/SPEC-TABLES.md §16.2), counted against the depth cap
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%s%s = %s;\n", in, field, fieldDefault(f))
 	fmt.Fprintf(b, "%slet mut seen = [false; %d];\n", in, len(f.KeyEnumRef.Variants))
 	// a key this build cannot name is skipped and counted unknown, but the same
@@ -1261,6 +1263,7 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1318,11 +1321,25 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "    let Some(key) = jr.read_name() else { jr.damaged = true; return; };\n")
 		fmt.Fprintf(b, "    if jr.peek() != b':' { jr.damaged = true; return; }\n")
 		fmt.Fprintf(b, "    jr.p += 1;\n")
-		// DEPTH (§16.2): the union's holder is at depth, the union object one
-		// level in, and the arm's value one past that, where it is read or
-		// skipped (internal/tabletext readUnion, depth+2)
+		// THE UNION'S OBJECT IS ONE LEVEL (the Go reference reads its arm one
+		// level down, docs/SPEC-TABLES.md §16.2): the arm's value counts it
+		// against the depth cap
 		fmt.Fprintf(b, "    jr.depth += 1;\n")
-		fmt.Fprintf(b, "    match key.as_str() {\n")
+		fmt.Fprintf(b, "    %s_arm(jr, v, &key);\n", fn(un.Name, "json_read"))
+		fmt.Fprintf(b, "    jr.depth -= 1;\n")
+		fmt.Fprintf(b, "    if jr.damaged || jr.missing_required != 0 { return; }\n")
+		fmt.Fprintf(b, "    let c = jr.peek();\n")
+		fmt.Fprintf(b, "    if c == b',' {\n")
+		fmt.Fprintf(b, "        jr.p += 1;\n")
+		fmt.Fprintf(b, "        if jr.peek() == b'}' { jr.p += 1; return; }\n")
+		fmt.Fprintf(b, "        jr.damaged = true; *v = %s::None; return;\n", un.Name)
+		fmt.Fprintf(b, "    }\n")
+		fmt.Fprintf(b, "    if c == b'}' { jr.p += 1; return; }\n")
+		fmt.Fprintf(b, "    jr.damaged = true; *v = %s::None;\n", un.Name)
+		fmt.Fprintf(b, "}\n\n")
+		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
+		fmt.Fprintf(b, "fn %s_arm(jr: &mut Jr, v: &mut %s, key: &str) {\n", fn(un.Name, "json_read"), un.Name)
+		fmt.Fprintf(b, "    match key {\n")
 		for _, v := range un.Variants {
 			fmt.Fprintf(b, "        %q => {\n", v.Name)
 			switch {
@@ -1360,16 +1377,6 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 		fmt.Fprintf(b, "    }\n")
-		fmt.Fprintf(b, "    jr.depth -= 1;\n")
-		fmt.Fprintf(b, "    if jr.damaged || jr.missing_required != 0 { return; }\n")
-		fmt.Fprintf(b, "    let c = jr.peek();\n")
-		fmt.Fprintf(b, "    if c == b',' {\n")
-		fmt.Fprintf(b, "        jr.p += 1;\n")
-		fmt.Fprintf(b, "        if jr.peek() == b'}' { jr.p += 1; return; }\n")
-		fmt.Fprintf(b, "        jr.damaged = true; *v = %s::None; return;\n", un.Name)
-		fmt.Fprintf(b, "    }\n")
-		fmt.Fprintf(b, "    if c == b'}' { jr.p += 1; return; }\n")
-		fmt.Fprintf(b, "    jr.damaged = true; *v = %s::None;\n", un.Name)
 		fmt.Fprintf(b, "}\n\n")
 	}
 }
@@ -1427,6 +1434,9 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
+	// THE MAP'S OBJECT IS ONE LEVEL (the Go reference reads each value one
+	// level down, docs/SPEC-TABLES.md §16.2), counted against the depth cap
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
 	if mapKeyHashed(f) {
 		fmt.Fprintf(b, "%slet mut key_index = std::collections::HashSet::new();\n", in)
@@ -1484,6 +1494,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	if c := classOf(ir.MapKeyField(f)); c == vScalar || c == vEnum {
 		// a Copy key sorts by the key itself (clippy's unnecessary_sort_by)
 		fmt.Fprintf(b, "%s%s.sort_by_key(|e| e.%s);\n", in, field, keyName)

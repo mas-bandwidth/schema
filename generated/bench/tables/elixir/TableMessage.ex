@@ -210,7 +210,10 @@ defmodule Benchtable.TableMessage do
             count: 0,
             ref_bits: 0,
             max_bytes: 65536,
-            max_entries: 4096
+            max_entries: 4096,
+            strict: false,
+            remote: nil,
+            own: nil
 
   # ---------------------------------------------------------------------------
   # THE CONSTANT, and nothing but the constant
@@ -266,6 +269,20 @@ defmodule Benchtable.TableMessage do
 
   defp walk_body(body, ids, vocab) do
     case walk(body, ids, 0, 0, 0, nil, vocab.max_bytes, MapSet.new()) do
+      # STRICT MODE IS OPT-IN (§3.3): with strict set, an announcement whose
+      # build version is not this unit's own is refused :build_version_mismatch,
+      # sets no vocabulary, keeps the peer's build version and names both
+      # versions in the vocabulary's remote and own.
+      {:ok, build_version, _words} when vocab.strict and build_version != @build_version ->
+        {:error, :build_version_mismatch,
+         %{
+           vocab
+           | refused: true,
+             build_version: build_version,
+             remote: build_version,
+             own: @build_version
+         }}
+
       {:ok, build_version, words} ->
         parse_words(words, %{vocab | build_version: build_version})
 

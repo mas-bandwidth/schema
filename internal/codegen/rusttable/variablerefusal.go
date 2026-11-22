@@ -49,6 +49,31 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 	return nil
 }
 
+// refuseUncarriedClosure is the GENERATE path's refusal (docs/SPEC-TABLES.md
+// §11, §3): every table of the closure owes its form-1 codec and its text
+// (Go emits them for every table), so one this leg does not carry refuses the
+// unit BY NAME, `<table>.<field>: <construct>`, rather than generating without
+// it. The checker already refuses every construct the reasons name except a
+// `type` by a standard name the modules spell unqualified (escape.go).
+func refuseUncarriedClosure(u *ir.Unit) error {
+	closure := ir.TableClosure(u)
+	if len(closure) == 0 {
+		return nil
+	}
+	vc := newVariableClass(u)
+	names := make([]string, 0, len(closure))
+	for n := range closure {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if why := vc.reason[name]; why != "" {
+			return fmt.Errorf("rust table form: %s.%s, so its form-1 codec and its text cannot be emitted (docs/SPEC-TABLES.md §11)", name, why)
+		}
+	}
+	return nil
+}
+
 // variableClass is one unit's answer to "does this leg carry that table on the
 // variable wire" (docs/SPEC-TABLES.md §3, §3.1): per table, "" when it does and
 // `<field>: <construct>` when it does not, and the set the codec emits.
@@ -206,8 +231,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !countedMinCarried(f):
-		return "a counted array with a declared minimum [Min..N]T of text, bytes, union or pointer elements is outside the variable class this leg carries (§3)"
 	}
 	if ref, ok := f.Type.Ref.(*ir.Union); ok {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})

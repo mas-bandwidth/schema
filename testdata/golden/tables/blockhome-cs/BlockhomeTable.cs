@@ -50,6 +50,10 @@ namespace Blockhome
         internal int KindChanged;  // the fixed form's compile census only: a writer
         // field whose kind changed, counted once per endpoint while a lineage
         // plan is compiled — never a read counter on a returned load
+        // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md
+        // §3.3): on Reason "build_version_mismatch", the peer's announced build
+        // version and this unit's own. Zero on every other path.
+        public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
         // because the report is a type callers already hold. layout_newer reports
@@ -289,12 +293,17 @@ namespace Blockhome
     public sealed class TableVocabulary
     {
         public int MaxEntries = 4096, MaxBytes = 65536;
+        // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): false when the
+        // vocabulary is made, read once by the FIRST AnnounceRead and never after.
+        // Set, an announcement whose build version is not this unit's own is
+        // refused as build_version_mismatch and sets no vocabulary.
+        public bool Strict;
         public bool Announced { get; internal set; }
         public ulong BuildVersion { get; internal set; }
         internal bool Attempted;
         internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
         public int Count { get { return Entries.Length; } }
-        public int RefBits { get { return Math.Max(1, System.Numerics.BitOperations.Log2((uint)Math.Max(1, Count)) + 1); } }
+        public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
     }
     internal sealed class TableMessageShape
     {
@@ -766,7 +775,7 @@ namespace Blockhome
                     byte[] fractionDigits = new byte[token.Length + 48];
                     int fn = 0;
                     for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
-                    for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
+                    for (int k = global::System.Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
                     UInt128 fraction = 0;
                     for (int bit = 0; bit < f.FracBits; bit++)
                     {
@@ -4045,7 +4054,7 @@ namespace Blockhome
             static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
             {
                 if (f == null) { return; }
-                int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
+                int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13) { object child = f.GetChild(value, i); if (child != null) { CycleSlots(child, f.Table, index, targets); } }
@@ -4531,8 +4540,8 @@ namespace Blockhome
                         shape.Delta = shape.QMax - shape.QMin;
                         float steps = shape.Delta / shape.QRes;
                         if (!float.IsFinite(shape.Delta) || !float.IsFinite(steps)) { return false; }
-                        steps = Math.Clamp(steps, 1f, 4294967040f);
-                        shape.Steps = (uint)Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
+                        steps = global::System.Math.Clamp(steps, 1f, 4294967040f);
+                        shape.Steps = (uint)global::System.Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
                     }
                     else if (shape.Packing != 0) { return false; }
                 }
@@ -4601,6 +4610,13 @@ namespace Blockhome
                     else { report.Unknown++; if (!r.Skip(kind)) { break; } }
                 }
                 if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+                // by name, the peer's build version kept, no vocabulary set, never damage.
+                if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
+                {
+                    report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
+                    return Refuse(report, "build_version_mismatch");
+                }
                 var entries = new System.Collections.Generic.List<TableMessageEntry>();
                 var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
                 while (payload.Has(1))
@@ -4708,7 +4724,7 @@ namespace Blockhome
                     float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
                     if (!(normalized >= 0)) { normalized = 0; } else if (!(normalized <= 1)) { normalized = 1; }
                     float scaled = normalized * shape.Steps;
-                    bits = Math.Min((uint)Math.Floor((double)(scaled + 0.5f)), shape.Steps);
+                    bits = global::System.Math.Min((uint)global::System.Math.Floor((double)(scaled + 0.5f)), shape.Steps);
                 }
                 else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
                 w.Put(bits, ValueBits(f.Kind, shape));
@@ -5296,10 +5312,10 @@ namespace Blockhome
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
-            { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
+            { return NativeExtent(type) ? Align(type.StorageSize, global::System.Math.Max(8, type.StorageAlign)) : type.StorageSize; }
             static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
             {
-                alignment = Math.Max(8, type.StorageAlign);
+                alignment = global::System.Math.Max(8, type.StorageAlign);
                 NativeWriter probe = new NativeWriter(default, true, false, graph);
                 long extent = 0, rootBytes = NativeRecordBytes(type);
                 // Placement precedes validation of references: later nodes have no
@@ -5311,7 +5327,7 @@ namespace Blockhome
                     foreach (Node node in graph.Nodes)
                     {
                         int align = node.BlobKind != 0 ? 8 : node.Type.StorageAlign;
-                        alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+                        alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
                         if (node.BlobKind != 0) { at += 8 + ((TableBlob)node.Value).Data.Length + (node.BlobKind == 12 ? 1 : 0); }
                         else
                         {
@@ -5615,7 +5631,7 @@ namespace Blockhome
                         if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                         {
                             int c = Count(value, f);
-                            int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                            int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                             elemCache = rootElemSizes.Slice(elemOffset, take);
                             elemOffset += take;
                         }
@@ -5659,7 +5675,7 @@ namespace Blockhome
                 else if (f.GetWide != null)
                 {
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-                    w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+                    w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
             }
@@ -5714,7 +5730,7 @@ namespace Blockhome
                     if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                     {
                         int c = Count(value, f);
-                        int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                         elemCache = rootElemSizes.Slice(elemOffset, take);
                         elemOffset += take;
                     }
@@ -5919,7 +5935,7 @@ namespace Blockhome
                 {
                     int width = Width(kind);
                     if (!r.Has(width)) { return Damage(report); }
-                    UInt128 wide = r.Fixed(Math.Min(width, 8));
+                    UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
                     if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
                     else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
                     { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -6101,7 +6117,7 @@ namespace Blockhome
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
-                    int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                    int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                     if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
@@ -6185,7 +6201,7 @@ namespace Blockhome
                     }
                     else
                     {
-                        int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                        int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                         if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
@@ -6436,7 +6452,7 @@ namespace Blockhome
             public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
             {
                 int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
-                int n = Math.Min(src.Length / width, dst.Length);
+                int n = global::System.Math.Min(src.Length / width, dst.Length);
                 MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
                 if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
             }
@@ -6649,7 +6665,7 @@ namespace Blockhome
                             {
                                 if (te.Size < 4 || me.Size < 4) { return null; }
                                 int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                                uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                                uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                                 return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                             }
@@ -6659,7 +6675,7 @@ namespace Blockhome
                             if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
                             uint their_n = (te.Size - head) / tel.Size;
                             uint my_n = (me.Size - head) / mel.Size;
-                            uint n = Math.Min(their_n, my_n);
+                            uint n = global::System.Math.Min(their_n, my_n);
                             if (d.Counted != 0)
                             {
                                 int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
@@ -6699,7 +6715,7 @@ namespace Blockhome
                         {
                             if (te.Size < 4 || me.Size < 4) { return null; }
                             int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                            uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                            uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                             return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                         }
@@ -7128,7 +7144,7 @@ namespace Blockhome
                         {
                             if (d.Arg == TextBytes)
                             {
-                                uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                                uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 TableFixedEntry e = new TableFixedEntry(
                                     their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
                                 c.Push(e);
@@ -7149,10 +7165,10 @@ namespace Blockhome
                                 // because this reader grew to 8. their_n held to this reader's
                                 // storage is their_n itself on every legal widening, which is
                                 // what go spells 'n' and rust spells 'their_n.min(my_n)'.
-                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
+                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, global::System.Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                                 c.Push(e);
                             }
-                            uint n = Math.Min(their_n, my_n);
+                            uint n = global::System.Math.Min(their_n, my_n);
                             if (d.Stride == 0)
                             {
                                 if (tel.Kind == mel.Kind && tel.Size == mel.Size)
@@ -7310,7 +7326,7 @@ namespace Blockhome
                         }
                     case 12:
                         {
-                            uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                            uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
                                 their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
                             c.Push(e);
