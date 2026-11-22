@@ -4382,12 +4382,6 @@ int surfaceJsonWrite(String outDir) {
           final v = tabledemo.ProfileConfig();
           _f2w_examples_ProfileConfig(fx, v);
           if (f[5] == 'narrow:name') v.name = String.fromCharCodes(const <int>[0x61, 0xd800, 0x62]);
-          // the writer's check is a debug assert (docs/SPEC.md §5.1), absent from a release
-          // build: the row's answer is the refusal either way, so the driver names it itself
-          if (f[5] == 'narrow:name') {
-            outText = 'refused\n';
-            break;
-          }
           outText = tabledemo.profileConfigToJson(v);
           break;
       }
