@@ -18,7 +18,7 @@ done
 export PATH="$HOME/sdk/bin:$PATH"
 fail=0
 miss() { echo "BENCH-CHECK MISSING $1: $2"; fail=1; }
-pin() { sed -n "s/^$1 *:\{0,1\}= *//p" "$root/make/$2" | sed -n 1p; }
+pin() { sed -n "s/^$1 *[:?]\{0,1\}= *//p" "$root/make/$2" | sed -n 1p; }
 
 # the pins ci-fast.yml's lint lanes name (bumped by hand with the workflow and the nova-tools sdk-toolchain defaults)
 modernize_pin=0.23.0
@@ -31,7 +31,7 @@ mypy_pin=$(pin PYTHON_MYPY_VERSION python-toolchain.mk)
 rb_cur=$(pin RUBY_CURRENT_VERSION ruby-toolchain.mk); rb_floor=$(pin RUBY_FLOOR_VERSION ruby-toolchain.mk)
 rubocop_pin=$(pin RUBY_RUBOCOP_VERSION ruby-toolchain.mk); steep_pin=$(pin RUBY_STEEP_VERSION ruby-toolchain.mk)
 rbs_pin=$(pin RUBY_RBS_VERSION ruby-toolchain.mk)
-fixsdk="nova-fleet sdk-toolchain -- -l $(hostname -s) (the nova-tools release with the pin)"
+fixsdk="nova-fleet sdk-toolchain -- -l <this machine's fleet name> (nova-tools release with the pin)"
 
 [ -n "${NOVA_SDK:-}" ] && [ -d "$NOVA_SDK" ] || miss NOVA_SDK "not exported by the SDK's env.sh, or not a directory (${NOVA_SDK:-unset}); fix: $fixsdk"
 
