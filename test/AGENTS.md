@@ -70,6 +70,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-write-bareint/` | packet Write bare-integer width fixture | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` |
 | `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
+| `packet-write-refusal/` | packet Write refusal fixtures for the assert legs | `make test-c, make test-cpp, make test-cs, make test-unity, make test-rust, make test-java, make test-dart` | `make packet-write-refusal-rust` |
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |
