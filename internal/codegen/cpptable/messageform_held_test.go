@@ -220,6 +220,52 @@ const cppHeldSecondAnnouncement = `
         { printf( "TableMessageReason::second_announcement: a batch on the refused connection: refused=%d count=%lld reason=%d\n", (int) body.refused, (long long) count, (int) body.reason ); return 1; }
 `
 
+// "STRICT MODE IS OPT-IN, and the default is unchanged ... an announcement
+// whose build version is not the unit's own is refused by the name
+// `build_version_mismatch`, sets no vocabulary, keeps the peer's build version,
+// moves no counter and is never `wire_damaged`, and is terminal like every
+// refused first announcement" and THE LANGUAGE-NEUTRAL SHAPE: one boolean on
+// the vocabulary, false when it is made, and a refusal carrying the peer's
+// build version (remote) and the reader's own (own) (docs/SPEC-TABLES.md §3.3).
+const cppHeldStrictMode = `
+    const uint64_t own = BuildVersion, remote = BuildVersion ^ ~0ull;
+    auto endpoint = []( uint8_t * ann, uint64_t version )
+    {
+        Announce( ann, AnnounceMeasure() );
+        for ( int i = 0; i < 8; i++ ) { ann[3 + i] = (uint8_t) ( version >> ( 8 * i ) ); }
+    };
+    std::vector<uint8_t> ann( (size_t) AnnounceMeasure() );
+    TableMessageEntry entries[kTableMessageEntriesHere];
+    TableVocabulary tolerant( entries, kTableMessageEntriesHere );
+    if ( tolerant.strict ) { printf( "strict: a vocabulary is not made tolerant\n" ); return 1; }
+    endpoint( ann.data(), remote );
+    TableReport report;
+    if ( !AnnounceRead( tolerant, ann.data(), AnnounceMeasure(), &report ) || report.refused || tolerant.build_version != remote )
+        { printf( "strict: the tolerant read refused another build version: reason=%d\n", (int) report.reason ); return 1; }
+    TableVocabulary same( entries, kTableMessageEntriesHere );
+    same.strict = true;
+    endpoint( ann.data(), own );
+    report = TableReport();
+    if ( !AnnounceRead( same, ann.data(), AnnounceMeasure(), &report ) || report.refused || report.build_version_remote != 0 || report.build_version_own != 0 )
+        { printf( "strict: the strict read refused this unit's own build version: reason=%d\n", (int) report.reason ); return 1; }
+    TableVocabulary strict( entries, kTableMessageEntriesHere );
+    strict.strict = true;
+    endpoint( ann.data(), remote );
+    report = TableReport();
+    if ( AnnounceRead( strict, ann.data(), AnnounceMeasure(), &report ) || !report.refused || report.reason != TableMessageReason::build_version_mismatch || report.damaged )
+        { printf( "strict: another build version was not refused by name: refused=%d reason=%d damaged=%d\n", (int) report.refused, (int) report.reason, (int) report.damaged ); return 1; }
+    if ( report.build_version_remote != remote || report.build_version_own != own )
+        { printf( "strict: the refusal does not carry both versions\n" ); return 1; }
+    if ( strict.announced || strict.count != 0 || strict.ref_bits != 0 || strict.build_version != remote )
+        { printf( "strict: the refusal set a vocabulary or lost the peer's build version\n" ); return 1; }
+    if ( report.unknown != 0 || report.widened != 0 || report.retained != 0 || report.retain_lost != 0 )
+        { printf( "strict: the refusal moved a counter\n" ); return 1; }
+    endpoint( ann.data(), own );
+    TableReport second;
+    if ( AnnounceRead( strict, ann.data(), AnnounceMeasure(), &second ) || second.reason != TableMessageReason::second_announcement || strict.announced )
+        { printf( "strict: an announcement after a strict refusal is not second_announcement: reason=%d\n", (int) second.reason ); return 1; }
+`
+
 // "`TableMessageReason::vocabulary_too_large` covers both bounds, the entry count and the
 // vocabulary's bytes." (docs/SPEC-TABLES.md §3.3).
 const cppHeldVocabularyTooLarge = `
@@ -618,6 +664,7 @@ func TestMessageFormHeldCPP(t *testing.T) {
 	}{
 		{"TableMessageReason::no_vocabulary", cppHeldNoVocabulary},
 		{"TableMessageReason::second_announcement", cppHeldSecondAnnouncement},
+		{"TableMessageReason::build_version_mismatch", cppHeldStrictMode},
 		{"TableMessageReason::vocabulary_too_large", cppHeldVocabularyTooLarge},
 		{"announcement_strict_checks", cppHeldStrictChecks},
 		{"TableMessageReason::batch_too_large", cppHeldBatchTooLarge},

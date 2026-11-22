@@ -1,5 +1,4 @@
 {
-  "note": "Ports still being built, and proof cells temporarily relaxed (docs/relaxed.md). A listed port has a column in test/proof/proof.json; a cell that would be red is in progress instead, naming the port's issue. A listed port with zero cells in progress holds the proof red until removed here, so a port at parity is gated like every other. A relaxed cell does not hold the proof red, it DOES hold a release, and a listed cell that is no longer red holds the proof red until removed here.",
-  "ports": [],
-  "relaxed": []
+  "note": "Ports still being built. A listed port has a column in test/proof/proof.json; a cell that would be red is in progress instead, naming the port's issue. A listed port with zero cells in progress holds the proof red until removed here, so a port at parity is gated like every other.",
+  "ports": []
 }

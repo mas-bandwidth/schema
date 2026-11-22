@@ -76,7 +76,7 @@ $(GOLANGCI_GATE_STAMP): bin/schema $(SCHEMAS) $(SCHEMAS128) $(SERIALIZE_GO_RUNTI
 schema-go-generated-golangci-lint-gate-probe:
 	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
 		echo "tool missing: golangci-lint (pinned $(GOLANGCI_LINT_VERSION); install it with rowan-tools/fleet)"; exit 1; }
-	@$(GOLANGCI_LINT) version 2>/dev/null | grep -q '$(GOLANGCI_LINT_VERSION)' || { \
+	@$(GOLANGCI_LINT) version 2>/dev/null | grep '$(GOLANGCI_LINT_VERSION)' >/dev/null || { \
 		echo "tool missing: golangci-lint $(GOLANGCI_LINT_VERSION) (found: $$($(GOLANGCI_LINT) version 2>/dev/null || echo none))"; exit 1; }
 
 # golangci_gate_count DIR CORPUS: lint one generated module and append its

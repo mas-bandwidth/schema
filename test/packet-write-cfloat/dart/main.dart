@@ -13,12 +13,12 @@ import 'dart:typed_data';
 
 import '../../../build/packet-write-cfloat/dart/CFloat.dart';
 
-var failed = false;
+var failed = 0;
 
 void check(bool ok, String what) {
   if (!ok) {
     print('FAILED: $what');
-    failed = true;
+    failed++;
   }
 }
 
@@ -43,14 +43,21 @@ double parseValue(String text) {
 
 void main(List<String> args) {
   final lines = File(args[0]).readAsLinesSync();
+  var ran = 0;
   for (final line in lines) {
     final text = line.trim();
     if (text.isEmpty || text.startsWith('#')) {
       continue;
     }
+    ran++;
     final fields = text.split(RegExp(r'\s+'));
     final name = fields[0];
     final x = parseValue(fields[1]);
+    if (fields[2] != 'written' && fields[2] != 'refused') {
+      throw StateError(
+        'cases: $name: verdict "${fields[2]}" is neither written nor refused',
+      );
+    }
     final refused = fields[2] == 'refused';
     final readsBack = fields.length > 4 ? parseValue(fields[4]) : x;
 
@@ -88,8 +95,11 @@ void main(List<String> args) {
     }
   }
 
-  if (failed) {
+  // One unit per shared case: tools/mustrun holds the count to the one the
+  // recipe registers, so an emptied or shortened cases.txt is red. (An AOT
+  // build still walks every case; a refused case has no assert to observe.)
+  print('packet-write-cfloat Dart: ran $ran, failed $failed');
+  if (failed != 0 || ran == 0) {
     exit(1);
   }
-  print('packet-write-cfloat Dart: every shared case has its verdict');
 }

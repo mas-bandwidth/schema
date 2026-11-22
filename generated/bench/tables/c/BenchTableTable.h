@@ -120,6 +120,11 @@ typedef struct benchtable_table_report_t
        a read can tell its own refusal from a caller's report that already
        held one. */
     int32_t non_finite_floats;
+    /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       build version (remote) and this unit's own (own). Zero on every other
+       path. */
+    uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -944,7 +949,7 @@ enum
    translation unit meets first declares the set; the values are the same. */
 #ifndef SCHEMA_BENCHTABLE_TABLE_MESSAGE_REASONS
 #define SCHEMA_BENCHTABLE_TABLE_MESSAGE_REASONS
-enum { SCHEMA_BENCHTABLE_TABLE_NO_VOCABULARY=3,SCHEMA_BENCHTABLE_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BENCHTABLE_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_BENCHTABLE_TABLE_NO_VOCABULARY=3,SCHEMA_BENCHTABLE_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BENCHTABLE_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE=6,SCHEMA_BENCHTABLE_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 /* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
    name with nothing decoded and no counter moved, on the form byte's own
@@ -3353,10 +3358,15 @@ typedef struct benchtable_table_message_shape_facts_t {
 typedef struct benchtable_table_vocabulary_t {
  benchtable_table_message_entry_t * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
+ /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+ int strict;
 } benchtable_table_vocabulary_t;
 #ifndef SCHEMA_BENCHTABLE_TABLE_MESSAGE_REASONS
 #define SCHEMA_BENCHTABLE_TABLE_MESSAGE_REASONS
-enum { SCHEMA_BENCHTABLE_TABLE_NO_VOCABULARY=3,SCHEMA_BENCHTABLE_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BENCHTABLE_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_BENCHTABLE_TABLE_NO_VOCABULARY=3,SCHEMA_BENCHTABLE_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_BENCHTABLE_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE=6,SCHEMA_BENCHTABLE_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 static SCHEMA_UNUSED benchtable_table_vocabulary_t benchtable_table_vocabulary(benchtable_table_message_entry_t * storage,int64_t capacity)
 {benchtable_table_vocabulary_t v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
@@ -3529,6 +3539,16 @@ static SCHEMA_UNUSED int benchtable_table_announce_once(benchtable_table_vocabul
   if(!benchtable_table_reader_skip_checked(&r,kind,0))goto damaged;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
+ /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+ if(v->strict && v->build_version!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE){
+  report->refused=1;
+  report->reason=SCHEMA_BENCHTABLE_TABLE_BUILD_VERSION_MISMATCH;
+  report->build_version_remote=v->build_version;
+  report->build_version_own=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
+  return 0;
+ }
  while(at<words_bytes){
   benchtable_table_message_entry_t * entry;
   int64_t i,began=at;
@@ -6267,6 +6287,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         {
             benchtable_table_writer_header_at( w, 20, 0x3c460475f9be69c6ull, 10 );
             if ( !benchtable_table_float_finite( value->server_time ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->server_time < 0.0f ) && !( value->server_time > 65535.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             benchtable_table_writer_put32( w, benchtable_table_stored_float_bits( value->server_time ) );
         }
     }
@@ -6385,6 +6406,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         {
             benchtable_table_writer_header_at( w, 72, 0xdbaf7be5e24296c9ull, 10 );
             if ( !benchtable_table_float_finite( value->aim_x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_x < -1.0f ) && !( value->aim_x > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             benchtable_table_writer_put32( w, benchtable_table_stored_float_bits( value->aim_x ) );
         }
     }
@@ -6393,6 +6415,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         {
             benchtable_table_writer_header_at( w, 71, 0xdbaf7ae5e2429516ull, 10 );
             if ( !benchtable_table_float_finite( value->aim_y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_y < -1.0f ) && !( value->aim_y > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             benchtable_table_writer_put32( w, benchtable_table_stored_float_bits( value->aim_y ) );
         }
     }
@@ -6401,6 +6424,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         {
             benchtable_table_writer_header_at( w, 70, 0xdbaf79e5e2429363ull, 10 );
             if ( !benchtable_table_float_finite( value->aim_z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->aim_z < -1.0f ) && !( value->aim_z > 1.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             benchtable_table_writer_put32( w, benchtable_table_stored_float_bits( value->aim_z ) );
         }
     }
@@ -6439,6 +6463,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         {
             benchtable_table_writer_header_at( w, 62, 0xbf30e00dc53307a9ull, 10 );
             if ( !benchtable_table_float_finite( value->ping ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
+            schema_assert( !( value->ping < 0.0f ) && !( value->ping > 250.0f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             benchtable_table_writer_put32( w, benchtable_table_stored_float_bits( value->ping ) );
         }
     }
@@ -10542,6 +10567,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
+    (*out_of_range) += (int) ( benchtable_table_float_finite( value->server_time ) && ( value->server_time < 0.0f || value->server_time > 65535.0f ) );
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
@@ -10580,7 +10606,11 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     {
         (*damaged)++;
     }
+    (*out_of_range) += (int) ( benchtable_table_float_finite( value->aim_x ) && ( value->aim_x < -1.0f || value->aim_x > 1.0f ) );
+    (*out_of_range) += (int) ( benchtable_table_float_finite( value->aim_y ) && ( value->aim_y < -1.0f || value->aim_y > 1.0f ) );
+    (*out_of_range) += (int) ( benchtable_table_float_finite( value->aim_z ) && ( value->aim_z < -1.0f || value->aim_z > 1.0f ) );
     (*out_of_range) += (int) ( value->flux < -1000000000000000000ll ) | (int) ( value->flux > 1000000000000000000ll );
+    (*out_of_range) += (int) ( benchtable_table_float_finite( value->ping ) && ( value->ping < 0.0f || value->ping > 250.0f ) );
     /* bits(24) width clamp */
     (*out_of_range) += ( value->crc_hint > 16777215ull );
     (*out_of_range) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
@@ -10918,10 +10948,16 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         benchtable_table_entity_reset( &defaults );
     }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( benchtable_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -11268,10 +11304,16 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         benchtable_table_stat_reset( &defaults );
     }
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( benchtable_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -12093,10 +12135,16 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
         benchtable_table_mixed_reset( &defaults );
     }
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( benchtable_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

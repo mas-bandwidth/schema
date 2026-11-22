@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -76,6 +77,11 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 		r := &cardResult{total: len(cs)}
 		results[s] = r
 		if len(cs) == 0 {
+			// a surface the run requires and the corpus gives no case for was
+			// never checked: red, never a quietly shorter run
+			if required[s] {
+				r.failures = append(r.failures, "the corpus names no case for this required surface")
+			}
 			continue
 		}
 		ran += len(cs)
@@ -197,6 +203,21 @@ func cardOutputs(surface, name, expectedDir string) ([]string, error) {
 	return nil, fmt.Errorf("%q is not a card surface", surface)
 }
 
+// checkRequire refuses a --require that names no surface, or names one that is
+// not a card surface.
+func checkRequire(list string) error {
+	set := requireSet(list)
+	if len(set) == 0 {
+		return fmt.Errorf("cards: --require names no surface; it defaults to all nine (%s)", strings.Join(cardSurfaces, ","))
+	}
+	for s := range set {
+		if !slices.Contains(cardSurfaces, s) {
+			return fmt.Errorf("cards: --require names %q, which is not a card surface (%s)", s, strings.Join(cardSurfaces, ","))
+		}
+	}
+	return nil
+}
+
 // requireSet parses --require into the set of surfaces an absence fails.
 func requireSet(list string) map[string]bool {
 	out := map[string]bool{}
@@ -234,7 +255,7 @@ func printCards(w io.Writer, results map[string]*cardResult, required map[string
 	var b strings.Builder
 	for _, s := range cardSurfaces {
 		r := results[s]
-		if r.total == 0 {
+		if r.total == 0 && len(r.failures) == 0 {
 			continue
 		}
 		switch {

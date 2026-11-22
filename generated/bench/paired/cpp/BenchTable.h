@@ -135,6 +135,9 @@ enum TableRefuseReason : int32_t
 constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+// STRICT MODE's one refusal (§3.3): a strict vocabulary's announcement whose
+// build version is not this unit's own. The report carries both versions.
+constexpr TableRefuseReason build_version_mismatch = (TableRefuseReason) 0x20000003; // a strict announcement whose build version is not this unit's own
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -195,6 +198,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason no_vocabulary = ::bench::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::bench::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::bench::vocabulary_too_large;
+    static constexpr TableRefuseReason build_version_mismatch = ::bench::build_version_mismatch;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -257,6 +261,11 @@ struct TableReport
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on reason build_version_mismatch, the peer's announced build version
+    // (remote) and this unit's own (own). Zero on every other path.
+    uint64_t build_version_remote = 0;
+    uint64_t build_version_own = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
@@ -3390,6 +3399,11 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
+    // once by the FIRST AnnounceRead and never after. Set, an announcement
+    // whose build version is not this unit's own is refused as
+    // build_version_mismatch and sets no vocabulary.
+    bool strict = false;
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -3584,6 +3598,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
         to->damaged = true;
+        return false;
+    }
+    // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // The unit's own build version is spelled here as the literal BuildVersion
+    // holds, because the cook runtime that declares BuildVersion follows this one.
+    if ( vocabulary.strict && version != 0xba2dad78ebdbfff0ull )
+    {
+        to->refused = true;
+        to->reason = build_version_mismatch;
+        to->build_version_remote = version;
+        to->build_version_own = 0xba2dad78ebdbfff0ull;
         return false;
     }
 
@@ -12713,10 +12739,13 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
     if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
     if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
     if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
@@ -12940,18 +12969,21 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( TableStoredFloatBits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
         w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( TableStoredFloatBits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
         w.put32( TableStoredFloatBits( value.aim_z ) );
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
@@ -17706,6 +17738,9 @@ inline bool BenchMixedFixedWriteAdmits( const BenchMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
+    bad |= (int) ( TableFloatFinite( value.aim_x ) && ( value.aim_x < -1.0f || value.aim_x > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_y ) && ( value.aim_y < -1.0f || value.aim_y > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_z ) && ( value.aim_z < -1.0f || value.aim_z > 1.0f ) );
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );
     // bits(24) width clamp
