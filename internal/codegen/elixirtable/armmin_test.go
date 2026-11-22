@@ -19,6 +19,8 @@ union Pick {
 }
 fixed table FixedRoot { pick Pick }
 table VarRoot { pick Pick }
+fixed table FixedPlain { few [2..4]uint32 }
+table VarPlain { few [2..4]uint32 }
 `
 
 func armMinFiles(t *testing.T) map[string][]byte {
@@ -92,6 +94,136 @@ IO.puts("ok")
 	out, err = runArmProbe(t, elixirBinary(t), files, probe)
 	if err == nil {
 		t.Fatalf("REVERSED WITNESS FAILED: no minimum left the probe green\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL: ") {
+		t.Fatalf("REVERSED WITNESS FAILED: red, but not on a check: %v\n%s", err, out)
+	}
+}
+
+// armMinLooseSchema is the same declarations with no minimum on the arm: the
+// writer of a wire the strict reader must refuse (a count below A is a wire no
+// conforming writer produces, so the test borrows a writer that cannot refuse
+// it; field ids hash from names, so the two units agree on the wire).
+const armMinLooseSchema = `package armminloose
+union Pick {
+    few [..4]uint32
+    other int32
+}
+table VarRoot { pick Pick }
+`
+
+// TestArmMinVariableWireElixir reaches the variable wire with a union arm whose
+// count is below A: 0 and 1 refuse, 2 reads. The reversed witness plants the
+// variable-wire minimum check out and must go red.
+func TestArmMinVariableWireElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	schema := filepath.Join(t.TempDir(), "Loose.schema")
+	if err := os.WriteFile(schema, []byte(armMinLooseSchema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := armMinFiles(t)
+	for name, data := range generateElixir(t, loadUnit(t, schema)) {
+		files["loose_"+name] = data
+	}
+	probe := `
+defmodule Probe do
+  def check(true, _), do: :ok
+
+  def check(false, what) do
+    IO.puts(:stderr, "FAIL: " <> what)
+    System.halt(1)
+  end
+
+  def wire(elements) do
+    {:ok, bytes} = Armminloose.Table.save("VarRoot", %{"pick" => {"few", elements}})
+    bytes
+  end
+
+  def refused?(bytes) do
+    case Armmin.Table.load("VarRoot", bytes) do
+      {:ok, _, _} -> false
+      _ -> true
+    end
+  end
+end
+
+Probe.check(Probe.refused?(Probe.wire([])), "variable wire: count 0 in the arm refuses")
+Probe.check(Probe.refused?(Probe.wire([7])), "variable wire: count 1 in the arm refuses")
+
+case Armmin.Table.load("VarRoot", Probe.wire([7, 9])) do
+  {:ok, v, _} -> Probe.check(v["pick"] == {"few", [7, 9]}, "variable wire: count 2 reads: #{inspect(v)}")
+  other -> Probe.check(false, "variable wire: count 2 reads: #{inspect(other)}")
+end
+
+IO.puts("ok")
+`
+	out, err := runArmProbe(t, elixirBinary(t), files, probe)
+	if err != nil {
+		t.Fatalf("probe failed: %v\n%s", err, out)
+	}
+	elixirPatch(t, files, "if n < Map.get(f, :min_count, 0), do: throw(:wire_damaged)", "_ = n")
+	out, err = runArmProbe(t, elixirBinary(t), files, probe)
+	if err == nil {
+		t.Fatalf("REVERSED WITNESS FAILED: no variable-wire minimum left the probe green\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL: ") {
+		t.Fatalf("REVERSED WITNESS FAILED: red, but not on a check: %v\n%s", err, out)
+	}
+}
+
+// TestArmMinSaveReturnsErrorElixir: the Table save of a value whose count is
+// below A returns {:error, _} and never raises, a plain field and an arm
+// alike, on the fixed and the variable form. The reversed witness removes the
+// rescue and must go red.
+func TestArmMinSaveReturnsErrorElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	probe := `
+defmodule Probe do
+  def check(true, _), do: :ok
+
+  def check(false, what) do
+    IO.puts(:stderr, "FAIL: " <> what)
+    System.halt(1)
+  end
+
+  def refused(label, root, value) do
+    result =
+      try do
+        Armmin.Table.save(root, value)
+      rescue
+        e -> {:raised, e}
+      end
+
+    Probe.check(match?({:error, _}, result), label <> " answers {:error, _}: #{inspect(result)}")
+  end
+end
+
+for n <- [0, 1] do
+  few = Enum.to_list(1..n//1)
+  Probe.refused("fixed arm count #{n}", "FixedRoot", %{"pick" => {"few", few}})
+  Probe.refused("variable arm count #{n}", "VarRoot", %{"pick" => {"few", few}})
+  Probe.refused("fixed plain count #{n}", "FixedPlain", %{"few" => few})
+  Probe.refused("variable plain count #{n}", "VarPlain", %{"few" => few})
+end
+
+for {root, value} <- [{"FixedRoot", %{"pick" => {"few", [7, 9]}}}, {"VarRoot", %{"pick" => {"few", [7, 9]}}},
+                      {"FixedPlain", %{"few" => [7, 9]}}, {"VarPlain", %{"few" => [7, 9]}}] do
+  Probe.check(match?({:ok, _}, Armmin.Table.save(root, value)), root <> " at A saves")
+end
+
+IO.puts("ok")
+`
+	files := armMinFiles(t)
+	out, err := runArmProbe(t, elixirBinary(t), files, probe)
+	if err != nil {
+		t.Fatalf("probe failed: %v\n%s", err, out)
+	}
+	elixirPatch(t, files, "ArgumentError -> {:error, :invalid_value}", "ArgumentError -> reraise ArgumentError, __STACKTRACE__")
+	out, err = runArmProbe(t, elixirBinary(t), files, probe)
+	if err == nil {
+		t.Fatalf("REVERSED WITNESS FAILED: a raising save left the probe green\n%s", out)
 	}
 	if !strings.Contains(out, "FAIL: ") {
 		t.Fatalf("REVERSED WITNESS FAILED: red, but not on a check: %v\n%s", err, out)

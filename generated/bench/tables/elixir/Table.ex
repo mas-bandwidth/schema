@@ -1754,18 +1754,24 @@ defmodule Benchtable.Table do
     value = fixed_class_from_table("TableEntity", value)
     data = Benchtable.BenchTableFixed.table_entity_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableStat", value) when is_map(value) do
     value = fixed_class_from_table("TableStat", value)
     data = Benchtable.BenchTableFixed.table_stat_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableMixed", value) when is_map(value) do
     value = fixed_class_from_table("TableMixed", value)
     data = Benchtable.BenchTableFixed.table_mixed_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----

@@ -1772,6 +1772,8 @@ defmodule Bench.Table do
     value = fixed_class_from_table("FixedTable", value)
     data = Bench.WrapFixed.fixed_table_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
