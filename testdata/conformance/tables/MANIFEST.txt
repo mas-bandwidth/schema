@@ -987,6 +987,22 @@ message peer_b     vocab_conn   Wide00        testdata/conformance/tables/wire/p
 message vocab9_wide vocab9_conn Wide19 testdata/conformance/tables/wire/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
 message vocab9_low  vocab9_conn Wide00 testdata/conformance/tables/wire/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
 
+# THE COUNT A REFUSED BATCH RETURNS (docs/SPEC-TABLES.md §3.3, §6.5): "the
+# batch is accepted whole, every body delivered, or refused with a count of
+# `0`". Each row loads one two-body batch with room for every body and
+# answers the count the loader reported (FORMAT.md, `message-batch`). A
+# ranged value past its maximum in the second body, a batch that ends inside
+# its second body and a byte after the pad each refuse after a first body
+# that reads, and the count is 0; the lawful batch is the control and reports
+# 2. The rows assert the count only: never the storage after a refusal
+# ("nothing in the caller's storage is a value to use") and never the reason
+# (rulings.json, refusal-verdict-only). A caller's capacity is a resource
+# limit and is not a row here (§6.5): each leg's own tests carry it.
+message-batch batch_range_in_second backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json out-of-range   refused
+message-batch batch_cut_in_second   backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json cut            refused
+message-batch batch_byte_after_pad  backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json byte-after-pad refused
+message-batch batch_delivered       backend_conn StorePurchase testdata/conformance/tables/message-batch/store_sent.json whole          delivered
+
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every
 # default; w1_fleet_default is a fleet of nothing but defaults, which is the

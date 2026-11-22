@@ -6971,7 +6971,7 @@ int tableEntityLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return -1;
+  if (count < 0) return 0;
   if (count > values.length) {
     report.Refuse('batch_too_large');
     return 0;
@@ -7433,7 +7433,7 @@ int tableStatLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return -1;
+  if (count < 0) return 0;
   if (count > values.length) {
     report.Refuse('batch_too_large');
     return 0;
@@ -8307,7 +8307,7 @@ int tableMixedLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return -1;
+  if (count < 0) return 0;
   if (count > values.length) {
     report.Refuse('batch_too_large');
     return 0;

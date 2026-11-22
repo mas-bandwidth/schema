@@ -100,8 +100,9 @@ def probe(root:string, count:int):
             let body, truncated_count, accepted = schema_rt.load_messages(root, vocab, substring(expected, 0, n), rep, 256)
             assert not accepted and truncated_count == 0 and length(body) == 0
         let short_rep = schema_rt.LoadReport {}
-        let short_body, needed, short_ok = schema_rt.load_messages(root, vocab, expected, short_rep, count - 1)
-        assert not short_ok and needed == count and length(short_body) == 0
+        // "A refused batch returns a count of 0" (docs/SPEC-TABLES.md §3.3)
+        let short_body, short_count, short_ok = schema_rt.load_messages(root, vocab, expected, short_rep, count - 1)
+        assert not short_ok and short_count == 0 and length(short_body) == 0
         let stripped = substring(expected, 0, length(expected) - 4)
         let missing_rep = schema_rt.LoadReport {}
         let missing, missing_count, missing_ok = schema_rt.load_messages(root, vocab, stripped, missing_rep, 256)

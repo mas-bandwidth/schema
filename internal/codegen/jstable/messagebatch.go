@@ -1379,11 +1379,14 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  TableMessageResetReport(report);\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
-		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return 0; }\n")
 		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
-	g.pf("  if (count < 0) { return -1; }\n")
+	// "A refused batch returns a count of `0`, as every refused batch does"
+	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0, the report
+	// names the reason, and a delivered batch is never empty (M is at least 1).
+	g.pf("  if (count < 0) { return 0; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return 0; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
@@ -1392,7 +1395,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
-	g.pf("        return -1;\n")
+	g.pf("        return 0;\n")
 	g.pf("      }\n")
 	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
 	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")

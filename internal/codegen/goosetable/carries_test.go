@@ -200,7 +200,7 @@ fn main() {
     mbuf[mlen - 1] = mbuf[mlen - 1] ^ 0x80;
     var mbad: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var mbrep = schema_rt::MsgReport { .. };
-    assert(integritydemo::SealedLoadMessages(mbad, voc, mbuf, mbrep) == -1);
+    assert(integritydemo::SealedLoadMessages(mbad, voc, mbuf, mbrep) == 0);
     assert(mbrep.damaged && mbrep.reason == schema_rt::MsgRefuseIntegrityMismatch);
 
     // Form 1: table wire save + load + integrity_mismatch on flip.
