@@ -118,7 +118,7 @@ skip platform ^platform has no kernel address-space ceiling$
 
 # root: the test proves nothing as root. Provided by a lane that does not run
 # as root.
-skip root ^root writes through a read-only directory
+skip root ^root writes (through|into) a read-only directory
 
 # helper: a helper-process entry point, run by the test that names it.
 # Provided by no lane: it skips whenever go test runs it directly.
