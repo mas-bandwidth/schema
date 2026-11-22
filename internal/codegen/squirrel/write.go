@@ -151,7 +151,15 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 			emitBits(m, indent, expr, int64(t.Width), "")
 		}
 	case ir.TBits:
-		m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
+		// SPEC §5.1 row 2: a bits(N) value wider than N bits is refused with
+		// false, before the runtime's width trap would raise on it. At 64
+		// bits every integer is in the width (docs/PORT-SQUIRREL.md).
+		if t.Width < 64 {
+			m.Printf("%sif (typeof %s != \"integer\" || (%s >>> %d) != 0) return false;\n",
+				indent, val, val, t.Width)
+		} else {
+			m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
+		}
 		emitBits(m, indent, val, int64(t.Width), "")
 	case ir.TFixed:
 		fn := "serializeFixed64"

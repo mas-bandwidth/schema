@@ -219,6 +219,15 @@ the assert firing is the refusal: `packet-write-refusal-<lang>`, each with a
 `-negative-control` that removes one emitted check and requires a named case to
 go red. Rust names the union tag as not representable.
 
+The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
+Squirrel, MOO, Goose, Lobster) share one schema and one row list,
+`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
+`writerefusalpacket_test.go` and its own probe: the test generates the unit,
+runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal
+counted only by the mechanism SPEC section 5.1 names for that leg), and a
+negative control removes one emitter check and requires `FAILED: <row>`.
+
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.
 An accepted `report`, `framing` or `json-hostile` row owes its complete canonical
