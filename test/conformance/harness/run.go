@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -685,6 +686,28 @@ type runOptions struct {
 	// results, when set, is where every case's verdict is written
 	// (writeResults), the input tools/matrix proof reads.
 	results string
+	// only, when set, is the surfaces this run asks the legs for; every other
+	// surface is not run at all, so it is neither an answer nor an absence.
+	// A gate that drives one leg through a wrapper listing a few surfaces (the
+	// JS and Dart text-boundary gates) names them here, or the ticked-cell rule
+	// (ticked.go) reads the surfaces it leaves out as owed and absent.
+	only map[string]bool
+}
+
+// parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
+// nil for every surface. A name that is not a surface is refused.
+func parseSurfaces(list string) (map[string]bool, error) {
+	if list == "" {
+		return nil, nil
+	}
+	set := map[string]bool{}
+	for s := range strings.SplitSeq(list, ",") {
+		if !slices.Contains(surfaces, s) {
+			return nil, fmt.Errorf("--surfaces: %q is not a surface (%s)", s, strings.Join(surfaces, ","))
+		}
+		set[s] = true
+	}
+	return set, nil
 }
 
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
@@ -758,6 +781,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		for _, s := range surfaces {
+			if opts.only != nil && !opts.only[s] {
+				continue
+			}
 			legWant := want[s]
 			var exemptions []string
 			if s == "json-hostile" {
@@ -1173,11 +1199,21 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	}
 	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", label+width*len(langs)))
 	for _, s := range surfaces {
+		ran := false
+		for _, l := range langs {
+			ran = ran || results[l][s] != nil
+		}
+		if !ran {
+			// a surface --surfaces left out: not run, so no row
+			continue
+		}
 		fmt.Fprintf(&b, "%-*s", max(label, len(s)+1), s)
 		for _, l := range langs {
 			r := results[l][s]
 			var cell string
 			switch {
+			case r == nil:
+				cell = "not run"
 			case len(r.failures) > 0 && r.absent:
 				// the REFERENCE leg's absence: what it did, and what that is.
 				// "FAIL 0/13" would claim it ran the surface and answered
@@ -1204,6 +1240,9 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	var lines []string
 	for _, l := range langs {
 		for _, s := range surfaces {
+			if results[l][s] == nil {
+				continue
+			}
 			for _, f := range results[l][s].failures {
 				lines = append(lines, fmt.Sprintf("  %s / %s: %s", l, s, f))
 			}
