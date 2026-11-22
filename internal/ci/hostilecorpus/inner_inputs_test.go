@@ -320,9 +320,15 @@ func TestInnerBoundsInputsArePinned(t *testing.T) {
 			t.Errorf("%s: the manifest row is not the engine's:\n  committed: %+v\n  engine:    %+v", row.name, have, c)
 		}
 	}
-	if !write {
-		return
+	if write {
+		innerRewriteManifest(t, dir, manifest, committed, fresh)
 	}
+}
+
+// innerRewriteManifest replaces the manifest's inner- rows with the engine's
+// (INNER_WRITE=1), keeping every other row as committed.
+func innerRewriteManifest(t *testing.T, dir, manifest string, committed, fresh []Case) {
+	t.Helper()
 	if Format(committed) != manifest {
 		t.Fatal("the committed manifest is not in its own format, so it is not rewritten")
 	}
