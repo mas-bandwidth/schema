@@ -109,7 +109,7 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 		default:
 			// an answer no case owns is a driver answering another corpus
 			// (run.go, strayAnswers): red, by file name
-			for _, name := range strayAnswers(outdir, sent) {
+			for _, name := range strayAnswers(outdir, sent, nil) {
 				r.failures = append(r.failures, fmt.Sprintf("%s: the driver answered a case the corpus did not send", name))
 			}
 			for _, c := range cs {

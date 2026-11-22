@@ -888,7 +888,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			// a different corpus (a stale manifest, a renamed case, a typo in
 			// its own case table), and a harness that only reads the files it
 			// expects would never see it.
-			for _, name := range strayAnswers(out, sent) {
+			for _, name := range strayAnswers(out, sent, legWant) {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"%s: the driver answered a row the corpus did not send on the %s surface", name, s))
 			}
@@ -986,17 +986,29 @@ func crashNotAbsence(out, stderr string) string {
 }
 
 // strayAnswers is every top-level file in out that no row the driver was
-// SENT owns. A row owns its answer file and every `<name>.<suffix>` beside it
+// SENT, or no case the surface scores, owns. A row owns its answer file and every `<name>.<suffix>` beside it
 // (`.absent`, `.wire`, and whatever a surface adds). sent is every row name in
 // the derived manifest the driver read, not only the rows this surface
 // scores: a driver cannot tell from the manifest which retain rows save, so it
 // answers them all and the harness scores the ones with a golden. Anything
 // else answers a row the corpus never sent. An unreadable directory is itself
 // named.
-func strayAnswers(out string, sent map[string]bool) []string {
+func strayAnswers(out string, sent map[string]bool, want []expectation) []string {
 	entries, err := os.ReadDir(out)
 	if err != nil {
 		return []string{fmt.Sprintf("(output directory unreadable: %v)", err)}
+	}
+	// and every case the surface scores, whose name may be derived from a
+	// row's (cook-write scores `<instance>` and `<instance>-be`)
+	if len(want) > 0 {
+		owned := make(map[string]bool, len(sent)+len(want))
+		for k := range sent {
+			owned[k] = true
+		}
+		for _, e := range want {
+			owned[e.name] = true
+		}
+		sent = owned
 	}
 	var stray []string
 	for _, ent := range entries {
