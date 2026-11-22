@@ -11587,10 +11587,16 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_load( tabledemo_weapo
         tabledemo_weapon_config_reset( &defaults );
     }
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -12302,10 +12308,16 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_load( tabledemo_load
         tabledemo_loadout_config_reset( &defaults );
     }
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -13074,10 +13086,16 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_load( tabledemo_prof
         tabledemo_profile_config_reset( &defaults );
     }
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -14252,10 +14270,16 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
         tabledemo_root_config_reset( &defaults );
     }
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( tabledemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( tabledemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

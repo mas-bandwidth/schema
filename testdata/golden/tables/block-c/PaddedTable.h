@@ -6189,10 +6189,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_row_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -7921,10 +7927,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_frame_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

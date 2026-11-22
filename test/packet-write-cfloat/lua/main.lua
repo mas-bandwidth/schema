@@ -71,8 +71,10 @@ for line in file:lines() do
 end
 file:close()
 
-if failures ~= 0 then
+-- The last stdout line is the count tools/mustrun reads. An empty cases.txt
+-- is a failure: before this line it printed "OK ... 0 cases" and exited 0.
+print(string.format("packet-write-cfloat Lua: ran %d, failed %d", count, failures))
+if failures ~= 0 or count == 0 then
   io.stderr:write(string.format("packet-write-cfloat Lua: %d of %d cases FAILED\n", failures, count))
   os.exit(1)
 end
-print(string.format("OK: packet-write-cfloat Lua, %d cases", count))

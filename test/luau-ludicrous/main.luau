@@ -12,9 +12,12 @@ local lud = require("./Ludicrous")
 local pins: { [string]: string } = require("./pins") :: any
 
 local failed = false
+local ran, failures = 0, 0
 local function check(ok: boolean, what: string)
+	ran += 1
 	if not ok then
 		print("FAILED: " .. what)
+		failures += 1
 		failed = true
 	end
 end
@@ -221,7 +224,9 @@ do
 	check(not lud.ReadUnsignedProbe(serialize.ReadStream.new(hostile), lud.NewUnsignedProbe()), "a smuggled ufixed high-half offset is REJECTED")
 end
 
-if failed then
+-- The last stdout line is the count tools/mustrun reads: the checks run and
+-- the ones that failed.
+print(string.format("luau ludicrous: ran %d, failed %d", ran, failures))
+if failed or ran == 0 then
 	error("luau ludicrous: FAILED")
 end
-print("OK")
