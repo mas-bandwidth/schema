@@ -754,7 +754,7 @@ func t03R21(t *testing.T) {
 	if widen == "" {
 		t.Fatal("R21: the runtime has no opWidenF arm")
 	}
-	if !strings.Contains(widen, "Double.doubleToRawLongBits(Float.intBitsToFloat(bits))") {
+	if !strings.Contains(widen, "java.lang.Double.doubleToRawLongBits(java.lang.Float.intBitsToFloat(bits))") {
 		t.Errorf("R21: the widenf arm is not the ordinary conversion:\n%s", widen)
 	}
 	for _, retired := range []string{"<< 29", "0x7FF0000000000000L"} {
