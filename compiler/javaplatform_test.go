@@ -379,18 +379,21 @@ public final class Wire {
 }
 
 // javaClassNamesRefused is each committed file under refused/ and the words
-// its refusal must name.
+// its refusal must name. A file base that is a reserved word of any target or
+// starts with _ is refused by schema check before the Java emitter sees it
+// (SPEC §4.6), so those rows name the checker's refusal; the rest are the
+// Java emitter's own.
 var javaClassNamesRefused = map[string]string{
-	"class.schema":          `"class" is reserved as a Java class name`,
-	"enum.schema":           `"enum" is reserved as a Java class name`,
-	"package.schema":        `"package" is reserved as a Java class name`,
-	"true.schema":           `"true" is reserved as a Java class name`,
-	"_.schema":              `"_" is reserved as a Java class name`,
-	"record.schema":         `"record" is reserved as a Java class name`,
-	"sealed.schema":         `"sealed" is reserved as a Java class name`,
+	"class.schema":          `schema file class.schema: class is a reserved word`,
+	"enum.schema":           `schema file enum.schema: enum is a reserved word`,
+	"package.schema":        `schema file package.schema: package is a reserved word`,
+	"true.schema":           `schema file true.schema: true is a reserved word`,
+	"_.schema":              `schema file _.schema: _ starts with an underscore`,
+	"record.schema":         `schema file record.schema: record is a reserved word`,
+	"sealed.schema":         `schema file sealed.schema: sealed is a reserved word`,
 	"permits.schema":        `"permits" is reserved as a Java class name`,
-	"var.schema":            `"var" is reserved as a Java class name`,
-	"yield.schema":          `"yield" is reserved as a Java class name`,
+	"var.schema":            `schema file var.schema: var is a reserved word`,
+	"yield.schema":          `schema file yield.schema: yield is a reserved word`,
 	"java.schema":           `a class named "java" obscures the java package`,
 	"PermitsType.schema":    `type permits is reserved as a Java class name`,
 	"JavaType.schema":       `type java becomes a class named "java", which obscures the java package`,

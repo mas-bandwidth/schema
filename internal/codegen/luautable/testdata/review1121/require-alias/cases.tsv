@@ -9,10 +9,10 @@
 # dir: the unit's schema files; each declares a type and a table another
 #      file's type and table reach, so the type modules, the table modules and
 #      the cross-file requires all bind the file names.
-# check: a Luau expression over Use (the module of Use.schema) that must hold.
+# check: a Luau expression over Root (the module of Root.schema) that must hold.
 #
-# the defect: files named after the generator's locals, and a name that is not
-# a Luau identifier
-collide	collide	Use.NewD().A.X == 7 and Use.NewD().B.Y == 9 and Use.NewD().C.Z == 3
+# the defect: files named after the generator's locals (a-b, not a Luau
+# identifier, is now refused at check, SPEC §4.6, so the unit carries a_b)
+collide	collide	Root.NewD().A.X == 7 and Root.NewD().B.Y == 9 and Root.NewD().C.Z == 3
 # the control: the same unit under plain file names
-plain	plain	Use.NewD().A.X == 7 and Use.NewD().B.Y == 9 and Use.NewD().C.Z == 3
+plain	plain	Root.NewD().A.X == 7 and Root.NewD().B.Y == 9 and Root.NewD().C.Z == 3
