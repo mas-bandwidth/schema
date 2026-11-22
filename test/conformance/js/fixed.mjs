@@ -354,6 +354,7 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
   return {
     ...codec,
     fixed: true,
+    table: t,
     variableLoad: codec.load,
     variableReport: codec.report,
     report: () => new T.TableFixedReport(),

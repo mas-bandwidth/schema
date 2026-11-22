@@ -3713,7 +3713,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "union": return TableVariableJsonUnion(d.u, val, depth, g, out);
     case "enum":
       if (val === null || val === "None") { out.push("\"None\""); return true; }
-      for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
+      // a DEPRECATED variant is never written (§2.15): it reads as the default, so
+      // the text writer refuses it, as every writer does
+      for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
       // the save's own test: a BigInt mask inside the unsigned width, never a Number

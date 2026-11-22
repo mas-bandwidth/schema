@@ -118,7 +118,7 @@ export function setFixed(value, path, kind, text) {
 // setVariable sets the one field a row names in the variable value, where the
 // text writer reads it: a text is a string, so `bytes` must be UTF-8 this leg's
 // string can hold, and bytes it cannot are `unrepresentable`.
-function decodeVariableLeaf(cur, kind, text) {
+function decodeVariableLeaf(cur, kind, text, voc) {
   switch (kind) {
     case "bytes": {
       const raw = hexBytes(text);
@@ -135,8 +135,12 @@ function decodeVariableLeaf(cur, kind, text) {
     case "float":
       return { ok: true, v: floatOf(text) };
     case "ordinal": {
+      // an ordinal the enum declares is that variant's NAME, a deprecated one
+      // included (the writer judges it); one it does not declare has no name
       const n = Number(text);
-      return { ok: true, v: n === 0 ? null : "__invalid_ordinal_" + text };
+      if (n === 0) { return { ok: true, v: null }; }
+      const named = voc === null || voc === undefined ? undefined : voc.variants.find((x) => x.value === n);
+      return { ok: true, v: named === undefined ? "__invalid_ordinal_" + text : named.name };
     }
     case "tag": {
       const n = Number(text);
@@ -153,7 +157,21 @@ function decodeVariableLeaf(cur, kind, text) {
   }
 }
 
-export function setVariable(value, path, kind, text) {
+// vocabularyOf answers the enum the path's last field is declared as, read from
+// the generated view descriptor of the root (null where the leg has none).
+function vocabularyOf(table, path) {
+  let t = table;
+  const segments = path.split(".");
+  for (let i = 0; t !== null && t !== undefined && i < segments.length; i++) {
+    const f = (t.fields ?? []).find((x) => x.name === segmentOf(segments[i]).name);
+    if (f === undefined) { return null; }
+    if (i === segments.length - 1) { return f.vocabulary ?? null; }
+    t = f.table ?? null;
+  }
+  return null;
+}
+
+export function setVariable(value, path, kind, text, table = null) {
   const segments = path.split(".");
   let cur = value;
   for (let i = 0; i < segments.length - 1; i++) {
@@ -184,7 +202,7 @@ export function setVariable(value, path, kind, text) {
   const p = own(cur, last.name, path);
   const slot = last.index < 0 ? cur[p] : cur[p][last.index];
   const isTextListBox = last.index >= 0 && slot !== null && typeof slot === "object" && !(slot instanceof Uint8Array) && "value" in slot && Object.keys(slot).length === 1;
-  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text);
+  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text, kind === "ordinal" ? vocabularyOf(table, path) : null);
   if (!leaf.ok) { return false; }
   if (isTextListBox) {
     slot.value = leaf.v;
@@ -222,7 +240,7 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
     if (surface === "write-refusal-json") {
       const v = codec.load(wire, codec.report());
       if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
-      if (!setVariable(v, path, kind, text)) {
+      if (!setVariable(v, path, kind, text, codec.table ?? null)) {
         answer = "unrepresentable";
       } else {
         answer = codec.toJson(v) === null ? "refused" : "wrote";
@@ -235,7 +253,7 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
         }
         const v = codec.load(wire, codec.report());
         if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
-        if (!setVariable(v, path, kind, text)) {
+        if (!setVariable(v, path, kind, text, codec.table ?? null)) {
           answer = "unrepresentable";
         } else {
           answer = codec.save(v) === null ? "refused" : "wrote";
