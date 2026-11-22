@@ -913,6 +913,21 @@ macro_rules! with_root {
                 use cooktorturewide::{torture_wide_cook_from_json_bytes as $from_json, torture_wide_cook_load as $load, torture_wide_cook_save_checked as $save, torture_wide_cook_to_json_checked as $to_json};
                 Some($body)
             }
+            ("tblsurf", "Chain") => {
+                #[allow(unused_imports)]
+                use tblsurf::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblsurf", "Holder") => {
+                #[allow(unused_imports)]
+                use tblsurf::{holder_from_json_bytes as $from_json, holder_load as $load, holder_save_checked as $save, holder_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblsurf", "Counted") => {
+                #[allow(unused_imports)]
+                use tblsurf::{counted_from_json_bytes as $from_json, counted_load as $load, counted_save_checked as $save, counted_to_json_checked as $to_json};
+                Some($body)
+            }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
                 use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
@@ -1351,6 +1366,9 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
             let _ = tabledemo::wide_blob_fixed_load(&mut values, data, &mut plan, &mut remap, &mut report);
             FixedRead { unknown: report.unknown, widened: report.widened, read: false, save: None }
         }
+        ("tblsurf", "Narrow") => fixed_read!(tblsurf, narrow_fixed_load, narrow_fixed_save, narrow_fixed_measure, NarrowRow, data),
+        ("tblsurf", "Wide") => fixed_read!(tblsurf, wide_fixed_load, wide_fixed_save, wide_fixed_measure, WideRow, data),
+        ("tblsurf", "Arrays") => fixed_read!(tblsurf, arrays_fixed_load, arrays_fixed_save, arrays_fixed_measure, ArraysRow, data),
         ("tbla2", "Root") => fixed_read!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
         ("tblk1", "Root") => fixed_read!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
         ("tblk2", "Root") => fixed_read!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
@@ -1559,6 +1577,24 @@ macro_rules! with_fixed_value_root {
                 use vocab9demo as $k;
                 #[allow(unused_imports)]
                 use $k::{Wide00Row as $row, Wide00 as $value, wide00_fixed_load as $load, wide00_fixed_save as $save, wide00_fixed_measure as $measure, wide00_to_json_checked as $to, wide00_from_json_bytes as $from, wide00_cook_write as $cook};
+                Some($body)
+            }
+            ("tblsurf", "Narrow") => {
+                use tblsurf as $k;
+                #[allow(unused_imports)]
+                use $k::{NarrowRow as $row, Narrow as $value, narrow_fixed_load as $load, narrow_fixed_save as $save, narrow_fixed_measure as $measure, narrow_to_json_checked as $to, narrow_from_json_bytes as $from, narrow_cook_write as $cook};
+                Some($body)
+            }
+            ("tblsurf", "Wide") => {
+                use tblsurf as $k;
+                #[allow(unused_imports)]
+                use $k::{WideRow as $row, Wide as $value, wide_fixed_load as $load, wide_fixed_save as $save, wide_fixed_measure as $measure, wide_to_json_checked as $to, wide_from_json_bytes as $from, wide_cook_write as $cook};
+                Some($body)
+            }
+            ("tblsurf", "Arrays") => {
+                use tblsurf as $k;
+                #[allow(unused_imports)]
+                use $k::{ArraysRow as $row, Arrays as $value, arrays_fixed_load as $load, arrays_fixed_save as $save, arrays_fixed_measure as $measure, arrays_to_json_checked as $to, arrays_from_json_bytes as $from, arrays_cook_write as $cook};
                 Some($body)
             }
             ("vocab9demo", "Wide19") => {
@@ -2185,6 +2221,9 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
         ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
+        ("tblsurf", "Narrow") => message_round_trip!(tblsurf, NarrowRow, narrow_load_messages, narrow_measure_messages, narrow_save_messages, ann, wire),
+        ("tblsurf", "Wide") => message_round_trip!(tblsurf, WideRow, wide_load_messages, wide_measure_messages, wide_save_messages, ann, wire),
+        ("tblsurf", "Arrays") => message_round_trip!(tblsurf, ArraysRow, arrays_load_messages, arrays_measure_messages, arrays_save_messages, ann, wire),
         ("messagedemo", "ToolMessage") => message_round_trip!(messagedemo, ToolMessageRow, tool_message_load_messages, tool_message_measure_messages, tool_message_save_messages, ann, wire),
         _ => return None,
     })
@@ -2721,6 +2760,11 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
             fail(&format!("write-refusal line has {} fields", f.len()));
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        // the 2026-11-22 rows (surfaces1122.rs)
+        if let Some(answer) = surfaces1122::write_refusal(manifest, "", f) {
+            surfaces1122::spill_answer(out, case, &answer);
+            continue;
+        }
         let data = slurp(wire);
         // THE ROOT'S OWN FORM: a declared fixed root's instance is form 3,
         // read and written by the fixed form
@@ -2914,6 +2958,11 @@ fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
             fail(&format!("write-refusal-fixed line has {} fields", f.len()));
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        // the 2026-11-22 rows (surfaces1122.rs)
+        if let Some(answer) = surfaces1122::write_refusal(manifest, "fixed", f) {
+            surfaces1122::spill_answer(out, case, &answer);
+            continue;
+        }
         let data = slurp(wire);
         // the root's current-form instance, read by the fixed form itself
         if is_fixed_form(&data) {
@@ -2961,6 +3010,11 @@ fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
         let Some(c) = manifest.of_kind("connection").find(|c| c[1] == conn) else {
             fail(&format!("write-refusal-message {case} names no connection {conn}"));
         };
+        // the 2026-11-22 rows (surfaces1122.rs)
+        if let Some(answer) = surfaces1122::write_refusal(manifest, "message", f) {
+            surfaces1122::spill_answer(out, case, &answer);
+            continue;
+        }
         let ann = slurp(&c[4]);
         let data = slurp(wire);
         macro_rules! message_case {
@@ -3034,6 +3088,11 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
             fail(&format!("write-refusal-json line has {} fields", f.len()));
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        // the 2026-11-22 rows (surfaces1122.rs)
+        if let Some(answer) = surfaces1122::write_refusal(manifest, "json", f) {
+            surfaces1122::spill_answer(out, case, &answer);
+            continue;
+        }
         let data = slurp(wire);
         // This mutation adapter works on the fixed Row. Mutations its debug
         // checks refuse answer refused; an unhandled accepted mutation stays
@@ -3120,7 +3179,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json"
+            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into"
         );
         return;
     }
@@ -3153,6 +3212,15 @@ fn main() {
         "write-refusal-fixed" => surface_write_refusal_fixed(&manifest, out),
         "write-refusal-message" => surface_write_refusal_message(&manifest, out),
         "write-refusal-json" => surface_write_refusal_json(&manifest, out),
+        "write-refusal-cook" => surfaces1122::surface_write_refusal_form(&manifest, out, "write-refusal-cook", "cook"),
+        "write-refusal-block" => surfaces1122::surface_write_refusal_form(&manifest, out, "write-refusal-block", "block"),
+        "announce" => surfaces1122::surface_announce(&manifest, out),
+        "read-into" => surfaces1122::surface_read_into(&manifest, out),
+        "json-write-into" => surfaces1122::surface_json_write_into(&manifest, out),
         _ => exit(2),
     }
 }
+
+// THE 2026-11-22 SURFACES: announce, read-into, json-write-into,
+// write-refusal-cook, write-refusal-block and the new write-refusal kinds.
+mod surfaces1122;
