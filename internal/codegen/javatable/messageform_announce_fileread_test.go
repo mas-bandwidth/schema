@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // announceFileUnit has one fixed root (the announcement's vocabulary) and one
@@ -244,11 +245,11 @@ public final class Driver {
 	}
 	sources = append(sources, filepath.Join(srcDir, "Driver.java"))
 
-	compile := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...)
+	compile := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...)
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver", casesDir)
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver", casesDir)
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRustWideBlobFixedLoader pins the Rust leg's fixed loader for a declared
@@ -210,12 +212,12 @@ func runWideBlobFixedProbe(t *testing.T, edit func(map[string][]byte)) (string, 
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "wideblob")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

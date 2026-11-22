@@ -1,0 +1,90 @@
+class C1 {
+    private static boolean checkWrite(V v) {
+        assert v != null;
+        for (int i10 = 0; i10 < java.lang.Math.min(v.countedF64Count, v.countedF64.length); i10++) {
+        }
+        switch (v.x) {
+            case 4:
+                for (int i11 = 0; i11 < java.lang.Math.min(v.pending[i10].marksCount, v.pending[i10].marks.length); i11++) {
+                }
+                break;
+        }
+        return true;
+    }
+}
+
+class C2 {
+    void m(int index, int count, Object raw) {
+        if (index < 0 || index >= count) {
+            throw new java.lang.IndexOutOfBoundsException("dynamic_props row " + index + " of " + count);
+        }
+        if (index < 0 || index >= count) {
+            throw new java.lang.IndexOutOfBoundsException("row " + index + " of " + count);
+        }
+        if (raw != null) {
+            if (raw != null) {
+                if (raw instanceof java.lang.String && !((java.lang.String) raw).isEmpty()) {
+                    throw new java.lang.IllegalArgumentException("absent optional text holds extent");
+                }
+            }
+        }
+    }
+}
+
+class C3 {
+    void m(Object value, Object info) {
+        Node n;
+        if (value == null) {
+            n = new Node(value, info);
+        } else if (value instanceof java.lang.String) {
+            n = new Node(value, ((java.lang.String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8), true);
+        } else if (value instanceof byte[]) {
+            n = new Node(value, (byte[]) value, false);
+        }
+    }
+
+    long raw(int width, Object source) {
+        if (width > 0) {
+            long raw = width == 4 ? java.lang.Float.floatToRawIntBits(((java.lang.Number) source).floatValue()) & 0xffffffffL
+                    : java.lang.Double.doubleToRawLongBits(((java.lang.Number) source).doubleValue());
+            return raw;
+        }
+        return 0;
+    }
+
+    void put(Object v) {
+        if (v != null) {
+            byte[] bytes = v instanceof java.lang.String ? ((java.lang.String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    : (byte[]) v;
+            if (bytes == null) { bytes = new byte[0]; }
+        }
+    }
+
+    int layGuards() {
+        if (2 * (poolUsed + chainLen) > pool.length) {
+            pool = java.util.Arrays.copyOf(pool, java.lang.Math.max(2 * (poolUsed + chainLen), 2 * pool.length + 16));
+        }
+        return 0;
+    }
+}
+
+class C4 {
+    static boolean checkWrite(V v) {
+        assert TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("-1267650600228229401496703205376")) >= 0 && TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("1267650600228229401496703205376")) <= 0 : "BenchMixed.flux";
+        assert java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("64000")) <= 0 : "BenchMixed.ping";
+        assert java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.heading)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(v.heading)).compareTo(new java.math.BigInteger("23592960")) <= 0 : "Pose.heading";
+        for (int i = 0; i < v.weights.size(); i++) {
+            int e = v.weights.get(i);
+            assert java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(e)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(e)).compareTo(new java.math.BigInteger("25600")) <= 0 : "SimState.weights";
+        }
+        return true;
+    }
+}
+
+class C5 {
+    void put(Object v) {
+        if (v != null) {
+            byte[] bytes = v instanceof java.lang.String ? ((java.lang.String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8) : (byte[]) v;
+        }
+    }
+}

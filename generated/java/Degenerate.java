@@ -8,11 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 // Degenerate carries every generated declaration of Degenerate.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -21,8 +16,9 @@ public final class Degenerate {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -124,7 +120,7 @@ public final class Degenerate {
         int pos = bitOffset;
         long scratch;
         {
-            final long b = Double.doubleToRawLongBits(value.x);
+            final long b = java.lang.Double.doubleToRawLongBits(value.x);
             scratch = loadBits(data, pos);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
@@ -132,7 +128,7 @@ public final class Degenerate {
             pos += 32;
         }
         {
-            final long b = Double.doubleToRawLongBits(value.y);
+            final long b = java.lang.Double.doubleToRawLongBits(value.y);
             scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
             pos += 32;
             scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -161,7 +157,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -178,7 +174,7 @@ public final class Degenerate {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.x = Double.longBitsToDouble(lo);
+        value.x = java.lang.Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
@@ -188,7 +184,7 @@ public final class Degenerate {
         if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
             return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
         }
-        value.y = Double.longBitsToDouble(lo);
+        value.y = java.lang.Double.longBitsToDouble(lo);
         return bitsRead;
     }
 
@@ -223,12 +219,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanF64(SpanF64 value) {
-        Arrays.fill(value.values, 0.0);
+        java.util.Arrays.fill(value.values, 0.0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanF64(SpanF64 value) {
-        Arrays.fill(value.values, 0.0);
+        java.util.Arrays.fill(value.values, 0.0);
     }
 
     // checkWriteSpanF64 is the contract walk of writeSpanF64Bits, called once
@@ -257,7 +253,7 @@ public final class Degenerate {
         scratch = loadBits(data, pos);
         for (int i0 = 0; i0 < 2; i0++) {
             {
-                final long b = Double.doubleToRawLongBits(value.values[i0]);
+                final long b = java.lang.Double.doubleToRawLongBits(value.values[i0]);
                 scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
                 pos += 32;
                 scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -287,7 +283,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -305,7 +301,7 @@ public final class Degenerate {
             if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.values[i0] = Double.longBitsToDouble(lo);
+            value.values[i0] = java.lang.Double.longBitsToDouble(lo);
         }
         return bitsRead;
     }
@@ -341,12 +337,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanU64(SpanU64 value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanU64(SpanU64 value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // checkWriteSpanU64 is the contract walk of writeSpanU64Bits, called once
@@ -398,7 +394,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -449,12 +445,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanI64(SpanI64 value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanI64(SpanI64 value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // checkWriteSpanI64 is the contract walk of writeSpanI64Bits, called once
@@ -506,7 +502,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -557,12 +553,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanOne(SpanOne value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanOne(SpanOne value) {
-        Arrays.fill(value.values, 0L);
+        java.util.Arrays.fill(value.values, 0L);
     }
 
     // checkWriteSpanOne is the contract walk of writeSpanOneBits, called once
@@ -614,7 +610,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -665,12 +661,12 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanChunk(SpanChunk value) {
-        Arrays.fill(value.values, 0);
+        java.util.Arrays.fill(value.values, 0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanChunk(SpanChunk value) {
-        Arrays.fill(value.values, 0);
+        java.util.Arrays.fill(value.values, 0);
     }
 
     // checkWriteSpanChunk is the contract walk of writeSpanChunkBits, called once
@@ -724,7 +720,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -771,13 +767,13 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanTail(SpanTail value) {
-        Arrays.fill(value.values, 0.0);
+        java.util.Arrays.fill(value.values, 0.0);
         value.tail = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanTail(SpanTail value) {
-        Arrays.fill(value.values, 0.0);
+        java.util.Arrays.fill(value.values, 0.0);
         value.tail = 0;
     }
 
@@ -809,7 +805,7 @@ public final class Degenerate {
         scratch = loadBits(data, pos);
         for (int i0 = 0; i0 < 2; i0++) {
             {
-                final long b = Double.doubleToRawLongBits(value.values[i0]);
+                final long b = java.lang.Double.doubleToRawLongBits(value.values[i0]);
                 scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
                 pos += 32;
                 scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -841,7 +837,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -859,7 +855,7 @@ public final class Degenerate {
             if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.values[i0] = Double.longBitsToDouble(lo);
+            value.values[i0] = java.lang.Double.longBitsToDouble(lo);
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -899,14 +895,14 @@ public final class Degenerate {
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroSpanTwice(SpanTwice value) {
-        Arrays.fill(value.a, 0.0);
-        Arrays.fill(value.b, 0.0);
+        java.util.Arrays.fill(value.a, 0.0);
+        java.util.Arrays.fill(value.b, 0.0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initSpanTwice(SpanTwice value) {
-        Arrays.fill(value.a, 0.0);
-        Arrays.fill(value.b, 0.0);
+        java.util.Arrays.fill(value.a, 0.0);
+        java.util.Arrays.fill(value.b, 0.0);
     }
 
     // checkWriteSpanTwice is the contract walk of writeSpanTwiceBits, called once
@@ -937,7 +933,7 @@ public final class Degenerate {
         scratch = loadBits(data, pos);
         for (int i0 = 0; i0 < 2; i0++) {
             {
-                final long b = Double.doubleToRawLongBits(value.a[i0]);
+                final long b = java.lang.Double.doubleToRawLongBits(value.a[i0]);
                 scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
                 pos += 32;
                 scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -946,7 +942,7 @@ public final class Degenerate {
         }
         for (int i0 = 0; i0 < 2; i0++) {
             {
-                final long b = Double.doubleToRawLongBits(value.b[i0]);
+                final long b = java.lang.Double.doubleToRawLongBits(value.b[i0]);
                 scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
                 pos += 32;
                 scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
@@ -976,7 +972,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -994,7 +990,7 @@ public final class Degenerate {
             if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.a[i0] = Double.longBitsToDouble(lo);
+            value.a[i0] = java.lang.Double.longBitsToDouble(lo);
         }
         for (int i0 = 0; i0 < 2; i0++) {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1006,7 +1002,7 @@ public final class Degenerate {
             if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
                 return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
             }
-            value.b[i0] = Double.longBitsToDouble(lo);
+            value.b[i0] = java.lang.Double.longBitsToDouble(lo);
         }
         return bitsRead;
     }
@@ -1111,7 +1107,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1398,7 +1394,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1541,7 +1537,7 @@ public final class Degenerate {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;

@@ -249,8 +249,9 @@ func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
 // only protocol identity and announcement build words changed. Moved again
 // when every generated header gained the genheader comment line (the
 // compiler's URL and how to regenerate); with that line removed the bytes
-// hash to the previous digest, 0ad731512f0efcd8.
-const wantTableDigest = "106461f41beec6697d280bae7b32638e46368656bde43ac1a0fdb6d194fa10c2"
+// hash to the previous digest, 0ad731512f0efcd8. Moved again when the locals a
+// module binds its requires to became _F_<base> (LUAU-2, review 2026-11-21).
+const wantTableDigest = "ec1622ca9ab437e91d02e8597b4ee3195a2780a09ef3ef2c3d244c1bdbafdba8"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.

@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const vtCellsReaderSchema = `package probe
@@ -848,7 +849,7 @@ func vtCellsCompileRun(t *testing.T, files map[string][]byte, probe string) (str
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, csDotnet(), args...)
+	cmd := testproc.CommandContext(t, ctx, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -858,7 +859,7 @@ func vtCellsCompileRun(t *testing.T, files map[string][]byte, probe string) (str
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.CommandContext(ctx, csDotnet(), "exec", app)
+	run := testproc.CommandContext(t, ctx, csDotnet(), "exec", app)
 	run.Env = csDotnetEnv(dir, dir)
 	run.Dir = dir
 	out, err := run.CombinedOutput()

@@ -11,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppUnboundedMapInsertSchema = `package mapins
@@ -107,10 +109,10 @@ func TestUnboundedStringMapInsertAndFind(t *testing.T) {
 	exe := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I" + dir, probe}, sources...)
 	args = append(args, "-o", exe)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(exe).CombinedOutput()
+	out, err := testproc.Command(t, exe).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "OK 4") {
 		t.Fatalf("probe failed (%v): %s", err, out)
 	}

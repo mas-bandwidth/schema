@@ -12,13 +12,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const compressedNegZeroProbe = `import tblfnz.*;
@@ -114,7 +115,7 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 

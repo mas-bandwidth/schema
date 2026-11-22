@@ -22,7 +22,6 @@
 package tabledemo
 
 import (
-	"encoding/binary"
 	"unsafe"
 )
 
@@ -158,25 +157,8 @@ func RangedSignedBlockOpen(block *RangedSignedBlock, base unsafe.Pointer, bytes 
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *RangedSignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = RangedSignedBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 104 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 104)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 104); err != nil {
+		return err
 	}
 	used := int64(104)
 	padding := (64 - (used % 64)) % 64
@@ -217,8 +199,7 @@ func (s *RangedSignedBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *RangedSignedBlockStorage) Destroy() {
@@ -298,25 +279,8 @@ func RangedUnsignedBlockOpen(block *RangedUnsignedBlock, base unsafe.Pointer, by
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *RangedUnsignedBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = RangedUnsignedBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 128 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 128)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 128); err != nil {
+		return err
 	}
 	used := int64(128)
 	padding := (64 - (used % 64)) % 64
@@ -357,8 +321,7 @@ func (s *RangedUnsignedBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *RangedUnsignedBlockStorage) Destroy() {
@@ -438,25 +401,8 @@ func RangedWidthsBlockOpen(block *RangedWidthsBlock, base unsafe.Pointer, bytes 
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *RangedWidthsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = RangedWidthsBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 64 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 64)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 64); err != nil {
+		return err
 	}
 	used := int64(64)
 	padding := (64 - (used % 64)) % 64
@@ -497,8 +443,7 @@ func (s *RangedWidthsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *RangedWidthsBlockStorage) Destroy() {

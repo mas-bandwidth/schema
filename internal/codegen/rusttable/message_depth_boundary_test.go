@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -284,12 +286,12 @@ fn main() {
 	if err != nil {
 		t.Fatalf("rustc's linker cc: %v", err)
 	}
-	cmd := exec.Command("rustc", "--edition", "2024", "-C", "linker="+linker, "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-C", "linker="+linker, "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rustc failed: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

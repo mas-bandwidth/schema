@@ -4,13 +4,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsonIntegersSchema is the unit testdata/wire/json-integers/ reads: an int32,
@@ -251,11 +252,11 @@ public final class WideIntegerProbe {
 	}
 	javac, javaBin := javaToolsRequired(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if b, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if b, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac failed:\n%s", b)
 	}
 	runArgs := append([]string{"-ea", "-cp", classes, "WideIntegerProbe"}, paths...)
-	got, err := exec.Command(javaBin, runArgs...).CombinedOutput()
+	got, err := testproc.Command(t, javaBin, runArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("WideIntegerProbe failed: %v\n%s", err, got)
 	}

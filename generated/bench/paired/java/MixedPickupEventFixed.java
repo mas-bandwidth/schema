@@ -75,7 +75,7 @@ public final class MixedPickupEventFixed {
     static void scatter(
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.itemId = TableFixed.get32(b, at + 0);
-        if (Integer.compareUnsigned(v.itemId, 1023) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.itemId, 1023) > 0) {
             v.itemId = (int) (1023L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
