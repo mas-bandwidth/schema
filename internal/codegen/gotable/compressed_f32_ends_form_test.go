@@ -43,7 +43,8 @@ fixed table F
 		{"the variable writer tests the float32 element", `value\.Xs\[i\] != value\.Xs\[i\] \|\| value\.Xs\[i\] < -0\.3 \|\| value\.Xs\[i\] > 0\.1`},
 		{"the variable read narrows the bits to float32 before the test", `v := math\.Float32frombits\(b\)\s+if v < -0\.3 \|\| v > 0\.1`},
 		{"the fixed read tests the float32 leaf", `if value\.R < -0\.3 \|\| value\.R > 0\.1 \{\s+\(\*over\)\+\+`},
-		{"the JSON writer narrows the ends", `value < float32\(f\.RangeMin\) \|\| value > float32\(f\.RangeMax\)`},
+		{"the JSON writer narrows the value and the ends", `value, low, high := float64\(\*\(\*float32\)\(storage\)\), float64\(float32\(f\.RangeMin\)\), float64\(float32\(f\.RangeMax\)\)`},
+		{"the JSON writer tests the narrowed ends", `if f\.HasRange && \(value < low \|\| value > high\)`},
 		{"the JSON read narrows the value and the low end", `float32\(value\) < float32\(f\.RangeMin\)`},
 		{"the JSON read narrows the value and the high end", `float32\(value\) > float32\(f\.RangeMax\)`},
 	} {
