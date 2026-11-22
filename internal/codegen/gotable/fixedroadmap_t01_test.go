@@ -54,7 +54,7 @@ func r7IdentityLaneIsAnIndexComparison(t *testing.T, schema string) {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func PointFixedLoad(")
+	load := funcSource(body, "func fixedLoadWalkPoint(")
 	if load == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
@@ -100,9 +100,14 @@ func poisoned(n int) ([]Point, []byte) {
 	return v, b
 }
 
-func untouched(b []byte) bool {
-	for _, c := range b {
-		if c != poison {
+// defaulted is R4 (docs/SPEC-TABLES.md §6.5): after any refusal every row
+// handed in holds its declared default, compared with a zero value put
+// through Reset. The rows start poisoned, so the reset is visible.
+func defaulted(v []Point) bool {
+	var d Point
+	PointReset(&d)
+	for i := range v {
+		if v[i] != d {
 			return false
 		}
 	}
@@ -117,7 +122,7 @@ func dirty() TableReport {
 // go/F9, "batch_too_large". §5.3 step 6: "If `rest / record_bytes` passes the
 // caller's capacity, `REFUSE batch_too_large`". A caller's capacity of exactly
 // the file's records reads; one short refuses by name, with Malformed clear, no
-// counter moved and not one destination byte written.
+// counter moved and every row handed in at its declared default (R4).
 const f9BatchTooLarge = t01Prelude + `
 func TestF9(t *testing.T) {
 	plan := make([]TableFixedEntry, 64)
@@ -129,13 +134,13 @@ func TestF9(t *testing.T) {
 			t.Fatalf("capacity == records (%d) must read: n=%d %+v", records, n, r)
 		}
 		for short := 0; short < records; short++ {
-			dst, bytes := poisoned(short + 1)
+			dst, _ := poisoned(short + 1)
 			dst = dst[:short]
 			r = dirty()
 			if n := PointFixedLoad(dst, file, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "batch_too_large"}) {				t.Fatalf("records=%d capacity=%d: n=%d %+v", records, short, n, r)
 			}
-			if !untouched(bytes) {
-				t.Fatalf("records=%d capacity=%d: batch_too_large wrote destination bytes", records, short)
+			if !defaulted(dst) {
+				t.Fatalf("records=%d capacity=%d: batch_too_large left a row handed in off its declared default (R4)", records, short)
 			}
 		}
 	}
@@ -145,7 +150,7 @@ func TestF9(t *testing.T) {
 // go/F10, "no_layout". §5.3 step 7: "per record: if `LE(8, at) != h`, `REFUSE
 // no_layout`", and "BEFORE any byte is landed". A record whose own hash word is
 // not the file's refuses by name: Malformed clear, every counter zero, no hash
-// published, the record's destination untouched. Every one of the eight hash
+// published, every row handed in at its declared default (R4). Every one of the eight hash
 // bytes is flipped in turn, in the first and in the second record.
 const f10NoLayout = t01Prelude + `
 func TestF10(t *testing.T) {
@@ -156,19 +161,15 @@ func TestF10(t *testing.T) {
 		for b := 0; b < 8; b++ {
 			forged := append([]byte(nil), file...)
 			forged[recordAt()+rec*int(PointFixedRecordBytes)+b] ^= 0x01
-			dst, bytes := poisoned(2)
+			dst, _ := poisoned(2)
 			r := dirty()
 			n := PointFixedLoad(dst, forged, plan, &r)
 			if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "no_layout"}) {				t.Fatalf("record %d byte %d: n=%d %+v", rec, b, n, r)
 			}
-			// record 0 is the one whose destination the page promises
-			// untouched: record k's is written before k+1's hash is read
-			// (FIXED-FORM-VERSIONING-TESTS.md, row 9's open question).
-			if rec == 0 && !untouched(bytes) {
-				t.Fatalf("record 0 byte %d: no_layout wrote destination bytes", b)
-			}
-			if rec == 1 && !untouched(bytes[len(bytes)/2:]) {
-				t.Fatalf("record 1 byte %d: no_layout wrote the refused record's destination", b)
+			// R4 (docs/SPEC-TABLES.md §6.5): whichever record refuses,
+			// EVERY row handed in holds its declared default.
+			if !defaulted(dst) {
+				t.Fatalf("record %d byte %d: no_layout left a row handed in off its declared default: %+v", rec, b, dst)
 			}
 		}
 	}
@@ -179,7 +180,7 @@ func TestF10(t *testing.T) {
 // AND NOTHING ELSE". §5.3 steps 5 and 6: outside the lineage is layout_unknown,
 // and it reports THE FILE'S hash and nothing else. The whole report is compared
 // in one != over a dirty report, so a stale counter, Malformed or any field
-// added later fails; the destination stays poisoned. Each of the sixty-four
+// added later fails; every row handed in is at its declared default (R4). Each of the sixty-four
 // header-hash bits is flipped in turn.
 const r8LayoutNewer = t01Prelude + `
 func TestR8(t *testing.T) {
@@ -193,12 +194,12 @@ func TestR8(t *testing.T) {
 		want := own ^ (uint64(1) << bit)
 		forged := append([]byte(nil), file...)
 		binary.LittleEndian.PutUint64(forged[TableFixedHashAt:], want)
-		dst, bytes := poisoned(1)
+		dst, _ := poisoned(1)
 		r := dirty()
 		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: want}) {			t.Fatalf("bit %d: n=%d %+v", bit, n, r)
 		}
-		if !untouched(bytes) {
-			t.Fatalf("bit %d: layout_unknown wrote destination bytes", bit)
+		if !defaulted(dst) {
+			t.Fatalf("bit %d: layout_unknown left a row handed in off its declared default (R4)", bit)
 		}
 	}
 }
@@ -221,13 +222,13 @@ func TestR9(t *testing.T) {
 	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}
 	refuses := func(what string, forged []byte) {
 		t.Helper()
-		dst, bytes := poisoned(1)
+		dst, _ := poisoned(1)
 		r := dirty()
 		if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != want {
 			t.Fatalf("%s: n=%d %+v", what, n, r)
 		}
-		if !untouched(bytes) {
-			t.Fatalf("%s: wrote destination bytes", what)
+		if !defaulted(dst) {
+			t.Fatalf("%s: left a row handed in off its declared default (R4)", what)
 		}
 	}
 	for length := 0; length <= layoutLen+1; length++ {
@@ -290,8 +291,8 @@ func TestR9(t *testing.T) {
 }
 `
 
-// go/R13, "REFUSE is total: every counter stays zero, and not one destination
-// byte is written". §5.3: a refusal by name moves no counter and writes nothing;
+// go/R13, "REFUSE is total: every counter stays zero, and (R4) every row
+// handed in holds its declared default". §5.3: a refusal by name moves no counter;
 // the framing-damage answers set Malformed beside their name (truncated,
 // reserved_not_zero). Every refusal this reader has before a record lands
 // (previous_form, message_form_as_file, newer_form, layout_malformed,
@@ -335,7 +336,7 @@ func TestR13(t *testing.T) {
  	add("malformed reserved byte", forge(func(b []byte) []byte { b[3] = 1; return b }), 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: "reserved_not_zero"})
  	add("malformed ragged", append(append([]byte(nil), file...), 0), 2, plan, TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"})
 	for _, c := range cases {
-		dst, bytes := poisoned(2)
+		dst, _ := poisoned(2)
 		dst = dst[:c.cap]
 		r := dirty()
 		if n := PointFixedLoad(dst, c.file, c.plan, &r); n != -1 || r != c.want {
@@ -344,15 +345,15 @@ func TestR13(t *testing.T) {
 		if r.Verdict == TableOpenRefused && (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Fatalf("%s: refused and malformed are both set: %+v", c.what, r)
 		}
-		if !untouched(bytes) {
-			t.Fatalf("%s: wrote destination bytes", c.what)
+		if !defaulted(dst) {
+			t.Fatalf("%s: left a row handed in off its declared default (R4)", c.what)
 		}
 	}
 	// layout_unknown carries the file's hash and nothing else
 	forged := forge(func(b []byte) []byte { b[TableFixedHashAt] ^= 1; return b })
-	dst, bytes := poisoned(2)
+	dst, _ := poisoned(2)
 	r := dirty()
-	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !untouched(bytes) {		t.Fatalf("layout_unknown: n=%d %+v", n, r)
+	if n := PointFixedLoad(dst, forged, plan, &r); n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_unknown", LayoutHash: binary.LittleEndian.Uint64(forged[TableFixedHashAt:])}) || !defaulted(dst) {		t.Fatalf("layout_unknown: n=%d %+v", n, r)
 	}
 }
 `

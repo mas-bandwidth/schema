@@ -15,7 +15,7 @@ import "testing"
 // built with the SAME header hash — the one byte of the held layout bent, and
 // the layout's length off by one with the bytes behind it shifted to match —
 // and both must be refused `layout_malformed` at the header read, before any
-// record is parsed, with the destination and the report counters untouched
+// record is parsed, with every row handed in at its declared default (R4) and the report counters untouched
 // (fixedform.go:909 for the length, fixedform.go:910 for a byte). A runGenerated
 // probe in the t11 shape, so the refusal is proved against the leg's own
 // emitted reader and not the shape of its text.
@@ -45,13 +45,13 @@ func TestT13(t *testing.T) {
 	want := TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: "layout_malformed"}
 	refuses := func(what string, forged []byte) {
 		t.Helper()
-		dst, bytes := poisoned(2)
+		dst, _ := poisoned(2)
 		r := dirty()
 		if n := RootFixedLoad(dst, forged, plan, &r); n != -1 || r != want {
 			t.Fatalf("%s: n=%d %+v", what, n, r)
 		}
-		if !untouched(bytes) {
-			t.Fatalf("%s: wrote destination bytes", what)
+		if !defaulted(dst) {
+			t.Fatalf("%s: a row handed in is off its declared default (R4): %+v", what, dst)
 		}
 	}
 
@@ -110,9 +110,14 @@ func poisoned(n int) ([]Root, []byte) {
 	return v, b
 }
 
-func untouched(b []byte) bool {
-	for _, c := range b {
-		if c != poison {
+// defaulted is R4 (docs/SPEC-TABLES.md §6.5): after any refusal every row
+// handed in holds its declared default, compared with a zero value put
+// through Reset. The rows start poisoned, so the reset is visible.
+func defaulted(v []Root) bool {
+	var d Root
+	RootReset(&d)
+	for i := range v {
+		if v[i] != d {
 			return false
 		}
 	}

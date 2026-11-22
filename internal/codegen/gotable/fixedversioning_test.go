@@ -272,8 +272,12 @@ func TestWriterBoundCount(t *testing.T) {
 	if n >= 0 || r.Verdict != TableOpenRefused || r.Reason != "count_over_bound" {
 		t.Fatalf("writer_bound_count: the forged 7 past the WRITER's bound 4 refuses count_over_bound (SPEC-TABLES 3.4), n=%%d %%+v", n, r)
 	}
-	if back[0].ValsCount != 0 || back[0].Lead != 0 || back[0].Trail != 0 {
-		t.Fatalf("writer_bound_count: a refusal writes no destination byte: %%+v", back[0])
+	var want %[2]s
+	%[2]sReset(&want)
+	for k := range back {
+		if back[k] != want {
+			t.Fatalf("writer_bound_count: R4: after a refusal every row handed in holds its declared default: row %%d=%%+v want %%+v", k, back[k], want)
+		}
 	}
 	if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("writer_bound_count: REFUSE moves no counter and is not damage: %%+v", r)
@@ -580,8 +584,9 @@ func TestLineageMerge(t *testing.T) {
 //
 // EACH PROBE ASSERTS THE JOINT REPORT (§5.3's two answers — a named refusal sets
 // `refused` and its name and never `malformed`; a malformed read sets `malformed`
-// and names nothing) AND THAT REFUSE WROTE NOT ONE DESTINATION BYTE: the record
-// is pre-poisoned and compared unchanged.
+// and names nothing) AND, by R4 (docs/SPEC-TABLES.md §6.5), THAT THE RECORD
+// HANDED IN HOLDS ITS DECLARED DEFAULT: the record is pre-poisoned 0xAB, so the
+// reset is visible, and compared with a zero value put through Reset.
 func TestFixedVersioningFormHeader(t *testing.T) {
 	corpus := fixedCorpus(t)
 	newer := readSchema(t, "VNEW_field_append")
@@ -590,7 +595,7 @@ func TestFixedVersioningFormHeader(t *testing.T) {
 	fixture := filepath.Join(corpus, "new_field_append.bin")
 	src := fmt.Sprintf(`package probe
 
-import ("os"; "testing"; "unsafe")
+import ("os"; "reflect"; "testing"; "unsafe")
 
 func poison(v *%[1]s) {
 	b := unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
@@ -599,14 +604,10 @@ func poison(v *%[1]s) {
 	}
 }
 
-func unchanged(v *%[1]s) bool {
-	b := unsafe.Slice((*byte)(unsafe.Pointer(v)), unsafe.Sizeof(*v))
-	for i := range b {
-		if b[i] != 0xAB {
-			return false
-		}
-	}
-	return true
+func isDefault(v *%[1]s) bool {
+	var d %[1]s
+	%[1]sReset(&d)
+	return reflect.DeepEqual(*v, d)
 }
 
 func TestFormHeader(t *testing.T) {
@@ -645,8 +646,8 @@ func TestFormHeader(t *testing.T) {
 			if r != c.want {
 				t.Fatalf("%%s: report %%+v, want %%+v", c.name, r, c.want)
 			}
-			if !unchanged(&back[0]) {
-				t.Fatalf("%%s: REFUSE wrote destination bytes", c.name)
+			if !isDefault(&back[0]) {
+				t.Fatalf("%%s: the record handed in is not its declared default after the refusal (R4): %%+v", c.name, back[0])
 			}
 		})
 	}
@@ -721,9 +722,12 @@ func TestForgedOrdinal(t *testing.T) {
 // written nothing. The header's hash is left alone so the reader selects the OLD
 // lineage entry and compiles its plan (a nonempty fill list for the appended nested
 // field) before step 11 compares the record's own hash; that record hash is inverted
-// so the comparison refuses `no_layout`. The destination is poisoned with 0x5A, not
-// zero, so a prefill that ran (Vec.w = 88, a nonzero default) is told apart from one
-// that did not: zero would hide the prefill, 0x5A exposes every byte the load touched.
+// so the comparison refuses `no_layout`. The probe keeps its forge and its reason;
+// by R4 (docs/SPEC-TABLES.md §6.5, replacing "a refusal leaves every row as it
+// was") the storage assertion is that EVERY one of the eight rows handed in holds
+// its declared default. The rows are poisoned with 0x5A first so the reset is
+// visible, and each is compared with a zero value put through Reset (not raw
+// bytes: Reset does not write padding).
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	corpus := fixedCorpus(t)
 	newer := readSchema(t, "VNEW_nested_append")
@@ -731,7 +735,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	table := fixedRootName(t, older)
 	src := fmt.Sprintf(`package probe
 
-import ("encoding/binary"; "os"; "testing"; "unsafe")
+import ("encoding/binary"; "os"; "reflect"; "testing"; "unsafe")
 
 func TestRefuseWritesNothing(t *testing.T) {
 	data, err := os.ReadFile(%[2]q)
@@ -774,7 +778,6 @@ func TestRefuseWritesNothing(t *testing.T) {
 	for i := range poisoned {
 		poisoned[i] = 0x5A
 	}
-	before := append([]byte(nil), poisoned...)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
 	n := %[1]sFixedLoad(back, data, plan, &r)
@@ -793,9 +796,11 @@ func TestRefuseWritesNothing(t *testing.T) {
 	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: no counter moves: %%+v", r)
 	}
-	for i := range poisoned {
-		if poisoned[i] != before[i] {
-			t.Fatalf("REFUSE wrote destination byte %%d: 0x%%02x, want 0x5A", i, poisoned[i])
+	var want %[1]s
+	%[1]sReset(&want)
+	for k := range back {
+		if !reflect.DeepEqual(back[k], want) {
+			t.Fatalf("row %%d of %%d handed in is not its declared default after the refusal (R4): %%+v, want %%+v", k, len(back), back[k], want)
 		}
 	}
 }

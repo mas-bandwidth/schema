@@ -101,7 +101,9 @@ func TestIntegrityFixed(t *testing.T) {
 			bad[i] ^= x
 			got, n, r := load(bad)
 			if n >= 0 { silent++; t.Errorf("byte %d ^ 0x%02x read clean: n=%d %+v", i, x, n, got); continue }
-			for k := range got { if got[k] != sentinel { t.Errorf("byte %d ^ 0x%02x landed record %d: %+v", i, x, k, got[k]) } }
+			var def Reading
+			ReadingReset(&def) // R4: a refusal leaves every row handed in at its declared default, never the sentinel
+			for k := range got { if got[k] != def { t.Errorf("byte %d ^ 0x%02x: R4: row %d handed in is %+v, want its declared default %+v", i, x, k, got[k], def) } }
 			if i == 0 {
 				want := map[byte]string{1: "previous_form", 2: "message_form_as_file"}[bad[0]]
 				if want == "" { want = "newer_form" }
@@ -137,7 +139,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		src := strings.Join(sortedSources(generate(t, integrityFixedSchema)), "")
 		// the trailer check lives in the tolerant read the strict plain
 		// ReadingFixedLoad reads through (docs/SPEC-TABLES.md §6.5)
-		load := funcSource(src, "func ReadingFixedLoad(")
+		load := funcSource(src, "func fixedLoadWalkReading(")
 		if !strings.Contains(load, "tableIntegrityHolds(data)") || !strings.Contains(load, `"integrity_mismatch"`) {
 			t.Errorf("ReadingFixedLoadTolerant does not check the trailer:\n%s", load)
 		}
@@ -148,7 +150,7 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		if !strings.Contains(funcSource(src, "func ReadingFixedSave("), "tableIntegritySeal") {
 			t.Error("ReadingFixedSave does not seal the trailer")
 		}
-		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
+		plain := funcSource(src, "func PlainReadingFixedLoad(") + funcSource(src, "func fixedLoadWalkPlainReading(") + funcSource(src, "func PlainReadingFixedSave(") + funcSource(src, "func PlainReadingFixedMeasure(")
 		if strings.Contains(plain, "tableIntegrity") {
 			t.Error("a keyless fixed table's surface carries the trailer")
 		}

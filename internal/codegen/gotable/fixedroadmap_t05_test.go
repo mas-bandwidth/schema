@@ -191,6 +191,7 @@ const t05IllFormedProbe = `package probe
 
 import (
 	"encoding/binary"
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -248,11 +249,11 @@ func TestIllFormed(t *testing.T) {
 		t.Fatalf("slack: n=%d report=%+v, want a refusal (fixed-dead-bytes-are-zero)", got, r)
 	}
 
-	// THE REFUSAL IS TOTAL (§5.8): "no counter moves, nothing is decoded, and
-	// not one destination byte is written — the prefill included". The string
-	// field s is valid, so an earlier plan entry would have landed it before
-	// the field u refuses; the caller's storage, poisoned 0x5A, must
-	// survive untouched.
+	// THE REFUSAL IS TOTAL (§5.8): no counter moves and nothing is decoded.
+	// The string field s is valid, so an earlier plan entry would have landed
+	// it before the field u refuses; by R4 (docs/SPEC-TABLES.md §6.5) the
+	// caller's storage, poisoned 0x5A so the reset is visible, must hold its
+	// declared default, never the landed s and never the poison.
 	poison := make([]T, 1)
 	pdst := tableFixedOverlay(unsafe.Pointer(&poison[0]), unsafe.Sizeof(poison[0]))
 	for i := range pdst {
@@ -269,10 +270,10 @@ func TestIllFormed(t *testing.T) {
 	if got := TFixedLoad(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
 		t.Fatalf("poison: n=%d reason=%q, want text_ill_formed", got, pr.Reason)
 	}
-	for i, b := range pdst {
-		if b != 0x5A {
-			t.Fatalf("poison: the text_ill_formed refusal wrote destination byte %d: 0x%02X, want 0x5A (§5.8: not one destination byte)", i, b)
-		}
+	var want T
+	TReset(&want)
+	if !reflect.DeepEqual(poison[0], want) {
+		t.Fatalf("poison: after the text_ill_formed refusal the value handed in is %+v, want its declared default %+v (R4)", poison[0], want)
 	}
 }
 `
@@ -291,7 +292,7 @@ fixed table T {
 	if err != nil {
 		t.Fatalf("t05: Generate: %v", err)
 	}
-	load := funcSource(tableFile(files), "func TFixedLoad(")
+	load := funcSource(tableFile(files), "func fixedLoadWalkT(")
 	if load == "" {
 		t.Fatal("t05: the module carries no TFixedLoad")
 	}
