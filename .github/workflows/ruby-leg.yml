@@ -8,8 +8,11 @@ name: ruby leg
 # lock, and checks the restored tree against the pins before anything runs on
 # it. No step runs an interpreter from PATH.
 #
-# Until the skeleton lands make/ruby.mk and defines test-ruby, this runs the
-# toolchain check, and it always runs the toolchain control.
+# test-ruby runs unconditionally. Until 2026-11-22 the step fell back to the
+# toolchain check whenever `make -n test-ruby` failed, and on the fleet it did:
+# run 44994557579 ran ruby-toolchain-check alone, so the strict gate this file
+# was trusted to run nightly ran nowhere. A failure to plan test-ruby is red
+# now. The toolchain control always runs too.
 #
 # NIGHTLY AND DISPATCH ONLY. On a cache miss the hosted macOS row builds both
 # CRubies from source, which does not fit a push or pull request's two
@@ -44,14 +47,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/ruby
-      - name: make test-ruby (or the toolchain check until the skeleton lands)
+      - name: make test-ruby
         run: |
-          if make -n test-ruby >/dev/null 2>&1; then
-            make serialize-siblings
-            make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
-          else
-            make ruby-toolchain-check
-          fi
+          make ruby-toolchain-check
+          make serialize-siblings
+          make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
       - name: make ruby-toolchain-negative-control
         run: make ruby-toolchain-negative-control
 
@@ -68,13 +68,10 @@ jobs:
           go-version-file: go.mod
           cache: false
       - uses: ./.github/actions/ruby
-      - name: make test-ruby (or the toolchain check until the skeleton lands)
+      - name: make test-ruby
         run: |
-          if make -n test-ruby >/dev/null 2>&1; then
-            make serialize-siblings
-            make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
-          else
-            make ruby-toolchain-check
-          fi
+          make ruby-toolchain-check
+          make serialize-siblings
+          make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
       - name: make ruby-toolchain-negative-control
         run: make ruby-toolchain-negative-control

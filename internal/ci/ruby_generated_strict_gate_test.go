@@ -246,3 +246,80 @@ func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 		}
 	})
 }
+
+// TestRubyGeneratedStrictGateFast is the strict gate's PULL-REQUEST FORM
+// (docs/CI-TIERS.md, ci-fast.yml nightly-fast row ruby-strict). The whole gate
+// above runs both interpreters, RuboCop, RBS and Steep once per unit, about
+// five minutes on four cores, so it stayed nightly, and a RuboCop offense in
+// the generated Ruby reached main (2026-11-22). This form keeps the two
+// halves that answer in seconds over the same units: every unit loads under
+// ruby -w on both pins with an empty stderr, and ONE RuboCop process lints
+// every unit at once instead of one process per unit. RBS validation and Steep
+// strict mode stay in the nightly gate.
+func TestRubyGeneratedStrictGateFast(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Ruby interpreters and RuboCop")
+	root := repoRoot(t)
+	units := rubyStrictGateUnits(t, root)
+	if len(units) < 40 {
+		t.Fatalf("strict gate fast form covered only %d units, want >= 40", len(units))
+	}
+	allDir := t.TempDir()
+	// THE RUNTIME IS LINTED ONCE. Every unit carries the same Ruby runtime
+	// (_table/, serialize/, _fixed.rb ...) under its own module name, which is
+	// most of its lines. A file whose text, with the module name of its unit
+	// replaced, equals one already queued is the same RuboCop input, so the
+	// runtime is linted once and the schema files of every unit each time.
+	var rcPaths []string
+	queued := map[string]bool{}
+	modLine := regexp.MustCompile("(?m)^module (\\w+)")
+	type unit struct{ label, dir, pkg string }
+	var all []unit
+	for _, label := range slices.Sorted(maps.Keys(units)) {
+		sub := strings.ReplaceAll(label, "/", "__")
+		dir := filepath.Join(allDir, sub)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		pkg := rubyStrictGateWriteAndPkg(t, dir, units[label])
+		m := modLine.FindSubmatch(units[label][pkg+".rb"])
+		if m == nil {
+			t.Fatalf("%s: %s.rb names no module", label, pkg)
+		}
+		for _, name := range slices.Sorted(maps.Keys(units[label])) {
+			if !strings.HasSuffix(name, ".rb") {
+				continue
+			}
+			key := strings.ReplaceAll(string(units[label][name]), string(m[1]), "SchemaUnit")
+			if queued[key] {
+				continue
+			}
+			queued[key] = true
+			rcPaths = append(rcPaths, path.Join(sub, name))
+		}
+		all = append(all, unit{label, dir, pkg})
+	}
+	t.Run("ruby-w", func(t *testing.T) {
+		t.Parallel()
+		for _, u := range all {
+			t.Run(u.label, func(t *testing.T) {
+				t.Parallel()
+				probe := map[string][]byte{
+					"_probe.rb": []byte("# frozen_string_literal: true\n\nrequire_relative '" + u.pkg + "'\n"),
+				}
+				rubyrun.Run(t, u.dir, "_probe.rb", probe)
+				rubyrun.RunFloor(t, u.dir, "_probe.rb", probe)
+			})
+		}
+	})
+	t.Run("rubocop", func(t *testing.T) {
+		t.Parallel()
+		out, err := rubyrun.RuboCopAll(t, allDir, rcPaths...)
+		if err != nil {
+			t.Fatalf("RuboCop over all %d generated Ruby units failed (%v):\n%s", len(all), err, out)
+		}
+		if !strings.Contains(out, "no offenses detected") {
+			t.Fatalf("RuboCop over all %d units did not report its verdict:\n%s", len(all), out)
+		}
+	})
+}

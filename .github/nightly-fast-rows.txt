@@ -1,0 +1,64 @@
+# THE PULL-REQUEST FORMS OF THE NIGHTLY GATES (docs/CI-TIERS.md).
+#
+# A gate whose only workflow runs on a schedule or on dispatch checks nothing a
+# pull request changes until the night after it lands: the strict Ruby gate
+# ran only nightly, and a RuboCop offense reached main (2026-11-22). Each row
+# here is the fast form of one such gate. ci-fast.yml runs it, as a row of its
+# nightly-fast job, on any push or pull request that touches the row leg, or a
+# path its paths pattern matches, or the broad rule; a diff to this file runs
+# every row. Each row fits the two-minute job cap: its nightly job time on the
+# fleet is in docs/CI-TIERS.md.
+#
+# Fields, separated by " | ":
+#   name   the matrix row
+#   leg    the toolchain the job sets up, and the plan leg that selects the row
+#          ("-" for none)
+#   paths  an extended regular expression; a changed path it matches selects
+#          the row
+#   run    the shell line the row runs, from the repository root, with the
+#          pinned siblings at ../serialize* (the job clones them)
+#
+# internal/nightlyrows parses this file and picks the rows; internal/ci
+# TestEveryNightlyOnlyGateHasAPRTierForm holds every nightly-only workflow to a
+# row here or to a named ci-fast job, and every make target named here to a
+# definition.
+
+# the per-language hostile-input corpora (schema-<lang>-runs-hostile-corpus.yml)
+hostile-c | c | (^|/)schema[-_]c[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-c-runs-hostile-corpus SERIALIZE_C=../serialize.c
+hostile-cpp | cpp | (^|/)schema[-_]cpp[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cpp-runs-hostile-corpus SERIALIZE=../serialize
+hostile-cs | cs | (^|/)schema[-_]cs[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cs-runs-hostile-corpus SERIALIZE_CS=../serialize.cs
+hostile-dart | dart | (^|/)schema[-_]dart[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-dart-runs-hostile-corpus DART=dart
+hostile-elixir | elixir | (^|/)schema[-_]elixir[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-elixir-runs-hostile-corpus ELIXIR=elixir ELIXIRC=elixirc
+hostile-java | java | (^|/)schema[-_]java[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-java-runs-hostile-corpus JAVA=java JAVAC=javac
+hostile-js | js | (^|/)schema[-_]js[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-js-runs-hostile-corpus NODE=node
+hostile-lua | lua | (^|/)schema[-_]lua[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-lua-runs-hostile-corpus schema-lua-runs-hostile-corpus-planted
+hostile-luau | luau | (^|/)schema[-_]luau[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-luau-runs-hostile-corpus
+hostile-moo | moo | (^|/)schema[-_]moo[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-moo-runs-hostile-corpus
+hostile-python | python | (^|/)schema[-_]python[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-python-runs-hostile-corpus schema-python-runs-hostile-corpus-negative-control
+hostile-ruby | ruby | (^|/)schema[-_]ruby[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-ruby-runs-hostile-corpus
+hostile-rust | rust | (^|/)schema[-_]rust[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-rust-runs-hostile-corpus RUSTUP_BIN="$(dirname "$(command -v cargo)")" RUST_HOSTILE_PROFILES=debug RUST_HOSTILE_JOBS="$(getconf _NPROCESSORS_ONLN)"
+hostile-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make dist-squirrel schema-squirrel-runs-hostile-corpus
+hostile-unity | unity | (^|/)schema[-_]unity[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-unity-runs-hostile-corpus SERIALIZE_CS=../serialize.cs
+
+# the resource bounds (schema-<lang>-resource-bounds.yml)
+bounds-lua | lua | (^|/)schema[-_]lua[-_]resource[-_]bounds | make schema-lua-resource-bounds schema-lua-resource-bounds-negative-control
+bounds-luau | luau | (^|/)schema[-_]luau[-_]resource[-_]bounds | make schema-luau-resource-bounds schema-luau-resource-bounds-negative-control
+bounds-python | python | (^|/)schema[-_]python[-_]resource[-_]bounds | make schema-python-resource-bounds
+bounds-ruby | ruby | (^|/)schema[-_]ruby[-_]resource[-_]bounds | make schema-ruby-resource-bounds
+bounds-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]resource[-_]bounds | make dist-squirrel schema-squirrel-resource-bounds-fast
+
+# the generated-code strict gates not already in lang-lint
+strict-ruby | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast
+strict-luau | luau | (^|/)schema[-_]luau[-_]generated[-_]analyze | make schema-luau-generated-analyze-strict-gate schema-luau-generated-analyze-strict-gate-negative-control
+strict-moo | moo | (^|/)schema[-_]moo[-_]generated[-_]analyze | make schema-moo-generated-analyze-strict-gate schema-moo-generated-analyze-strict-gate-negative-control
+strict-dart-all | dart | (^|/)schema[-_]dart[-_]generated[-_]strict | make schema-dart-generated-strict-analyze-gate-all DART=dart
+strict-lobster | lobster | (^|/)schema[-_]lobster[-_]generated[-_]strict | make tables-lobster-clean schema-lobster-generated-strict-gate-negative-control
+
+# the saved fuzz vectors the nightly campaigns found, replayed
+replay-dart | dart | (^|/)schema[-_]dart[-_]nightly[-_]fuzz | make schema-dart-nightly-fuzz-replay DART=dart
+replay-lua | lua | (^|/)schema[-_]lua[-_]nightly[-_]fuzz|^testdata/lua-nightly-fuzz/ | make schema-lua-fuzz-replay
+replay-luau | luau | (^|/)schema[-_]luau[-_]nightly[-_]fuzz|^testdata/luau-nightly-fuzz/ | make luau-nightly-fuzz-replay
+
+# the differentials and the fixed-form proof
+differential-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]all[-_]port[-_]differential | make dist-squirrel schema-squirrel-all-port-differential-fast
+lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobster-fixed-proof-fast
