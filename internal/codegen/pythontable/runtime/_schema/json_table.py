@@ -306,7 +306,7 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
             if "\x00" in key:
                 raise Refused("text_holds_zero", field.name)
             if key_field.codec == "string":
-                if not key_field.unbounded and len(key.encode("utf-8")) > min(255, key_field.size):
+                if not key_field.unbounded and len(key.encode("utf-8")) > key_field.size:
                     raise Refused("length_over_bound", field.name)
                 parsed_key: Any = key
             elif key_field.codec == "int":
@@ -441,7 +441,7 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
     raise Refused("unsupported", field.name)
 
 
-def from_json(cls: type[_T], text: str, report: LoadReport | None = None, fill: _Fill | None = None) -> _T:
+def from_json(cls: type[_T], text: str | bytes | bytearray | memoryview, report: LoadReport | None = None, fill: _Fill | None = None) -> _T:
     """Read one value, or refuse without changing a caller's instance."""
     data = parse(text, None)
     value = cls()
