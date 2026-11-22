@@ -31,6 +31,7 @@ func hexBytes(_ s: String) -> [UInt8] {
 
 /// UTF-16 units to bytes; a lone surrogate becomes its 3-byte generalized
 /// UTF-8 spelling, the nearest storage this port has that is not text.
+// SPEC-GAP 7
 func unitsToBytes(_ s: String) -> [UInt8] {
     var units: [UInt32] = []
     var i = s.startIndex

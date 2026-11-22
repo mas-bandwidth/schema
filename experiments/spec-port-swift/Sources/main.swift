@@ -39,7 +39,7 @@ func rootDecl(_ u: Unit, _ name: String) throws -> TableDecl {
 }
 
 /// Form 3 (the fixed form) is not carried by this port yet: a case that
-/// needs it answers ABSENT.
+/// needs it answers ABSENT (SPEC-GAP 8); a form-1 wire at a fixed root reads (SPEC-GAP 9).
 struct Absent: Error {}
 
 func loadWire(_ u: Unit, _ root: TableDecl, _ bytes: [UInt8]) throws -> Rec {

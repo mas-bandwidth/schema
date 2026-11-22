@@ -476,7 +476,7 @@ struct Parser {
                 let g = try ident()
                 skipNL()
                 out += try block(guards + [Guard(field: g, negate: neg)])
-                let afterBlock = p
+                let afterBlock = p // SPEC-GAP 14
                 skipNL()
                 if isW("else") {
                     p += 1
