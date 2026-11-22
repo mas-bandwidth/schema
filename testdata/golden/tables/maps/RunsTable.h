@@ -11359,7 +11359,7 @@ inline void RunsSpansEntryReset( RunsSpansEntry & value )
     {
         ItemReset( value.value[i] );
     }
-    value.value_count = 0;
+    value.value_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void RunsReset( Runs & value )
@@ -11460,7 +11460,7 @@ inline void TableResetMapValue( RunsSpansEntry & value )
     {
         ItemReset( value.value[i] );
     }
-    value.value_count = 0;
+    value.value_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 // RunsSpansEntryReadKey: the key, before the slot is chosen (docs/SPEC-TABLES.md §2.8).
@@ -11566,7 +11566,8 @@ inline int64_t RunsSpansEntryMeasureBody( TableIds & ids, const RunsSpansEntry &
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
     schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.value_count > 0 )
+    bool rides_value = value.value_count > 0;
+    if ( rides_value )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         int64_t body_value = 0;
@@ -11590,7 +11591,8 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBody( TableWriter & w, TableIds & id
         w.put16( uint16_t( value.key ) );
     }
     schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.value_count > 0 )
+    bool rides_value = value.value_count > 0;
+    if ( rides_value )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         int64_t body_value = 0;
@@ -13529,7 +13531,8 @@ inline int64_t RunsSpansEntryMeasureBodyRetain( TableRetainIds & ids, const Runs
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
     schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.value_count > 0 )
+    bool rides_value = value.value_count > 0;
+    if ( rides_value )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         int64_t body_value = 0;
@@ -13554,7 +13557,8 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBodyRetain( TableWriter & w, TableRe
         w.put16( uint16_t( value.key ) );
     }
     schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.value_count > 0 )
+    bool rides_value = value.value_count > 0;
+    if ( rides_value )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         int64_t body_value = 0;

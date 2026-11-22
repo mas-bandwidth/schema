@@ -1055,6 +1055,19 @@ for (local idx = 0; idx < total; idx++) {
       local wout = T[root + "Save"](v);
       check_blob(cid + ":save", wout, wout.len(), want2);
     }
+  } else if (op == 7) {
+    local rep = {};
+    local v = u.J.FromJson(T, root, inp, rep);
+    if (v == null || is_bad(rep)) die(cid, "FromJson fix");
+    check_str_blob(cid, T[root + "ToJson"](v), want1);
+    local mrep = {};
+    local mlen = T[root + "MeasureMessages"]([v], mrep);
+    if (mlen < 0 || is_bad(mrep)) die(cid, "MeasureMessages after FromJson");
+    local out = blob(mlen);
+    local srep = {};
+    local sn = T[root + "SaveMessages"]([v], out, srep);
+    if (sn != mlen || is_bad(srep)) die(cid, "SaveMessages after FromJson");
+    check_blob(cid + ":msg", out, sn, want2);
   } else {
     die(cid, "unknown op " + op);
   }
@@ -1202,6 +1215,20 @@ for idx = 1, #F.cases do
 			local wout, _ = S.save(desc, rec)
 			if not bufEq(wout, c.want2) then die(c.id, "save after fromJson") end
 		end
+	elseif c.op == 7 then
+		local d: any = (ST :: any).lookup(root)
+		local rec = d.new()
+		local rep: {[string]: any} = {}
+		if not (J :: any).fromJson(d, rec, buffer.tostring(c.inp), rep) or isBad(rep) then
+			die(c.id, "fromJson fix")
+		end
+		local jtxt: string? = (J :: any).toJson(d, rec)
+		if jtxt == nil or not bufEq(buffer.fromstring(jtxt :: string), c.want1) then
+			die(c.id, "toJson fix")
+		end
+		local srep = L.newReport()
+		local out, _ = MS.SaveMessages(root, {rec}, srep)
+		if out == nil or isBad(srep) or not bufEq(out, c.want2) then die(c.id, "SaveMessages after fromJson") end
 	else
 		die(c.id, "unknown op")
 	end
@@ -1281,6 +1308,30 @@ func verifyGoose(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec
             return;
         }
 `, u.Pkg, r, u.Pkg, r, u.Pkg, r)
+				}
+				if r == u.FixRoot && !gooseDefines(udir, "fn "+r+"FromJson(") {
+					// a root Goose emits no text codec for has no text half
+					// to feed its message writer: the case fails by name
+					// rather than breaking the unit's build
+					jsonFixedBlock += fmt.Sprintf(`        if op == 7 { die(c_id, "goose emits no %sFromJson"); }
+`, r)
+				} else if r == u.FixRoot {
+					// op 7: the fixed root's native message writer, fed by text
+					jsonFixedBlock += fmt.Sprintf(`        if op == 7 {
+            var one: %s::%s[1] = [%s::New%s()];
+            var jrep = schema_rt::json_report();
+            if !%s::%sFromJson(one[0], c_in, jrep) || jrep.damaged { die(c_id, "FromJson fix"); }
+            var jout: u8[>..] = [];
+            if %s::%sToJson(one[0], jout) < 0 { die(c_id, "ToJson fix"); }
+            check_bytes(c_id, jout, c_w1);
+            var mout: u8[>..] = [];
+            var srep = schema_rt::MsgReport { .. };
+            let sn = %s::%sSaveMessages(one[0 .. 1], mout, srep);
+            if sn != mout.len || srep.damaged || srep.reason != 0 { die(c_id, "SaveMessages after FromJson"); }
+            check_bytes(c_id, mout, c_w2);
+            return;
+        }
+`, u.Pkg, r, u.Pkg, r, u.Pkg, r, u.Pkg, r, u.Pkg, r)
 				}
 				fmt.Fprintf(&fixDisp, `    if same(c_root, %q) {
         if op == 3 {
@@ -1512,6 +1563,18 @@ fn main() {
 // 18. Lobster (per-unit compile + execute)
 // ============================================================================
 
+// gooseDefines reports whether any generated Goose file of a unit carries
+// decl, a function the probe may call only when the emitter wrote it.
+func gooseDefines(udir, decl string) bool {
+	files, _ := filepath.Glob(filepath.Join(udir, "*.goose"))
+	for _, f := range files {
+		if b, err := os.ReadFile(f); err == nil && strings.Contains(string(b), decl) {
+			return true
+		}
+	}
+	return false
+}
+
 func verifyLobster(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, caseCount int) error {
 	genRoot := filepath.Join(workDir, "gen")
 	if err := generateAllUnits(repoRoot, schemaBin, "", "lobster", units, genRoot); err != nil {
@@ -1648,6 +1711,17 @@ def run_one(c_id:string, c_rt:string, op:int, c_ax:string, c_in:string, c_w1:str
             if length(c_w2) > 0:
                 let wout, wwhy = schema_rt.save_reasoned(rec)
                 if wwhy != "" or wout != c_w2: die(c_id, "save after json_read: " + wwhy)
+        return
+    if op == 7:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.json_read(c_rt, c_in, rep)
+        if rec == nil or rep.damaged or rep.refused: die(c_id, "json_read fix")
+        if rec:
+            let jtxt, jwhy = schema_rt.json_write(rec)
+            if jwhy != "" or jtxt != c_w1: die(c_id, "json_write fix: " + jwhy)
+            let srep = schema_rt.LoadReport {}
+            let out, sn = schema_rt.save_messages([rec], srep)
+            if srep.damaged or srep.refused or sn != length(c_w2) or out != c_w2: die(c_id, "save_messages after json_read")
         return
     die(c_id, "unknown op")
 

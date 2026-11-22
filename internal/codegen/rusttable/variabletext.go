@@ -1248,7 +1248,7 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 	if f.Array != ir.ArrayNone {
 		if f.Array == ir.ArrayCounted {
 			if f.ArrayMin > 0 {
-				fmt.Fprintf(b, "%sif %s.len() < %d || %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayMin, x, f.ArrayBound)
+				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, lenBelow(x, f.ArrayMin), x, f.ArrayBound)
 			} else if f.ArrayBound > 0 {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
 			}
@@ -1379,7 +1379,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		}
 		switch f.Type.Kind {
 		case ir.TBool:
-			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
+			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, unparen(x))
 		case ir.TFloat32:
 			// a float32 range is compared at float32 (docs/SPEC.md §4.6), and a
 			// compressed float's -0 is written as +0
@@ -1723,6 +1723,11 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// fewer elements than the declared minimum is count_over_bound
+			// (docs/SPEC-TABLES.md §16.2; internal/tabletext read.go)
+			fmt.Fprintf(b, "%s    if %s { jr.damaged = true; }\n", in, lenBelow(field, f.ArrayMin))
+		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
 	}
@@ -1960,6 +1965,23 @@ func unparen(x string) string {
 		return x[1 : len(x)-1]
 	}
 	return x
+}
+
+// lenBelow is `x.len() < n` as clippy's len_zero wants it: a minimum of one
+// is `x.is_empty()`.
+func lenBelow(x string, n int64) string {
+	if n == 1 {
+		return x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() < %d", x, n)
+}
+
+// lenAtLeast is `x.len() >= n`, likewise `!x.is_empty()` at a minimum of one.
+func lenAtLeast(x string, n int64) string {
+	if n == 1 {
+		return "!" + x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() >= %d", x, n)
 }
 
 // wideRaw is a wide value's raw integer as the u128 the text helpers take: a

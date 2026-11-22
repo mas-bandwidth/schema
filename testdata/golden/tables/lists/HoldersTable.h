@@ -11253,7 +11253,7 @@ inline void DeckReset( Deck & value )
     {
         RowReset( value.hands[i] );
     }
-    value.hands_count = 0;
+    value.hands_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.past = 0;
 }
 
@@ -14061,7 +14061,8 @@ inline int64_t DeckMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -14084,7 +14085,8 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -23493,7 +23495,8 @@ inline int64_t DeckMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -23517,7 +23520,8 @@ inline bool DeckSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;

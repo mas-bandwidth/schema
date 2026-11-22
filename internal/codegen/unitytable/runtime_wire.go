@@ -2312,10 +2312,12 @@ internal static partial class TableWire
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN: Min default elements elide, a table element at its
+            // default when its body is its terminator alone (Empty), as the
+            // reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }
-                if (f.Kind == 13 && f.KeyId == null) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }

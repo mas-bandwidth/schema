@@ -11521,7 +11521,7 @@ inline void DepthReset( Depth & value )
     {
         SquadReset( value.many[i] );
     }
-    value.many_count = 0;
+    value.many_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 2; i++ )
     {
         SquadReset( value.keyed.slots[i] );
@@ -12197,7 +12197,8 @@ inline int64_t DepthMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.many_count > 0 )
+    bool rides_many = value.many_count > 0;
+    if ( rides_many )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
         int64_t body_many = 0;
@@ -12288,7 +12289,8 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_one ); }
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.many_count > 0 )
+    bool rides_many = value.many_count > 0;
+    if ( rides_many )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
         int64_t body_many = 0;
@@ -16155,7 +16157,8 @@ inline int64_t DepthMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_one ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.many_count > 0 )
+    bool rides_many = value.many_count > 0;
+    if ( rides_many )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
         int64_t body_many = 0;
@@ -16247,7 +16250,8 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_one ); }
     }
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.many_count > 0 )
+    bool rides_many = value.many_count > 0;
+    if ( rides_many )
     {
         const uint64_t ref_many = ids.ref_at( 12, 0x1f6459a2cea1fc02ull );
         int64_t body_many = 0;
