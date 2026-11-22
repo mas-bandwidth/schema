@@ -359,7 +359,7 @@ static SCHEMA_UNUSED uint64_t bench_table_writer_id( bench_table_writer_t * w, u
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==80) { w->overflow=1; return 0; }
+    if(v->count>=80) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; bench_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;

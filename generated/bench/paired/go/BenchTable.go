@@ -897,7 +897,10 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 			return uint64(i)
 		}
 	}
-	if ids.Count == len(ids.Values) {
+	// THE ID TABLE'S MAXIMUM (mas-bandwidth/schema docs/SPEC-TABLES.md §3): every reader refuses a
+	// table of more than 4096 entries, so the writer refuses to intern the
+	// 4097th and never writes a file its readers refuse.
+	if ids.Count == len(ids.Values) || ids.Count >= 4096 {
 		ids.Overflow = true
 		return 0
 	}
