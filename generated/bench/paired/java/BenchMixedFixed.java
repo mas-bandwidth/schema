@@ -239,6 +239,15 @@ public final class BenchMixedFixed {
         assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
         assert TableFixed.textOk(TableFixed.textUtf8, v.playerName, 0, v.playerNameLength);
         assert v.payloadLength >= 0 && v.payloadLength <= 16;
+        assert !java.lang.Float.isFinite(v.aimX)
+                || (v.aimX >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimX <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimY)
+                || (v.aimY >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimY <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimZ)
+                || (v.aimZ >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimZ <= java.lang.Float.intBitsToFloat(0x3f800000));
         {
             final Int128 min = new Int128(0xfffffff000000000L, 0L);
             final Int128 max = new Int128(0x1000000000L, 0L);

@@ -86,7 +86,11 @@ ok("loadout_full's damage payload reads back 0x41480000 at the f32 width — 12.
 ok("the float width is a pattern read: the same four bytes read back 0x41480000 at the u32 width, never a conversion", wire.u32At(loadout, 35) == 0x41480000);
 
 local conn = wire.readFile(DATA + "backend_conn.bin");
-ok("backend_conn's announced build version reads back 0x851cdd594a04b3fd at the u64 width (§3.3: reference 1, kind 9, eight bytes)", wire.u64At(conn, 3) == 0x851cdd594a04b3fd);
+// The pattern is the golden's own bytes 3..10 (cc c6 39 11 3a 09 09 23). It
+// read 0x851cdd594a04b3fd until the build version was re-pinned over the
+// message closure; nothing ran this file then, so the stale pin stayed red
+// unseen until make squirrel-wire-lib-test.
+ok("backend_conn's announced build version reads back 0x2309093a1139c6cc at the u64 width (§3.3: reference 1, kind 9, eight bytes)", wire.u64At(conn, 3) == 0x2309093a1139c6cc);
 
 local block = wire.readFile(DATA + "block_render.bin");
 ok("block_render's camera row reads back 0x3ff0000000000000 at the f64 width — the pinned row dump's own value", wire.f64At(block, 192) == 0x3ff0000000000000);
@@ -214,7 +218,9 @@ ok("the writer round-trips the one instance byte-identically: what was read, re-
 ok("a clean read prints the reports.txt row: 0,0,0,0,0,false,read", wire.reportRow(read.report) == "0,0,0,0,0,false,read");
 ok("a refusal prints the same six zeroes and the VERDICT that tells it apart: 0,0,0,0,0,false,refused", wire.reportRow(rLying.report) == "0,0,0,0,0,false,refused");
 
-if (failed == 0) {
+// The count tools/mustrun reads (make squirrel-wire-lib-test).
+::print("wire: ran " + ran + ", failed " + failed + "\n");
+if (failed == 0 && ran > 0) {
     ::print("wire: the squirrel foundation's " + ran + " assertions green\n");
     return 0;
 }

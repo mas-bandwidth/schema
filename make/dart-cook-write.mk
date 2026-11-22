@@ -42,7 +42,7 @@ conformance-dart-cook-write-negative-control: build/conformance-harness build/co
 		echo "NEGATIVE CONTROL FAILED: a cook writer that fills a counted array's dead slot left the Dart cook-write line green"; \
 		cat $(DART_COOK_WRITE_NC)/log; exit 1; \
 	fi
-	@grep -E 'root_full' $(DART_COOK_WRITE_NC)/log | grep -m1 'cook-write' || \
+	@grep -E 'root_full' $(DART_COOK_WRITE_NC)/log | awk '/cook-write/ && !n++ { print } END { exit !n }' || \
 		{ echo "NEGATIVE CONTROL FAILED: the cook-write line went red, but not on root_full"; \
 		  cat $(DART_COOK_WRITE_NC)/log; exit 1; }
 	@echo "negative control: a cook writer that fills a counted array's dead slot turns Dart cook-write RED on root_full"

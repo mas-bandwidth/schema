@@ -140,7 +140,7 @@ schema-lua-fuzz-negative-control: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED
 		echo "NEGATIVE CONTROL FAILED: the planted missing bound survived 4000 iterations"; \
 		cat $$nc/fuzz.log; exit 1; \
 	fi; \
-	case_file=$$(ls $$nc/findings/*.case 2>/dev/null | head -1); \
+	case_file=$$(ls $$nc/findings/*.case 2>/dev/null | sed -n 1p); \
 	[ -n "$$case_file" ] || { echo "NEGATIVE CONTROL FAILED: no saved input"; cat $$nc/fuzz.log; exit 1; }; \
 	cp "$$case_file" $(LUA_FUZZ_REGRESS)/planted_missing_bound.case; \
 	if $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $$nc/generated \
@@ -197,7 +197,7 @@ schema-lua-fuzz-replay-controls: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)
 		fi; \
 		if [ $$? -eq 0 ]; then \
 			echo "lua replay control failed: $$name replayed green"; cat $$w/$$name.log; exit 1; fi; \
-		reason=$$(grep -v ' cases, [0-9]* failed$$' $$w/$$name.log | head -1); \
+		reason=$$(grep -v ' cases, [0-9]* failed$$' $$w/$$name.log | sed -n 1p); \
 		[ -n "$$reason" ] || { echo "lua replay control failed: $$name was refused without a reason"; exit 1; }; \
 		[ "$$name" != partial-find ] || case "$$reason" in *"find exited 7"*) ;; *) \
 			echo "lua replay control failed: partial-find was refused, but not for the failed find: $$reason"; exit 1 ;; esac; \

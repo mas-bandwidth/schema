@@ -131,13 +131,15 @@ func vtElideNaNWire(t *testing.T, u *ir.Unit) []byte {
 	return out
 }
 
-// vtElideRoundWire is an Inner.cr wire carrying float32(0.1), which lies
-// above the declared max 0.1: the engine's reader refuses it.
+// vtElideRoundWire is an Inner.cr wire carrying the float32 one step past
+// float32(0.1), the end of the declared max 0.1: THE RANGE IS HELD AT FLOAT32
+// (docs/SPEC-TABLES.md §3.3), so the engine's reader refuses it while it holds
+// float32(0.1) itself.
 func vtElideRoundWire(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
 	wire := vtFixedClassEngineWire(t, u, "Holder", `{"inner": {"cr": 0.05}}`)
 	from := []byte{0xcd, 0xcc, 0x4c, 0x3d} // float32(0.05)
-	to := []byte{0xcd, 0xcc, 0xcc, 0x3d}   // float32(0.1)
+	to := []byte{0xce, 0xcc, 0xcc, 0x3d}   // one float32 step past float32(0.1)
 	at := strings.Index(string(wire), string(from))
 	if at < 0 {
 		t.Fatalf("the float32 anchor is not in the wire %x", wire)
@@ -205,9 +207,9 @@ func TestPythonVtFixedClassElisionEngine(t *testing.T) {
 	if !engineRefuses(u, "Holder", vtElideNaNWire(t, u)) {
 		t.Error("nan: the engine reads a NaN")
 	}
-	// cr_round is not held to this engine: the Python leg compares a
-	// compressed float's range at float32 (SPEC.md 4.6), the rule PR #4440
-	// brings to the engine, which this base still compares at float64.
+	if !engineRefuses(u, "Holder", vtElideRoundWire(t, u)) {
+		t.Error("cr_round: the engine reads the float32 past float32(0.1) under max 0.1")
+	}
 	wire, resaved := vtElideDeprecatedWire(t, u)
 	t.Logf("deprecated wire: %s", hex.EncodeToString(wire))
 	t.Logf("deprecated resaved: %s", hex.EncodeToString(resaved))
@@ -217,7 +219,6 @@ func TestPythonVtFixedClassElisionEngine(t *testing.T) {
 // and exits nonzero when any is red. Inputs: wire_<case> for each case,
 // nan, round, deprecated and deprecated_resaved.
 const vtElideProbe = `import math
-import struct
 import vtel
 from vtel import Box, Cap, Holder, InvalidValue, Inner, LIMIT, Packed, Refused, Ship
 
@@ -275,29 +276,25 @@ try:
 except Refused:
     pass
 
-# A compressed float is held to its range on the float32 the wire carries,
-# compared at float32 (SPEC.md 4.6): 0.1 and a double that rounds to the same
-# float32 are max = 0.1 itself, and the float32 0.1f on the wire lands.
-top = struct.unpack("<f", struct.pack("<f", 0.1))[0]
-for value in (0.1, 0.1000000015):
-    v = Holder()
-    v.inner.cr = value
-    try:
-        if Holder.load(v.save()).inner.cr != top:
-            fail("cr_round_write")
-    except (InvalidValue, Refused):
-        fail("cr_round_write")
-try:
-    if Holder.load(read("round")).inner.cr != top:
-        fail("cr_round_read")
-except Refused:
-    fail("cr_round_read")
+# A compressed float's range is held at float32: 0.1 under max = 0.1 is the
+# float32 end 0.1f and saves; 0.10000001 rounds one float32 step past it.
 v = Holder()
-v.inner.cr = 0.11
+v.inner.cr = 0.1
+try:
+    if Holder.load(v.save()).inner.cr != 0.10000000149011612:
+        fail("cr_round_write")
+except (Refused, InvalidValue):
+    fail("cr_round_write")
+v.inner.cr = 0.10000001
 try:
     v.save()
-    fail("cr_above_write")
+    fail("cr_round_past_write")
 except InvalidValue:
+    pass
+try:
+    Holder.load(read("round"))
+    fail("cr_round_read")
+except Refused:
     pass
 
 # A deprecated variant reads as the field's declared default (an element's as
@@ -426,8 +423,8 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		{"two_deep", "vtel/_schema/descriptor.py", tableElision, "return all(field.codec == \"table\" or field.is_default(getattr(value, field.name)) for field in fields)", "vt_elide_two_deep"},
 		// a NaN is let through on write
 		{"nan", "vtel/_schema/kind_float.py", "if not math.isfinite(value):\n            raise InvalidValue", "if False:\n            raise InvalidValue", "vt_elide_nan_write"},
-		// the range is held on the unrounded value
-		{"cr_round", "vtel/_schema/kind_float.py", "stored = _unpack(fd, _pack(fd, value))", "stored = value", "vt_elide_cr_round_write"},
+		// the range is held at the declared double ends, which 0.1f exceeds
+		{"cr_round", "vtel/_schema/kind_float.py", "if fd.float_range and (stored < fd.fmin or stored > fd.fmax):", "if fd.float_range and (stored < -0.1 or stored > 0.1):", "vt_elide_cr_round_write"},
 		// a deprecated variant reads as its ordinal
 		{"deprecated_read", "vtel/_schema/kind_enum.py", "if ordinal in fd.deprecated:", "if False:", "vt_elide_deprecated_read"},
 		// a deprecated variant is written

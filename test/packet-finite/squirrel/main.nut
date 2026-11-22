@@ -25,7 +25,9 @@ local serialize = dofile("serialize.nut", true);
 local Finite = schema.require("Finite");
 
 local failed = 0;
+local ran = 0;
 local check = function(ok, what) {
+  ran++;
   if (!ok) {
     print("FAILED: " + what + "\n");
     failed++;
@@ -243,4 +245,7 @@ foreach (c in [
   check(f64Bits(back.Wides[1]) == b64, name + " wides[1] read bits");
 }
 
-if (failed == 0) print("OK\n");
+// The count of checks run and failed, then the OK line the Go test requires
+// (internal/codegen/squirrel/finite_test.go). A run of no check is not OK.
+print("packet finite Squirrel: ran " + ran + ", failed " + failed + "\n");
+if (failed == 0 && ran > 0) print("OK\n");

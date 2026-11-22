@@ -25,7 +25,7 @@
 -- writes it through `unbox` and `box` and never hands the box out.
 --
 -- A string is a Lua byte string, so a "well-formed" string is valid UTF-8 with
--- no NUL (utf8.len is strict: a surrogate or an overlong sequence is refused),
+-- no NUL (D.utf8_ok: a surrogate or an overlong sequence is refused on every Lua),
 -- and every bound is a byte count.
 
 local T = require("CardsTables")
@@ -33,6 +33,7 @@ local load_mod = require("load")
 local save_mod = require("save")
 local json_mod = require("json")
 local retain_mod = require("retain")
+local D = require("descriptor")
 
 local M = {}
 
@@ -96,7 +97,7 @@ function Record:Wire() return self.wire end
 -- ---- UTF-8 and whitespace helpers ----------------------------------------------
 
 local function wellFormed(s)
-  return utf8.len(s) ~= nil and not s:find("\0", 1, true)
+  return D.utf8_ok(s) and not s:find("\0", 1, true)
 end
 
 -- Go's unicode.IsSpace set, as UTF-8 byte sequences, for strings.TrimSpace.
@@ -534,7 +535,7 @@ end
 -- immediately after the last header line's terminator; header layout may
 -- canonicalize, body bytes never do.
 function M.Parse(text)
-  if utf8.len(text) == nil then return nil, refuse("cards: brief is not valid UTF-8", "malformed") end
+  if not D.utf8_ok(text) then return nil, refuse("cards: brief is not valid UTF-8", "malformed") end
   if text:find("\0", 1, true) then return nil, refuse("cards: brief contains a NUL byte", "malformed") end
   local lines = splitLines(text)
   if #lines == 0 then return nil, refuse("cards: brief has no RESULT line", "malformed") end
