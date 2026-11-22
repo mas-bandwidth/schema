@@ -58,6 +58,9 @@ func TestGooseVendoredSerializeIsThePin(t *testing.T) {
 	}
 	vendored, _ := filepath.Glob(filepath.Join("runtime", "serialize*.goose"))
 	sort.Strings(vendored)
+	if len(vendored) == 0 {
+		t.Fatal("vendored is empty: the loop below would check nothing")
+	}
 	for _, p := range vendored {
 		if _, ok := files[filepath.Base(p)]; !ok {
 			t.Errorf("runtime/%s is vendored but SERIALIZE_PIN does not list it", filepath.Base(p))

@@ -154,9 +154,9 @@ func TestNoFixedReasonNamesRemain(t *testing.T) {
 		"generated/bench/tables/go",
 		"generated/bench/paired/go",
 	}
-	var err error
 	for _, r := range roots {
-		err = filepath.WalkDir(filepath.Join(root, filepath.FromSlash(r)), func(path string, d fs.DirEntry, err error) error {
+		scanned := 0
+		err := filepath.WalkDir(filepath.Join(root, filepath.FromSlash(r)), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -173,6 +173,7 @@ func TestNoFixedReasonNamesRemain(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			scanned++
 			if bytes.Contains(data, []byte("TableFixedReason")) {
 				t.Errorf("%s still names the retired fixed-form vocabulary", path)
 			}
@@ -182,11 +183,11 @@ func TestNoFixedReasonNamesRemain(t *testing.T) {
 			return nil
 		})
 		if err != nil {
-			break
+			t.Fatal(err)
 		}
-	}
-	if err != nil {
-		t.Fatal(err)
+		if scanned == 0 {
+			t.Fatalf("walked %s and scanned no .go file", r)
+		}
 	}
 }
 

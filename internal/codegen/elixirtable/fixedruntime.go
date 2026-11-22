@@ -529,11 +529,18 @@ const fixedRuntimeBody = `  @moduledoc """
   # (docs/SPEC-TABLES.md §3.3, §3.4), held in every build like a ranged
   # integer's (ranged/2): a finite value outside lo..hi raises, and the save
   # writes nothing. A value that is not a finite float answers non_finite_float.
-  def cf32_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,
-    do: cf32_bits(value)
-
+  # THE RANGE IS HELD AT FLOAT32 (§3.3): lo and hi are the float32 nearest each
+  # declared end, and the value is narrowed to float32 before it is tested, so
+  # the 0.1f a load just read saves again under max = 0.1.
   def cf32_bits(value, {lo, hi}) when is_float(value) do
-    raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+    bits = cf32_bits(value)
+    <<n::float-32-little>> = <<bits::little-32>>
+
+    if n < lo or n > hi do
+      raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+    end
+
+    bits
   end
 
   def cf32_bits(value, _range), do: f32_bits(value)

@@ -336,6 +336,9 @@ func TestLuaCountCapRefusalNegativeControls(t *testing.T) {
 					t.Errorf("%s: the probe did not see the %s control", read, c.name)
 				}
 			}
+			if len(got) == 0 {
+				t.Fatal("got is empty: the loop below would check nothing")
+			}
 			for read := range got {
 				if !c.want[read] {
 					t.Errorf("%s: red under the %s control, which should not reach it", read, c.name)
@@ -409,7 +412,11 @@ func countCapFloatGroups(rows []countCapRow) []struct {
 func TestLuaCountCapReadOrder(t *testing.T) {
 	t.Parallel()
 	rows := countCapFloatRows(t)
-	for _, group := range countCapFloatGroups(rows) {
+	allCountCapFloatGroups := countCapFloatGroups(rows)
+	if len(allCountCapFloatGroups) == 0 {
+		t.Fatal("countCapFloatGroups(rows) is empty: the loop below would check nothing")
+	}
+	for _, group := range allCountCapFloatGroups {
 		for _, fault := range countCapFaults(group.rows, runCountCap(t, group.schema, group.rows, nil)) {
 			t.Error(fault)
 		}

@@ -404,6 +404,9 @@ function TableAnnounceRead(v, data, report) {
     return TableMessageRefuse(report, "build_version_mismatch");
   }
   const src = new TableMessageReader(words, null);
+  // PARSED INTO A LOCAL LIST FIRST: a vocabulary past the capacity refuses
+  // before one slot of v.Entries is touched
+  const parsed = [];
   let count = 0, nodeSeen = false;
   while (src.Offset < words.length) {
     if (count >= v.Entries.length) { return TableMessageRefuse(report, "vocabulary_too_large"); }
@@ -417,9 +420,9 @@ function TableAnnounceRead(v, data, report) {
     e.Shape.Min = began;
     e.Shape.Max = src.Offset;
     for (let i = 0; i < count; i++) {
-      if (TableMessageEntryEqual(words, v.Entries[i], e)) { report.Damaged = true; return false; }
+      if (TableMessageEntryEqual(words, parsed[i], e)) { report.Damaged = true; return false; }
     }
-    v.Entries[count] = e;
+    parsed.push(e);
     count++;
   }
   src.Offset = 0;

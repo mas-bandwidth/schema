@@ -463,18 +463,37 @@ void _runPhase(String phase, int n) {
 int _countScavenges(String errText) {
   var inside = false;
   var count = 0;
+  var begins = 0;
+  var ends = 0;
+  var traced = false;
   for (final line in const LineSplitter().convert(errText)) {
+    if (line.contains('reason=')) {
+      traced = true;
+    }
     if (line.contains('gcgate: steady phase begins')) {
       inside = true;
+      begins++;
       continue;
     }
     if (line.contains('gcgate: steady phase ends')) {
       inside = false;
+      ends++;
       continue;
     }
     if (inside && line.contains('Scavenge')) {
       count++;
     }
+  }
+  // Zero scavenges is the passing reading, so the instrument must be shown
+  // alive: one steady window, opened and closed, and a GC trace line from the
+  // child. A silent --verbose_gc, or a lost marker, would otherwise read as a
+  // flat, certified row.
+  if (begins != 1 || ends != 1 || !traced) {
+    stderr.writeln(
+      "gcgate: the child's GC trace is not usable (markers begin=$begins "
+      'end=$ends, GC trace line present=$traced); nothing was measured',
+    );
+    exit(2);
   }
   return count;
 }
@@ -534,10 +553,12 @@ void _drive(List<String> args) {
   );
 
   var failed = false;
+  var rowsRun = 0;
   for (final spec in _rows) {
     if (onlySet.isNotEmpty && !onlySet.contains(spec.name)) {
       continue;
     }
+    rowsRun++;
     final iters = spec.ceiling == null
         ? (scaleIters ~/ 10 < 500 ? 500 : scaleIters ~/ 10)
         : scaleIters;
@@ -571,6 +592,12 @@ void _drive(List<String> args) {
     );
   }
 
+  if (rowsRun == 0) {
+    stdout.writeln(
+      'FAILED: SCHEMA_DART_ALLOC_ROWS names no row of this gate: nothing was measured',
+    );
+    exit(1);
+  }
   if (runningSdk != pinnedDartSdk && !anySdk) {
     stdout.writeln(
       'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk; set SCHEMA_DART_ALLOC_ANY_SDK=1 to report observations without certifying',

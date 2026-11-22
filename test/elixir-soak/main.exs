@@ -246,9 +246,18 @@ defmodule Soak do
 
   # every pinned `instance` whose unit has a <Unit>.Table module that loads
   # and saves it back; an unpinned case has no budget to hold a sample to
+  # the units whose package name is not the unit name: the same map the audit
+  # (test/elixir-alloc/main.exs) resolves its modules by, so the soak walks
+  # the cases the audit pinned and not a subset of them
+  @unit_packages %{
+    "scalars" => "scalardemo",
+    "tblscalars2" => "scalardemo2",
+    "widelist" => "widelistdemo"
+  }
+
   defp cases(rows, budget) do
     Enum.flat_map(rows, fn [name, unit, root, wire | flags] ->
-      mod = Module.concat([Macro.camelize(unit), "Table"])
+      mod = Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "Table"])
 
       with {:ok, {words, binary}} <- Map.fetch(budget, name),
            true <-
@@ -272,7 +281,19 @@ defmodule Soak do
           }
         ]
       else
-        _ -> []
+        other ->
+          # A case the budget pins is a case the audit measured: if it does
+          # not resolve here the soak would run over fewer cases than it
+          # reports pinned, in silence. Unpinned cases have no budget to hold.
+          if Map.has_key?(budget, name) do
+            IO.puts(
+              "SOAK FAILED: pinned case #{name} (unit #{unit}) did not resolve to a loadable, savable root: #{inspect(other)}"
+            )
+
+            System.halt(1)
+          end
+
+          []
       end
     end)
   end

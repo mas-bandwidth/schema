@@ -9858,6 +9858,7 @@ namespace Benchtable
             if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
+            if (value.ServerTime < 0.0f || value.ServerTime > 65535.0f) { clamped++; }
             if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
@@ -9897,7 +9898,11 @@ namespace Benchtable
                 }
             }
             if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
             if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) { clamped++; }
+            if (value.Ping < 0.0f || value.Ping > 250.0f) { clamped++; }
             // bits(24) width clamp
             if (value.CrcHint > 16777215) { clamped++; }
             if (value.Extra < 0 || value.Extra > 255) { clamped++; }

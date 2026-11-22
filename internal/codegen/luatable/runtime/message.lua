@@ -1679,7 +1679,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local n, np = read_leb(buf, pos)
       if n == nil or math.ult(lim - np + 1, n) then return nil end
       local s = buf:sub(np, np + n - 1)
-      if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+      if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
       return np + n
     elseif k == 31 then
       local n, np = read_leb(buf, pos)
@@ -1752,7 +1752,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local aEnd = anp + n - 1
       if ak == 12 then
         local s = buf:sub(anp, aEnd)
-        if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+        if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
         return aEnd + 1
       elseif ak == 31 then
         return aEnd + 1

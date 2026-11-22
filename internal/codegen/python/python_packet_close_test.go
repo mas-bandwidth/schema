@@ -30,6 +30,9 @@ func TestPythonPacketClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(matches) == 0 {
+			t.Fatal("matches is empty: the loop below would check nothing")
+		}
 		for _, path := range matches {
 			key := filepath.ToSlash(filepath.Join(dir, filepath.Base(path)))
 			if !known[key] {
@@ -37,7 +40,11 @@ func TestPythonPacketClose(t *testing.T) {
 			}
 		}
 	}
-	for _, pin := range packetPins() {
+	allPacketPins := packetPins()
+	if len(allPacketPins) == 0 {
+		t.Fatal("packetPins() is empty: the loop below would check nothing")
+	}
+	for _, pin := range allPacketPins {
 		if pin.name == "bench_table" {
 			continue
 		}

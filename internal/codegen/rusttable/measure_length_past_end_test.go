@@ -164,6 +164,9 @@ func runMeasurePastEndProbe(t *testing.T, u *ir.Unit, prefix string, cases map[s
 		if !seenControl {
 			t.Errorf("%s: the well-formed control did not load and measure", profile.name)
 		}
+		if len(names) == 0 {
+			t.Fatal("names is empty: the loop below would check nothing")
+		}
 		for _, name := range names {
 			if !seen[name] {
 				t.Errorf("%s: %s was not refused by both reads", profile.name, name)

@@ -226,6 +226,14 @@ func TestPacketCarrier(t *testing.T) {
 				wg.Go(func() {
 					t.Run("build-"+l.name, func(t *testing.T) {
 						drivers[i] = l.build(t, filepath.Join(work, l.name), generated, rt)
+						// the last word of every driver command is the file the
+						// build produced (a binary or the driver script)
+						if len(drivers[i]) == 0 {
+							t.Fatalf("%s: the build named no driver command", l.name)
+						}
+						if _, err := os.Stat(drivers[i][len(drivers[i])-1]); err != nil {
+							t.Fatalf("%s: the build left no driver: %v", l.name, err)
+						}
 					})
 				})
 			}

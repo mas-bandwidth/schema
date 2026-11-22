@@ -656,6 +656,7 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 		inputs[name] = []byte(text)
 	}
 	got := map[string]rubyResourceBoundsResult{}
+	printed := map[string]int{}
 	for _, interpreter := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
 		stdout, stderr, err := rubyrun.Try(t, interpreter, dir, "main.rb", inputs)
 		if err != nil || stderr != "" {
@@ -677,6 +678,7 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 			if _, err := fmt.Sscanf(fields[5], "%d", &r.bytes); err != nil {
 				t.Fatalf("%s: bad bytes %q: %v", fields[0], fields[5], err)
 			}
+			printed[fields[0]]++
 			if prev, ok := got[fields[0]]; ok {
 				if prev.verdict != r.verdict || prev.bytes != r.bytes { // the verdict only: refusal-verdict-only
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %+v vs %+v", fields[0], prev, r)
@@ -685,6 +687,13 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 				r.steps = max(r.steps, prev.steps)
 			}
 			got[fields[0]] = r
+		}
+	}
+	// the agreement check above runs only on a shape both interpreters
+	// printed: a shape one of them left out would go uncompared
+	for name, n := range printed {
+		if n != 2 {
+			t.Fatalf("%s: %d resource-bounds lines across the two pinned Ruby interpreters, want one from each", name, n)
 		}
 	}
 	return got
@@ -696,6 +705,9 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 	dir := rubyResourceBoundsUnit(t, "", "")
 	got := rubyResourceBoundsRun(t, dir)
 	wants := rubyResourceBoundsWants()
+	if len(wants) == 0 {
+		t.Fatal("wants is empty: the loop below would check nothing")
+	}
 	for _, name := range slices.Sorted(maps.Keys(wants)) {
 		r, ok := got[name]
 		if !ok {

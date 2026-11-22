@@ -115,6 +115,9 @@ func TestCPointerTargetBlobKindRefused(t *testing.T) {
 		}
 	}
 
+	if len(units) == 0 {
+		t.Fatal("units is empty: the loop below would check nothing")
+	}
 	for _, unit := range units {
 		t.Run(unit, func(t *testing.T) {
 			var unitRows []cBlobKindRow
@@ -143,7 +146,11 @@ func TestCPointerTargetBlobKindRefused(t *testing.T) {
 			// THE WRITER'S OWN SAVE: every saved wire reads back accepted with
 			// nothing unknown through the engine, which also refuses a record
 			// no pointer reaches.
-			for _, saved := range cBlobKindSaved(t, output) {
+			allCBlobKindSaved := cBlobKindSaved(t, output)
+			if len(allCBlobKindSaved) == 0 {
+				t.Fatal("cBlobKindSaved(t, output) is empty: the loop below would check nothing")
+			}
+			for _, saved := range allCBlobKindSaved {
 				inst := model.New(model.Lookup(saved.root))
 				if inst == nil {
 					t.Fatalf("saved %s/%s: no root %s in %s", saved.root, saved.store, saved.root, unit)

@@ -64,6 +64,9 @@ func TestJavaScriptVariableRuntimeNamesAreClaimed(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if tablenames.By(name)&tablenames.Js == 0 {
 			t.Errorf("UNCLAIMED_JS_VARIABLE %s", name)
@@ -80,7 +83,11 @@ func TestJavaScriptVariableRuntimeNamesAreClaimed(t *testing.T) {
 			t.Errorf("runtime binding %s accepted or refused for the wrong reason: %v", name, errs)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Js) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Js)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Js) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if strings.HasPrefix(name, "TableVariable") || strings.HasPrefix(name, "TableIntegrity") || strings.HasPrefix(name, "tableRetain") || name == "TableRetainKnown" {
 			if !emitted[name] {
 				t.Errorf("claimed JavaScript variable binding %s is never emitted", name)

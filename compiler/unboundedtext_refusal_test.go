@@ -64,7 +64,11 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
-		for _, lang := range c.Targets() {
+		allTargets := c.Targets()
+		if len(allTargets) == 0 {
+			t.Fatal("c.Targets() is empty: the loop below would check nothing")
+		}
+		for _, lang := range allTargets {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 			if carries(lang, carryUnboundedText) {
 				if err != nil {
@@ -81,6 +85,9 @@ func TestUnboundedTextRefusedOffGo(t *testing.T) {
 				t.Errorf("%s: target %s refusal does not name the construct, the field and the target: %s", tc.name, lang, msg)
 			}
 		}
+	}
+	if len(unboundedTextProbes) == 0 {
+		t.Fatal("unboundedTextProbes is empty: the loop below would check nothing")
 	}
 	for _, p := range unboundedTextProbes {
 		if err := checkRefusalUnchanged(compilerGenerate(c), unchangedTargets, p); err != nil {

@@ -13,8 +13,8 @@ build/packet-write-text/cs/.stamp: bin/schema test/packet-write-text/Text.schema
 	@touch $@
 
 .PHONY: packet-write-text-cs packet-write-text-cs-negative-control
-packet-write-text-cs: build/packet-write-text/cs/.stamp
-	$(DOTNET) run --project test/packet-write-text/cs/packet-write-text.csproj -- test/packet-write-text/cases.txt
+packet-write-text-cs: build/mustrun build/packet-write-text/cs/.stamp
+	$(MUSTRUN) -name packet-write-text-cs -count 11 -- $(DOTNET) run --project test/packet-write-text/cs/packet-write-text.csproj -- test/packet-write-text/cases.txt
 	@echo 'packet write text C#: every ill-formed case asserted and every well-formed twin round-tripped'
 
 # The control removes the write-side assert from the emitter through a go build

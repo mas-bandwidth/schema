@@ -138,6 +138,9 @@ func TestMooJsonFloat32ReadBackNegativeControl(t *testing.T) {
 		broken = strings.Replace(broken, r[0], r[1], 1)
 	}
 	got32, got64, want32, want64 := floatWriteRun(t, map[string][]byte{"json.moo": []byte(broken)})
+	if len(want64) == 0 {
+		t.Fatal("want64 is empty: the loop below would check nothing")
+	}
 	for i := range want64 {
 		if got64[i] != want64[i] {
 			t.Fatalf("the float32 sabotage moved float64 #%d: %q, the engine %q", i, got64[i], want64[i])

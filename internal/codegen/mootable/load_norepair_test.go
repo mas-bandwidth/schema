@@ -44,7 +44,11 @@ func TestMooLoadBuildsNoRepairedValue(t *testing.T) {
 	}
 
 	g := generateFiles(t, map[string]string{"NoRepair.schema": noRepairSchema})
-	for _, c := range noRepairWires() {
+	allNoRepairWires := noRepairWires()
+	if len(allNoRepairWires) == 0 {
+		t.Fatal("noRepairWires() is empty: the loop below would check nothing")
+	}
+	for _, c := range allNoRepairWires {
 		if got := runWire(t, g, "Root", c.wire); got != "refused" {
 			t.Errorf("%s: the one strict read answers %s, want refused", c.name, got)
 		}
