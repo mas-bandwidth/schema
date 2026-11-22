@@ -287,7 +287,7 @@ func TestRustCodecVerdicts(t *testing.T) {
 				t.Fatalf("the probe failed: %v\n%s", err, out)
 			}
 			got := map[string]string{}
-			for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 				k, _, _ := strings.Cut(line, " ")
 				got[k] = line
 			}
