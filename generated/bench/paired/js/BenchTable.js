@@ -4619,7 +4619,13 @@ export function BenchMixedSaveMessageBody(w, value) {
     w.Put(9n, TableMessageRefBitsHere);
     w.Put(globalThis.BigInt(value.serverTime) - 0n, 24);
   }
-  if (value.entitiesCount > 0) {
+  let _born_value_entities = value.entitiesCount === 1;
+  for (let _bornAt_value_entities = 0; _born_value_entities && _bornAt_value_entities < 1; _bornAt_value_entities++) {
+    const _msgProbe4 = new TableBitWriter(null, true);
+    if (!MixedEntitySaveMessageBody(_msgProbe4, value.entities[_bornAt_value_entities])) { return false; }
+    if ((_msgProbe4.Bits > TableMessageRefBitsHere)) { _born_value_entities = false; }
+  }
+  if ((value.entitiesCount > 0 && !_born_value_entities)) {
     w.Put(10n, TableMessageRefBitsHere);
     w.Put(globalThis.BigInt(value.entitiesCount) - 1n, 3);
     for (let _i4 = 0; _i4 < value.entitiesCount; _i4++) {

@@ -2128,6 +2128,39 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 && !f.Required {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. An element is at its default by its bits
+			// (a float by its pattern, an enum or a union by the zero
+			// reference), a table element by a body that is its terminator
+			// alone.
+			// the names come from the field's expression, never the shared
+			// temp counter, so the rest of the emitted method is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, expr)
+			born := "born_" + tag
+			idx := "bornAt_" + tag
+			g.pf("%sboolean %s = %sCount == %d;\n", ind, born, expr, f.BornCount())
+			g.pf("%sfor (int %s = 0; %s && %s < %d; %s++) {\n", ind, idx, born, idx, f.BornCount(), idx)
+			elem := fmt.Sprintf("%s[%s]", expr, idx)
+			if isStructType(f.Type) {
+				st := f.Type.Ref.(*ir.Struct)
+				probe := "bornProbe_" + tag
+				g.pf("%s    TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
+				g.pf("%s    if (!%s.saveMessageBody(%s, %s)) { return false; }\n", ind, messageClass(st.Name), probe, elem)
+				g.pf("%s    if (%s.bits != %dL) { %s = false; }\n", ind, probe, g.refBits, born)
+			} else {
+				g.pf("%s    if (%s) { %s = false; }\n", ind, g.scalarOrUnionRidesExpr(f, elem), born)
+			}
+			g.pf("%s}\n", ind)
+			return fmt.Sprintf("%sCount > 0 && !%s", expr, born)
+		}
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {

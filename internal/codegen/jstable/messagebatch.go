@@ -698,6 +698,34 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 && !f.Required {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. Each element is judged as a field of its
+			// own: a float by its bits, an enum or a union by the zero
+			// reference, a table by a body that is its terminator alone.
+			// the names come from the member's expression, never the shared
+			// counters, so the rest of the emitted function is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, mem)
+			iv := "_bornAt_" + tag
+			v := "_born_" + tag
+			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
+			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
+			// whatever the element's test declares lives inside this loop's
+			// block, so its counter is given back after
+			seq := g.probeSeq
+			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
+			g.probeSeq = seq
+			g.pf("%s  if (%s) { %s = false; }\n", ind, cond, v)
+			g.pf("%s}\n", ind)
+			return "(" + mem + "Count > 0 && !" + v + ")"
+		}
 		return mem + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {

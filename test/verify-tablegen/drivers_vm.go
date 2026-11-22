@@ -93,6 +93,39 @@ function ru32() { const v = dv.getUint32(at, true); at += 4; return v; }
 function rstr() { const n = dv.getUint16(at, true); at += 2; const s = dec.decode(raw.subarray(at, at + n)); at += n; return s; }
 function rvec() { const n = ru32(); const b = new Uint8Array(n); b.set(raw.subarray(at, at + n)); at += n; return b; }
 
+// carry moves a text-placed value (a fixed root's text form reads into the
+// variable module's value, docs/SPEC-TABLES.md §16) into the fixed module's
+// value, so op 7 hands the MESSAGE writer the value the text names. The two
+// carry the same fields under the same names; a counted array sets its
+// <name>Count, and an enum named by text (a string, or null for None) becomes
+// the number the fixed module stores.
+function enumNumber(u, name) {
+  if (name === null) return 0;
+  for (const e of Object.values(u.P)) {
+    if (e !== null && typeof e === "object" && Object.isFrozen(e) && typeof e[name] === "number") return e[name];
+  }
+  return name;
+}
+function carried(u, v, cur) {
+  if (v !== null && typeof v === "object" && !Array.isArray(v) && cur !== null && typeof cur === "object") {
+    carry(u, v, cur);
+    return cur;
+  }
+  if ((v === null || typeof v === "string") && typeof cur === "number") return enumNumber(u, v);
+  return v;
+}
+function carry(u, src, dst) {
+  for (const k of Object.keys(src)) {
+    const sv = src[k];
+    if (Array.isArray(sv) && dst[k] && typeof dst[k].length === "number") {
+      for (let i = 0; i < sv.length; i++) dst[k][i] = carried(u, sv[i], dst[k][i]);
+      if ((k + "Count") in dst) dst[k + "Count"] = sv.length;
+    } else {
+      dst[k] = carried(u, sv, dst[k]);
+    }
+  }
+}
+
 const total = ru32();
 for (let idx = 0; idx < total; idx++) {
   const id = rstr(), pkg = rstr(), root = rstr();
@@ -151,16 +184,28 @@ for (let idx = 0; idx < total; idx++) {
     if (cnt >= 0 && !rep.damaged && !rep.refused && !rep.Damaged && (!rep.Verdict || rep.Verdict === 0)) {
       die(id, "FixedLoad accepted writer-bound breach");
     }
-  } else if (op === 6) {
+  } else if (op === 6 || op === 7) {
     const rep = new u.V.TableVariableReport();
     const txt = dec.decode(inp);
     const val = u.V[root + "FromJson"](txt, rep);
     const jtxt = u.V[root + "ToJson"](val);
     if (jtxt === null || jtxt === undefined) die(id, "ToJson");
     checkBytes(id, enc.encode(jtxt), want1);
-    if (want2.length > 0) {
+    if (op === 6 && want2.length > 0) {
       const wout = u.V[root + "Save"](val);
       checkBytes(id + ":save", wout, want2);
+    }
+    if (op === 7) {
+      const fv = u.UT[root] ? new u.UT[root]() : new u.P[root]();
+      carry(u, val, fv);
+      const mrep = new u.UT.TableFixedReport();
+      const mlen = u.FT[root + "MeasureMessages"]([fv], mrep);
+      if (mlen < 0 || mrep.Damaged || (mrep.Verdict && mrep.Verdict !== 0)) die(id, "MeasureMessages after FromJson");
+      const out = new Uint8Array(mlen);
+      const srep = new u.UT.TableFixedReport();
+      const wn = u.FT[root + "SaveMessages"]([fv], out, srep);
+      if (wn !== mlen || srep.Damaged || (srep.Verdict && srep.Verdict !== 0)) die(id, "SaveMessages after FromJson");
+      checkBytes(id, out, want2);
     }
   } else {
     die(id, "unknown op " + op);
