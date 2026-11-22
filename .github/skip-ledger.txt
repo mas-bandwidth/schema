@@ -108,17 +108,19 @@ skip nightly nightly (only|campaign)
 skip tag schema_leg_python build tag$
 skip tag ^this build registers .* the pages state the default build$
 
-# platform: the host cannot do what the test needs (symlinks, POSIX modes, a
+# platform: the host cannot do what the test needs (symlinks, POSIX modes, a case-insensitive or normalising volume, hard links, a
 # Linux-only signal). Provided by every Linux lane.
 skip platform symlink
 skip platform POSIX
 skip platform on Linux( only)?$
 skip platform ^Linux CI artifact contract$
 skip platform ^platform has no kernel address-space ceiling$
+skip platform ^this (volume|file system) (keeps|takes) 
+skip platform ^hard links unavailable: 
 
 # root: the test proves nothing as root. Provided by a lane that does not run
 # as root.
-skip root ^root writes (through|into) a read-only directory
+skip root ^root writes (through|into|a) (a )?read-only (directory|file)
 
 # helper: a helper-process entry point, run by the test that names it.
 # Provided by no lane: it skips whenever go test runs it directly.
