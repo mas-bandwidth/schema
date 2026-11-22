@@ -388,7 +388,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         const char * key_str = token;
         int32_t token_length = 0;
         bool key_over = false; // longer than THIS buffer: never truncated into a key
-        if ( TableJsonMapKeyIsString( key ) && key->unbounded )
+        if ( TableJsonMapKeyIsString( key ) && ( key->unbounded || key->array_bound >= kTableJsonMaxKey ) )
         {
             const int64_t mark = in.pos;
             if ( !TableJsonScanString( in, NULL, 0, &token_length, NULL, true ) ) { return false; }

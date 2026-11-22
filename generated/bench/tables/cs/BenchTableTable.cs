@@ -1851,7 +1851,7 @@ namespace Benchtable
                     if (c == '}') { input.Pos++; return true; }
                     input.TextField = mapField;
                     scoped ReadOnlySpan<byte> actual; int used;
-                    if (key.Unbounded)
+                    if (key.Unbounded || (key.Kind == 12 && key.ArrayBound >= MaxKey))
                     {
                         if (!DecodedStringBody(text, ref input, out actual)) { return false; }
                         if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }

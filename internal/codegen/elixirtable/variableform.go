@@ -5599,7 +5599,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:ok, key}
 
       field.t == :string ->
-        if byte_size(key) > min(field.size, 255), do: throw(:wire_damaged), else: {:ok, key}
+        if byte_size(key) > field.size, do: throw(:wire_damaged), else: {:ok, key}
 
       byte_size(key) > 255 ->
         throw(:wire_damaged)
