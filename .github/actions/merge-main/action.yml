@@ -1,0 +1,15 @@
+name: Merge current main into a lane pull request
+description: >
+  A pull request whose base is not main (a lane) is checked out as the PR
+  merged into its lane, which knows nothing of current main. This step merges
+  current main into that checkout, so the gates after it check what will land
+  and a lane cannot drift from main unseen. A push, a dispatch and a pull
+  request into main are left as checked out. A lane that conflicts with main
+  fails here by name. Every job of ci-fast.yml runs it right after
+  actions/checkout (internal/ci TestEveryFastCheckoutMergesMain).
+runs:
+  using: composite
+  steps:
+    - name: a lane pull request is checked against current main
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/merge-main.sh"

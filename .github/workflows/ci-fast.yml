@@ -141,6 +141,17 @@ name: CI fast
 # #1127, and a branch with no protection and no merge queue is exactly where
 # that gate must not go quiet. The leg gates run on dispatch only (above).
 #
+# A LANE PULL REQUEST IS CHECKED AGAINST CURRENT MAIN (2026-11-22). A pull
+# request into a lane (rowan/fix-ledger-1122, a sprint stream, dev) used to be
+# checked out as the PR merged into the LANE only, so a lane that had drifted
+# from main was green on every PR into it and red only when it landed. Every
+# job below now runs .github/actions/merge-main right after actions/checkout:
+# for a pull request whose base is not main it fetches main blobless and merges
+# it into the checkout, and a lane that does not merge cleanly fails there by
+# name with the conflicting paths. The plan diffs every pull request against
+# main. internal/ci TestEveryFastCheckoutMergesMain holds every checkout to it;
+# merge_main_test.go plants the drifted lane and the conflicting one.
+#
 # SPACE IS NOT IN THE POOL: it is the game server only (owner, 2026-10-15), and
 # its old `space-x64` registration is gone with it. No job here names it.
 #
@@ -234,11 +245,16 @@ jobs:
           # 42491594592, 42451891639); a blobless one is a few seconds.
           fetch-depth: 0
           filter: blob:none
+      - uses: ./.github/actions/merge-main
 
       - name: the diff, the packages and the legs
         id: pick
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
+          # A PULL REQUEST DIFFS AGAINST MAIN, whatever its base: a lane PR is
+          # checked out merged with current main (.github/actions/merge-main),
+          # so what differs from main, the lane and the PR together, is what
+          # this run has to cover.
+          BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}
           BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           set -euo pipefail
@@ -703,6 +719,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # A skipped or failed policy job must fail the existing required check.
       - name: require CI policy success
         env:
@@ -807,6 +824,7 @@ jobs:
             select: -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
       # step correct on a fleet runner too
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -896,6 +914,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -917,6 +936,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -965,6 +985,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -997,6 +1018,7 @@ jobs:
         lang: ${{ fromJSON(needs.plan.outputs.clean_legs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - name: Check out the Rust runtime sibling (rust clippy)
         if: matrix.lang == 'rust'
         run: |
@@ -1111,6 +1133,7 @@ jobs:
         lint: ${{ fromJSON(needs.plan.outputs.lints) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # hosted, as above
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
@@ -1184,6 +1207,7 @@ jobs:
         gate: [conformance, bench, fuzz, tablegen]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt). With
       # PGROUP_GO_TEST_JSON set, tools/pgroup records the `go test -json`
@@ -1319,6 +1343,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # hosted, as above
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
@@ -1351,6 +1376,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
@@ -1415,6 +1441,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -1454,6 +1481,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rows) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
       # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
@@ -1705,6 +1733,7 @@ jobs:
         leg: ${{ fromJSON(needs.plan.outputs.legs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE C++ REFERENCE IS EVERY LEG'S ORACLE: build/fixedform-corpus is dumped
       # by ../serialize, so every row clones it. The leg's own sibling runtime
@@ -1901,6 +1930,7 @@ jobs:
         part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, every leg's oracle
       - name: Check out the C++ serialize reference (pinned release)
@@ -1983,6 +2013,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, the probes' oracle, and
       # the probes link the Rust runtime beside this tree
@@ -2034,6 +2065,7 @@ jobs:
         part: [ conformance, negative ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, every leg's oracle
       - name: Check out the C++ serialize reference (pinned release)
@@ -2092,6 +2124,7 @@ jobs:
         part: [ asan, clean ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus and compiles against
       # the serialize headers
