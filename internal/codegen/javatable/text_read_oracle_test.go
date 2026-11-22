@@ -3,7 +3,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE JAVA TEXT READ AGREES WITH THE GO ENGINE on the shapes the shared
@@ -196,10 +196,10 @@ func TestJavaTextReadAgreesWithEngine(t *testing.T) {
 		}
 		sort.Strings(sources)
 		args := append([]string{"--release", "17", "-nowarn", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
-		out, err := exec.Command(java, "-ea", "-Xss512k", "-cp", dir, u.Package+".Driver").CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-Xss512k", "-cp", dir, u.Package+".Driver").CombinedOutput()
 		if err != nil {
 			t.Fatalf("java: %v\n%s", err, out)
 		}
