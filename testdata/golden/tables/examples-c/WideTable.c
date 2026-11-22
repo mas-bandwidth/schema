@@ -2532,7 +2532,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             const char * variant = tabledemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                tabledemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2922,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return tabledemo_table_json_read_scalar( in, storage, f, depth );
@@ -3640,9 +3647,9 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_wide_blob_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, label ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint32_t) offsetof( tabledemo_wide_blob_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, payload ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, samples ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, label ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint32_t) offsetof( tabledemo_wide_blob_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, payload ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, samples ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint32_t) sizeof( tabledemo_wide_blob_t ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

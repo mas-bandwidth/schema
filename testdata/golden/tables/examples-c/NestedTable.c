@@ -2532,7 +2532,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             const char * variant = tabledemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                tabledemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2922,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return tabledemo_table_json_read_scalar( in, storage, f, depth );
@@ -3640,8 +3647,8 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_archive_config_fields_[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

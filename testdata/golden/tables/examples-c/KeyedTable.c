@@ -2532,7 +2532,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             const char * variant = tabledemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                tabledemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2922,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return tabledemo_table_json_read_scalar( in, storage, f, depth );
@@ -3640,23 +3647,23 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_team_config_fields_[] = {
-    { "spawn_count", "spawn_count", "int32", 0xceec99e2d65db674ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_team_config_t, spawn_count ), (uint32_t) sizeof( ( (tabledemo_team_config_t *) 0 )->spawn_count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "banner", "banner", "string", 0xbca0dab1c7a00ccfull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( tabledemo_team_config_t, banner ), (uint32_t) sizeof( ( (tabledemo_team_config_t *) 0 )->banner ), (uint32_t) offsetof( tabledemo_team_config_t, banner_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "spawn_count", "spawn_count", "int32", 0xceec99e2d65db674ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_team_config_t, spawn_count ), (uint32_t) sizeof( ( (tabledemo_team_config_t *) 0 )->spawn_count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "banner", "banner", "string", 0xbca0dab1c7a00ccfull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( tabledemo_team_config_t, banner ), (uint32_t) sizeof( ( (tabledemo_team_config_t *) 0 )->banner ), (uint32_t) offsetof( tabledemo_team_config_t, banner_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_team_config_info_ = { "TeamConfig", (uint32_t) sizeof( tabledemo_team_config_t ), 2, schema_tabledemo_team_config_fields_, schema_tabledemo_team_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_gunner_config_fields_[] = {
-    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_config_t, reaction ), (uint32_t) sizeof( ( (tabledemo_gunner_config_t *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_config_t, tracking ), (uint32_t) sizeof( ( (tabledemo_gunner_config_t *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_config_t, reaction ), (uint32_t) sizeof( ( (tabledemo_gunner_config_t *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_config_t, tracking ), (uint32_t) sizeof( ( (tabledemo_gunner_config_t *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_gunner_config_info_ = { "GunnerConfig", (uint32_t) sizeof( tabledemo_gunner_config_t ), 2, schema_tabledemo_gunner_config_fields_, schema_tabledemo_gunner_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_turret_config_fields_[] = {
-    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, damage ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, cooldown ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->cooldown ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "gunner", "gunner", "GunnerConfig", 0x40dbb648c0cd44aaull, 13, 0, 0, 0, 1, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, gunner ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( tabledemo_turret_config_t, gunner_present ), &schema_tabledemo_gunner_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, damage ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, cooldown ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->cooldown ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "gunner", "gunner", "GunnerConfig", 0x40dbb648c0cd44aaull, 13, 0, 0, 0, 1, 0, 0, (uint32_t) offsetof( tabledemo_turret_config_t, gunner ), (uint32_t) sizeof( ( (tabledemo_turret_config_t *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( tabledemo_turret_config_t, gunner_present ), &schema_tabledemo_gunner_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_turret_config_info_ = { "TurretConfig", (uint32_t) sizeof( tabledemo_turret_config_t ), 3, schema_tabledemo_turret_config_fields_, schema_tabledemo_turret_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -3668,9 +3675,9 @@ static const tabledemo_table_variant_info_t schema_tabledemo_hull_config_turrets
     { "Mine", 0x04dc16aea8ff5276ull },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_hull_config_fields_[] = {
-    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_hull_config_t, health ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_hull_config_t, mass ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "turrets", "turrets", "TurretConfig", 0x84f8260bc283608cull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_WEAPON_MAX, (uint32_t) offsetof( tabledemo_hull_config_t, turrets ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->turrets[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_turret_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Weapon", schema_tabledemo_hull_config_turrets_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_hull_config_t, health ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_hull_config_t, mass ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "turrets", "turrets", "TurretConfig", 0x84f8260bc283608cull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_WEAPON_MAX, (uint32_t) offsetof( tabledemo_hull_config_t, turrets ), (uint32_t) sizeof( ( (tabledemo_hull_config_t *) 0 )->turrets[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_turret_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Weapon", schema_tabledemo_hull_config_turrets_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_hull_config_info_ = { "HullConfig", (uint32_t) sizeof( tabledemo_hull_config_t ), 3, schema_tabledemo_hull_config_fields_, schema_tabledemo_hull_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -3688,9 +3695,9 @@ static const tabledemo_table_variant_info_t schema_tabledemo_keyed_config_hulls_
     { "Freighter", 0x6c2321a3d00e23dbull },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_keyed_config_fields_[] = {
-    { "teams", "teams", "TeamConfig", 0xbaaeb048a5a8fa6dull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_TEAM_MAX, (uint32_t) offsetof( tabledemo_keyed_config_t, teams ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_team_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_tabledemo_keyed_config_teams_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "hulls", "hulls", "HullConfig", 0xce0ac3c25694d8ffull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_HULL_MAX, (uint32_t) offsetof( tabledemo_keyed_config_t, hulls ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->hulls[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_hull_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Hull", schema_tabledemo_keyed_config_hulls_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "scores", "scores", "ScoreBoard", 0x01986b0b27400fb2ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_keyed_config_t, scores ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->scores ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_score_board_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "teams", "teams", "TeamConfig", 0xbaaeb048a5a8fa6dull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_TEAM_MAX, (uint32_t) offsetof( tabledemo_keyed_config_t, teams ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_team_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_tabledemo_keyed_config_teams_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "hulls", "hulls", "HullConfig", 0xce0ac3c25694d8ffull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_HULL_MAX, (uint32_t) offsetof( tabledemo_keyed_config_t, hulls ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->hulls[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_hull_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Hull", schema_tabledemo_keyed_config_hulls_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "scores", "scores", "ScoreBoard", 0x01986b0b27400fb2ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_keyed_config_t, scores ), (uint32_t) sizeof( ( (tabledemo_keyed_config_t *) 0 )->scores ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_score_board_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_keyed_config_info_ = { "KeyedConfig", (uint32_t) sizeof( tabledemo_keyed_config_t ), 3, schema_tabledemo_keyed_config_fields_, schema_tabledemo_keyed_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -3702,7 +3709,7 @@ static const tabledemo_table_variant_info_t schema_tabledemo_score_board_per_tea
     { "Green", 0xcf00d78fd5953f1cull },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_score_board_fields_[] = {
-    { "per_team", "per_team", "int32", 0xf10fad739a0e1660ull, 4, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_TEAM_MAX, (uint32_t) offsetof( tabledemo_score_board_t, per_team ), (uint32_t) sizeof( ( (tabledemo_score_board_t *) 0 )->per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100000.0, NULL, 0, -1, NULL, 0, "Team", schema_tabledemo_score_board_per_team_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "per_team", "per_team", "int32", 0xf10fad739a0e1660ull, 4, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_TEAM_MAX, (uint32_t) offsetof( tabledemo_score_board_t, per_team ), (uint32_t) sizeof( ( (tabledemo_score_board_t *) 0 )->per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100000.0, NULL, 0, -1, NULL, 0, "Team", schema_tabledemo_score_board_per_team_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_score_board_info_ = { "ScoreBoard", (uint32_t) sizeof( tabledemo_score_board_t ), 1, schema_tabledemo_score_board_fields_, schema_tabledemo_score_board_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

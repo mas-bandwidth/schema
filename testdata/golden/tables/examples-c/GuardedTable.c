@@ -2532,7 +2532,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             const char * variant = tabledemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                tabledemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2922,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return tabledemo_table_json_read_scalar( in, storage, f, depth );
@@ -3640,12 +3647,12 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_patrol_fields_[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, active ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, speed ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, has_target ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, target_id ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, wander ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( tabledemo_patrol_t, note ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->note ), (uint32_t) offsetof( tabledemo_patrol_t, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, active ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, speed ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, has_target ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, target_id ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_patrol_t, wander ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( tabledemo_patrol_t, note ), (uint32_t) sizeof( ( (tabledemo_patrol_t *) 0 )->note ), (uint32_t) offsetof( tabledemo_patrol_t, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_patrol_info_ = { "Patrol", (uint32_t) sizeof( tabledemo_patrol_t ), 6, schema_tabledemo_patrol_fields_, schema_tabledemo_patrol_reset_raw_, 1, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
