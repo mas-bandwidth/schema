@@ -1237,7 +1237,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				g.chunkFlush(ind)
 				g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %sn || %s > %sn", name, name, f.IntMin.String(), name, f.IntMax.String()),
 					"", ind)
-				g.pf("%sn = Number(%s);\n", ind, name)
+				g.pf("%sn = globalThis.Number(%s);\n", ind, name)
 				// n is a mutable temp: its piece merges before anything reuses it
 				g.emitWriteRangedNum("n", f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				g.chunkFlush(ind)

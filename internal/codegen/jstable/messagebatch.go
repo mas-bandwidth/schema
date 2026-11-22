@@ -396,11 +396,11 @@ export function tableMessageReadInteger(r, s) {
     const wide = s.Kind >= 18 && s.Kind <= 29;
     const rawBase = wide ? (s.Base[0] | (s.Base[1] << 64n)) : s.Base[0];
     const bits = wide ? 128 : 64;
-    const base = tableMessageKindSigned(s.Kind) ? BigInt.asIntN(bits, rawBase) : BigInt.asUintN(bits, rawBase);
+    const base = tableMessageKindSigned(s.Kind) ? globalThis.BigInt.asIntN(bits, rawBase) : globalThis.BigInt.asUintN(bits, rawBase);
     value += base;
     return [value, true, tableMessageKindHolds(s.Kind, value)];
   }
-  if ((tableMessageKindSigned(s.Kind) || s.Kind === 36) && s.Bits > 0) { value = BigInt.asIntN(s.Bits, value); }
+  if ((tableMessageKindSigned(s.Kind) || s.Kind === 36) && s.Bits > 0) { value = globalThis.BigInt.asIntN(s.Bits, value); }
   return [value, true, true];
 }
 export function tableMessageWriteScalar(w, s, lo, hi) {
