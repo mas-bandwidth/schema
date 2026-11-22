@@ -341,6 +341,8 @@ var framingVectors = []framingVector{
 	{name: "frame_empty_buffer", unit: "tblr1", root: "Cfg", raw: []byte{}},
 	// F2–F4: the ten-byte empty table reads clean.
 	{name: "frame_empty_table", unit: "tblr1", root: "Cfg", ids: nil, body: b(0)},
+	// a [N]T of tables NEVER elides (docs/SPEC-TABLES.md §3): bytes that lack the field read as N default elements, and the canonical write-back carries them (fixed_array_rides_default)
+	{name: "fixed_array_rides_absent", unit: "tblvarevo1", root: "EvoDoc", ids: nil, body: b(0)},
 	// F5: fewer than eight bytes in the file.
 	{name: "frame_seven_bytes", unit: "tblr1", root: "Cfg", raw: b(1, 0, 0, 0, 0, 0, 0)},
 	// F5: eight bytes, the count would have to begin at the form byte.

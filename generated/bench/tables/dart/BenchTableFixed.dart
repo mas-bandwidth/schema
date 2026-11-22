@@ -4440,7 +4440,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     TableBitWriter._float32Cell[0] = (value.serverTime == 0 ? 0.0 : value.serverTime);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(30, tableMessageRefBits);
-      assert(!value.serverTime.isFinite || (value.serverTime >= 0.0 && value.serverTime <= 65535.0));
+      assert(!value.serverTime.isFinite || ((TableFixedLayout._f32..[0] = value.serverTime)[0] >= 0.0 && TableFixedLayout._f32[0] <= 65535.0));
       {
         final f = value.serverTime;
         if (!f.isFinite) return false;
@@ -4553,7 +4553,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     TableBitWriter._float32Cell[0] = (value.aimX == 0 ? 0.0 : value.aimX);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(37, tableMessageRefBits);
-      assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
+      assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
       {
         final f = value.aimX;
         if (!f.isFinite) return false;
@@ -4579,7 +4579,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     TableBitWriter._float32Cell[0] = (value.aimY == 0 ? 0.0 : value.aimY);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(38, tableMessageRefBits);
-      assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
+      assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
       {
         final f = value.aimY;
         if (!f.isFinite) return false;
@@ -4605,7 +4605,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     TableBitWriter._float32Cell[0] = (value.aimZ == 0 ? 0.0 : value.aimZ);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(39, tableMessageRefBits);
-      assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
+      assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
       {
         final f = value.aimZ;
         if (!f.isFinite) return false;
@@ -4667,7 +4667,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     TableBitWriter._float32Cell[0] = (value.ping == 0 ? 0.0 : value.ping);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(44, tableMessageRefBits);
-      assert(!value.ping.isFinite || (value.ping >= 0.0 && value.ping <= 250.0));
+      assert(!value.ping.isFinite || ((TableFixedLayout._f32..[0] = value.ping)[0] >= 0.0 && TableFixedLayout._f32[0] <= 250.0));
       {
         final f = value.ping;
         if (!f.isFinite) return false;
@@ -6046,7 +6046,7 @@ void tableMixedFixedWriteBody(
   view.setInt64(at + 34, value.worldTime, Endian.little);
   assert(value.frameTick >= 0 && value.frameTick <= 281474976710655);
   view.setUint64(at + 42, value.frameTick, Endian.little);
-  assert(!value.serverTime.isFinite || (value.serverTime >= 0.0 && value.serverTime <= 65535.0));
+  assert(!value.serverTime.isFinite || ((TableFixedLayout._f32..[0] = value.serverTime)[0] >= 0.0 && TableFixedLayout._f32[0] <= 65535.0));
   view.setUint32(
     at + 50,
     TableFixedLayout.float32Bits((value.serverTime == 0 ? 0.0 : value.serverTime)),
@@ -6105,19 +6105,19 @@ void tableMixedFixedWriteBody(
   view.setInt32(at + 1147, value.payloadLength, Endian.little);
   bytes.setRange(at + 1151, at + 1151 + value.payloadLength, value.payload);
   bytes.fillRange(at + 1151 + value.payloadLength, at + 1167, 0);
-  assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
+  assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1167,
     TableFixedLayout.float32Bits((value.aimX == 0 ? 0.0 : value.aimX)),
     Endian.little,
   );
-  assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
+  assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1171,
     TableFixedLayout.float32Bits((value.aimY == 0 ? 0.0 : value.aimY)),
     Endian.little,
   );
-  assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
+  assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1175,
     TableFixedLayout.float32Bits((value.aimZ == 0 ? 0.0 : value.aimZ)),
@@ -6132,7 +6132,7 @@ void tableMixedFixedWriteBody(
   view.setUint64(at + 1191, value.wideKey, Endian.little);
   assert(value.flux >= -1000000000000000000 && value.flux <= 1000000000000000000);
   view.setInt64(at + 1199, value.flux, Endian.little);
-  assert(!value.ping.isFinite || (value.ping >= 0.0 && value.ping <= 250.0));
+  assert(!value.ping.isFinite || ((TableFixedLayout._f32..[0] = value.ping)[0] >= 0.0 && TableFixedLayout._f32[0] <= 250.0));
   view.setUint32(
     at + 1207,
     TableFixedLayout.float32Bits((value.ping == 0 ? 0.0 : value.ping)),

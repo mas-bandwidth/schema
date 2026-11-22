@@ -29,6 +29,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `pathid/` | where a path lands, by the file system's identity | `go test ./internal/pathid` | `go test ./internal/pathid` |
 | `provesran/` | zero-match and unknown-candidate refusal for scans | `go test ./internal/provesran` | `go test ./internal/provesran` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
+| `recipescan/` | recipe and script failure-swallowing scan | `go test ./internal/recipescan` | `go run ./tools/recipescan` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
 | `runmatch/` | go test -run selection, as Go matches it | `go test ./internal/runmatch` | `go test ./internal/runmatch` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |

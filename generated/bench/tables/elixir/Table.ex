@@ -5225,6 +5225,10 @@ defmodule Benchtable.Table do
         end
       end
 
+      if float_ranged?(f) and field_active?(f, desc, value) do
+        float_range(f, Map.get(value, f.name, f.default))
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
@@ -5233,6 +5237,41 @@ defmodule Benchtable.Table do
         do: check_field(f, Map.fetch!(value, f.name))
     end)
   end
+
+  # A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3):
+  # every writer narrows the value to float32 and refuses it, invalid_value,
+  # when the narrowed value lies outside the float32 nearest each declared end,
+  # which is what the descriptor's min and max already are. A value past
+  # float32's own range is not tested here: it is the float writer's
+  # non_finite_float. A float64 with a range is held at float64.
+  defp float_ranged?(%{t: :float, min: _}), do: true
+  defp float_ranged?(%{elem_t: :float, elem_min: _}), do: true
+  defp float_ranged?(%{t: :keyed, item: item}), do: float_ranged?(item)
+  defp float_ranged?(_f), do: false
+
+  defp float_range(%{t: :float, width: w, min: lo, max: hi}, v), do: float_in_range(v, w, lo, hi)
+
+  defp float_range(%{elem_t: :float, elem_min: lo, elem_max: hi} = f, values)
+       when is_list(values) do
+    w = kind_width(f.elem_kind)
+    Enum.each(values, &float_in_range(&1, w, lo, hi))
+  end
+
+  defp float_range(%{t: :keyed, item: item}, slots) when is_map(slots),
+    do: Enum.each(slots, fn {_name, v} -> float_range(item, v) end)
+
+  defp float_range(_f, _v), do: :ok
+
+  defp float_in_range(v, 4, lo, hi)
+       when is_number(v) and v > -3.4028235677973366e38 and v < 3.4028235677973366e38 do
+    <<n::float-32>> = <<v::float-32>>
+    if n < lo or n > hi, do: throw(:invalid_value)
+  end
+
+  defp float_in_range(v, 8, lo, hi) when is_number(v) and (v < lo or v > hi),
+    do: throw(:invalid_value)
+
+  defp float_in_range(_v, _w, _lo, _hi), do: :ok
 
   # EVERY FIELD IS CHECKED ON WRITE, not only a required one (docs/SPEC.md
   # §5.1 rows 1-5 and 11, as the Go leg's Reason twin does): a ranged or
@@ -5292,8 +5331,10 @@ defmodule Benchtable.Table do
 
   defp required_value(%{t: :list} = f, values) do
     Enum.each(pad_fixed(f, values), fn v ->
-      if Map.has_key?(f, :elem_min) and (v < f.elem_min or v > f.elem_max),
-        do: throw(:invalid_value)
+      # a ranged float is held at float32 by float_range/2, never here
+      if Map.has_key?(f, :elem_min) and Map.get(f, :elem_t) != :float and
+           (v < f.elem_min or v > f.elem_max),
+         do: throw(:invalid_value)
 
       if f.elem_kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
         bits = Map.get(f, :elem_bits, kind_width(f.elem_kind) * 8)
@@ -5308,6 +5349,8 @@ defmodule Benchtable.Table do
       required_value(f.item, Map.get(slots, name, f.item.default))
     end)
   end
+
+  defp required_value(%{t: :float}, _v), do: :ok
 
   defp required_value(%{min: lo, max: hi}, v) when v < lo or v > hi,
     do: throw(:invalid_value)
@@ -7362,9 +7405,9 @@ defmodule Benchtable.Table do
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
        do: {:skip, throw(:wire_damaged)}
 
-  defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
+  defp json_read_list_elem(%{elem_kind: 10} = f, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
-      {:ok, value} -> {value, report}
+      {:ok, value} -> clamp_list_int(value, f, report)
       :error -> {:skip, throw(:wire_damaged)}
     end
   end

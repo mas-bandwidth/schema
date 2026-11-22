@@ -183,3 +183,31 @@ func TestEnforceTicked(t *testing.T) {
 		t.Errorf("an answered ticked case was failed: %v", r.failures)
 	}
 }
+
+// TestSurfacesRestrictTheRun: a run that names its surfaces (--surfaces) asks
+// the legs for those alone. A ticked surface the run leaves out is not run, so
+// it is neither an answer nor an owed absence: the text-boundary gates drive a
+// leg through a wrapper that lists only the JSON surfaces. The same leg and
+// ticks without the restriction is TestTickedAbsentSurfaceFails's red run.
+func TestSurfacesRestrictTheRun(t *testing.T) {
+	needShell(t)
+	c := newFakeCorpus(t)
+	drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {unlisted: "json-write"}})
+	only, err := parseSurfaces("wire,json-read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, t.TempDir()+"/work", "", "",
+		runOptions{claims: tickedClaims(tickSet{"variable-tables/text-form": {"zz": true}}), only: only})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatalf("a ticked surface the run does not name turned it red:\n%s", out.String())
+	}
+	mustSay(t, out.String(), []string{footer, "\nwire ", "\njson-read "}, []string{"TICKED", "\njson-write ", "\nmessage "})
+	if _, err := parseSurfaces("wire,jsonread"); err == nil || !strings.Contains(err.Error(), `"jsonread" is not a surface`) {
+		t.Errorf("an unknown surface name was not refused: %v", err)
+	}
+}
