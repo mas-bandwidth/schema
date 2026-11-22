@@ -621,7 +621,8 @@ public final class TableCookWrite {
         }
     }
 
-    private static long bits(java.lang.Object source, TableCookStorage storage, int width) {
+    private static long bits(
+            java.lang.Object source, TableCookStorage storage, int width, boolean ranged) {
         if (source == null) {
             return 0;
         }
@@ -631,7 +632,9 @@ public final class TableCookWrite {
         if (storage == TableCookStorage.FLOAT) {
             // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): its raw bits
             // ride, -0 and the subnormals exact, and a NaN or an infinity
-            // refuses the plan, so the cook is never written.
+            // refuses the plan, so the cook is never written. A COMPRESSED
+            // float's -0 is cooked as +0, in every build (ruling
+            // fixed-compressed-negzero); a plain float keeps its -0.
             long raw =
                     width == 4
                             ? java.lang.Float.floatToRawIntBits(
@@ -642,6 +645,9 @@ public final class TableCookWrite {
             long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
             if ((raw & exponent) == exponent) {
                 throw new NonFiniteFloat();
+            }
+            if (ranged && raw == (width == 4 ? 0x80000000L : 0x8000000000000000L)) {
+                return 0;
             }
             return raw;
         }
@@ -700,7 +706,7 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            put(out, order, at, bits(source, f.storage, f.elemSize, f.ranged), f.elemSize);
         }
     }
 

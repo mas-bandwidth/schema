@@ -9,6 +9,22 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// javaFloatStored is the value a float write stores: a compressed float's -0
+// is stored as +0 in every build (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+// fixed-compressed-negzero), and a plain float keeps its bits.
+func javaFloatStored(f *ir.Field, expr string) string {
+	if !f.HasFloatRange {
+		return expr
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return "(" + expr + " == 0.0f ? 0.0f : " + expr + ")"
+	case ir.TFloat64:
+		return "(" + expr + " == 0.0 ? 0.0 : " + expr + ")"
+	}
+	return expr
+}
+
 func variableElement(f *ir.Field) *ir.Field {
 	one := *f
 	one.Array = ir.ArrayNone
@@ -28,6 +44,13 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	}
 	if f.Type.Pointer {
 		return expr + "==null"
+	}
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		// A COMPRESSED float's -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
+		// fixed-compressed-negzero): it is its default BY VALUE, so a -0
+		// under a +0 default elides as +0 does; a NaN is never the default
+		// and reaches the writer's refusal.
+		return "(" + expr + ")==" + variableDefault(f)
 	}
 	switch f.Type.Kind {
 	case ir.TString:
