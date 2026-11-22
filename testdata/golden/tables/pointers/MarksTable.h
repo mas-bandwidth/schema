@@ -477,6 +477,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -13217,14 +13221,14 @@ extern const TableTypeInfo TallyTableInfo;
 extern const TableTypeInfo MarkerTableInfo;
 
 inline const TableFieldInfo TallyTableFields[] = {
-    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, 0ll, 10000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, 0ll, 10000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { TallyReset( *(Tally *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TallyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TallyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TallyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TallyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { MarkerReset( *(Marker *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MarkerTableType() { return &MarkerTableInfo; }
