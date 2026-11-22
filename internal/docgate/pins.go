@@ -2,6 +2,7 @@ package docgate
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,13 +31,12 @@ var (
 // RuntimePins reads the Makefile's runtime pins, keyed by repository name:
 // SERIALIZE_PIN is serialize's, SERIALIZE_C_PIN is serialize.c's, and so on.
 func RuntimePins(root string) (map[string]string, error) {
-	f, err := os.Open(filepath.Join(root, "Makefile"))
+	data, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 	pins := map[string]string{}
-	s := bufio.NewScanner(f)
+	s := bufio.NewScanner(bytes.NewReader(data))
 	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for s.Scan() {
 		m := makefilePin.FindStringSubmatch(s.Text())
