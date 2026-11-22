@@ -1,0 +1,11 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:16:12.732809561+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:16:12.737236098+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestEarlierLog"}
+{"Time":"2026-11-21T21:16:12.737264641+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"=== RUN   TestEarlierLog\n"}
+{"Time":"2026-11-21T21:16:12.737455028+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:41: SCHEMA_SLOW: noted\n"}
+{"Time":"2026-11-21T21:16:12.73748836+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:42: unrecorded setup failure\n"}
+{"Time":"2026-11-21T21:16:12.737536571+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"--- SKIP: TestEarlierLog (0.00s)\n"}
+{"Time":"2026-11-21T21:16:12.737571767+01:00","Action":"skip","Package":"example.org/ledgertest","Test":"TestEarlierLog","Elapsed":0}
+{"Time":"2026-11-21T21:16:12.737677405+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:16:12.737929968+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.005s\n"}
+{"Time":"2026-11-21T21:16:12.73802689+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.005}

@@ -52,25 +52,25 @@ public final class UInt128 {
 
     public UInt128 add(UInt128 other) {
         final long low = lo + other.lo;
-        final long carry = Long.compareUnsigned(low, lo) < 0 ? 1 : 0;
+        final long carry = java.lang.Long.compareUnsigned(low, lo) < 0 ? 1 : 0;
         return new UInt128(hi + other.hi + carry, low);
     }
 
     public UInt128 subtract(UInt128 other) {
         final long low = lo - other.lo;
-        final long borrow = Long.compareUnsigned(lo, other.lo) < 0 ? 1 : 0;
+        final long borrow = java.lang.Long.compareUnsigned(lo, other.lo) < 0 ? 1 : 0;
         return new UInt128(hi - other.hi - borrow, low);
     }
 
     // Unsigned ordering: the high lanes compare unsigned, the low lanes
     // break ties.
     public int compareUnsigned(UInt128 other) {
-        final int c = Long.compareUnsigned(hi, other.hi);
-        return c != 0 ? c : Long.compareUnsigned(lo, other.lo);
+        final int c = java.lang.Long.compareUnsigned(hi, other.hi);
+        return c != 0 ? c : java.lang.Long.compareUnsigned(lo, other.lo);
     }
 
-    @Override
-    public boolean equals(Object obj) {
+    @java.lang.Override
+    public boolean equals(java.lang.Object obj) {
         if (!(obj instanceof UInt128)) {
             return false;
         }
@@ -78,14 +78,14 @@ public final class UInt128 {
         return lo == other.lo && hi == other.hi;
     }
 
-    @Override
+    @java.lang.Override
     public int hashCode() {
-        return Long.hashCode(lo) * 31 + Long.hashCode(hi);
+        return java.lang.Long.hashCode(lo) * 31 + java.lang.Long.hashCode(hi);
     }
 
     // Hex of the 128-bit pattern (toString would render signs, not bits).
-    @Override
-    public String toString() {
-        return String.format("0x%016x%016x", hi, lo);
+    @java.lang.Override
+    public java.lang.String toString() {
+        return java.lang.String.format("0x%016x%016x", hi, lo);
     }
 }

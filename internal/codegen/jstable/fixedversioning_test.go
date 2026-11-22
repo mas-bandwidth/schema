@@ -90,6 +90,13 @@ var jsVersionRows = []jsVersionRow{
     if (back[0].vals[i].x !== 7 || back[0].vals[i].y !== 9) {
       fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].vals[i]));
     }
+  }
+  // F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  if (back[0].ints.length !== 8 || back[0].octet.length !== 8) fail("a grown scalar array is not its new bound: " + show(back[0]));
+  for (let i = 0; i < 8; i++) {
+    if (back[0].ints[i] !== (i < 4 ? -800 - i : 0) || back[0].octet[i] !== (i < 4 ? 200 + i : 0)) {
+      fail("scalar slot " + i + ": " + show(back[0].ints[i]) + " " + show(back[0].octet[i]));
+    }
   }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},

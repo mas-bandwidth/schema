@@ -1,0 +1,18 @@
+package referents
+
+union First
+{
+    red int32
+}
+
+union Second
+{
+    crimson int32 | was = "red"
+}
+
+table Root
+{
+    selected First
+    anchor_a First
+    anchor_b Second
+}

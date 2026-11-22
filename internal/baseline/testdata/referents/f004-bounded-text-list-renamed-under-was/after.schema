@@ -1,0 +1,6 @@
+package referents
+
+table Root
+{
+    labels [..4]string(3) | was = "cells", json = "cells"
+}
