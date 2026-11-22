@@ -7070,7 +7070,7 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 # (or in the environment) that is absent still refuses by name, and so does a
 # fetch that fails or produces no header: a gate with no blade is the exact
 # silence this refusal exists to forbid.
-SERIALIZE_PIN     ?= v2.1.3
+SERIALIZE_PIN     ?= v2.1.6
 SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
 SERIALIZE_FETCHED := build/serialize
 SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
@@ -7092,7 +7092,7 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
 SERIALIZE_C_PIN      ?= v2.1.1
-SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.2.1
 SERIALIZE_RS_PIN     ?= v5.0.0
 SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).

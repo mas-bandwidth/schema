@@ -22,65 +22,65 @@ public final class BenchPacketDescriptor {
             t.name = "BenchPacket";
             t.table = false;
             t.doc = "";
-            t.tags = new String[0];
+            t.tags = new java.lang.String[0];
             TableFieldInfo[] fields = new TableFieldInfo[12];
             TableFieldInfo f0 = TableFieldInfo.of("a", 4, "value", 0L);
-            f0.view(null, "int32", 0x0000000000000000L, false, "", "", new String[0]);
+            f0.view(null, "int32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f0.at(false, false, 0, 4, -1, -1);
             f0.longs(BenchPacketDescriptor::get_0, BenchPacketDescriptor::set_0);
             fields[0] = f0;
             TableFieldInfo f1 = TableFieldInfo.of("b", 4, "value", 0L);
-            f1.view(null, "int32", 0x0000000000000000L, false, "", "", new String[0]);
+            f1.view(null, "int32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f1.at(false, false, 4, 4, -1, -1);
             f1.longs(BenchPacketDescriptor::get_1, BenchPacketDescriptor::set_1);
             fields[1] = f1;
             TableFieldInfo f2 = TableFieldInfo.of("c", 4, "value", 0L);
-            f2.view(null, "int32", 0x0000000000000000L, false, "", "", new String[0]);
+            f2.view(null, "int32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f2.at(false, false, 8, 4, -1, -1);
             f2.longs(BenchPacketDescriptor::get_2, BenchPacketDescriptor::set_2);
             fields[2] = f2;
             TableFieldInfo f3 = TableFieldInfo.of("bits7", 6, "value", 0L);
-            f3.view(null, "bits(7)", 0x0000000000000000L, false, "", "", new String[0]);
+            f3.view(null, "bits(7)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f3.at(false, false, 12, 4, -1, -1);
             f3.longs(BenchPacketDescriptor::get_3, BenchPacketDescriptor::set_3);
             fields[3] = f3;
             TableFieldInfo f4 = TableFieldInfo.of("bits13", 7, "value", 0L);
-            f4.view(null, "bits(13)", 0x0000000000000000L, false, "", "", new String[0]);
+            f4.view(null, "bits(13)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f4.at(false, false, 16, 4, -1, -1);
             f4.longs(BenchPacketDescriptor::get_4, BenchPacketDescriptor::set_4);
             fields[4] = f4;
             TableFieldInfo f5 = TableFieldInfo.of("bits23", 8, "value", 0L);
-            f5.view(null, "bits(23)", 0x0000000000000000L, false, "", "", new String[0]);
+            f5.view(null, "bits(23)", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f5.at(false, false, 20, 4, -1, -1);
             f5.longs(BenchPacketDescriptor::get_5, BenchPacketDescriptor::set_5);
             fields[5] = f5;
             TableFieldInfo f6 = TableFieldInfo.of("flag", 1, "value", 0L);
-            f6.view(null, "bool", 0x0000000000000000L, false, "", "", new String[0]);
+            f6.view(null, "bool", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f6.at(false, false, 24, 1, -1, -1);
             f6.longs(BenchPacketDescriptor::get_6, BenchPacketDescriptor::set_6);
             fields[6] = f6;
             TableFieldInfo f7 = TableFieldInfo.of("x", 10, "value", 0L);
-            f7.view(null, "float32", 0x0000000000000000L, false, "", "", new String[0]);
+            f7.view(null, "float32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f7.at(false, false, 28, 4, -1, -1);
             f7.doubles(BenchPacketDescriptor::get_7, BenchPacketDescriptor::set_7);
             fields[7] = f7;
             TableFieldInfo f8 = TableFieldInfo.of("y", 10, "value", 0L);
-            f8.view(null, "float32", 0x0000000000000000L, false, "", "", new String[0]);
+            f8.view(null, "float32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f8.at(false, false, 32, 4, -1, -1);
             f8.doubles(BenchPacketDescriptor::get_8, BenchPacketDescriptor::set_8);
             fields[8] = f8;
             TableFieldInfo f9 = TableFieldInfo.of("z", 10, "value", 0L);
-            f9.view(null, "float32", 0x0000000000000000L, false, "", "", new String[0]);
+            f9.view(null, "float32", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f9.at(false, false, 36, 4, -1, -1);
             f9.doubles(BenchPacketDescriptor::get_9, BenchPacketDescriptor::set_9);
             fields[9] = f9;
             TableFieldInfo f10 = TableFieldInfo.of("big", 9, "value", 0L);
-            f10.view(null, "uint64", 0x0000000000000000L, false, "", "", new String[0]);
+            f10.view(null, "uint64", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f10.at(false, false, 40, 8, -1, -1);
             f10.longs(BenchPacketDescriptor::get_10, BenchPacketDescriptor::set_10);
             fields[10] = f10;
             TableFieldInfo f11 = TableFieldInfo.of("blob", 14, "list", 17L);
-            f11.view(null, "uint8", 0x0000000000000000L, false, "", "", new String[0]);
+            f11.view(null, "uint8", 0x0000000000000000L, false, "", "", new java.lang.String[0]);
             f11.at(true, false, 48, 1, -1, -1);
             f11.items(BenchPacketDescriptor::count_11, BenchPacketDescriptor::resize_11);
             f11.longs(BenchPacketDescriptor::get_11, BenchPacketDescriptor::set_11);
@@ -92,99 +92,99 @@ public final class BenchPacketDescriptor {
         }
     }
 
-    private static long get_0(Object h, int i) {
+    private static long get_0(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).a;
     }
 
-    private static void set_0(Object h, int i, long x) {
+    private static void set_0(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).a = (int) x;
     }
 
-    private static long get_1(Object h, int i) {
+    private static long get_1(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).b;
     }
 
-    private static void set_1(Object h, int i, long x) {
+    private static void set_1(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).b = (int) x;
     }
 
-    private static long get_2(Object h, int i) {
+    private static long get_2(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).c;
     }
 
-    private static void set_2(Object h, int i, long x) {
+    private static void set_2(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).c = (int) x;
     }
 
-    private static long get_3(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits7);
+    private static long get_3(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits7);
     }
 
-    private static void set_3(Object h, int i, long x) {
+    private static void set_3(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).bits7 = (int) x;
     }
 
-    private static long get_4(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits13);
+    private static long get_4(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits13);
     }
 
-    private static void set_4(Object h, int i, long x) {
+    private static void set_4(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).bits13 = (int) x;
     }
 
-    private static long get_5(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits23);
+    private static long get_5(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchPacketVariable.Value) h).bits23);
     }
 
-    private static void set_5(Object h, int i, long x) {
+    private static void set_5(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).bits23 = (int) x;
     }
 
-    private static long get_6(Object h, int i) {
+    private static long get_6(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).flag ? 1L : 0L;
     }
 
-    private static void set_6(Object h, int i, long x) {
+    private static void set_6(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).flag = x != 0;
     }
 
-    private static double get_7(Object h, int i) {
+    private static double get_7(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).x;
     }
 
-    private static void set_7(Object h, int i, double x) {
+    private static void set_7(java.lang.Object h, int i, double x) {
         ((BenchPacketVariable.Value) h).x = (float) x;
     }
 
-    private static double get_8(Object h, int i) {
+    private static double get_8(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).y;
     }
 
-    private static void set_8(Object h, int i, double x) {
+    private static void set_8(java.lang.Object h, int i, double x) {
         ((BenchPacketVariable.Value) h).y = (float) x;
     }
 
-    private static double get_9(Object h, int i) {
+    private static double get_9(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).z;
     }
 
-    private static void set_9(Object h, int i, double x) {
+    private static void set_9(java.lang.Object h, int i, double x) {
         ((BenchPacketVariable.Value) h).z = (float) x;
     }
 
-    private static long get_10(Object h, int i) {
+    private static long get_10(java.lang.Object h, int i) {
         return ((BenchPacketVariable.Value) h).big;
     }
 
-    private static void set_10(Object h, int i, long x) {
+    private static void set_10(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).big = x;
     }
 
-    private static int count_11(Object h) {
+    private static int count_11(java.lang.Object h) {
         return ((BenchPacketVariable.Value) h).blob.size();
     }
 
-    private static void resize_11(Object h, int n) {
+    private static void resize_11(java.lang.Object h, int n) {
         BenchPacketVariable.Value v = (BenchPacketVariable.Value) h;
         while (v.blob.size() > n) {
             v.blob.remove(v.blob.size() - 1);
@@ -194,15 +194,15 @@ public final class BenchPacketDescriptor {
         }
     }
 
-    private static long get_11(Object h, int i) {
-        return Integer.toUnsignedLong(((BenchPacketVariable.Value) h).blob.get(i));
+    private static long get_11(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((BenchPacketVariable.Value) h).blob.get(i));
     }
 
-    private static void set_11(Object h, int i, long x) {
+    private static void set_11(java.lang.Object h, int i, long x) {
         ((BenchPacketVariable.Value) h).blob.set(i, (int) x);
     }
 
-    private static void reset(Object h) {
+    private static void reset(java.lang.Object h) {
         BenchPacketVariable.Value v = (BenchPacketVariable.Value) h;
         v.a = 0;
         v.b = 0;

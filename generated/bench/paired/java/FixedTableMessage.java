@@ -241,7 +241,7 @@ public final class FixedTableMessage {
             return 0;
         }
         int count = (data[1] & 0xff) + 1;
-        int cap = values == null ? 0 : Math.min(capacity, values.length);
+        int cap = values == null ? 0 : java.lang.Math.min(capacity, values.length);
         if (count > cap) {
             report.refused = true;
             report.reason = "batch_too_large";

@@ -11,7 +11,7 @@ package bench;
 public final class TableUnitView {
     private TableUnitView() {}
 
-    public String packageName;
+    public java.lang.String packageName;
     public long protocolId;
 
     /** every type and every table, each in declaration-name order. */
@@ -46,7 +46,7 @@ public final class TableUnitView {
                             false,
                             BenchBitsDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[1] =
                     TableViewEntry.of(
                             "BenchInts",
@@ -54,7 +54,7 @@ public final class TableUnitView {
                             false,
                             BenchIntsDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[2] =
                     TableViewEntry.of(
                             "BenchMixed",
@@ -62,7 +62,7 @@ public final class TableUnitView {
                             false,
                             BenchMixedDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[3] =
                     TableViewEntry.of(
                             "BenchPacket",
@@ -70,7 +70,7 @@ public final class TableUnitView {
                             false,
                             BenchPacketDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[4] =
                     TableViewEntry.of(
                             "MixedChatEvent",
@@ -78,7 +78,7 @@ public final class TableUnitView {
                             false,
                             MixedChatEventDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[5] =
                     TableViewEntry.of(
                             "MixedEntity",
@@ -86,7 +86,7 @@ public final class TableUnitView {
                             false,
                             MixedEntityDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[6] =
                     TableViewEntry.of(
                             "MixedHitEvent",
@@ -94,7 +94,7 @@ public final class TableUnitView {
                             false,
                             MixedHitEventDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[7] =
                     TableViewEntry.of(
                             "MixedPickupEvent",
@@ -102,7 +102,7 @@ public final class TableUnitView {
                             false,
                             MixedPickupEventDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             types[8] =
                     TableViewEntry.of(
                             "MixedStat",
@@ -110,7 +110,7 @@ public final class TableUnitView {
                             false,
                             MixedStatDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             v.types = types;
             TableViewEntry[] tables = new TableViewEntry[1];
             tables[0] =
@@ -120,62 +120,121 @@ public final class TableUnitView {
                             true,
                             FixedTableDescriptor.tableType(),
                             "",
-                            new String[0]);
+                            new java.lang.String[0]);
             v.tables = tables;
             TableVocabularyInfo[] enums = new TableVocabularyInfo[1];
             TableVariantInfo[] ev0 = new TableVariantInfo[16];
-            ev0[0] = TableVariantInfo.of(0L, "None", 0x0000000000000000L, "", new String[0]);
-            ev0[1] = TableVariantInfo.of(1L, "Fists", 0xa790eee12766cf0cL, "", new String[0]);
-            ev0[2] = TableVariantInfo.of(2L, "Pistol", 0x9fbfefa835da8476L, "", new String[0]);
-            ev0[3] = TableVariantInfo.of(3L, "Shotgun", 0x188bbb1783928a95L, "", new String[0]);
-            ev0[4] = TableVariantInfo.of(4L, "Rifle", 0x2c3667b9c2f272f1L, "", new String[0]);
-            ev0[5] = TableVariantInfo.of(5L, "Sniper", 0x0ca8b41b00d755f6L, "", new String[0]);
-            ev0[6] = TableVariantInfo.of(6L, "Smg", 0x985fc819fab21a4eL, "", new String[0]);
-            ev0[7] = TableVariantInfo.of(7L, "Rocket", 0x229d0447c3086a55L, "", new String[0]);
-            ev0[8] = TableVariantInfo.of(8L, "Grenade", 0x011c7b49a7228f9dL, "", new String[0]);
-            ev0[9] = TableVariantInfo.of(9L, "Plasma", 0x89f7566e1123e15fL, "", new String[0]);
-            ev0[10] = TableVariantInfo.of(10L, "Railgun", 0x8d7f25318b3b4469L, "", new String[0]);
-            ev0[11] = TableVariantInfo.of(11L, "Flamer", 0xd9cd0dcc285b7816L, "", new String[0]);
-            ev0[12] = TableVariantInfo.of(12L, "Mine", 0x04dc16aea8ff5276L, "", new String[0]);
-            ev0[13] = TableVariantInfo.of(13L, "Turret", 0x35e53bc341129217L, "", new String[0]);
-            ev0[14] = TableVariantInfo.of(14L, "Drone", 0x2cc8282fb0de8831L, "", new String[0]);
-            ev0[15] = TableVariantInfo.of(15L, "Repair", 0x20bada21bc8cb334L, "", new String[0]);
+            ev0[0] =
+                    TableVariantInfo.of(
+                            0L, "None", 0x0000000000000000L, "", new java.lang.String[0]);
+            ev0[1] =
+                    TableVariantInfo.of(
+                            1L, "Fists", 0xa790eee12766cf0cL, "", new java.lang.String[0]);
+            ev0[2] =
+                    TableVariantInfo.of(
+                            2L, "Pistol", 0x9fbfefa835da8476L, "", new java.lang.String[0]);
+            ev0[3] =
+                    TableVariantInfo.of(
+                            3L, "Shotgun", 0x188bbb1783928a95L, "", new java.lang.String[0]);
+            ev0[4] =
+                    TableVariantInfo.of(
+                            4L, "Rifle", 0x2c3667b9c2f272f1L, "", new java.lang.String[0]);
+            ev0[5] =
+                    TableVariantInfo.of(
+                            5L, "Sniper", 0x0ca8b41b00d755f6L, "", new java.lang.String[0]);
+            ev0[6] =
+                    TableVariantInfo.of(
+                            6L, "Smg", 0x985fc819fab21a4eL, "", new java.lang.String[0]);
+            ev0[7] =
+                    TableVariantInfo.of(
+                            7L, "Rocket", 0x229d0447c3086a55L, "", new java.lang.String[0]);
+            ev0[8] =
+                    TableVariantInfo.of(
+                            8L, "Grenade", 0x011c7b49a7228f9dL, "", new java.lang.String[0]);
+            ev0[9] =
+                    TableVariantInfo.of(
+                            9L, "Plasma", 0x89f7566e1123e15fL, "", new java.lang.String[0]);
+            ev0[10] =
+                    TableVariantInfo.of(
+                            10L, "Railgun", 0x8d7f25318b3b4469L, "", new java.lang.String[0]);
+            ev0[11] =
+                    TableVariantInfo.of(
+                            11L, "Flamer", 0xd9cd0dcc285b7816L, "", new java.lang.String[0]);
+            ev0[12] =
+                    TableVariantInfo.of(
+                            12L, "Mine", 0x04dc16aea8ff5276L, "", new java.lang.String[0]);
+            ev0[13] =
+                    TableVariantInfo.of(
+                            13L, "Turret", 0x35e53bc341129217L, "", new java.lang.String[0]);
+            ev0[14] =
+                    TableVariantInfo.of(
+                            14L, "Drone", 0x2cc8282fb0de8831L, "", new java.lang.String[0]);
+            ev0[15] =
+                    TableVariantInfo.of(
+                            15L, "Repair", 0x20bada21bc8cb334L, "", new java.lang.String[0]);
             enums[0] =
                     TableVocabularyInfo.of(
-                            "MixedWeapon", "Bench.schema", 15L, 8, "", new String[0], ev0);
+                            "MixedWeapon",
+                            "Bench.schema",
+                            15L,
+                            8,
+                            "",
+                            new java.lang.String[0],
+                            ev0);
             v.enums = enums;
             TableVocabularyInfo[] flags = new TableVocabularyInfo[1];
             TableVariantInfo[] fv0 = new TableVariantInfo[8];
-            fv0[0] = TableVariantInfo.of(0L, "Bleeding", 0x0000000000000000L, "", new String[0]);
-            fv0[1] = TableVariantInfo.of(1L, "Burning", 0x0000000000000000L, "", new String[0]);
-            fv0[2] = TableVariantInfo.of(2L, "Stunned", 0x0000000000000000L, "", new String[0]);
-            fv0[3] = TableVariantInfo.of(3L, "Slowed", 0x0000000000000000L, "", new String[0]);
-            fv0[4] = TableVariantInfo.of(4L, "Poisoned", 0x0000000000000000L, "", new String[0]);
-            fv0[5] = TableVariantInfo.of(5L, "Shielded", 0x0000000000000000L, "", new String[0]);
-            fv0[6] = TableVariantInfo.of(6L, "Airborne", 0x0000000000000000L, "", new String[0]);
-            fv0[7] = TableVariantInfo.of(7L, "Downed", 0x0000000000000000L, "", new String[0]);
+            fv0[0] =
+                    TableVariantInfo.of(
+                            0L, "Bleeding", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[1] =
+                    TableVariantInfo.of(
+                            1L, "Burning", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[2] =
+                    TableVariantInfo.of(
+                            2L, "Stunned", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[3] =
+                    TableVariantInfo.of(
+                            3L, "Slowed", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[4] =
+                    TableVariantInfo.of(
+                            4L, "Poisoned", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[5] =
+                    TableVariantInfo.of(
+                            5L, "Shielded", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[6] =
+                    TableVariantInfo.of(
+                            6L, "Airborne", 0x0000000000000000L, "", new java.lang.String[0]);
+            fv0[7] =
+                    TableVariantInfo.of(
+                            7L, "Downed", 0x0000000000000000L, "", new java.lang.String[0]);
             flags[0] =
                     TableVocabularyInfo.of(
-                            "MixedDamage", "Bench.schema", 7L, 8, "", new String[0], fv0);
+                            "MixedDamage", "Bench.schema", 7L, 8, "", new java.lang.String[0], fv0);
             v.flags = flags;
             TableVocabularyInfo[] unions = new TableVocabularyInfo[1];
             TableVariantInfo[] uv0 = new TableVariantInfo[4];
-            uv0[0] = TableVariantInfo.of(0L, "None", 0x0000000000000000L, "", new String[0]);
+            uv0[0] =
+                    TableVariantInfo.of(
+                            0L, "None", 0x0000000000000000L, "", new java.lang.String[0]);
             TableVariantInfo uv0_1 =
-                    TableVariantInfo.of(1L, "hit", 0x33732819300680aaL, "", new String[0]);
+                    TableVariantInfo.of(
+                            1L, "hit", 0x33732819300680aaL, "", new java.lang.String[0]);
             uv0_1.body("MixedHitEvent", MixedHitEventDescriptor.tableType());
             uv0[1] = uv0_1;
             TableVariantInfo uv0_2 =
-                    TableVariantInfo.of(2L, "chat", 0xf2a38d910b5b348bL, "", new String[0]);
+                    TableVariantInfo.of(
+                            2L, "chat", 0xf2a38d910b5b348bL, "", new java.lang.String[0]);
             uv0_2.body("MixedChatEvent", MixedChatEventDescriptor.tableType());
             uv0[2] = uv0_2;
             TableVariantInfo uv0_3 =
-                    TableVariantInfo.of(3L, "pickup", 0x9fa3a41c86ecb765L, "", new String[0]);
+                    TableVariantInfo.of(
+                            3L, "pickup", 0x9fa3a41c86ecb765L, "", new java.lang.String[0]);
             uv0_3.body("MixedPickupEvent", MixedPickupEventDescriptor.tableType());
             uv0[3] = uv0_3;
             unions[0] =
                     TableVocabularyInfo.of(
-                            "MixedEvent", "Bench.schema", 3L, 8, "", new String[0], uv0);
+                            "MixedEvent", "Bench.schema", 3L, 8, "", new java.lang.String[0], uv0);
             v.unions = unions;
             TableConstantInfo[] constants = new TableConstantInfo[0];
             v.constants = constants;
