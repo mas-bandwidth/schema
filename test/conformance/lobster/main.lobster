@@ -686,6 +686,9 @@ def surface_write_refusal(text:string, kind:string):
 if surface == "list":
     for(surfaces) s:
         print(s)
+    // the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+    // key is generated into build/conformance-lobster by make/lobster.mk
+    print("unit shapes")
 else:
     let text = read_file(manifest_path)
     assert text
