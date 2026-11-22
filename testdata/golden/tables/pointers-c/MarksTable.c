@@ -960,6 +960,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
+        /* A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+           a write-side check, so a debug assert in this language (SPEC.md §5.1) */
+        schema_assert( f->enum_deprecated == NULL || f->enum_deprecated[value] == 0 );
         if ( value != 0 && graphdemo_table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = graphdemo_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
@@ -2532,7 +2535,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
             const char * variant = graphdemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                graphdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                graphdemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2925,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         graphdemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return graphdemo_table_json_read_scalar( in, storage, f, depth );
@@ -3640,14 +3650,14 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_(graphd
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_tally_fields_[] = {
-    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tally_t, hits ), (uint32_t) sizeof( ( (graphdemo_tally_t *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tally_t, hits ), (uint32_t) sizeof( ( (graphdemo_tally_t *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_tally_info_ = { "Tally", (uint32_t) sizeof( graphdemo_tally_t ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_marker_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_marker_t, label ), (uint32_t) sizeof( ( (graphdemo_marker_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_marker_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_marker_t, note ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_marker_t, label ), (uint32_t) sizeof( ( (graphdemo_marker_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_marker_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_marker_t, note ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_marker_info_ = { "Marker", (uint32_t) sizeof( graphdemo_marker_t ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

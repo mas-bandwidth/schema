@@ -494,6 +494,17 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
+    int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -15321,15 +15332,15 @@ extern const TableTypeInfo SpansTracksEntryTableInfo;
 extern const TableTypeInfo SpansTableInfo;
 
 inline const TableFieldInfo SpansTracksEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SpansTracksEntry, key ), (uint32_t) sizeof( SpansTracksEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( SpansTracksEntry, value ), (uint32_t) sizeof( Item ), (uint32_t) offsetof( SpansTracksEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Item> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Item> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SpansTracksEntry, key ), (uint32_t) sizeof( SpansTracksEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( SpansTracksEntry, value ), (uint32_t) sizeof( Item ), (uint32_t) offsetof( SpansTracksEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Item> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Item> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SpansTracksEntryTableInfo = { "SpansTracksEntry", (uint32_t) sizeof( SpansTracksEntry ), 2, SpansTracksEntryTableFields, +[]( void * p ) { SpansTracksEntryReset( *(SpansTracksEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SpansTracksEntryTableType() { return &SpansTracksEntryTableInfo; }
 
 inline const TableFieldInfo SpansTableFields[] = {
-    { "tracks", "tracks", "map[uint8]Item", 0x755332609c470fbdull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Spans, tracks ), (uint32_t) sizeof( SpansTracksEntry ), (uint32_t) offsetof( Spans, tracks.count ), 0xffffffffu, &SpansTracksEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SpansTracksEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, past ), (uint32_t) sizeof( Spans::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "tracks", "tracks", "map[uint8]Item", 0x755332609c470fbdull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Spans, tracks ), (uint32_t) sizeof( SpansTracksEntry ), (uint32_t) offsetof( Spans, tracks.count ), 0xffffffffu, &SpansTracksEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SpansTracksEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, past ), (uint32_t) sizeof( Spans::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SpansTableInfo = { "Spans", (uint32_t) sizeof( Spans ), 2, SpansTableFields, +[]( void * p ) { SpansReset( *(Spans *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SpansTableType() { return &SpansTableInfo; }

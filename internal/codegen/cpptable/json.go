@@ -2174,6 +2174,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         // wire identity: the writer REFUSES rather than writing None over it,
         // the rule measure and save already apply (docs/SPEC-TABLES.md §5)
         if ( (int64_t) value > f->enum_max ) { return false; }
+        // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+        // a write-side check, so a debug assert in this language (SPEC.md §5.1)
+        schema_assert( f->enum_deprecated == NULL || !f->enum_deprecated( value ) );
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
         if ( !TableJsonNamed( name ) ) { return false; }
@@ -4318,7 +4321,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         {
             if ( TableJsonKeyEquals( f->enum_name( (uint64_t) v ), name, name_length ) )
             {
-                TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
+                // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                // and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                // never counted unknown
+                const bool retired = f->enum_deprecated != NULL && f->enum_deprecated( (uint64_t) v );
+                TableJsonSetRaw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return true;
             }
         }
@@ -4992,6 +4999,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // a fixed array's tail keeps the defaults the prefill left there,
         // exactly as a short wire count does
         TableJsonSetCount( base, f, placed );
+        // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+        // docs/SPEC-TABLES.md §16.2), the wire's rule for the same count
+        if ( placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
+        }
         return true;
     }
     return TableJsonReadScalar( in, storage, f, depth );

@@ -7,7 +7,9 @@ package ctable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -737,6 +739,18 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 			g.pf("    { NULL, 0 },\n")
 		}
 		g.pf("};\n")
+		if enumHasDeprecated(ref) {
+			// one flag per value, 1 where the variant is retired in place
+			// (docs/SPEC-TABLES.md §2.15)
+			flags := make([]string, ref.Max+1)
+			for i := range flags {
+				flags[i] = "0"
+				if i > 0 && enumVariantDeprecated(ref, i-1) {
+					flags[i] = "1"
+				}
+			}
+			g.pf("static const uint8_t %s[] = { %s };\n", g.vocabularySymbol(st.Name, f.Name, "deprecated"), strings.Join(flags, ", "))
+		}
 	case *ir.Flags:
 		if f.Type.Kind != ir.TNamed {
 			break
@@ -921,12 +935,17 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	variants := "NULL"
 	hasIds := "0"
 	arms := "NULL"
+	enumDefault, enumDeprecated := "0", "NULL"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 			hasIds = "1"
+			if enumHasDeprecated(ref) {
+				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
+				enumDeprecated = g.vocabularySymbol(st.Name, f.Name, "deprecated")
+			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -977,13 +996,57 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s, %d, %s, %s },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place)
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place,
+		arrayMinColumn(f), enumDefault, enumDeprecated)
+}
+
+// arrayMinColumn is a counted array's declared minimum A (docs/SPEC.md §5.1),
+// 0 for every other field.
+func arrayMinColumn(f *ir.Field) int64 {
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
+}
+
+// enumHasDeprecated reports whether any variant of e carries `| deprecated`
+// (docs/SPEC-TABLES.md §2.15).
+func enumHasDeprecated(e *ir.Enum) bool {
+	for i := range e.Variants {
+		if enumVariantDeprecated(e, i) {
+			return true
+		}
+	}
+	return false
+}
+
+// enumVariantDeprecated reads one variant's marker from the IR's variant tags,
+// which are parallel to Variants.
+func enumVariantDeprecated(e *ir.Enum, i int) bool {
+	return i >= 0 && i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated")
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
+// declared default, and the ELEMENT default (0, None) for an element of an
+// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return 0
+	}
+	if f.HasDefault && f.DefVariant != "" {
+		for i, v := range e.Variants {
+			if v == f.DefVariant {
+				return uint64(i + 1)
+			}
+		}
+	}
+	return 0
 }
 
 func boolC(v bool) string {

@@ -105,6 +105,11 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         tabledemo_loadout_config_t * v = (tabledemo_loadout_config_t *) value;
         if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->grade = (tabledemo_grade_t) n; return 1; }
     }
+    if ( strcmp( root, "Moods" ) == 0 )
+    {
+        tabledemo_moods_t * v = (tabledemo_moods_t *) value;
+        if ( strcmp( path, "row[0]" ) == 0 && strcmp( kind, "ordinal" ) == 0 && v->row_count >= 1 ) { v->row[0] = (tabledemo_mood_t) n; return 1; }
+    }
     return 0;
 }
 

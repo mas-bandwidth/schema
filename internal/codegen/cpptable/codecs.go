@@ -6,6 +6,7 @@ package cpptable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -2595,6 +2596,12 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
 		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
 		g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+			// docs/SPEC-TABLES.md §4), before any element is placed — the
+			// Go oracle's rule for the same count
+			g.pf("%[1]s    // a count below the declared min A = %[2]d is refused (SPEC.md §5.1)\n%[1]s    if ( counted_ok && count < %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, f.ArrayMin)
+		}
 		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
 		g.pf("%s    // reader's declaration (§3, §4).\n", ind)
 		g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
@@ -3439,10 +3446,15 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	enumName := "NULL"
 	variantId := "NULL"
 	arms := "NULL"
+	enumDefault, enumDeprecated := "0", "NULL"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
+			if lambda := enumDeprecatedLambda(ref); lambda != "" {
+				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
+				enumDeprecated = lambda
+			}
 			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
 			variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.Type.Name)
 		}
@@ -3543,11 +3555,54 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d, %s, %s },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded())
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(),
+		arrayMinColumn(f), enumDefault, enumDeprecated)
+}
+
+// arrayMinColumn is a counted array's declared minimum A (docs/SPEC.md §5.1),
+// 0 for every other field.
+func arrayMinColumn(f *ir.Field) int64 {
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
+}
+
+// enumDeprecatedLambda spells the descriptor's enum_deprecated column: a
+// captureless lambda naming the ordinals marked `| deprecated`
+// (docs/SPEC-TABLES.md §2.15), or "" when the enum carries none.
+func enumDeprecatedLambda(e *ir.Enum) string {
+	var tests []string
+	for i := range e.Variants {
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			tests = append(tests, fmt.Sprintf("v == %d", i+1))
+		}
+	}
+	if len(tests) == 0 {
+		return ""
+	}
+	return "+[]( uint64_t v ) -> bool { return " + strings.Join(tests, " || ") + "; }"
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
+// declared default, and the ELEMENT default (0, None) for an element of an
+// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return 0
+	}
+	if f.HasDefault && f.DefVariant != "" {
+		for i, v := range e.Variants {
+			if v == f.DefVariant {
+				return uint64(i + 1)
+			}
+		}
+	}
+	return 0
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

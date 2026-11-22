@@ -960,6 +960,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_scalar( blockdemo_table_json
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
+        /* A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+           a write-side check, so a debug assert in this language (SPEC.md §5.1) */
+        schema_assert( f->enum_deprecated == NULL || f->enum_deprecated[value] == 0 );
         if ( value != 0 && blockdemo_table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = blockdemo_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
@@ -2532,7 +2535,11 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
             const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                blockdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                blockdemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2925,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         blockdemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return blockdemo_table_json_read_scalar( in, storage, f, depth );
@@ -3142,23 +3152,23 @@ static const blockdemo_table_variant_info_t schema_blockdemo_padded_row_teams_ke
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_padded_row_fields_[] = {
-    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_row_info_ = { "PaddedRow", (uint32_t) sizeof( blockdemo_padded_row_t ), 8, schema_blockdemo_padded_row_fields_, schema_blockdemo_padded_row_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_padded_frame_fields_[] = {
-    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_frame_info_ = { "PaddedFrame", (uint32_t) sizeof( blockdemo_padded_frame_t ), 4, schema_blockdemo_padded_frame_fields_, schema_blockdemo_padded_frame_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

@@ -960,6 +960,9 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
+        /* A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+           a write-side check, so a debug assert in this language (SPEC.md §5.1) */
+        schema_assert( f->enum_deprecated == NULL || f->enum_deprecated[value] == 0 );
         if ( value != 0 && bench_table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = bench_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
@@ -2532,7 +2535,11 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
             const char * variant = bench_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                bench_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                bench_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -2918,6 +2925,9 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         bench_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return bench_table_json_read_scalar( in, storage, f, depth );
@@ -3135,7 +3145,7 @@ static SCHEMA_UNUSED int64_t bench_table_json_write( const void * value, const b
 /* ---- json walk: end ---- */
 
 static const bench_table_field_info_t schema_bench_fixed_table_fields_[] = {
-    { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_fixed_table_t, value ), (uint32_t) sizeof( ( (bench_fixed_table_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, &schema_bench_bench_mixed_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_fixed_table_t, value ), (uint32_t) sizeof( ( (bench_fixed_table_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, &schema_bench_bench_mixed_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const bench_table_type_info_t schema_bench_fixed_table_info_ = { "FixedTable", (uint32_t) sizeof( bench_fixed_table_t ), 1, schema_bench_fixed_table_fields_, schema_bench_fixed_table_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
