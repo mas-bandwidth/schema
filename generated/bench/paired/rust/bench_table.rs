@@ -245,7 +245,7 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
     }
     if !v.entities.is_empty() {
         debug_assert!(v.entities.len() <= 8, "entities count past 8");
-        debug_assert!(v.entities.len() >= 1, "entities count under 1");
+        debug_assert!(!v.entities.is_empty(), "entities count under 1");
         let mark = ids.mark();
         let r = ids.id_ref(0x935d0fb07bb3822a);
         let count = v.entities.len().min(8);
@@ -2157,7 +2157,7 @@ pub fn bench_mixed_json_write(v: &BenchMixed, w: &mut Jw, depth: usize, label: u
     json_newline(&mut w.out, depth + 1);
     json_escape("entities", &mut w.out);
     w.out.push_str(": ");
-    if v.entities.len() < 1 || v.entities.len() > 8 { w.refused = true; }
+    if v.entities.is_empty() || v.entities.len() > 8 { w.refused = true; }
     if v.entities.is_empty() {
         w.out.push_str("[]");
     } else {
@@ -2718,7 +2718,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
                         if c == b']' { jr.p += 1; break; }
                         jr.damaged = true; break;
                     }
-                    if v.entities.len() < 1 { jr.damaged = true; }
+                    if v.entities.is_empty() { jr.damaged = true; }
                 } else { jr.damaged = true; jr.skip_value(); }
             }
             "stats" => {
