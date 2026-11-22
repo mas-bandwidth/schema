@@ -24,6 +24,6 @@ func keyRides(want, have map[string]bool, was, now string) []Finding {
 		return nil
 	}
 	return []Finding{{Refuse, "", fmt.Sprintf(
-		"the key vocabulary changed: %d of %s's %d variant names are not declared by %s — a keyed slot rides under its variant's NAME id, so each stored slot keyed by one of them is dropped and counts unknown, and the slots of %s that no stored name reaches read their defaults (docs/SPEC-TABLES.md §3.2)",
+		"the key vocabulary changed: %d of %s's %d variant ids do not ride — %s declares no variant under them, and a keyed slot rides under its variant's NAME id, so each stored slot keyed by one of them is dropped and counts unknown, and the slots of %s that no stored name reaches read their defaults (docs/SPEC-TABLES.md §3.2)",
 		missing, was, len(want), now, now)}}
 }

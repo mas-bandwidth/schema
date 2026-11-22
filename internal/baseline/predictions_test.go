@@ -189,7 +189,7 @@ func TestEnumRekeyPredictionAgreesWithTheRead(t *testing.T) {
 	t.Run("no name rides", func(t *testing.T) {
 		prediction{
 			before: rekeySrc, after: rekey(t, "Axis"), save: save, verdict: baseline.Refuse, where: "Save.values",
-			says:      []string{"array key enum Team -> Axis", "the key vocabulary changed", "2 of Team's 2 variant names are not declared by Axis", "dropped and counts unknown", "read their defaults"},
+			says:      []string{"array key enum Team -> Axis", "the key vocabulary changed", "2 of Team's 2 variant ids do not ride", "Axis declares no variant under them", "dropped and counts unknown", "read their defaults"},
 			neverSays: []string{"read as None", "keep their values"},
 			unknown:   2,
 			text:      `{"values":{"East":0,"West":0},"team":"None","axis":"None","side":"None","squad":"None"}`,
@@ -198,7 +198,7 @@ func TestEnumRekeyPredictionAgreesWithTheRead(t *testing.T) {
 	t.Run("one name rides", func(t *testing.T) {
 		prediction{
 			before: rekeySrc, after: rekey(t, "Side"), save: save, verdict: baseline.Refuse, where: "Save.values",
-			says:    []string{"array key enum Team -> Side", "1 of Team's 2 variant names are not declared by Side", "dropped and counts unknown"},
+			says:    []string{"array key enum Team -> Side", "1 of Team's 2 variant ids do not ride", "Side declares no variant under them", "dropped and counts unknown"},
 			unknown: 1,
 			text:    `{"values":{"Red":11,"Green":0},"team":"None","axis":"None","side":"None","squad":"None"}`,
 		}.run(t)
