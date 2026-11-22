@@ -349,6 +349,173 @@ let rec get (r : string) off (t : ty) what : value =
     VKeyed (Array.init n (fun i -> get r (off + i * csize et) et what))
   | _ -> refuse "not a fixed construct"
 
+
+(* ---- a read across a lineage entry, FIXED-FORM-ALGORITHM §5.2 PLAN/MATCH/EMIT,
+   applied value by value rather than compiled to ops: the writer's layout is
+   walked beside the reader's declaration, matched by id ---- *)
+
+type lent = { lid : int64; lkind : int; lsize : int; lkids : lent list }
+
+let parse_layout (b : string) : lent =
+  let n = String.length b in
+  if n < 4 then refuse "layout_malformed";
+  let count = Int32.to_int (String.get_int32_le b 0) in
+  if count < 1 || 4 + 17 * count <> n then refuse "layout_malformed";
+  let pos = ref 0 in
+  let rec entry depth =
+    if depth > 64 || !pos >= count then refuse "layout_malformed";
+    let at = 4 + 17 * !pos in
+    incr pos;
+    let lid = String.get_int64_le b at in
+    let lkind = Char.code b.[at + 8] in
+    let lsize = Int32.to_int (String.get_int32_le b (at + 9)) in
+    let nk = Int32.to_int (String.get_int32_le b (at + 13)) in
+    let lkids = List.init nk (fun _ -> entry (depth + 1)) in
+    { lid; lkind; lsize; lkids } in
+  let root = entry 0 in
+  if !pos <> count || root.lkind <> 13 then refuse "layout_malformed";
+  root
+
+let unlawful what = refuse ("layout_malformed: unlawful pair at " ^ what)
+
+let zeros (r : string) a n what = for k = a to a + n - 1 do if r.[k] <> '\000' then refuse ("wire_damaged: dead byte " ^ what) done
+
+let signed_kind k = (k >= 2 && k <= 5) || k = 18 || (k >= 20 && k <= 24)
+let int_kind k = (k >= 2 && k <= 9) || k = 18 || k = 19
+let fixed_kind k = k >= 20 && k <= 29
+
+let default_elem (t : ty) = match t with
+  | Struct s -> VStruct (Array.map (fun (f : field_d) -> f.f_default) s.s_fields)
+  | _ -> zero_value t
+
+let rec emit (r : string) (te : lent) at (t : ty) (dflt : value) what : value =
+  match t, te.lkind with
+  | Opt p, k when k <> 35 -> VOpt (Some (emit r te at p (default_elem p) what))
+  | Opt p, 35 ->
+    let pe = List.hd te.lkids in
+    (match r.[at] with
+     | '\000' -> zeros r (at + 1) pe.lsize what; VOpt None
+     | '\001' -> VOpt (Some (emit r pe (at + 1) p (default_elem p) what))
+     | _ -> refuse "wire_damaged: present byte")
+  | Struct s, 13 ->
+    let offs = ref [] and o = ref at in
+    List.iter (fun c -> offs := (c, !o) :: !offs; o := !o + c.lsize) te.lkids;
+    let offs = List.rev !offs in
+    List.iter (fun (c, _) ->
+        if not (Array.exists (fun (f : field_d) -> f.f_id = c.lid) s.s_fields) then unlawful (what ^ " (a writer field the reader lacks)")) offs;
+    let fs = match dflt with VStruct fs -> Array.copy fs | _ -> Array.map (fun (f : field_d) -> f.f_default) s.s_fields in
+    Array.iteri (fun i (f : field_d) ->
+        match List.find_opt (fun (c, _) -> c.lid = f.f_id) offs with
+        | Some (c, co) -> fs.(i) <- emit r c co f.f_ty f.f_default (what ^ "." ^ f.f_name)
+        | None -> ()) s.s_fields;
+    VStruct fs
+  | (Arr _ | Bytes _), 14 ->
+    let ee = List.hd te.lkids in
+    let counted = (match t with Arr (ACounted _, _) | Bytes _ -> true | _ -> false) in
+    let head = if counted then 4 else 0 in
+    if ee.lsize <= 0 then refuse "layout_malformed";
+    let their_n = (te.lsize - head) / ee.lsize in
+    (match t with
+     | Bytes cap ->
+       let c = Int32.to_int (String.get_int32_le r at) in
+       if c < 0 || c > their_n || c > cap then refuse ("length_over_bound: " ^ what);
+       zeros r (at + 4 + c) (their_n - c) what;
+       VStr (String.sub r (at + 4) c)
+     | Arr (ACounted (mn, mx), et) ->
+       let c = Int32.to_int (String.get_int32_le r at) in
+       if c < 0 || c > their_n then refuse ("count_over_bound: " ^ what);
+       if c > mx || c < mn then refuse ("count_over_bound: " ^ what);
+       zeros r (at + 4 + c * ee.lsize) ((their_n - c) * ee.lsize) what;
+       VArr (Array.init c (fun i -> emit r ee (at + 4 + i * ee.lsize) et (default_elem et) what))
+     | Arr (AFixed my_n, et) ->
+       VArr (Array.init my_n (fun i ->
+           if i < their_n then emit r ee (at + i * ee.lsize) et (default_elem et) what else default_elem et))
+     | _ -> unlawful what)
+  | Keyed (en, et), 16 ->
+    (match te.lkids with
+     | [ ke; ee ] ->
+       let slots = match dflt with VKeyed a -> Array.copy a | _ -> Array.make (Array.length en.e_vars) (default_elem et) in
+       Array.iteri (fun i (vd : variant_d) ->
+           let rec find j = function
+             | [] -> None
+             | v :: rest -> if v.lid = vd.v_id then Some j else find (j + 1) rest in
+           match find 0 ke.lkids with
+           | Some j -> slots.(i) <- emit r ee (at + j * ee.lsize) et slots.(i) what
+           | None -> ()) en.e_vars;
+       VKeyed slots
+     | _ -> refuse "layout_malformed")
+  | Union un, 15 ->
+    let widest = List.fold_left (fun a c -> max a c.lsize) 0 te.lkids in
+    let tw = te.lsize - widest in
+    let o = Big.of_le_bytes r at tw in
+    let narms = List.length te.lkids in
+    if Big.compare o (Big.of_int narms) > 0 then refuse ("out_of_range: tag " ^ what);
+    let o = Big.to_int o in
+    if o = 0 then (zeros r (at + tw) widest what; VUnion (0, VUnit))
+    else begin
+      let ae = List.nth te.lkids (o - 1) in
+      let idx = ref (-1) in
+      Array.iteri (fun i (a : arm_d) -> if a.a_id = ae.lid then idx := i) un.u_arms;
+      if !idx < 0 then unlawful (what ^ " (a writer arm the reader lacks)");
+      let arm = un.u_arms.(!idx) in
+      if ae.lkind = 32 then (zeros r (at + tw) widest what; VUnion (!idx + 1, VUnit))
+      else begin
+        zeros r (at + tw + ae.lsize) (widest - ae.lsize) what;
+        match arm.a_ty with
+        | Some at_ty -> VUnion (!idx + 1, emit r ae (at + tw) at_ty (default_elem at_ty) what)
+        | None -> unlawful what
+      end
+    end
+  | Enum e, 30 ->
+    let o = Big.of_le_bytes r at te.lsize in
+    let nw = List.length te.lkids in
+    if Big.compare o (Big.of_int nw) > 0 then refuse ("out_of_range: ordinal " ^ what);
+    let o = Big.to_int o in
+    if o = 0 then VEnum 0
+    else begin
+      let wid = (List.nth te.lkids (o - 1)).lid in
+      let idx = ref (-1) in
+      Array.iteri (fun i (vd : variant_d) -> if vd.v_id = wid then idx := i) e.e_vars;
+      if !idx < 0 then unlawful (what ^ " (a writer variant the reader lacks)");
+      VEnum (!idx + 1)
+    end
+  | Str (Some cap), 12 ->
+    let wcap = te.lsize - 4 in
+    let c = Int32.to_int (String.get_int32_le r at) in
+    if c < 0 || c > wcap then refuse ("length_over_bound: " ^ what);
+    if c > cap then refuse ("length_over_bound: " ^ what);
+    zeros r (at + 4 + c) (wcap - c) what;
+    let s = String.sub r (at + 4) c in
+    if not (Num.is_text s) then refuse ("text_ill_formed: " ^ what);
+    VStr s
+  | Bool, 1 -> (match r.[at] with '\000' -> VBool false | '\001' -> VBool true | _ -> refuse "wire_damaged: bool")
+  | (F32 | CF32 _ | F64), (10 | 11) ->
+    if te.lkind = 11 && t <> F64 then unlawful what;
+    let x = if te.lkind = 10 then Int32.float_of_bits (String.get_int32_le r at)
+      else Int64.float_of_bits (String.get_int64_le r at) in
+    if not (Float.is_finite x) then refuse ("non_finite_float: " ^ what);
+    (match t with
+     | CF32 (mn, mx, _) -> let x = if x = 0.0 then 0.0 else x in
+       if x < to_f32 mn || x > to_f32 mx then refuse ("out_of_range: " ^ what); VFloat x
+     | _ -> VFloat x)
+  | (Int _ | Bits _ | I128 _ | U128 | Flags _ | Timestamp | Fixed _), k when int_kind k || fixed_kind k ->
+    let mine = (match t with Bits n -> bits_kind n | Flags _ -> 9 | Timestamp -> 5 | _ -> kind_of t) in
+    if fixed_kind k <> fixed_kind mine then unlawful what;
+    if k <> mine then begin
+      (* the widening ladder, SPEC-TABLES §4: a narrower writer into a wider reader of the same family *)
+      if signed_kind k && not (signed_kind mine) then unlawful what;
+      if te.lsize > csize t then unlawful what
+    end else if te.lsize > csize t then unlawful what;
+    let v = Big.of_le_bytes ~signed:(signed_kind k) r at te.lsize in
+    (match t with
+     | Int { lo; hi; _ } | I128 (lo, hi) -> if Big.compare v lo < 0 || Big.compare v hi > 0 then refuse ("out_of_range: " ^ what)
+     | Bits n -> if Big.compare v Big.zero < 0 || Big.num_bits v > n then refuse ("out_of_range: " ^ what)
+     | Fixed { f; lo; hi; _ } ->
+       if Big.compare v (Big.shift_left lo f) < 0 || Big.compare v (Big.shift_left hi f) > 0 then refuse ("out_of_range: " ^ what)
+     | _ -> ());
+    VInt v
+  | _ -> unlawful what
+
 let load_records (root : struct_d) (lineage : lineage list) (s : string) ~capacity : value list =
   let n = String.length s in
   if n = 0 then refuse "truncated";
@@ -364,13 +531,20 @@ let load_records (root : struct_d) (lineage : lineage list) (s : string) ~capaci
   let h = String.get_int64_le s 8 in
   let lay = layout root in
   let own = layout_hash lay (digest root) in
-  let size = csize (Struct root) in
-  if h <> own then begin
-    match List.find_opt (fun e -> e.wire = h) lineage with
-    | None -> refuse "layout_unknown"
-    | Some _ -> refuse "lineage_plan_not_carried"
-  end;
-  if String.sub s 20 l <> lay then refuse "layout_malformed";
+  let file_lay = String.sub s 20 l in
+  let size, decode =
+    if h = own then begin
+      if file_lay <> lay then refuse "layout_malformed";
+      (csize (Struct root), fun r -> get r 0 (Struct root) root.s_name)
+    end else begin
+      match List.find_opt (fun e -> e.wire = h) lineage with
+      | None -> refuse "layout_unknown"
+      | Some e ->
+        if file_lay <> e.lbytes then refuse "layout_malformed";
+        let w = parse_layout e.lbytes in
+        let dflt = VStruct (Array.map (fun (f : field_d) -> f.f_default) root.s_fields) in
+        (w.lsize, fun r -> emit r w 0 (Struct root) dflt root.s_name)
+    end in
   let rest = n - 20 - l in
   let rb = 8 + size in
   if rest mod rb <> 0 then refuse "truncated";
@@ -382,6 +556,6 @@ let load_records (root : struct_d) (lineage : lineage list) (s : string) ~capaci
     let at = 20 + l + k * rb in
     if String.get_int64_le s at <> h then refuse "no_layout";
     let r = String.sub s (at + 8) size in
-    out := get r 0 (Struct root) root.s_name :: !out
+    out := decode r :: !out
   done;
   List.rev !out
