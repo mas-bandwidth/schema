@@ -1393,14 +1393,15 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
     let closing: u8 = if ch == '{' { '}' } else { ']' };
     c.jr.pos += 1;
     var first = true;
+    var definition: i64 = -1; // the label this object defines, open until it closes
     loop {
         let d = json_peek(c.jr);
         if d == closing {
             c.jr.pos += 1;
+            if definition >= 0 { c.labels[definition].open = false; }
             return true;
         }
         if d == 0 { return json_fail(c.jr); }
-        var amp = false;
         if closing == '}' {
             var key: u8[256] = [0; 256];
             let n, ok = jr_key(c, key);
@@ -1410,19 +1411,42 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
                 return json_fail(c.jr);
             }
             if n > 0 && key[0] == '&' && c.graph {
-                // a definition in a dropped value keeps its label, with no node
+                // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label
+                // alone must name a definition already closed; fields after
+                // one must follow a label not yet defined, and the definition
+                // is open until this object closes. A dropped definition keeps
+                // its label, with no node.
                 if !first || key[..n] != "&node" { return json_fail(c.jr); }
                 let label, lok = jr_scan_label(c);
                 if !lok { return false; }
-                if jr_label_at(c, label) < 0 { c.labels.push(JsonLabel { label: label, wire: 0, tab: -1, open: false }); }
-                amp = true;
+                let at = jr_label_at(c, label);
+                var next = json_peek(c.jr);
+                if next != ',' && next != '}' { return json_fail(c.jr); }
+                if next == ',' {
+                    c.jr.pos += 1;
+                    next = json_peek(c.jr);
+                }
+                let bare = next == '}';
+                if bare != (at >= 0) { return json_fail(c.jr); }
+                if bare {
+                    if c.labels[at].open { return json_fail(c.jr); }
+                    c.jr.pos += 1;
+                    return true;
+                }
+                definition = c.labels.len;
+                c.labels.push(JsonLabel { label: label, wire: 0, tab: -1, open: true });
+                first = false;
+                continue;
             }
         }
         first = false;
-        if !amp && !jr_skip(c, depth + 1) { return false; }
+        if !jr_skip(c, depth + 1) { return false; }
         let r = jr_after(c, closing);
         if r < 0 { return false; }
-        if r == 0 { return true; }
+        if r == 0 {
+            if definition >= 0 { c.labels[definition].open = false; }
+            return true;
+        }
     }
 }
 

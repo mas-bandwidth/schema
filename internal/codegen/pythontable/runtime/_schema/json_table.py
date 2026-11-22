@@ -510,15 +510,32 @@ def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None) -> None:
         for item in value:
             _skip(item, graph)
     elif type(value) is dict:
+        defined = None
         for index, (key, item) in enumerate(value.items()):
             if "\x00" in key or len(key.encode("utf-8")) > 255:
                 raise Refused("malformed")
             if graph is not None and key.startswith("&"):
                 if index != 0 or key != "&node" or not isinstance(item, Number) or not item.isascii() or not item.isdigit() or item[0] == "0" or len(item) > 20 or int(item) > 18446744073709551615:
                     raise Refused("malformed")
-                graph.setdefault(int(item), (None, False))
+                # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+                # must name a definition already closed; fields after one must
+                # follow a label not yet defined, and the definition is open
+                # until this object closes. What the reader does not place is
+                # the value.
+                number = int(item)
+                entry = graph.get(number)
+                if len(value) == 1:
+                    if entry is None or entry[1]:
+                        raise Refused("malformed")
+                else:
+                    if entry is not None:
+                        raise Refused("malformed")
+                    graph[number] = (None, True)
+                    defined = number
             else:
                 _skip(item, graph)
+        if defined is not None:
+            graph[defined] = (None, False)
 
 
 def _write_field(field: FieldDesc, value: Any) -> str:

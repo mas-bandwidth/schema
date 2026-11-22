@@ -5524,7 +5524,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // Every label the text has defined so far, in document order, placed or
+  // skipped, and those whose definition has not closed (§16.7).
+  final Set<int> labelsSeen = <int>{};
+  final Set<int> labelsOpen = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -5997,17 +6000,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
+        // a definition the walk dropped reads null; one still open is a cycle
+        if (r.labelsSeen.contains(raw) && !r.labelsOpen.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    if (have != null || r.labelsSeen.contains(raw)) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
+    r.labelsSeen.add(raw);
+    r.labelsOpen.add(raw);
     fill(made, entries);
+    r.labelsOpen.remove(raw);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
@@ -6201,37 +6208,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     clean.add(c);
   }
   final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
   return result;
 }
 
@@ -6296,18 +6272,41 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject holds one skipped object to the label rules a placed one is
+// (docs/SPEC-TABLES.md §16.7): a label alone must name a definition already
+// closed, fields after one must follow a label not yet defined, and the
+// definition is open until this object closes. A dropped definition keeps its
+// label with no node, so a reference to it reads null. What the reader does
+// not place is the value, never the label.
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+  int? definition;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (r.variableRoot && key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      if (entries.length == 1) {
+        if (!r.labelsSeen.contains(label) || r.labelsOpen.contains(label)) {
+          throw const FormatException('undefined node label');
+        }
+      } else {
+        if (r.labelsSeen.contains(label)) {
+          throw const FormatException('node label defined twice');
+        }
+        r.labelsSeen.add(label);
+        r.labelsOpen.add(label);
+        definition = label;
+      }
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (definition != null) r.labelsOpen.remove(definition);
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -6316,10 +6315,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -6329,13 +6325,13 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
+    final entries = <MapEntry<String, dynamic>>[];
     for (final entry in val.entries) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
+      entries.add(MapEntry<String, dynamic>(key, entry.value));
     }
+    _jsonSkipObject(entries, r);
   }
 }
 

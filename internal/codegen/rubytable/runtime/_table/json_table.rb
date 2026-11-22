@@ -382,6 +382,7 @@ module SchemaRuntimeUnit
       elsif val.instance_of?(Array)
         val.each { |item| skip_json_unknown(item, graph) }
       elsif val.instance_of?(Hash)
+        defined_label = nil
         val.each_with_index do |(key, item), idx|
           raise Refused, 'malformed' if key.include?("\x00") || key.bytesize > 255
 
@@ -392,12 +393,25 @@ module SchemaRuntimeUnit
               raise Refused, 'malformed'
             end
 
+            # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+            # must name a definition already closed; fields after one must follow
+            # a label not yet defined, and the definition is open until this
+            # object closes. What the reader does not place is the value.
             num = tok.to_i
-            graph[num] ||= [nil, false]
+            entry = graph[num]
+            if val.length == 1
+              raise Refused, 'malformed' if entry.nil? || entry[1]
+            else
+              raise Refused, 'malformed' unless entry.nil?
+
+              graph[num] = [nil, true]
+              defined_label = num
+            end
           else
             skip_json_unknown(item, graph)
           end
         end
+        graph[defined_label] = [nil, false] unless defined_label.nil?
       end
     end
 

@@ -54,7 +54,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, char close, uint64_t & opened );
+// the object that opened a definition in a skipped value has closed: the label stays, with no node
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -3004,12 +3006,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
+    uint64_t opened = 0; // the label this object defines, open until it closes
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         if ( c == 0 )
@@ -3043,7 +3047,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, close, opened ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3071,6 +3075,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         in.bad = true;
@@ -4439,10 +4444,12 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth, char, uint64_t & )
 {
     return TableJsonSkipValue( in, depth + 1 );
 }
+
+inline void TableJsonSkippedClose( TableJsonIn &, uint64_t ) {}
 
 inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
 {

@@ -173,15 +173,40 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     entry->node = (uint32_t)((TableRef *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
 }
 
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key )
+/* THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must name a
+   definition already closed; fields after one must follow a label not yet
+   defined, and the definition is open until its object closes (the label then
+   stays, with no node, so a reference to it reads null). What the reader does
+   not place is the value, never the label. The member loop owns the comma and
+   the close: this only looks past the comma, and hands back the label a
+   definition opened so the loop can close it. */
+static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key, char close, uint64_t * opened )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
+    TableJsonGraphEntry * entry;
     uint64_t label = 0;
-    int taken = 0;
+    int taken = 0, bare;
+    int64_t mark;
+    char c;
     if ( graph == NULL || strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
     if ( !table_json_scan_label(in,&label) ) { return 0; }
-    if ( table_json_graph_reach(&graph->labels,label,&taken) == NULL ) { in->bad = 1; return 0; }
+    entry = table_json_graph_reach(&graph->labels,label,&taken);
+    if ( entry == NULL ) { in->bad = 1; return 0; }
+    c = table_json_peek(in);
+    if ( c == ',' ) { mark = in->pos; in->pos++; c = table_json_peek(in); in->pos = mark; }
+    bare = c == close;
+    if ( bare == taken ) { in->bad = 1; return 0; }
+    if ( bare ) { if ( entry->open ) { in->bad = 1; return 0; } return 1; }
+    entry->open = 1;
+    *opened = label;
     return 1;
+}
+
+static SCHEMA_UNUSED void table_json_skipped_close( TableJsonIn * in, uint64_t label )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
+    TableJsonGraphEntry * entry = table_json_graph_find(&graph->labels,label);
+    if ( entry != NULL ) { entry->open = 0; }
 }
 
 typedef struct TableJsonGraphOut

@@ -154,7 +154,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // Every label the text has defined so far, in document order, placed or
+  // skipped, and those whose definition has not closed (§16.7).
+  final Set<int> labelsSeen = <int>{};
+  final Set<int> labelsOpen = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -627,17 +630,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
+        // a definition the walk dropped reads null; one still open is a cycle
+        if (r.labelsSeen.contains(raw) && !r.labelsOpen.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    if (have != null || r.labelsSeen.contains(raw)) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
+    r.labelsSeen.add(raw);
+    r.labelsOpen.add(raw);
     fill(made, entries);
+    r.labelsOpen.remove(raw);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
@@ -832,37 +839,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     clean.add(c);
   }
   final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
   return result;
 }
 

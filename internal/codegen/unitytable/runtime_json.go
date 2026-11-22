@@ -1889,10 +1889,12 @@ internal static class TableJson
         // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
         // §16.12), the objects this walk skips included
         System.Collections.Generic.HashSet<string> keys = null;
+        bool defining = false; // this object defines a label, open until it closes
+        ulong definition = 0;
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
@@ -1904,18 +1906,32 @@ internal static class TableJson
                 if (used > 0 && key[0] == '&' && input.Labels != null)
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
-                    if (!input.Labels.ContainsKey(label)) { input.Labels.Add(label, new Label()); }
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+                    // must name a definition already closed; fields after one must
+                    // follow a label not yet defined, and the definition is open
+                    // until this object closes. What the reader does not place is
+                    // the value, never the label.
+                    bool known = input.Labels.TryGetValue(label, out Label held);
                     first = false; c = Peek(text, ref input);
-                    if (c == ',') { input.Pos++; continue; }
-                    if (c == close) { input.Pos++; return true; }
-                    input.Bad = true; return false;
+                    if (c != ',' && c != close) { input.Bad = true; return false; }
+                    if (c == ',') { input.Pos++; c = Peek(text, ref input); }
+                    bool bare = c == close;
+                    if (bare != known) { input.Bad = true; return false; }
+                    if (bare)
+                    {
+                        if (held.Open) { input.Bad = true; return false; }
+                        input.Pos++; return true;
+                    }
+                    input.Labels.Add(label, new Label { Open = true });
+                    defining = true; definition = label;
+                    continue;
                 }
             }
             first = false;
             if (!SkipValue(text, ref input, depth + 1)) { return false; }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; }   // a trailing comma is accepted
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             input.Bad = true;
             return false;
         }
