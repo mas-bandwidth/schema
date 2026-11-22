@@ -20,7 +20,7 @@ import (
 // of one (Tight), must refuse in both forms; the same child at two values
 // reads, its count intact. A top-level counted array one under its minimum
 // (Top, forged from a clean save) refuses in both forms too: the minimum is
-// held at every depth (docs/SPEC-TABLES.md §5.1 row 3).
+// held at every depth (docs/SPEC.md §5.1 row 3).
 const innerCountMinProbe = `--!strict
 local T = require("./InnerTable")
 local P = T
