@@ -1491,15 +1491,8 @@ fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableM
             // applies to them, and ill-formed text is damage (§3.3, §4)
             table_message_utf8(&r.buffer[start..start + n as usize])
         }
-        31 => {
-            if !r.align() {
-                return false;
-            }
-            match r.get(32) {
-                Some(n) => r.skip(n * 8),
-                None => false,
-            }
-        }
+        // 31 is held by name and never written (R17): met only as damage
+        31 => false,
         10 => {
             // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
             // COUNT (§3.3): the same raw-bits rule a named float read applies.
@@ -1525,7 +1518,7 @@ fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableM
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
             if e.kind == 14
-                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30 | 31)
+                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
                 && element.shape.packing == 0
             {
                 match table_message_value_bits(element.kind, &element.shape) {

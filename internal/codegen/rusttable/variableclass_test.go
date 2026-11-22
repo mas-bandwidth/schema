@@ -45,9 +45,9 @@ import (
 //     equal bytes, empty and not, are two records, as the oracle writes them,
 //     while one blob two slots name (blob_shared) stays one record on the
 //     wire and the text writer REFUSES it, as the oracle's does (§16.7);
-//   - the escape kind 31 (§3): at a field the reader cannot name (unknown), at
-//     a field it names and as an array's element kind (kind_mismatch each), the
-//     report compared with the oracle's.
+//   - the held kind 31 (§3, R17): held by name and never written, so a wire
+//     carrying it at a field the reader cannot name refuses the whole load, as
+//     the oracle refuses it.
 //
 // Each wire is loaded and saved back (the bytes must not move), written as text
 // (the text must be the oracle's), and read back from the text and saved (the
@@ -194,28 +194,17 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 	}
 	units = append(units, vcUnit{"classprobe", probe, probeCases})
 
-	// THE ESCAPE KIND (§3): one wire, kind 31 at three positions, and the
-	// oracle's report for it.
-	escape := variableClassEscapeWire(t, probe)
-	escInst := pm.New(pm.Lookup("Probe"))
+	// THE HELD KIND 31 (§3, R17): held by name and never written, so a wire
+	// carrying it at a field this reader cannot name refuses the whole load, as
+	// the oracle refuses it.
+	escape := variableClassHeldEscapeWire(t, probe)
 	var escRep tabletext.Report
-	escOK, err := tablewire.Decode(pm, escInst, escape, &escRep)
-	if err != nil && !tablewire.ReadRefusal(err) {
-		t.Fatalf("the oracle failed on the escape wire: %v", err)
-	}
-	var escSaved []byte
-	if escOK {
-		escSaved, err = tablewire.Encode(pm, escInst)
-		if err != nil {
-			t.Fatal(err)
-		}
+	escOK, err := tablewire.Decode(pm, pm.New(pm.Lookup("Probe")), escape, &escRep)
+	if escOK || !tablewire.ReadRefusal(err) {
+		t.Fatalf("the oracle read the held kind 31: ok=%v err=%v %+v", escOK, err, escRep)
 	}
 	escPath := filepath.Join(work, "escape.wire")
-	escSavedPath := filepath.Join(work, "escape_saved.wire")
 	if err := os.WriteFile(escPath, escape, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(escSavedPath, escSaved, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -295,12 +284,8 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 				c.name, wirePath, jsonPath, u.module, table, snake, snake, snake, snake)
 		}
 	}
-	fmt.Fprintf(&main, "    escape_case!(%q, %q, crate::classprobe::probe_table);\n", escPath, escSavedPath)
-	if escOK {
-		want = append(want, fmt.Sprintf("ESCAPE %d,%d,%v SAVED OK", escRep.Unknown, escRep.Widened, false))
-	} else {
-		want = append(want, "ESCAPE REFUSED")
-	}
+	fmt.Fprintf(&main, "    escape_case!(%q, crate::classprobe::probe_table);\n", escPath)
+	want = append(want, "ESCAPE REFUSED")
 	main.WriteString("}\n")
 	if err := os.WriteFile(filepath.Join(work, "main.rs"), []byte(mods.String()+main.String()), 0o600); err != nil {
 		t.Fatal(err)
@@ -366,36 +351,18 @@ func vcLoadUnit(t *testing.T, repo, dir string) *ir.Unit {
 	return u
 }
 
-// variableClassEscapeWire builds one Probe wire carrying the escape kind 31
-// (docs/SPEC-TABLES.md §3) at three positions: a field this reader cannot name
-// (unknown), the named int32 `tail` (kind_mismatch), and the element kind of
-// the named []int8 `small` (kind_mismatch).
-func variableClassEscapeWire(t *testing.T, u *ir.Unit) []byte {
+// variableClassHeldEscapeWire builds one Probe wire carrying the held kind 31
+// (docs/SPEC-TABLES.md §3, R17) at a field this reader cannot name: the whole
+// load refuses, as it refuses 33 and 34. The old escape skipped it by its L and
+// counted it unknown.
+func variableClassHeldEscapeWire(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
-	probe := u.Tables["Probe"]
-	var tail, small *ir.Field
-	for _, f := range probe.Fields {
-		switch f.Name {
-		case "tail":
-			tail = f
-		case "small":
-			small = f
-		}
+	if u.Tables["Probe"] == nil {
+		t.Fatal("the probe unit declares no Probe")
 	}
-	if tail == nil || small == nil {
-		t.Fatal("the probe declares no tail or small")
-	}
-	ids := []uint64{ir.TableWireId("from_a_later_major"), ir.TableFieldWireId(tail), ir.TableFieldWireId(small)}
-	esc, arr := byte(ir.TableKindHeldEscape), byte(ir.TableKindArray)
-	w := []byte{byte(ir.TableWireForm)}
-	w = append(w, 1, esc, 2, 0xAA, 0xBB) // unnameable: skipped by L, unknown
-	w = append(w, 2, esc, 1, 0x00)       // named: kind_mismatch
-	w = append(w, 3, arr, 3, esc, 1, 0)  // element kind 31: kind_mismatch
-	w = append(w, 0)
-	for _, id := range ids {
-		w = binary.LittleEndian.AppendUint64(w, id)
-	}
-	return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
+	w := []byte{byte(ir.TableWireForm), 1, byte(ir.TableKindHeldEscape), 2, 0xAA, 0xBB, 0}
+	w = binary.LittleEndian.AppendUint64(w, ir.TableWireId("from_a_later_major"))
+	return binary.LittleEndian.AppendUint64(w, 1)
 }
 
 // variableClassProbeSrc is the variable class the corpus does not reach.
@@ -547,17 +514,13 @@ macro_rules! refuse_case {
 }
 
 macro_rules! escape_case {
-    ($wire:expr, $saved:expr, $m:path) => {{
+    ($wire:expr, $m:path) => {{
         use $m as table;
         let wire = std::fs::read($wire).unwrap();
-        let saved = std::fs::read($saved).unwrap();
         let mut r = Default::default();
         match table::probe_load(&wire, &mut r) {
             None => println!("ESCAPE REFUSED"),
-            Some(v) => {
-                let again = table::probe_save(&v);
-                println!("ESCAPE {},{},{} SAVED {}", r.unknown, r.widened, r.damaged, if again == saved { "OK" } else { "DIFF" });
-            }
+            Some(_) => println!("ESCAPE LOADED {},{},{}", r.unknown, r.widened, r.damaged),
         }
     }};
 }

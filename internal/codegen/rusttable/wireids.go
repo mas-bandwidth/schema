@@ -120,7 +120,7 @@ impl TableIdUse<'_> {
             }
             return (at == bytes.len()).then_some(());
         }
-        if matches!(kind, 12 | 31 | 32) { return Some(()); }
+        if matches!(kind, 12 | 32) { return Some(()); }
         let mut at = 0;
         self.payload(bytes, &mut at, kind, depth)?;
         (at == bytes.len()).then_some(())

@@ -677,7 +677,7 @@ impl TableNodeReader {
                 if off != payload.len() { report.damaged = true; return; }
                 self.note_unknown_pointer(index, report);
             }
-            12 | 13 | 14 | 16 | 31 | 32 => {
+            12 | 13 | 14 | 16 | 32 => {
                 let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
                 if off > payload.len() || n != (payload.len() - off) as u64 { report.damaged = true; return; }
                 self.note_unknown_content(ids, kind, &payload[off..], depth, report);
@@ -701,7 +701,6 @@ impl TableNodeReader {
         let mut off = 0usize;
         match kind {
             12 => { if !text_valid(content) { report.damaged = true; } }
-            31 => {}
             32 => { if !content.is_empty() { report.damaged = true; } }
             30 => {
                 let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
@@ -1014,7 +1013,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         17 | 30 => {
             leb_read(bounded, off).is_some() && *off <= end
         }
-        12 | 13 | 14 | 16 | 31 | 32 => {
+        12 | 13 | 14 | 16 | 32 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
             if *off > end || n > (end - *off) as u64 { return false; }
             *off += n as usize;
@@ -1257,7 +1256,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         4 | 8 | 10 | 22 | 27 => w(c, 4),
         5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
-        12 | 31 | 32 => {
+        12 | 32 => {
             let Some(n) = c.leb() else { return false; };
             if c.off > c.buf.len() || n > (c.buf.len() - c.off) as u64 {
                 return false;
