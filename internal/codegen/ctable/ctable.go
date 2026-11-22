@@ -1165,10 +1165,14 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	c.WriteString("   (docs/SPEC-TABLES.md §8, §16). Compile this file to use <name>_table_type,\n")
 	c.WriteString("   <name>_from_json or <name>_to_json; a project that reads neither the\n")
 	c.WriteString("   descriptors nor a text still gets the whole wire from the header. */\n\n")
+	// uselocale and newlocale (POSIX.1-2008) are hidden by a strict -std=c99
+	// unless the feature macro is set before the first include.
+	c.WriteString("#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)\n#define _POSIX_C_SOURCE 200809L /* uselocale, newlocale: numbers convert in the \"C\" locale */\n#endif\n#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)\n#define _DARWIN_C_SOURCE 1\n#endif\n\n")
 	fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
 	c.WriteString("#include <stdio.h>  /* the text form: number formatting */\n")
 	c.WriteString("#include <stdlib.h> /* the text form: exact number conversion */\n")
-	c.WriteString("#include <locale.h> /* the text form: the runtime's decimal point */\n\n")
+	c.WriteString("#include <locale.h> /* the text form: numbers convert in the \"C\" locale */\n")
+	c.WriteString("#if defined(__APPLE__)\n#include <xlocale.h> /* newlocale, uselocale */\n#endif\n\n")
 	if len(members) > 0 && jsonAllowed {
 		// THE TEXT WRITER'S ZERO-BYTE CHECK IS A DEBUG ASSERT (docs/SPEC.md
 		// §5.1 row 8): the unit takes <assert.h> and defines schema_assert
