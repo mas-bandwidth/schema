@@ -1124,7 +1124,10 @@ func fixedRootSaveClause(name, call string) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("    {:ok, IO.iodata_to_binary(data)}\n")
-	b.WriteString("  end\n\n")
+	// A WRITER REFUSAL IS AN ANSWER, NEVER A RAISE (R10): the fixed writer's
+	// ArgumentError (a count outside [A..B], a value past its range) comes back
+	// as {:error, :invalid_value}, as every variable-form refusal does.
+	b.WriteString("  rescue\n    ArgumentError -> {:error, :invalid_value}\n  end\n\n")
 	return b.String()
 }
 

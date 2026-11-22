@@ -786,6 +786,7 @@ defmodule Benchtable.Table do
           elem_kind: 13,
           array_bound: 8,
           min_count: 1,
+          elem_default: %{},
           elem: "TableEntity",
           elem_size: 64,
           elem_align: 8,
@@ -799,7 +800,7 @@ defmodule Benchtable.Table do
           bound: nil,
           doc: "",
           tags: [],
-          default: []
+          default: [%{}]
         },
         %{
           name: "stats",
@@ -1754,18 +1755,24 @@ defmodule Benchtable.Table do
     value = fixed_class_from_table("TableEntity", value)
     data = Benchtable.BenchTableFixed.table_entity_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableStat", value) when is_map(value) do
     value = fixed_class_from_table("TableStat", value)
     data = Benchtable.BenchTableFixed.table_stat_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableMixed", value) when is_map(value) do
     value = fixed_class_from_table("TableMixed", value)
     data = Benchtable.BenchTableFixed.table_mixed_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
@@ -2216,7 +2223,7 @@ defmodule Benchtable.Table do
       elements ->
         elements = stored_floats(f, pad_fixed(f, elements))
 
-        if list_elides?(f, elements) do
+        if list_born?(f, elements, idx_map, ids, order) or list_elides?(f, elements) do
           {idx_map, ids, order, acc}
         else
           {ref, ids, order} = intern(ids, order, f.id)
@@ -2462,6 +2469,34 @@ defmodule Benchtable.Table do
         elements == []
     end
   end
+
+  # A COUNTED [A..B] ELIDES AT ITS BORN STATE (docs/SPEC-TABLES.md §2.3): the
+  # live count is A and every element writes nothing, a table element when its
+  # save body is empty (judged on a scratch walk whose ids are dropped), a union
+  # element when it is None, a scalar element when it is the default.
+  defp list_born?(f, elements, idx_map, ids, order) do
+    min = Map.get(f, :min_count, 0)
+
+    min > 0 and Map.get(f, :array) == :counted and not Map.get(f, :optional, false) and
+      not Map.get(f, :required, false) and not Map.get(f, :text_list, false) and
+      length(elements) == min and
+      Enum.all?(elements, &element_writes_nothing?(f, &1, idx_map, ids, order))
+  end
+
+  defp element_writes_nothing?(%{elem_kind: 13} = f, e, idx_map, ids, order) do
+    {_idx, _ids, _order, body} =
+      save_fields(Map.fetch!(@tables, f.elem), e || %{}, idx_map, ids, order, [])
+
+    IO.iodata_length(body) == 0
+  end
+
+  defp element_writes_nothing?(%{elem_kind: 15}, e, _idx_map, _ids, _order), do: e == nil
+
+  defp element_writes_nothing?(%{elem_kind: 10, elem_default: d}, e, _i, _d, _o),
+    do: float_bytes(e, 4) == float_bytes(d, 4)
+
+  defp element_writes_nothing?(%{elem_default: d}, e, _i, _d, _o), do: same?(e, d)
+  defp element_writes_nothing?(_f, _e, _i, _d, _o), do: false
 
   # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
   # value is padded with the element default, and a longer one is refused
