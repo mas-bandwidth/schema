@@ -105,7 +105,7 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 	}
 	var cond string
 	if f.HasFloatRange {
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, floatRangeLo(f), expr, floatRangeHi(f))
+		cond = fmt.Sprintf("%s >= %s && %s <= %s", floatRangeValue(f, expr), floatRangeLo(f), floatRangeValue(f, expr), floatRangeHi(f))
 	} else if f.HasIntRange {
 		lo, hi, _ := ir.TableRawRange(f)
 		switch {
@@ -154,7 +154,7 @@ func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
 	var cond string
 	switch {
 	case f.HasFloatRange:
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, floatRangeLo(f), expr, floatRangeHi(f))
+		cond = fmt.Sprintf("%s >= %s && %s <= %s", floatRangeValue(f, expr), floatRangeLo(f), floatRangeValue(f, expr), floatRangeHi(f))
 	case f.Type.Kind == ir.TBits && f.Type.Width < 64:
 		cond = fmt.Sprintf("(%s & ~%s) == 0", expr, dartU64Literal((uint64(1)<<f.Type.Width)-1))
 	case f.HasIntRange || f.Type.Kind == ir.TFixed:
@@ -189,4 +189,15 @@ func floatRangeLo(f *ir.Field) string {
 func floatRangeHi(f *ir.Field) string {
 	_, hi, _ := fixedFloatClampEnds(f)
 	return hi
+}
+
+// floatRangeValue is the value a ranged float's write check holds to its
+// ends: a float32 NARROWED FIRST (docs/SPEC-TABLES.md §3.3, THE RANGE IS HELD
+// AT FLOAT32), so a double that rounds to an end passes exactly as the value
+// the store writes does; a float64 as it is.
+func floatRangeValue(f *ir.Field, expr string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		return "Float32List.fromList([" + expr + "])[0]"
+	}
+	return expr
 }

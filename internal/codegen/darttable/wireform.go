@@ -4242,7 +4242,7 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+			g.pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, floatRangeValue(f, expr), lo, floatRangeValue(f, expr), hi)
 		}
 	}
 }

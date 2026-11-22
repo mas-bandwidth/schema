@@ -3141,19 +3141,19 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
+  assert(!v.aimX.isFinite || (Float32List.fromList([v.aimX])[0] >= -1.0 && Float32List.fromList([v.aimX])[0] <= 1.0));
   if (_f32Bits(v.aimX) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write(v.aimX, 'BenchMixed.aim_x'));
   }
-  assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
+  assert(!v.aimY.isFinite || (Float32List.fromList([v.aimY])[0] >= -1.0 && Float32List.fromList([v.aimY])[0] <= 1.0));
   if (_f32Bits(v.aimY) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write(v.aimY, 'BenchMixed.aim_y'));
   }
-  assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
+  assert(!v.aimZ.isFinite || (Float32List.fromList([v.aimZ])[0] >= -1.0 && Float32List.fromList([v.aimZ])[0] <= 1.0));
   if (_f32Bits(v.aimZ) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
@@ -7470,21 +7470,21 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
+  if (!(Float32List.fromList([v.aimX])[0] >= -1.0 && Float32List.fromList([v.aimX])[0] <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimX, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
+  if (!(Float32List.fromList([v.aimY])[0] >= -1.0 && Float32List.fromList([v.aimY])[0] <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimY, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
+  if (!(Float32List.fromList([v.aimZ])[0] >= -1.0 && Float32List.fromList([v.aimZ])[0] <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');

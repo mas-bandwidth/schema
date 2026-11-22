@@ -152,7 +152,51 @@ void main(List<String> args) {
     }
     print('CHECK ${c[0]}${why.isEmpty ? ' ok' : ' FAIL $why'}');
   }
+  // THE WRITER NARROWS FIRST (§3.3): a double a hair above 0.1f that rounds
+  // to it (bits 3dcccccd) is the end, on every Dart write check.
+  for (final k in narrowChecks.keys) {
+    String why;
+    try {
+      why = narrowChecks[k]!();
+    } catch (e) {
+      why = 'threw $e';
+    }
+    print('CHECK $k${why.isEmpty ? ' ok' : ' FAIL $why'}');
+  }
 }
+
+const above = 0.100000003;
+
+String narrowsToEnd() {
+  final bits = (ByteData(4)..setFloat32(0, above)).getUint32(0);
+  if (above <= 0.10000000149011612) return 'the probe double is not above 0.1f';
+  return bits == 0x3dcccccd ? '' : 'the probe double narrows to ${bits.toRadixString(16)}';
+}
+
+final narrowChecks = <String, String Function()>{
+  'narrow_write_variable': () {
+    final pre = narrowsToEnd();
+    if (pre.isNotEmpty) return pre;
+    final v = jsonV('ends');
+    if (v == null) return 'ends.json is refused';
+    v.r = above;
+    return same(w.vWireSave(v), 'ends.variable.bin');
+  },
+  'narrow_write_fixed': () {
+    final v = jsonF('ends');
+    if (v == null) return 'ends.json is refused';
+    v.r = above;
+    final saved = saveFixed(v);
+    return saved == null ? 'the fixed save was refused' : same(saved, 'ends.fixed.bin');
+  },
+  'narrow_write_json': () {
+    final v = jsonV('ends');
+    if (v == null) return 'ends.json is refused';
+    v.r = above;
+    w.vToJson(v);
+    return '';
+  },
+};
 `
 
 // TestDartCompressedF32EndsCorpus runs every row of the cross-port corpus
@@ -208,6 +252,11 @@ func TestDartCompressedF32EndsCorpus(t *testing.T) {
 			continue
 		}
 		if name, _, _ := strings.Cut(line, "\t"); !seen[name] {
+			t.Errorf("the driver made no %s check\n%s", name, out)
+		}
+	}
+	for _, name := range []string{"narrow_write_variable", "narrow_write_fixed", "narrow_write_json"} {
+		if !seen[name] {
 			t.Errorf("the driver made no %s check\n%s", name, out)
 		}
 	}

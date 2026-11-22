@@ -3051,7 +3051,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.frameTick);
   }
-  assert(!v.serverTime.isFinite || (v.serverTime >= 0.0 && v.serverTime <= 65535.0));
+  assert(!v.serverTime.isFinite || (Float32List.fromList([v.serverTime])[0] >= 0.0 && Float32List.fromList([v.serverTime])[0] <= 65535.0));
   if (_f32Bits(v.serverTime) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
@@ -3136,19 +3136,19 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
+  assert(!v.aimX.isFinite || (Float32List.fromList([v.aimX])[0] >= -1.0 && Float32List.fromList([v.aimX])[0] <= 1.0));
   if (_f32Bits(v.aimX) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
   }
-  assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
+  assert(!v.aimY.isFinite || (Float32List.fromList([v.aimY])[0] >= -1.0 && Float32List.fromList([v.aimY])[0] <= 1.0));
   if (_f32Bits(v.aimY) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
   }
-  assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
+  assert(!v.aimZ.isFinite || (Float32List.fromList([v.aimZ])[0] >= -1.0 && Float32List.fromList([v.aimZ])[0] <= 1.0));
   if (_f32Bits(v.aimZ) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
@@ -3175,7 +3175,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(5);
     w.putU64(v.flux);
   }
-  assert(!v.ping.isFinite || (v.ping >= 0.0 && v.ping <= 250.0));
+  assert(!v.ping.isFinite || (Float32List.fromList([v.ping])[0] >= 0.0 && Float32List.fromList([v.ping])[0] <= 250.0));
   if (_f32Bits(v.ping) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
@@ -7626,7 +7626,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(BigInt.from(v.frameTick).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.serverTime >= 0.0 && v.serverTime <= 65535.0)) { throw StateError('invalid_value: field server_time out of range'); }
+  if (!(Float32List.fromList([v.serverTime])[0] >= 0.0 && Float32List.fromList([v.serverTime])[0] <= 65535.0)) { throw StateError('invalid_value: field server_time out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("server_time"));
   out.raw(': ');
@@ -7712,21 +7712,21 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
+  if (!(Float32List.fromList([v.aimX])[0] >= -1.0 && Float32List.fromList([v.aimX])[0] <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimX, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
+  if (!(Float32List.fromList([v.aimY])[0] >= -1.0 && Float32List.fromList([v.aimY])[0] <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
   out.raw(_jsonFloat(v.aimY, true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
+  if (!(Float32List.fromList([v.aimZ])[0] >= -1.0 && Float32List.fromList([v.aimZ])[0] <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
@@ -7758,7 +7758,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(v.flux.toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ping >= 0.0 && v.ping <= 250.0)) { throw StateError('invalid_value: field ping out of range'); }
+  if (!(Float32List.fromList([v.ping])[0] >= 0.0 && Float32List.fromList([v.ping])[0] <= 250.0)) { throw StateError('invalid_value: field ping out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("ping"));
   out.raw(': ');

@@ -865,7 +865,7 @@ func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, e
 		pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
 	}
 	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+		pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, floatRangeValue(f, expr), lo, floatRangeValue(f, expr), hi)
 	}
 }
 

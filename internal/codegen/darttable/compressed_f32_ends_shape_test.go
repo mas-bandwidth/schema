@@ -48,6 +48,7 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		t.Fatal("the generator wrote no ProbeWire.dart")
 	}
 	const lo, hi = "-0.30000001192092896", "0.10000000149011612"
+	const n = "Float32List.fromList([v.r])[0]"
 	for _, want := range []string{
 		// the variable read: a leaf, and each element of the array
 		"if (d < " + lo + ") { r.report.refuse('out_of_range'); return; }",
@@ -56,12 +57,23 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		// the JSON read: a leaf, and each element of the array
 		"v.r = _jsonRangedFloat(_jsonFloatField(val, r, true, v.r), " + lo + ", " + hi + ", r);",
 		"(i1, p1) => _jsonRangedFloat(_jsonFloatField(i1, r, true, p1), " + lo + ", " + hi + ", r)",
-		// the JSON writer's check
-		"if (!(v.r >= " + lo + " && v.r <= " + hi + ")) {",
+		// the JSON writer's check and the save's debug check, each on the
+		// value NARROWED to float32 first (a double that rounds to 0.1f passes)
+		"if (!(" + n + " >= " + lo + " && " + n + " <= " + hi + ")) {",
+		"assert(!v.r.isFinite || (" + n + " >= " + lo + " && " + n + " <= " + hi + "));",
 	} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("ProbeWire.dart lacks %s", want)
 		}
+	}
+	// the fixed writer's debug check narrows first too
+	var all strings.Builder
+	for _, src := range files {
+		all.Write(src)
+	}
+	fn := "Float32List.fromList([value.r])[0]"
+	if want := "assert(!value.r.isFinite || (" + fn + " >= " + lo + " && " + fn + " <= " + hi + "));"; !strings.Contains(all.String(), want) {
+		t.Errorf("no generated Dart holds %s", want)
 	}
 	// the control: a plain float32 is read and written with no range test
 	if !strings.Contains(wire, "v.p = _jsonFloatField(val, r, true, v.p);") {
@@ -72,6 +84,8 @@ func TestDartCompressedF32EndsShape(t *testing.T) {
 		"v.p >=",
 		// the doubles a hair inside the float32 ends
 		"d < -0.3)", "d > 0.1)", ">= -0.3 &&", "<= 0.1)",
+		// the double compared unnarrowed
+		"(v.r >= " + lo, "!(v.r >= " + lo,
 	} {
 		if strings.Contains(wire, never) {
 			t.Errorf("ProbeWire.dart holds %q", never)
