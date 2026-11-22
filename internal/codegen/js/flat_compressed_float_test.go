@@ -116,7 +116,7 @@ func jsFlatNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	t.Skip("no node toolchain: see make/js.mk's NODE")
+	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
 	return ""
 }
 

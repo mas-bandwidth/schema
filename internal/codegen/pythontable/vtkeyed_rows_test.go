@@ -81,6 +81,8 @@ var pyKeyedRowCases = []string{
 	"varevo_v1_ping_as_v3", "varevo_v2_as_v3", "varevo_v2_full",
 	"varevo_v3_compat", "varevo_v3_compat_as_v1", "varevo_v3_default_containers",
 	"varevo_v3_full", "varevo_v3_full_as_v1", "varevo_v3_rollback",
+	// the F-092 grown-bound evolution document (#4544)
+	"widenbound_evodoc",
 }
 
 // pyKeyedRowConstructs are luatable's constructs for the row

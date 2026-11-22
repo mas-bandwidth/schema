@@ -15,14 +15,15 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 		echo "tool missing: lua (pinned $(LUA_VERSION)) at $(LUA); run make dist-lua"; \
 		exit 1; \
 	fi
-	@echo "lua hostile corpus: every verdict, named reason and decoded-value digest (Lua $(LUA_VERSION))"
+	@echo "lua hostile corpus: every verdict and decoded-value digest; a refusal on its verdict alone (Lua $(LUA_VERSION))"
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
-		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane' \
-		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane)$$' -count=1 -timeout 600s
+		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane TestSchemaLuaHostileScorerOutcomes' \
+		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
-# the emitted load.lua (the form gate admits the byte past the carried forms),
-# and the corpus comparison must go red. Red with the plant in, green with it
+# the emitted fixed.lua (the form gate refuses the form it carries, so the
+# accepted form-3 wire is refused: a changed verdict, since a refusal conforms on
+# its verdict alone), and the corpus comparison must go red. Red with the plant in, green with it
 # out; the heavy corpus replay stays nightly, this control rides every push.
 .PHONY: schema-lua-runs-hostile-corpus-planted
 schema-lua-runs-hostile-corpus-planted: toolchain-lua
