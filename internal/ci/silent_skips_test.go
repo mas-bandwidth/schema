@@ -330,6 +330,7 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 		"f/wire_plan9_test.go":   "package f\n",
 		"g/both_test.go":         "//go:build windows && schema_leg_x\n\npackage g\n",
 		"Makefile":               "test-x-tagged:\n\tSCHEMA_SLOW=1 go test -count=1 -tags schema_leg_x ./a/\n\ntest-y-tagged:\n\tgo test -tags schema_leg_y ./c/\n",
+		"make/lanes.mk":          "# no make lanes: the make/*.mk glob still matches a file\n",
 		// F-180: a Windows step that only echoes the command, one whose
 		// test step is off, one that cds elsewhere first, one with a
 		// working-directory, and a job that is off: none runs the package
