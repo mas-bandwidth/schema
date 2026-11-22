@@ -2,7 +2,6 @@ package java
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The generated Java read entries promise never to throw on hostile input. Two
@@ -170,12 +171,12 @@ func runReadBoundsProbe(t *testing.T, generated string) {
 	if err := os.WriteFile(filepath.Join(src, "Driver.java"), []byte(readBoundsDriver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", classes,
 		filepath.Join(src, "hostile", "Hostile.java"), filepath.Join(src, "Driver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

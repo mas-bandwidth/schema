@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaRetainNamesEveryOwnId holds the retaining save's id interner to
@@ -246,11 +247,11 @@ func runRetainJava(t *testing.T, javac, javaBin string, files map[string][]byte,
 	}
 	sources = append(sources, driverPath)
 	compile := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, compile...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, compile...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	run := append([]string{"-ea", "-cp", classes, pkg + "." + class}, args...)
-	out, err := exec.Command(javaBin, run...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, run...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

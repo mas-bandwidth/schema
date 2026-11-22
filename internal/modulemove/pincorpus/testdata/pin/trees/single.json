@@ -1,0 +1,23 @@
+{
+  "layout": [
+    {"path": "app/generate.go", "lines": ["package app", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "@PIN /v2 v2.5.0@ generate --lang cpp --out generated", "// keep me exactly, trailing spaces and all   ", "func Thing() {}"]},
+    {"path": "app/app.go", "lines": ["package app"]}
+  ],
+  "cases": [
+    {"id": "single-pin-v2.6.0", "finding": "pin-304", "note": "control: the pin moves, every other byte and file stays", "version": "v2.6.0", "dirs": ["app"],
+     "after": [{"path": "app/generate.go", "lines": ["package app", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "@PIN /v2 v2.6.0@ generate --lang cpp --out generated", "// keep me exactly, trailing spaces and all   ", "func Thing() {}"]}]},
+    {"id": "single-refuse-v3.0.4", "finding": "pin-304", "note": "the released binary rewrote this to /v3@v3.0.4 and exited 0", "version": "v3.0.4", "dirs": ["app"], "error": "Go cannot resolve v3.0.4"},
+    {"id": "single-refuse-v3.0.5-under-boundary", "finding": "F-158", "version": "v3.0.5", "boundary": "v3.0.6", "dirs": ["app"], "error": "Go cannot resolve v3.0.5"},
+    {"id": "single-pin-v3.0.6-at-boundary", "finding": "F-158", "note": "control", "version": "v3.0.6", "boundary": "v3.0.6", "dirs": ["app"],
+     "after": [{"path": "app/generate.go", "lines": ["package app", "", "@PIN /v3 v3.0.6@ generate --lang go --out .", "@PIN /v3 v3.0.6@ generate --lang cpp --out generated", "// keep me exactly, trailing spaces and all   ", "func Thing() {}"]}]},
+    {"id": "single-refuse-empty-identifier", "finding": "F-159", "version": "v3.0.1-rc..0.20261121185943-f397f5f7765d", "dirs": ["app"], "error": "not a Go pseudo-version or semver tag"},
+    {"id": "single-refuse-leading-zero", "finding": "F-159", "version": "v2.5.1-beta.01", "dirs": ["app"], "error": "not a Go pseudo-version or semver tag"},
+    {"id": "single-pin-published-pseudo", "finding": "F-159", "note": "control", "version": "v2.5.1-0.20261121185943-f397f5f7765d", "dirs": ["app"],
+     "after": [{"path": "app/generate.go", "lines": ["package app", "", "@PIN /v2 v2.5.1-0.20261121185943-f397f5f7765d@ generate --lang go --out .", "@PIN /v2 v2.5.1-0.20261121185943-f397f5f7765d@ generate --lang cpp --out generated", "// keep me exactly, trailing spaces and all   ", "func Thing() {}"]}]},
+    {"id": "single-pin-major-past-int64", "finding": "F-160", "note": "the directive was rewritten to the unversioned module", "version": "v9223372036854775808.0.1", "dirs": ["app"],
+     "after": [{"path": "app/generate.go", "lines": ["package app", "", "@PIN /v9223372036854775808 v9223372036854775808.0.1@ generate --lang go --out .", "@PIN /v9223372036854775808 v9223372036854775808.0.1@ generate --lang cpp --out generated", "// keep me exactly, trailing spaces and all   ", "func Thing() {}"]}]},
+    {"id": "single-refuse-month-19", "finding": "F-161", "version": "v2.5.1-0.20261999185943-f397f5f7765d", "dirs": ["app"], "error": "month 19"},
+    {"id": "single-refuse-patch-zero", "finding": "F-162", "version": "v2.0.0-0.20261121185943-f397f5f7765d", "dirs": ["app"], "error": "patch 0 has none"},
+    {"id": "single-refuse-no-pin-dir", "finding": "pin-304", "note": "a directory that holds no pin line", "version": "v2.6.0", "dirs": ["app", "nope"], "error": "nope"}
+  ]
+}

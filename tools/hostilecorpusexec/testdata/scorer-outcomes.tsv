@@ -1,0 +1,9 @@
+# case	expected verdict	reference diagnostic	accepted SHA-256	worker reply	text body	scorer exit
+same-refusal	refuse	non_finite_float	-	refuse non_finite_float	-	0
+different-diagnostic	refuse	non_finite_float	-	refuse damaged	-	0
+generic-refusal	refuse	non_finite_float	-	refuse	-	0
+equal-accepted-value	accept	-	7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451	accept text	7	0
+different-accepted-value	accept	-	7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451	accept text	8	1
+unexpected-accept	refuse	non_finite_float	-	accept text	7	1
+unexpected-refusal	accept	-	7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451	refuse damaged	-	1
+worker-exit	refuse	damaged	-	exit	-	1

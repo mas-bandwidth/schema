@@ -1,0 +1,3 @@
+# THE JUDGE REVISIONS (F-216), revision 2 of 2: the same case id, replayed after revision 1 under the same work path.
+# The new side no longer writes wide.bin. A scratch revision 1 left behind would still hold it and pass the release.
+pin	refuse:packet wire, unit examples128, instance wide.bin	F-216 revision 2: the new side no longer writes wide.bin

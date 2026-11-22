@@ -3,12 +3,13 @@ package javatable
 import (
 	"bufio"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaJsonCommentIsWellFormedUTF8 holds the Java JSON reader to
@@ -125,7 +126,7 @@ public final class CommentProbe {
 
 	javac, javaBin := javaToolsRequired(t)
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	caseFiles := make([]string, len(rows))
@@ -133,7 +134,7 @@ public final class CommentProbe {
 		caseFiles[i] = r.path
 	}
 	runArgs := append([]string{"-ea", "-cp", dir, "probe.CommentProbe"}, caseFiles...)
-	out, err := exec.Command(javaBin, runArgs...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, runArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

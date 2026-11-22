@@ -1,0 +1,9 @@
+# THE JUDGE CORPUS (tools/releasediff/judgecorpus.go): id <TAB> verdict <TAB> what the case is.
+# A verdict is `pass`, or `refuse:` and the start of the difference that refuses the release.
+# Each case is <id>/previous.tsv and <id>/new.tsv: what each side's packet drivers wrote.
+identical	pass	control: both sides write the same pins
+pin-removed	refuse:packet wire, unit examples128, instance wide.bin	F-142: the new side no longer writes the driver's only pin, so no file name overlaps
+pin-renamed	refuse:packet wire, unit examples128, instance wide.bin	F-142: the new side writes the driver's only pin under another name
+pin-new-side-only	refuse:packet wire, unit examples128, instance wide.bin	F-142: the previous side wrote no pin and the new side writes one
+pin-extra	refuse:packet wire, unit examples128, instance extra.bin	control: an extra pin beside a common one always refused
+both-stopped-early	pass	control: both runs stopped early, so a listing is not held

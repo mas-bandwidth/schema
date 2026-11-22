@@ -1,0 +1,38 @@
+# The message form's cross-leg rules (1) and (2) of the 2026-11-21 review on
+# the Luau table runtime (docs/SPEC-TABLES.md §3.3), read by
+# TestLuauMessageRangedValueHeldToTheAnnouncedKind. A ranged integer read by
+# name is base plus offset held to the announced kind's domain, never
+# wrapped: a sum past it is refused, for 8, 64 and 128-bit kinds and where the
+# reader is wider than the announced kind. The skip path holds the same sum
+# and calls it damage. The lawful twin of every case reads.
+# id	field	offset	batch	want
+#
+# field: the writer's field (writer/Probe.schema) the one message carries;
+#        s and z are not the reader's and are skipped.
+# offset: the field's three-bit offset from its min; 5 is the kind's top,
+#         6 and 7 are past it.
+# batch: the committed message batch (hex): a body holding field at offset,
+#        then the terminator. The test rebuilds it from field and offset under
+#        the writer's vocabulary and refuses a drifted fixture.
+# want: read or refused (the verdict; the reason is logged, not compared).
+#
+# a uint8
+a-lawful-255	a	5	02002900	read
+a-256-past-uint8	a	6	02003100	refused
+a-257-past-uint8	a	7	02003900	refused
+# a uint8 announced, read into a uint16
+b-lawful-255-widened	b	5	02002a00	read
+b-257-past-announced-uint8	b	7	02003a00	refused
+# 64-bit kinds
+q-lawful-int64-top	q	5	02002b00	read
+q-past-int64	q	7	02003b00	refused
+r-lawful-uint64-top	r	5	02002c00	read
+r-past-uint64	r	7	02003c00	refused
+# a 128-bit kind
+h-lawful-int128-top	h	5	02002d00	read
+h-past-int128	h	7	02003d00	refused
+# skipped fields
+s-skip-lawful	s	5	02002e00	read
+s-skip-past-uint8	s	7	02003e00	refused
+z-skip-lawful	z	5	02002f00	read
+z-skip-past-int128	z	7	02003f00	refused

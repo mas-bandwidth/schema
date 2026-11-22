@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE WRITER HOLDS A MAP'S SORT (docs/PORTING.md M19; docs/SPEC-TABLES.md
@@ -121,10 +122,10 @@ func runMapSortDriver(t *testing.T, javac, javaBin string, files map[string][]by
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, srcs...)
 	args = append(args, filepath.Join(dir, "Driver.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver",
 		filepath.Join(dir, "want.wire"), filepath.Join(dir, "want.json")).CombinedOutput()
 	return string(out), err == nil && strings.Contains(string(out), "ok")
 }

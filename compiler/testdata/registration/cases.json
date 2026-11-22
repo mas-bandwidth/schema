@@ -1,0 +1,104 @@
+[
+  {
+    "ID": "declared-capability",
+    "First": {"Names": ["catalog", "listing"], "Carries": ["timestamp"]},
+    "Targets": ["catalog"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "catalog", "WantGenerator": "first"},
+      {"Schema": "Timestamp.schema", "Target": "listing", "WantGenerator": "first"},
+      {"Schema": "Required.schema", "Target": "catalog", "WantError": "required"}
+    ]
+  },
+  {
+    "ID": "undeclared-capability",
+    "First": {"Names": ["limited"]},
+    "Targets": ["limited"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "limited", "WantError": "limited target"}
+    ]
+  },
+  {
+    "ID": "unknown-capability",
+    "First": {"Names": ["catalog"], "Carries": ["typo"], "WantError": "no construct key"},
+    "Targets": [],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "catalog", "WantError": "is not implemented"}
+    ]
+  },
+  {
+    "ID": "snapshot-canonical-and-alias",
+    "First": {"Names": ["limited", "mirror"], "Carries": []},
+    "Second": {"Names": ["timed"], "Carries": ["timestamp"]},
+    "NameAfterRegister": "timed",
+    "Targets": ["limited", "timed"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "limited", "WantError": "limited target"},
+      {"Schema": "Timestamp.schema", "Target": "mirror", "WantError": "limited target"},
+      {"Schema": "Timestamp.schema", "Target": "timed", "WantGenerator": "second"}
+    ]
+  },
+  {
+    "ID": "snapshot-construct",
+    "First": {"Names": ["catalog"], "Carries": ["required"]},
+    "CarryAfterRegister": "timestamp",
+    "Targets": ["catalog"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "catalog", "WantError": "timestamp"},
+      {"Schema": "Required.schema", "Target": "catalog", "WantGenerator": "first"}
+    ]
+  },
+  {
+    "ID": "sequential-duplicate",
+    "First": {"Names": ["alpha"], "Carries": ["timestamp"]},
+    "Second": {"Names": ["alpha"], "Carries": ["timestamp"], "WantError": "already registered"},
+    "Targets": ["alpha"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "alpha", "WantGenerator": "first"}
+    ]
+  },
+  {
+    "ID": "nested-canonical-duplicate",
+    "First": {"Names": ["alpha"], "Carries": ["timestamp"], "WantError": "already registered"},
+    "Second": {"Names": ["alpha"], "Carries": ["timestamp"]},
+    "NestedIn": "Carries",
+    "Targets": ["alpha"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "alpha", "WantGenerator": "second"}
+    ]
+  },
+  {
+    "ID": "nested-alias-duplicate",
+    "First": {"Names": ["alpha", "memo"], "Carries": ["timestamp"], "WantError": "already registered"},
+    "Second": {"Names": ["memo"], "Carries": ["timestamp"]},
+    "NestedIn": "Carries",
+    "Targets": ["memo"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "memo", "WantGenerator": "second"},
+      {"Schema": "Timestamp.schema", "Target": "alpha", "WantError": "is not implemented"}
+    ]
+  },
+  {
+    "ID": "nested-names-alias",
+    "First": {"Names": ["alpha"], "Carries": ["timestamp"], "WantError": "already registered"},
+    "Second": {"Names": ["memo", "alpha"], "Carries": ["timestamp"]},
+    "NestedIn": "Names",
+    "Targets": ["memo"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "memo", "WantGenerator": "second"},
+      {"Schema": "Timestamp.schema", "Target": "alpha", "WantGenerator": "second"}
+    ]
+  },
+  {
+    "ID": "independent-callback-targets",
+    "First": {"Names": ["alpha", "a"], "Carries": ["timestamp"]},
+    "Second": {"Names": ["beta"], "Carries": ["required"]},
+    "NestedIn": "Carries",
+    "Targets": ["alpha", "beta"],
+    "Requests": [
+      {"Schema": "Timestamp.schema", "Target": "alpha", "WantGenerator": "first"},
+      {"Schema": "Timestamp.schema", "Target": "a", "WantGenerator": "first"},
+      {"Schema": "Required.schema", "Target": "beta", "WantGenerator": "second"},
+      {"Schema": "Timestamp.schema", "Target": "beta", "WantError": "beta target"}
+    ]
+  }
+]
