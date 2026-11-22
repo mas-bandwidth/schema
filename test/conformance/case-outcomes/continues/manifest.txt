@@ -1,0 +1,32 @@
+# EVERY CASE GETS AN ANSWER (review 2026-11-21): the rows that stopped the
+# Java, Lobster, Moo and Squirrel drivers partway through json-hostile,
+# write-refusal and write-refusal-json under `make -k -j4 conformance`, each
+# FIRST and a control BEHIND it on the same surface, held by make's
+# <lang>-case-outcomes-continues gates beside expected.txt. The rows are in
+# the DERIVED manifest's shape the drivers read
+# (testdata/conformance/tables/FORMAT.md): no verdict column.
+#
+#   depth-arm-pointer-past-cap: every one of these readers accepts the tree
+#     and its writer then refuses the value; the drivers died there, and the
+#     other 197 hostile rows went unanswered. The read's verdict is the answer.
+#   wref_var_layers_count_ok: Java grew graph_tree's EMPTY layers list with
+#     null, and the save died on the null element.
+#   wref_var_arm_length / jref_var_arm_length: a path through an array of
+#     unions to an arm (bounded_steps[3].label); Lobster, Moo and Squirrel
+#     looked the union up as a table and died.
+#   wref_var_u64_wide / wref_var_u64_ok: Lobster asserted on a token past
+#     int64; an unsigned 64-bit field holds 2^64 - 1 as its wrap.
+
+json-hostile depth-arm-pointer-past-cap streamdemo Feed testdata/conformance/tables/json-hostile/depth-arm-pointer-past-cap
+json-hostile depth-arm-pointer-at-cap streamdemo Feed testdata/conformance/tables/json-hostile/depth-arm-pointer-at-cap
+
+write-refusal wref_var_layers_count_ok graphdemo Scene testdata/wire/tables/graph_tree.bin layers count 4
+write-refusal wref_var_layers_count graphdemo Scene testdata/wire/tables/graph_tree.bin layers count 5
+write-refusal wref_var_arm_length_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[3].label length 12
+write-refusal wref_var_arm_length cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[3].label length 13
+write-refusal wref_var_u64_wide cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64 int 18446744073709551616
+write-refusal wref_var_u64_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64 int 18446744073709551615
+write-refusal wref_var_count_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps count 4
+
+write-refusal-json jref_var_arm_length_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[3].label length 12
+write-refusal-json jref_var_arm_length cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[3].label length 13
