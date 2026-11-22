@@ -1,0 +1,74 @@
+{
+  "about": "Review findings F-010, F-011 and F-140 (2026-11-21) as a filesystem corpus. Each case runs on a fresh copy of unit/ and tree/ under {work}, after the setup commands. A refused case must exit nonzero naming its flag, leave unit/ and tree/ byte for byte, and leave the next check and pack working; every entry in same_entry must be the directory entry it was (inode, mode, time, and its hard link). A control must exit 0.",
+  "setup": [
+    ["cook", "--root", "Player", "--in", "{work}/tree", "--out", "{work}/out/control.cook", "{work}/unit"]
+  ],
+  "cases": [
+    {
+      "id": "F-010/pack-announce-onto-a-field-file",
+      "args": ["pack", "--root", "Player", "--message", "--announce", "{work}/tree/level.json", "--out", "{work}/out/msg.bin", "{work}/tree", "{work}/unit"],
+      "exit": 1, "names": "--announce"
+    },
+    {
+      "id": "F-010/pack-out-as-a-fresh-file-in-the-tree",
+      "args": ["pack", "--root", "Player", "--message", "--announce", "{work}/out/ann.bin", "--out", "{work}/tree/fresh.bin", "{work}/tree", "{work}/unit"],
+      "exit": 1, "names": "--out"
+    },
+    {
+      "id": "F-010/cook-attribution-onto-a-field-file",
+      "args": ["cook", "--root", "Player", "--in", "{work}/tree", "--attribution", "{work}/tree/level.json", "--out", "{work}/out/split.cook", "{work}/unit"],
+      "exit": 1, "names": "--attribution"
+    },
+    {
+      "id": "F-010/cook-attribution-through-a-symlinked-tree",
+      "layout": {"symlinks": {"alias": "tree"}},
+      "args": ["cook", "--root", "Player", "--in", "{work}/tree", "--attribution", "{work}/alias/level.json", "--out", "{work}/out/split.cook", "{work}/unit"],
+      "exit": 1, "names": "--attribution"
+    },
+    {
+      "id": "F-010/control-separate-destinations",
+      "args": ["pack", "--root", "Player", "--message", "--announce", "{work}/out/ann.bin", "--out", "{work}/out/msg.bin", "{work}/tree", "{work}/unit"],
+      "exit": 0
+    },
+    {
+      "id": "F-011/pack-announce-onto-the-schema-source",
+      "args": ["pack", "--root", "Player", "--message", "--announce", "{work}/unit/Player.schema", "--out", "{work}/out/msg.bin", "{work}/tree", "{work}/unit"],
+      "exit": 1, "names": "--announce"
+    },
+    {
+      "id": "F-011/cook-attribution-onto-the-schema-source",
+      "args": ["cook", "--root", "Player", "--in", "{work}/tree", "--attribution", "{work}/unit/Player.schema", "--out", "{work}/out/split.cook", "{work}/unit"],
+      "exit": 1, "names": "--attribution"
+    },
+    {
+      "id": "F-011/uncook-out-onto-the-schema-source",
+      "args": ["uncook", "--root", "Player", "--in", "{work}/out/control.cook", "--out", "{work}/unit/Player.schema", "{work}/unit"],
+      "exit": 1, "names": "--out"
+    },
+    {
+      "id": "F-011/uncook-out-onto-a-hard-link-of-the-schema-source",
+      "layout": {"hardlinks": {"out/twin.schema": "unit/Player.schema"}},
+      "args": ["uncook", "--root", "Player", "--in", "{work}/out/control.cook", "--out", "{work}/out/twin.schema", "{work}/unit"],
+      "exit": 1, "names": "--out"
+    },
+    {
+      "id": "F-011/control-uncook-beside-the-source",
+      "args": ["uncook", "--root", "Player", "--in", "{work}/out/control.cook", "--out", "{work}/unit/Player.bin", "{work}/unit"],
+      "exit": 0
+    },
+    {
+      "id": "F-140/symlinked-attribution-and-a-directory-for-out",
+      "layout": {"files": {"out/attr.bin": "an earlier attribution", "out/taken/inside": "inside"}, "symlinks": {"out/attr.link": "attr.bin"}, "hardlinks": {"out/attr.peer": "out/attr.link"}},
+      "args": ["cook", "--root", "Player", "--in", "{work}/tree", "--attribution", "{work}/out/attr.link", "--out", "{work}/out/taken", "{work}/unit"],
+      "exit": 1,
+      "same_entry": ["out/attr.link", "out/attr.peer", "out/attr.bin", "out/taken"]
+    },
+    {
+      "id": "F-140/control-regular-attribution-and-a-directory-for-out",
+      "layout": {"files": {"out/attr.bin": "an earlier attribution", "out/taken/inside": "inside"}, "hardlinks": {"out/attr.peer": "out/attr.bin"}},
+      "args": ["cook", "--root", "Player", "--in", "{work}/tree", "--attribution", "{work}/out/attr.bin", "--out", "{work}/out/taken", "{work}/unit"],
+      "exit": 1,
+      "same_entry": ["out/attr.bin", "out/attr.peer", "out/taken"]
+    }
+  ]
+}

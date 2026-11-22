@@ -1,0 +1,3 @@
+package sample
+union Choice { values [2..4]int32 }
+table Root { picked Choice }

@@ -18,9 +18,9 @@ import (
 
 // Construction starts a positive-minimum count at that minimum (SPEC 4.2),
 // recursively through table closures. Go and the reference engine use that rule
-// for absent fields and reset, and so do the C and C++ controls since #4564;
-// an unused slot past the count keeps its constructed value. Fixed files use
-// legal positive counts and form 3;
+// for absent fields and reset, as do C# since CS-5 (76e232e769) and the C and
+// C++ controls since #4564; an unused slot past the count keeps its
+// constructed value. Fixed files use legal positive counts and form 3;
 // unused form-3 array slots remain zero slack.
 func TestTableClosureCountDefaults(t *testing.T) {
 	t.Parallel()
@@ -254,7 +254,7 @@ class Program {
   byte[] empty={@EMPTY@},full={@FULL@},minimal={@MINIMAL@};
   var plan=new TableFixedEntry[4096];
   var value=new Root();var leaf=new Leaf();var report=new TableReport();
-  Check(Schema.LeafLoad(leaf,empty,report)&&leaf.ValuesCount==0&&leaf.Marker==7);
+  Check(Schema.LeafLoad(leaf,empty,report)&&leaf.ValuesCount==1&&leaf.Marker==7);
   for(int i=0;i<8;i++) {
    bool populated=i%2==0;var wire=populated?full:minimal;report=new TableReport();
    var loaded=new Root[]{new Root()};
@@ -265,8 +265,8 @@ class Program {
    var saved=new byte[wire.Length];
    Check(Schema.RootFixedMeasure(1)==wire.Length&&Schema.RootFixedSave(value,saved)==wire.Length&&saved.AsSpan().SequenceEqual(wire));
   }
-  Schema.TableReset(value);Check(value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0&&value.Payload.Rows[1].Marker==7);
-  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&value.Payload.Leaf.ValuesCount==0&&value.Payload.RowsCount==0&&value.Payload.Rows[1].ValuesCount==0);
+  Schema.TableReset(value);Check(value.Payload.Leaf.ValuesCount==1&&value.Payload.RowsCount==1&&value.Payload.Rows[1].ValuesCount==1&&value.Payload.Rows[1].Marker==7);
+  Check(Schema.RootFromJson(value,new byte[]{123,125},report)&&value.Payload.Leaf.ValuesCount==1&&value.Payload.RowsCount==1&&value.Payload.Rows[1].ValuesCount==1);
  }
 }
 `

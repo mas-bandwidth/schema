@@ -108,6 +108,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"tableFixedTextUtf8", "tableFixedWiden", "tableFixedWidenF", "u128_lt",
 	},
 	"json.lobster": {
+		"JsonKeys",
 		"j_comment_text", "j_integer_token", "j_shape_matches", "j_wide_integer_kind",
 		"JsonBlobCount", "JsonFlags", "JsonGuard", "JsonInt", "JsonLabel", "JsonNodeCount", "JsonReader", "JsonTextTotal",
 		"JsonWriter", "j_array_count", "j_b64", "j_b64_alphabet", "j_b64_table", "j_bn_add", "j_bn_add_small",
@@ -123,7 +124,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"j_node_entry", "j_pad", "j_parse_f32", "j_parse_wide", "j_peek", "j_place_float", "j_place_integer",
 		"j_place_map_key", "j_place_wide", "j_raw", "j_read_array", "j_read_base64", "j_read_blob", "j_read_field",
 		"j_read_flags", "j_read_keyed", "j_read_map", "j_read_map_value", "j_read_pointer_cell", "j_read_scalar",
-		"j_key_once", "j_length_admitted", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
+		"j_key_new", "j_length_admitted", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
 		"j_rfc3339_parse", "j_round", "j_scale", "j_scan_label", "j_scan_number", "j_scan_stored", "j_scan_string",
 		"j_scan_text", "j_scan_unit", "j_shape", "j_skip_container", "j_skip_string",
 		"j_skip_value", "j_skipped_ampersand", "j_sorted_entries", "j_space", "j_storage_bytes", "j_strip_zeros", "j_text_total_of",
@@ -162,6 +163,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"load_elem_is_default", "load_field_elides", "load_is_default", "wire_ref",
 	},
 	"message.lobster": {
+		"message_ranged_holds", "message_skip_field",
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
 		"MessageVocabulary", "MessageWriter", "announce", "announce_inner", "announce_measure", "announce_read",
 		"is_message_root", "load_messages", "load_messages_into", "mb_align", "mb_get",
