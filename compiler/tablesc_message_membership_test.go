@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Both packages go through the public C generator. The newer sender really
@@ -130,10 +131,10 @@ func TestCTableMessageOrderAndMembership(t *testing.T) {
 			args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
 			ctx, cancel := slowtest.ProbeContext(t)
 			defer cancel()
-			if out, err := exec.CommandContext(ctx, "cc", args...).CombinedOutput(); err != nil {
+			if out, err := testproc.CommandContext(t, ctx, "cc", args...).CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
-			if out, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+			if out, err := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 				t.Fatalf("execute: %v\n%s", err, out)
 			}
 		})

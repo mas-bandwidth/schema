@@ -51,7 +51,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -64,6 +63,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -1232,7 +1233,7 @@ debug = 0
 	// tests`, measured at 13 s of a 17 s run on a 32-core host (2026-11-14),
 	// and the most of what pushed the Rust leg gate past the fleet's
 	// two-minute cap. The test binaries are the same; nothing they run is cut.
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast", "--lib")
+	cmd := testproc.Command(t, "cargo", "test", "--workspace", "--no-fail-fast", "--lib")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

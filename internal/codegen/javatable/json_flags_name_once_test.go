@@ -2,13 +2,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaJsonFlagsNameOnce holds the Java JSON reader to the flags row of
@@ -133,11 +134,11 @@ public final class FlagsNameOnceProbe {
 	}
 	sources = append(sources, p)
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	runArgs := append([]string{"-ea", "-cp", dir, u.Package + ".FlagsNameOnceProbe"}, paths...)
-	out, err := exec.Command(javaBin, runArgs...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, runArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

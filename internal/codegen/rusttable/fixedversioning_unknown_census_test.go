@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) reads the OLD
@@ -83,7 +84,7 @@ fn v_unknown_census_new_reads_old() {
 		src:    versionProbeSource(tests),
 	})
 
-	cmd := exec.Command("cargo", "test")
+	cmd := testproc.Command(t, "cargo", "test")
 	cmd.Dir = filepath.Join(root, "probe_unknown_census")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

@@ -1,0 +1,38 @@
+# The golangci-lint classes corpus, linter half (PR #4515, finding F-210).
+#
+# make schema-go-generated-golangci-lint-gate-classes generates Go from
+# packet/Flat.schema and tables/Lanes.schema with bin/schema, lints each module
+# with the gate's pinned golangci-lint and narrow config, counts findings per
+# generated FILE, and compares them with these pins under the gate's ratchet:
+# a count may stay or fall, never grow, and a file, linter or rule absent here
+# must not appear (its pin is zero). The shape half is shapes.tsv beside it.
+#
+#   file<TAB>linter<TAB>rule<TAB>count
+#
+# file is <corpus>/<generated file>; rule is "-" except for gosec, pinned per
+# G-rule. Measured with golangci-lint 2.12.2 at the train-3 head that carries
+# #4515. The generator before #4515 emitted, for the same two schemas:
+#   packet/Flat.go errcheck 4, tables/LanesBlock.go G103 8,
+#   tables/LanesCook.go G103 13 and G115 10, tables/LanesTable.go G103 14 and
+#   G115 47, tables/LanesTableMessage.go G115 18.
+#
+# errcheck, flat packet runs: zero; the sticky stream error is discarded
+# explicitly and checked once per run.
+packet/Flat.go	errcheck	-	0
+# G115 and G103 in the unit's own files: what is left after the same-width
+# lanes, the masked and #nosec narrowing, and the shared Open and overlay
+# helpers.
+tables/LanesBlock.go	gosec	G103	3
+tables/LanesBlock.go	gosec	G115	8
+tables/LanesCook.go	gosec	G103	10
+tables/LanesCook.go	gosec	G115	7
+tables/LanesTable.go	gosec	G103	10
+tables/LanesTable.go	gosec	G115	7
+tables/LanesTableMessage.go	gosec	G115	14
+# the package runtime the unit carries (the overlay helper's one unsafe call
+# moved here)
+tables/LintlanesTable.go	gosec	G103	33
+tables/LintlanesTable.go	gosec	G115	95
+tables/LintlanesTableJson.go	gosec	G103	32
+tables/LintlanesTableJson.go	gosec	G115	35
+tables/LintlanesTableMessage.go	gosec	G115	5

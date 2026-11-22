@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -31,6 +30,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t08Union is one fixed table whose single field is a union with an arm that
@@ -412,10 +413,10 @@ func t08Probe(t *testing.T, units []*ir.Unit, probe string, asan bool) string {
 		args = append(args, "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-g")
 	}
 	args = append(args, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("t08: the probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("t08: the probe failed: %v\n%s", err, out)
 	}
