@@ -27,13 +27,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const planMaxOld = `package planmaxold
@@ -160,7 +161,7 @@ func TestFixedPlanMaxCoversEveryLineagePlan(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(probe, "planmax_test.go"), []byte(planMaxProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 	cmd.Dir = probe
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("FixedPlanMax did not cover every lineage plan (§5.2):\n%s", out)

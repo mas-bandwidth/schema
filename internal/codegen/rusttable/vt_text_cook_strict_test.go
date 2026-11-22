@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The STRICT-100 cells vt/text-form/rust, vt/cook-write/rust and
@@ -206,12 +207,12 @@ fn main() {
 	if err := os.WriteFile(filepath.Join(work, "main.rs"), []byte(main), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "--cfg", `feature="cook"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
 	cmd.Dir = work
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return out, err
 	}
-	cmd = exec.Command(filepath.Join(work, "run"))
+	cmd = testproc.Command(t, filepath.Join(work, "run"))
 	cmd.Dir = work
 	return cmd.CombinedOutput()
 }

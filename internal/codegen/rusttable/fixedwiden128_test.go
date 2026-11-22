@@ -31,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const widen128OldSchema = `package probe
@@ -227,12 +229,12 @@ func widen128BuildAndRun(t *testing.T, files map[string][]byte, mainSrc, name st
 		}
 	}
 	args = append(args, "-o", bin, "main.rs")
-	build := exec.Command("rustc", args...)
+	build := testproc.Command(t, "rustc", args...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		return string(out), fmt.Errorf("rustc %s: %w", name, err)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

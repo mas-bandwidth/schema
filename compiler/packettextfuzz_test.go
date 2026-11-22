@@ -35,6 +35,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // packetTextSeed is one pinned vector: a name from the #556/#188 corpus and
@@ -263,7 +265,7 @@ func compilePacketTextDriver(t *testing.T, dir string, leg packetTextLeg, defect
 	} else {
 		args = append([]string{"-std=c99"}, args...)
 	}
-	if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, compiler, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile %s packet text driver: %v\n%s", leg.lang, err, out)
 	}
 	return bin
@@ -304,7 +306,7 @@ func runPacketTextFuzz(t *testing.T, bin string) (divergence string, cases int) 
 		}
 	}
 
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Stdin = &stdin
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout

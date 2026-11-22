@@ -11,7 +11,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -20,6 +19,8 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJavaSaveMessagesWriteContract(t *testing.T) {
@@ -164,7 +165,7 @@ func runMessageWriteContract(t *testing.T, u *ir.Unit, javac, javaBin string) (s
 		t.Fatal(err)
 	}
 	args = append(args, driverPath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	run := func(enableAssertions bool) string {
@@ -174,7 +175,7 @@ func runMessageWriteContract(t *testing.T, u *ir.Unit, javac, javaBin string) (s
 			javaArgs = append(javaArgs, "-ea")
 		}
 		javaArgs = append(javaArgs, "-cp", classes, u.Package+".Driver")
-		out, err := exec.Command(javaBin, javaArgs...).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, javaArgs...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("java (ea=%t): %v\n%s", enableAssertions, err, out)
 		}

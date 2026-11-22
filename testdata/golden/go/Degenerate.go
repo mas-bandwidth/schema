@@ -272,7 +272,7 @@ func WriteSpanChunk(stream *serialize.WriteStream, value *SpanChunk) error {
 	f2 := uint64(value.Values[2]) & 0xffff
 	f3 := uint64(value.Values[3]) & 0xffff
 	w0 := f0 | f1<<16 | f2<<32 | f3<<48
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -292,7 +292,7 @@ func ReadSpanChunk(stream *serialize.ReadStream, value *SpanChunk) error {
 // SpanChunk nested in another value is read through it.
 func (value *SpanChunk) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -449,7 +449,7 @@ func WriteTrio(stream *serialize.WriteStream, value *Trio) error {
 	f1 := uint64(value.B) & 0xfffff
 	f2 := uint64(value.C) & 0xffffff
 	w0 := f0 | f1<<20 | f2<<40
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -468,7 +468,7 @@ func ReadTrio(stream *serialize.ReadStream, value *Trio) error {
 // nested in another value is read through it.
 func (value *Trio) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -512,7 +512,7 @@ func WriteTrioSole(stream *serialize.WriteStream, value *TrioSole) error {
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
 	w0 := f0 | f1<<20 | f2<<40
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -532,7 +532,7 @@ func ReadTrioSole(stream *serialize.ReadStream, value *TrioSole) error {
 // TrioSole nested in another value is read through it.
 func (value *TrioSole) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -626,9 +626,9 @@ func WriteTrioFirst(stream *serialize.WriteStream, value *TrioFirst) error {
 	f2 := uint64(value.Inner.C) & 0xffffff
 	f3 := uint64(value.Trailer) & 0xffff
 	w0 := f0 | f1<<20 | f2<<40
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := uint32(f3)
-	stream.SerializeBits(&w1, 16)
+	_ = stream.SerializeBits(&w1, 16) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -648,9 +648,9 @@ func ReadTrioFirst(stream *serialize.ReadStream, value *TrioFirst) error {
 // TrioFirst nested in another value is read through it.
 func (value *TrioFirst) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	n1 := uint32(0)
-	stream.SerializeBits(&n1, 16)
+	_ = stream.SerializeBits(&n1, 16) // sticky: checked once for the run below
 	c1 := uint64(n1)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -712,7 +712,7 @@ func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error
 	f1 := uint64(value.Inner.B) & 0xfffff
 	f2 := uint64(value.Inner.C) & 0xffffff
 	w0 := f0 | f1<<20 | f2<<40
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -738,7 +738,7 @@ func (value *TrioStraddle) read(stream *serialize.ReadStream) error {
 	stream.SerializeBits64(&value.Pad4, 64)
 	stream.SerializeBits(&value.Pad5, 24)
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}

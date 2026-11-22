@@ -480,9 +480,9 @@ func WriteF13(stream *serialize.WriteStream, value *F13) error {
 	f5 := uint64(value.Items[5]) & 0x1fff
 	f6 := uint64(value.Items[6]) & 0x1fff
 	w0 := f0 | f1<<13 | f2<<26 | f3<<39 | f4<<52
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := uint32(f4>>12 | f5<<1 | f6<<14)
-	stream.SerializeBits(&w1, 27)
+	_ = stream.SerializeBits(&w1, 27) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -501,9 +501,9 @@ func ReadF13(stream *serialize.ReadStream, value *F13) error {
 // nested in another value is read through it.
 func (value *F13) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	n1 := uint32(0)
-	stream.SerializeBits(&n1, 27)
+	_ = stream.SerializeBits(&n1, 27) // sticky: checked once for the run below
 	c1 := uint64(n1)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -553,7 +553,7 @@ func WriteTri3(stream *serialize.WriteStream, value *Tri3) error {
 	f0 := uint64(value.A) & 0x1
 	f1 := uint64(value.B) & 0x3
 	w0 := uint32(f0 | f1<<1)
-	stream.SerializeBits(&w0, 3)
+	_ = stream.SerializeBits(&w0, 3) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -572,7 +572,7 @@ func ReadTri3(stream *serialize.ReadStream, value *Tri3) error {
 // nested in another value is read through it.
 func (value *Tri3) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 3)
+	_ = stream.SerializeBits(&n0, 3) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -678,7 +678,7 @@ func WriteArrTri3(stream *serialize.WriteStream, value *ArrTri3) error {
 		f14 := uint64(value.Items[i+7].A) & 0x1
 		f15 := uint64(value.Items[i+7].B) & 0x3
 		w0 := uint32(f0 | f1<<1 | f2<<3 | f3<<4 | f4<<6 | f5<<7 | f6<<9 | f7<<10 | f8<<12 | f9<<13 | f10<<15 | f11<<16 | f12<<18 | f13<<19 | f14<<21 | f15<<22)
-		stream.SerializeBits(&w0, 24)
+		_ = stream.SerializeBits(&w0, 24) // sticky: the stream latches the first error and Err reports it
 	}
 	for ; i < value.ItemsCount; i++ {
 		if value.Items[i].A > 1 { // a value above the bits(1) wire width cannot ride
@@ -690,7 +690,7 @@ func WriteArrTri3(stream *serialize.WriteStream, value *ArrTri3) error {
 		f0 := uint64(value.Items[i].A) & 0x1
 		f1 := uint64(value.Items[i].B) & 0x3
 		w0 := uint32(f0 | f1<<1)
-		stream.SerializeBits(&w0, 3)
+		_ = stream.SerializeBits(&w0, 3) // sticky: the stream latches the first error and Err reports it
 	}
 	return stream.Err()
 }
@@ -722,7 +722,7 @@ func (value *ArrTri3) read(stream *serialize.ReadStream) error {
 	i := int32(0)
 	for ; i+8 <= value.ItemsCount; i += 8 {
 		n0 := uint32(0)
-		stream.SerializeBits(&n0, 24)
+		_ = stream.SerializeBits(&n0, 24) // sticky: checked once for the run below
 		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
@@ -762,7 +762,7 @@ func (value *ArrTri3) read(stream *serialize.ReadStream) error {
 	}
 	for ; i < value.ItemsCount; i++ {
 		n0 := uint32(0)
-		stream.SerializeBits(&n0, 3)
+		_ = stream.SerializeBits(&n0, 3) // sticky: checked once for the run below
 		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
@@ -803,7 +803,7 @@ func WriteEleven(stream *serialize.WriteStream, value *Eleven) error {
 	f0 := uint64(value.A) & 0x7
 	f1 := uint64(value.B) & 0xff
 	w0 := uint32(f0 | f1<<3)
-	stream.SerializeBits(&w0, 11)
+	_ = stream.SerializeBits(&w0, 11) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -823,7 +823,7 @@ func ReadEleven(stream *serialize.ReadStream, value *Eleven) error {
 // Eleven nested in another value is read through it.
 func (value *Eleven) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
-	stream.SerializeBits(&n0, 11)
+	_ = stream.SerializeBits(&n0, 11) // sticky: checked once for the run below
 	c0 := uint64(n0)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -896,7 +896,7 @@ func WriteArrEleven(stream *serialize.WriteStream, value *ArrEleven) error {
 		f8 := uint64(value.Items[i+4].A) & 0x7
 		f9 := uint64(value.Items[i+4].B) & 0xff
 		w0 := f0 | f1<<3 | f2<<11 | f3<<14 | f4<<22 | f5<<25 | f6<<33 | f7<<36 | f8<<44 | f9<<47
-		stream.SerializeBits64(&w0, 55)
+		_ = stream.SerializeBits64(&w0, 55) // sticky: the stream latches the first error and Err reports it
 	}
 	for ; i < 9; i++ {
 		if value.Items[i].A > 7 { // a value above the bits(3) wire width cannot ride
@@ -908,7 +908,7 @@ func WriteArrEleven(stream *serialize.WriteStream, value *ArrEleven) error {
 		f0 := uint64(value.Items[i].A) & 0x7
 		f1 := uint64(value.Items[i].B) & 0xff
 		w0 := uint32(f0 | f1<<3)
-		stream.SerializeBits(&w0, 11)
+		_ = stream.SerializeBits(&w0, 11) // sticky: the stream latches the first error and Err reports it
 	}
 	return stream.Err()
 }
@@ -931,7 +931,7 @@ func (value *ArrEleven) read(stream *serialize.ReadStream) error {
 	i := 0
 	for ; i+5 <= 9; i += 5 {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 55)
+		_ = stream.SerializeBits64(&c0, 55) // sticky: checked once for the run below
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -958,7 +958,7 @@ func (value *ArrEleven) read(stream *serialize.ReadStream) error {
 	}
 	for ; i < 9; i++ {
 		n0 := uint32(0)
-		stream.SerializeBits(&n0, 11)
+		_ = stream.SerializeBits(&n0, 11) // sticky: checked once for the run below
 		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
@@ -1394,7 +1394,7 @@ func WriteArrNested(stream *serialize.WriteStream, value *ArrNested) error {
 		f6 := uint64(value.Items[i+3].A) & 0x7
 		f7 := uint64(value.Items[i+3].B) & 0xff
 		w0 := f0 | f1<<3 | f2<<11 | f3<<14 | f4<<22 | f5<<25 | f6<<33 | f7<<36
-		stream.SerializeBits64(&w0, 44)
+		_ = stream.SerializeBits64(&w0, 44) // sticky: the stream latches the first error and Err reports it
 	}
 	for ; i < value.ItemsCount; i++ {
 		if value.Items[i].A > 7 { // a value above the bits(3) wire width cannot ride
@@ -1406,7 +1406,7 @@ func WriteArrNested(stream *serialize.WriteStream, value *ArrNested) error {
 		f0 := uint64(value.Items[i].A) & 0x7
 		f1 := uint64(value.Items[i].B) & 0xff
 		w0 := uint32(f0 | f1<<3)
-		stream.SerializeBits(&w0, 11)
+		_ = stream.SerializeBits(&w0, 11) // sticky: the stream latches the first error and Err reports it
 	}
 	if value.Tail > 7 { // a value above the bits(3) wire width cannot ride
 		return serialize.ErrValueOutOfRange
@@ -1443,7 +1443,7 @@ func (value *ArrNested) read(stream *serialize.ReadStream) error {
 	i := int32(0)
 	for ; i+4 <= value.ItemsCount; i += 4 {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 44)
+		_ = stream.SerializeBits64(&c0, 44) // sticky: checked once for the run below
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -1466,7 +1466,7 @@ func (value *ArrNested) read(stream *serialize.ReadStream) error {
 	}
 	for ; i < value.ItemsCount; i++ {
 		n0 := uint32(0)
-		stream.SerializeBits(&n0, 11)
+		_ = stream.SerializeBits(&n0, 11) // sticky: checked once for the run below
 		c0 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()

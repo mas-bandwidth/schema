@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A TABLE VALUE WHOSE POINTERS FORM A LONG CHAIN IS A LAWFUL VALUE
@@ -108,10 +109,10 @@ func TestJavaSaveLongPointerChain(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, srcs...)
 	args = append(args, driver)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "ChainDriver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "ChainDriver",
 		filepath.Join(dir, "big.wire"), filepath.Join(dir, "small.wire")).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "ok") {
 		t.Fatalf("the Java long-chain driver failed: %v\n%s", err, out)

@@ -29,6 +29,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const planCapOld = `package plancapold
@@ -138,12 +140,12 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "plan_cap")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the generated reader did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("the newer reader did not load the older writer's file: %v\n%s", err, out)

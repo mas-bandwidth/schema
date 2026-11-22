@@ -3,7 +3,6 @@ package rusttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Compile all emitted table modules, including accelerators, so a root whose
@@ -44,12 +45,12 @@ func rustFormsProbe(t *testing.T, files map[string][]byte, body string) {
 	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(main.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("rustc", "--edition", "2024", "--cfg", `feature="cook"`, "--cfg", `feature="block"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "--cfg", `feature="cook"`, "--cfg", `feature="block"`, "-O", "-A", "warnings", "-o", "run", "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Rust forms compile: %v\n%s", err, out)
 	}
-	cmd = exec.Command(filepath.Join(dir, "run"))
+	cmd = testproc.Command(t, filepath.Join(dir, "run"))
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Rust forms run: %v\n%s", err, out)
