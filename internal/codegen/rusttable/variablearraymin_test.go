@@ -282,7 +282,7 @@ fn main() {
 	run := testproc.Command(t, debugBin, "under")
 	var debugErr bytes.Buffer
 	run.Stderr = &debugErr
-	if out, err := run.Output(); err == nil || !strings.Contains(debugErr.String(), "items count under 2") {
+	if out, err := run.Output(); err == nil || !strings.Contains(debugErr.String(), "items count outside 2..3") {
 		t.Errorf("a debug save under Min did not assert by name: err=%v stdout=%s stderr=%s", err, out, debugErr.String())
 	}
 }

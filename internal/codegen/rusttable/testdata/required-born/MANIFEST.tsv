@@ -3,3 +3,4 @@ required-child/fresh	required-child/Shapes.schema	fresh	required-child/fresh.bin
 required-child/nondefault	required-child/Shapes.schema	one-child-set	required-child/one-child-set.bin	required field present with changed child
 plain-child/fresh	plain-child/Shapes.schema	fresh	plain-child/fresh.bin	non-required child field elided
 required-scalar/fresh	required-scalar/Shapes.schema	fresh	required-scalar/fresh.bin	required scalar field present
+optional-scalar/present-birth	optional-scalar/Shapes.schema	present-birth	optional-scalar/present-birth.bin	optional field present at birth
