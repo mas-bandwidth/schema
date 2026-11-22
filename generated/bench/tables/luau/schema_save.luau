@@ -878,7 +878,7 @@ end
 local function at_default(fd: any, val: any): boolean
 	local s = fd.s
 	if s == "bool" then return (val == true) == (fd.def == true) end
-	if s == "float" then return same_float(held_float(fd, val), fd.def, fd.f32) end
+	if s == "float" then return same_float(held_float(fd, val), held_float(fd, fd.def), fd.f32) end
 	if s == "int" then return same_int(val, fd.def) end
 	return as_number(val) == as_number(fd.def)
 end

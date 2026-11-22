@@ -1426,7 +1426,15 @@ namespace Blockhome
                         o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                         return true;
                     case 10:
-                        return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                        // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+                        // (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+                        // fixed-compressed-negzero): it writes 0, never -0. A plain
+                        // float's -0 is a value and is written as one.
+                        {
+                            uint bits = unchecked((uint)f.GetRaw(owner, index));
+                            if (f.HasRange && bits == 0x80000000u) { bits = 0; }
+                            return WriteFloat(ref o, TableBitsToFloat(bits), true);
+                        }
                     case 11:
                         return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
                     case 2:
@@ -5281,7 +5289,8 @@ namespace Blockhome
                     TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
                 }
-                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+                // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
@@ -5403,12 +5412,24 @@ namespace Blockhome
             public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
             static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
             static bool Named(string name) { return name != null && name != "???"; }
-            // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
-            // under a +0 default rides and reads back as -0.
+            // Elision compares BITS for a plain float (docs/SPEC-TABLES.md §3.3): a -0
+            // under a +0 default rides and reads back as -0. A COMPRESSED float's -0
+            // IS +0, so it compares by value, and under a +0 default it is elided.
             static bool DefaultRaw(ulong raw, TableFieldInfo f)
             {
-                if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
+                if (f.Kind == 10)
+                {
+                    if (f.HasRange) { return BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)) == BitConverter.Int32BitsToSingle(unchecked((int)(uint)f.DefaultRaw)); }
+                    return (uint)raw == (uint)f.DefaultRaw;
+                }
                 return raw == f.DefaultRaw;
+            }
+            // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+            // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bits as +0.
+            // A compressed float is a float32 (SPEC.md §4.3).
+            internal static ulong StoredRaw(ulong raw, TableFieldInfo f)
+            {
+                return f.Kind == 10 && f.HasRange && (uint)raw == 0x80000000u ? 0 : raw;
             }
             static bool DefaultElement(object value, TableFieldInfo f, int i)
             {
@@ -5640,7 +5661,7 @@ namespace Blockhome
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
                     w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
-                else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
+                else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
             }
             static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, scoped ReadOnlySpan<long> elemCache = default)
             {

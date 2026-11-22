@@ -1,0 +1,7 @@
+package bindingvalues
+
+const number = 1
+const bigint = 2
+const symbol = 3
+const unknown = 4
+const never = 5

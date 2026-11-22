@@ -26,7 +26,7 @@ import (
 // check, then the throw.
 func keyedGuard(where string, f *ir.Field) string {
 	n := f.KeyEnumRef.Max
-	return fmt.Sprintf("if (!Number.isInteger(key) || key < 1 || key > %d) { throw new RangeError(%s + String(key) + %s); }",
+	return fmt.Sprintf("if (!globalThis.Number.isInteger(key) || key < 1 || key > %d) { throw new globalThis.RangeError(%s + globalThis.String(key) + %s); }",
 		n, jsStr(where+": key "), jsStr(fmt.Sprintf(" is not a %s variant (1..%d; None is 0 and has no slot)", f.KeyEnum, n)))
 }
 
