@@ -550,6 +550,18 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
 		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
 		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+	} else if f.Type.Kind == ir.TInt && f.Type.Width > 0 {
+		// A BARE intN/uintN has no declared range, but its own width is one
+		// (docs/SPEC.md §5.1 row 11): the writer puts N bits, so a value past
+		// them reads back as a different one, and this check is the only guard.
+		w := uint(f.Type.Width)
+		lo := big.NewInt(0)
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+		if f.Type.Signed {
+			hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+			lo = new(big.Int).Neg(new(big.Int).Add(hi, big.NewInt(1)))
+		}
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, asBig), expr, jsIntLit(hi, asBig))
 	}
 	if f.Type.Kind == ir.TBits {
 		// a bits slot is unsigned at EVERY width: an N-bit value is 0..2^N-1,
