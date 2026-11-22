@@ -945,6 +945,15 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 		count := fixedDartSibling(expr, "Count")
 		g.call(ind, count+" = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		if f.ArrayMin > 0 {
+			// THE MINIMUM HOLDS WHEREVER THE FIELD SITS, a union arm
+			// included (ruling R10, docs/SPEC-TABLES.md §3.4): the plan's
+			// count op holds [0, B], and a count below A refuses here, on
+			// both plans, the way Go's count op refuses it.
+			g.pf("%sif (%s < %d) {\n", ind, count, f.ArrayMin)
+			g.pf("%s  report.refused = TableFixedRefusal.countOverBound;\n", ind)
+			g.pf("%s}\n", ind)
+		}
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, count, expr, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		length := fixedDartSibling(expr, "Length")

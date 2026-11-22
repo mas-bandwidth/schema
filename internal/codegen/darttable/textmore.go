@@ -567,6 +567,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonAtLeast holds a counted [A..B] array read from text to its minimum A,
+// wherever the field sits, a union arm included (ruling R10,
+// docs/SPEC-TABLES.md §3.4): a list shorter than A refuses count_over_bound.
+List<T> _jsonAtLeast<T>(List<T> out, dynamic val, TableTextReport r, int min) {
+  if (val is List && out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -974,6 +982,12 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		fbArg = ", " + fb
 	}
 	switch {
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !f.Type.Optional:
+		// [A..B] holds A wherever it sits (ruling R10): the list read, then
+		// its minimum
+		inner := *f
+		inner.ArrayMin = 0
+		return fmt.Sprintf("_jsonAtLeast(%s, %s, r, %d)", g.jsonReadExpr(&inner, val, d, fallback...), val, f.ArrayMin)
 	case f.IsTextList():
 		return g.jsonTextListRead(f, val, d, fbArg)
 	case f.Type.Optional:
