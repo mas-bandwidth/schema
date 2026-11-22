@@ -216,9 +216,26 @@ tables-cs-variable-surface: build/tables-generated-cs/.stamp
 COOK_CS_N ?= 1000000
 COOK_CS := cd test/cs-cook && $(DOTNET) run --no-build --
 
+# THE DRIVER BUILDS ARE DECIDED BY CONTENT (make/driver-stamp.sh). `dotnet build`
+# compares timestamps, and these two projects compile sources generated OUTSIDE
+# them (build/tables-generated-cs) and from a sibling checkout (SERIALIZE_CS),
+# so a regenerated file that is not newer than the built assembly left a STALE
+# driver that a test then passed against. The stamp hashes every input's path
+# and bytes: unchanged inputs skip the build tool entirely, changed ones run a
+# FULL build (--no-incremental). The stamps live in build/driver-stamps, which
+# the CI driver cache carries beside the driver it describes.
+DRIVER_STAMPS := build/driver-stamps
+CS_CONFORMANCE_DLL := test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll
+CS_CONFORMANCE_INPUTS := test/conformance/cs/schemaconformance.csproj test/conformance/cs/src \
+	build/tables-generated-cs $(SERIALIZE_CS)/src .github/dotnet-version
+CS_COOK_DLL := test/cs-cook/bin/Debug/net10.0/schemacooktest.dll
+CS_COOK_INPUTS := test/cs-cook/schemacook.csproj test/cs-cook/src \
+	build/tables-generated-cs/pointers .github/dotnet-version
+
 .PHONY: build-cs-cook
 build-cs-cook: build/tables-generated-cs/.stamp
-	cd test/cs-cook && $(DOTNET) build -v q --nologo
+	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
+		"cd test/cs-cook && $(DOTNET) build -v q --nologo --no-incremental"
 
 .PHONY: tables-cook-open-cs
 tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp build/cook-open-fixed/.stamp
@@ -515,7 +532,8 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 CARDS_CS_STAMP := build/tables-generated-cs/cards/.stamp
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp $(CARDS_CS_STAMP)
-	cd test/conformance/cs && $(DOTNET) build -v q --nologo -p:RunAnalyzers=false
+	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/conformance-cs.sha256 $(CS_CONFORMANCE_DLL) $(CS_CONFORMANCE_INPUTS) -- \
+		"cd test/conformance/cs && $(DOTNET) build -v q --nologo --no-incremental -p:RunAnalyzers=false"
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -1026,7 +1044,10 @@ test-cs: tables-cs-bench-gate
 # as `error WHITESPACE` or `error <rule id>` with its file), then a full rebuild
 # with the analyzer set on and TreatWarningsAsErrors, so a compiler or analyzer
 # warning (CS0169 for an unused private field, CA<n> for an analyzer finding)
-# turns it red. $(1) the gate's label, $(2) the project, $(3) the generated
+# turns it red. The build keeps its OWN obj directory: the negative controls
+# build the project over a planted copy of the generated sources, and into the
+# project's shared obj/ that left an assembly of the PLANTED code which the next
+# incremental driver build copied to bin/ as current (the stale driver). $(1) the gate's label, $(2) the project, $(3) the generated
 # directories formatted, $(4) extra NAME=VALUE properties (the negative
 # control's redirect).
 #
@@ -1046,6 +1067,7 @@ define cs_clean_check
 		grep -E ' (error|warning) [A-Z]+[A-Z0-9]*:' build/cs-clean/$(1)/format.log || cat build/cs-clean/$(1)/format.log; \
 	fi; \
 	if $(DOTNET) build $(2) --no-incremental --nologo -v q -o build/cs-clean/$(1)/bin \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-clean/$(1)/obj/ \
 		$(addprefix -p:,$(CS_ANALYSIS_PROPS) $(4)) -p:TreatWarningsAsErrors=true \
 		> build/cs-clean/$(1)/build.log 2>&1; then :; else \
 		st=1; echo "RED $(1): dotnet build with $(CS_ANALYSIS_PROPS)"; \

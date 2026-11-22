@@ -362,7 +362,7 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(%sTableType(), bytes, out _); }\n\n", st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
 	}
-	cap := ir.TableWireIdCapacity(g.unit)
+	cap := min(ir.TableWireIdCapacity(g.unit), ir.TableWireIdTableBound)
 	if !ir.VariableTables(g.unit)[st.Name] {
 		g.emitTypedWireSurface(st)
 		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
@@ -870,10 +870,12 @@ public static partial class TableWire
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
             // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
-            // is A default elements, and that is what the writer elides
+            // is A default elements, and that is what the writer elides; a table
+            // element is at its default when its body is its terminator alone
+            // (Empty), as the reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -923,7 +925,7 @@ public static partial class TableWire
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -1346,6 +1348,8 @@ public static partial class TableWire
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -1752,7 +1756,7 @@ public static partial class TableWire
     {
         if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Zero();
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (bytes[0] != 1)
         {

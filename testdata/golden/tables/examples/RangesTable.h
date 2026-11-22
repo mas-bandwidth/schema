@@ -655,6 +655,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 155;
     static const int32_t kBuckets = 512;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -698,7 +701,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -9452,7 +9455,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -9485,7 +9492,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -10925,7 +10932,7 @@ inline void RangedSignedReset( RangedSigned & value )
     value.i64_high = 0;
     value.i64_inside = 0;
     memset( value.edges, 0, sizeof( value.edges ) );
-    value.edges_count = 0;
+    value.edges_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void RangedUnsignedReset( RangedUnsigned & value )
@@ -10947,7 +10954,7 @@ inline void RangedUnsignedReset( RangedUnsigned & value )
     value.u64_high = 1ull;
     value.u64_inside = 1ull;
     memset( value.counts, 0, sizeof( value.counts ) );
-    value.counts_count = 0;
+    value.counts_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void RangedWidthsReset( RangedWidths & value )
@@ -11029,7 +11036,8 @@ inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & val
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
@@ -11133,7 +11141,8 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
         w.put64( uint64_t( value.i64_inside ) );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
@@ -12261,7 +12270,8 @@ inline int64_t RangedSignedMeasureMessageBody( int64_t at, const RangedSigned & 
         bits += 64;
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -12358,7 +12368,8 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
         w.put( (uint64_t) ( value.i64_inside ) - 9223372036854775809ull, 64 );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         w.put( 61, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.edges_count ) - 0, 3 );
@@ -14060,7 +14071,8 @@ inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned &
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
@@ -14164,7 +14176,8 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
         w.put64( uint64_t( value.u64_inside ) );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
@@ -15292,7 +15305,8 @@ inline int64_t RangedUnsignedMeasureMessageBody( int64_t at, const RangedUnsigne
         bits += 64;
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -15389,7 +15403,8 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
         w.put( (uint64_t) ( value.u64_inside ) - 1ull, 64 );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         w.put( 78, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.counts_count ) - 0, 3 );
@@ -20065,7 +20080,8 @@ inline int64_t RangedSignedMeasureBodyRetain( TableRetainIds & ids, const Ranged
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
@@ -20160,7 +20176,8 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
         w.put64( uint64_t( value.i64_inside ) );
     }
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.edges_count > 0 )
+    bool rides_edges = value.edges_count > 0;
+    if ( rides_edges )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
@@ -21107,7 +21124,8 @@ inline int64_t RangedUnsignedMeasureBodyRetain( TableRetainIds & ids, const Rang
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
@@ -21202,7 +21220,8 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
         w.put64( uint64_t( value.u64_inside ) );
     }
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.counts_count > 0 )
+    bool rides_counts = value.counts_count > 0;
+    if ( rides_counts )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;

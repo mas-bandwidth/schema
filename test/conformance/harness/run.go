@@ -714,6 +714,39 @@ func parseSurfaces(list string) (map[string]bool, error) {
 	return set, nil
 }
 
+// emptySelection refuses a run whose filters (--only, --skip, --surfaces)
+// left no row to compare (every selected surface holds zero expectations) or
+// no leg that ran any selected surface (every selected cell was absent). Both
+// read as a pass in the matrix and are not one (test/conformance/README.md,
+// "A filter that selects nothing is red").
+func emptySelection(results map[string]map[string]*result, only, skip string, surfaceSet map[string]bool) error {
+	rows, ran := 0, 0
+	for _, bySurface := range results {
+		for _, r := range bySurface {
+			rows += r.total
+			if !r.absent {
+				ran++
+			}
+		}
+	}
+	if rows > 0 && ran > 0 {
+		return nil
+	}
+	var names []string
+	for s := range surfaceSet {
+		names = append(names, s)
+	}
+	sort.Strings(names)
+	which := "every surface"
+	if len(names) > 0 {
+		which = strings.Join(names, ",")
+	}
+	if rows == 0 {
+		return fmt.Errorf("conformance selected ZERO rows: --only %q --skip %q --surfaces %s hold no case to compare, so a green matrix would prove nothing", only, skip, which)
+	}
+	return fmt.Errorf("conformance ran ZERO legs on any selected surface: --only %q --skip %q --surfaces %s are all absent (none answered a case), so a green matrix would prove nothing", only, skip, which)
+}
+
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
@@ -926,6 +959,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	// every leg skipped. It must not print "every registered surface passes".
 	if len(langs) == 0 {
 		return false, fmt.Errorf("conformance ran no leg: the registry, --only %q and --skip left nothing to compare", only)
+	}
+
+	// A run that selected no row, or ran no leg on any surface, proved nothing
+	// either: --surfaces naming surfaces that hold no expectation, or --only
+	// naming a leg that answers none of them. It must not print a green matrix.
+	if err := emptySelection(results, only, skip, opts.only); err != nil {
+		return false, err
 	}
 
 	if opts.coverage != nil {

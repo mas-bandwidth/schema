@@ -194,6 +194,16 @@ final class WireState {
 
   int mark() => ids.length;
 
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+  // table of more than 4096 entries, so a save refuses a value that needs more
+  // and never writes a file its readers refuse. Checked once, where the table
+  // is written, so an interned id a rollback undoes never refuses.
+  void checkIdBound() {
+    if (ids.length > 4096) {
+      throw StateError('id_table_full: ${ids.length} ids, past the maximum of 4096 (docs/SPEC-TABLES.md §3)');
+    }
+  }
+
   // rollback drops ids interned after mark, so an elided by-value body leaves
   // nothing in the id table (§3).
   void rollback(int m) {
@@ -293,7 +303,7 @@ final class WireState {
     if (r != null) return r;
     if (!_retainKnown.contains(id)) {
       final t = retain;
-      if (t == null || t.idUsed >= t.ids.length) {
+      if (t == null || t.idUsed >= t.ids.length || ids.length >= 4096) {
         lost = true;
         return 0;
       }
@@ -2637,7 +2647,7 @@ final class TableMixed {
   int worldTime = 0;
   int frameTick = 0;
   double serverTime = 0.0;
-  List<TableEntity> entities = <TableEntity>[];
+  List<TableEntity> entities = List<TableEntity>.generate(1, (_) => TableEntity());
   List<TableStat> stats = <TableStat>[];
   TableEvent gameEvent = TableEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3064,6 +3074,8 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
   if (v.entities.isNotEmpty) {
+    final bornMark = w.state.mark();
+    var born = v.entities.length == 1;
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3073,13 +3085,18 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
       final b = s.sub();
       b.path = [...w.path, 10, i];
       tableEntityWireSaveBody(b, e);
+      if (b.buf.length > 1) born = false;
       s.putLeb(b.buf.length);
       s.putBytes(b.buf);
     }
-    w.putLeb(ref);
-    w.putByte(14);
-    w.putLeb(s.buf.length);
-    w.putBytes(s.buf);
+    if (born) {
+      w.state.rollback(bornMark);
+    } else {
+      w.putLeb(ref);
+      w.putByte(14);
+      w.putLeb(s.buf.length);
+      w.putBytes(s.buf);
+    }
   }
   assert(v.stats.length >= 0 && v.stats.length <= 80);
   if (v.stats.isNotEmpty) {
@@ -4910,6 +4927,7 @@ Uint8List tableEntityWireSave(TableEntity v) {
   tableEntityWireSaveBodyFields(w, v);
   _writeNodeTable(w);
   w.putByte(0);
+  state.checkIdBound();
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
   return Uint8List.fromList(w.buf);
@@ -5082,6 +5100,7 @@ Uint8List tableStatWireSave(TableStat v) {
   tableStatWireSaveBodyFields(w, v);
   _writeNodeTable(w);
   w.putByte(0);
+  state.checkIdBound();
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
   return Uint8List.fromList(w.buf);
@@ -5242,6 +5261,7 @@ Uint8List tableMixedWireSave(TableMixed v) {
   tableMixedWireSaveBodyFields(w, v);
   _writeNodeTable(w);
   w.putByte(0);
+  state.checkIdBound();
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
   return Uint8List.fromList(w.buf);
@@ -5541,7 +5561,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // Every label the text has defined so far, in document order, placed or
+  // skipped, and those whose definition has not closed (§16.7).
+  final Set<int> labelsSeen = <int>{};
+  final Set<int> labelsOpen = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -6034,17 +6057,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
+        // a definition the walk dropped reads null; one still open is a cycle
+        if (r.labelsSeen.contains(raw) && !r.labelsOpen.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    if (have != null || r.labelsSeen.contains(raw)) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
+    r.labelsSeen.add(raw);
+    r.labelsOpen.add(raw);
     fill(made, entries);
+    r.labelsOpen.remove(raw);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
@@ -6247,37 +6274,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     clean.add(c);
   }
   final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
   return result;
 }
 
@@ -6342,18 +6338,44 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject holds one skipped object to the label rules a placed one is
+// (docs/SPEC-TABLES.md §16.7): a label alone must name a definition already
+// closed, fields after one must follow a label not yet defined, and the
+// definition is open until this object closes. A dropped definition keeps its
+// label with no node, so a reference to it reads null. What the reader does
+// not place is the value, never the label.
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+  int? definition;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      // a unit with no pointer has no label table: the prefix is still held to
+      // its grammar, and the value is skipped whole
+      if (!r.variableRoot) continue;
+      if (entries.length == 1) {
+        if (!r.labelsSeen.contains(label) || r.labelsOpen.contains(label)) {
+          throw const FormatException('undefined node label');
+        }
+      } else {
+        if (r.labelsSeen.contains(label)) {
+          throw const FormatException('node label defined twice');
+        }
+        r.labelsSeen.add(label);
+        r.labelsOpen.add(label);
+        definition = label;
+      }
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (definition != null) r.labelsOpen.remove(definition);
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -6362,10 +6384,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -6375,13 +6394,13 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
+    final entries = <MapEntry<String, dynamic>>[];
     for (final entry in val.entries) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
+      entries.add(MapEntry<String, dynamic>(key, entry.value));
     }
+    _jsonSkipObject(entries, r);
   }
 }
 

@@ -169,7 +169,7 @@ test-unity: unity-vt
 # (test/conformance/unity/unit/schemaunit.csproj: C# 9, netstandard2.1,
 # AllowUnsafeBlocks=false, Debug so §5.1 write assertions trap), hosted by
 # build/conformance-unity/driver/unityconformance.dll.
-build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.txt tables/cards/Card.schema make/unity.mk $(CONFORMANCE_UNIT_SCHEMAS) test/conformance/unity/unityconformance.csproj test/conformance/unity/unit/schemaunit.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs
+build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.txt tables/cards/Card.schema make/unity.mk $(CONFORMANCE_UNIT_SCHEMAS) test/conformance/unity/unityconformance.csproj test/conformance/unity/unit/schemaunit.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs test/unity/HostDialect.props test/unity/UnityDialect.props .github/dotnet-version
 	@rm -rf build/conformance-unity && mkdir -p build/conformance-unity
 	$(DOTNET) build test/conformance/unity/unityconformance.csproj -c Release \
 		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_driver" \
