@@ -96,12 +96,20 @@ func saveRows(t *testing.T, names []string, patch func(map[string][]byte)) map[s
 // red on every named row.
 func requireSaveControl(t *testing.T, what string, names []string, patch func(map[string][]byte)) {
 	t.Helper()
-	for name, v := range saveRows(t, names, nil) {
+	allSaveRows := saveRows(t, names, nil)
+	if len(allSaveRows) == 0 {
+		t.Fatal("saveRows(t, names, nil) is empty: the loop below would check nothing")
+	}
+	for name, v := range allSaveRows {
 		if v != "same" {
 			t.Fatalf("%s: the unsabotaged save is not the wire (%s); the control proves nothing", name, v)
 		}
 	}
-	for name, v := range saveRows(t, names, patch) {
+	allSaveRowss := saveRows(t, names, patch)
+	if len(allSaveRowss) == 0 {
+		t.Fatal("saveRows(t, names, patch) is empty: the loop below would check nothing")
+	}
+	for name, v := range allSaveRowss {
 		if v == "same" {
 			t.Errorf("%s: with %s the save still matched the wire", name, what)
 		} else {

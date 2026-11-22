@@ -3147,22 +3147,22 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putBytes(s.buf);
   }
   assert(!v.aimX.isFinite || ((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits(v.aimX) != 0) {
+  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimX, 'BenchMixed.aim_x'));
+    w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'BenchMixed.aim_x'));
   }
   assert(!v.aimY.isFinite || ((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits(v.aimY) != 0) {
+  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimY, 'BenchMixed.aim_y'));
+    w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'BenchMixed.aim_y'));
   }
   assert(!v.aimZ.isFinite || ((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits(v.aimZ) != 0) {
+  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimZ, 'BenchMixed.aim_z'));
+    w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'BenchMixed.aim_z'));
   }
   if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
@@ -7479,21 +7479,21 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimX, true));
+  out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
   assert((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimY, true));
+  out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
   assert((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimZ, true));
+  out.raw(_jsonFloat((v.aimZ == 0 ? 0.0 : v.aimZ), true));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);

@@ -37,7 +37,11 @@ table Fleet
 func TestTableValueDefaultsCarriers(t *testing.T) {
 	u := unitFromSource(t, valueDefaultsUnit)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		out, err := c.Generate(u, target, Options{})
 		if target == "python" || target == "ruby" {
 			if err != nil {
@@ -340,7 +344,11 @@ fixed table Ship
 func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	u := unitFromSource(t, fixedValueDefaultsUnit)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		out, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)

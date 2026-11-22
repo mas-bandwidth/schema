@@ -22,6 +22,9 @@ func TestLobsterUnitViewGeneratedNames(t *testing.T) {
 	for _, suffix := range []string{"Slot", "At", "Each"} {
 		cases = append(cases, struct{ name, source string }{"OwnerItems" + suffix, "enum Key { One }\ntype Owner { items [Key]int32 }\nconst OwnerItems" + suffix + " = 1\n"})
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

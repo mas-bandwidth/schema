@@ -298,6 +298,9 @@ func TestGeneratedMessageDepthBoundary(t *testing.T) {
 		t.Fatalf("go message depth boundary failed:\n%s\n%v", out, err)
 	}
 	outStr := string(out)
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, tc := range cases {
 		if !strings.Contains(outStr, "PASS "+tc.name) {
 			t.Fatalf("missing PASS for %s in:\n%s", tc.name, outStr)

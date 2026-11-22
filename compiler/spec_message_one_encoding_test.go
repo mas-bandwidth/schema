@@ -50,7 +50,7 @@ func TestSpecMessageFormHasOneEncoding(t *testing.T) {
 				"Under a different build version, order is not judged and the body reads, which is lawful version evolution",
 				"A UNION FIELD WRITTEN WITH THE NONE REFERENCE",
 				"an explicit arm `0` is not the one encoding a conforming writer emits",
-				"is not part of the contract",
+				"does not judge a body's field order",
 				"is the variable form's and is neither changed nor carried here",
 				"or a union written with the None reference (above)",
 			},

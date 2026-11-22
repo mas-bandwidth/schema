@@ -142,6 +142,9 @@ func TestSquirrelTableDescriptorsLoad(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, k := range keys {
 		if got[k] != want[k] {
 			t.Errorf("%s = %q, want %q", k, got[k], want[k])

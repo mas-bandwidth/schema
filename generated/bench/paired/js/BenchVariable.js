@@ -816,6 +816,15 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);
 }
 
+// TableVariableStoredFloat is the value every writer stores for a float: the
+// value itself, except that a COMPRESSED float's -0 (its descriptor carries the
+// range, lo) is stored as +0, the bits +0 stores (docs/SPEC-TABLES.md §3.3;
+// docs/rulings.json fixed-compressed-negzero). A plain float's -0 is a value
+// and rides bit-exact. Elision, the wire store and the text writer all take it.
+function TableVariableStoredFloat(d, v) {
+  return d.lo !== null && v === 0 ? 0 : v;
+}
+
 // the write that meets a non-finite float refuses the save, and names the
 // reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
 let TableVariableSaveWhy = null;
@@ -829,6 +838,7 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
+  v = TableVariableStoredFloat(d, v);
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -1166,7 +1176,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
+      if (!TableVariableSameFloat(fd.f32, TableVariableStoredFloat(fd, val), fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -2792,8 +2802,9 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  // a float compares its bit pattern (§3): a -0 under a +0 default rides
-  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
+  // a float compares its bit pattern (§3): a plain -0 under a +0 default
+  // rides; a compressed -0 is stored as +0 and so compares as +0 (§3.3)
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, TableVariableStoredFloat(e, x), e.def); }
   return x === e.def;
 }
 
@@ -3717,7 +3728,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      const t = TableVariableFloatText(val, d.f32);
+      const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;
@@ -5183,9 +5194,9 @@ export const TableCookWrite = (() => {
         {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
         {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
         {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
-        {k:"f32",n:"aim_x",at:1288},
-        {k:"f32",n:"aim_y",at:1292},
-        {k:"f32",n:"aim_z",at:1296},
+        {k:"f32",n:"aim_x",at:1288,c:1},
+        {k:"f32",n:"aim_y",at:1292,c:1},
+        {k:"f32",n:"aim_z",at:1296,c:1},
         {k:"f32",n:"recoil",at:1300},
         {k:"f64",n:"drift",at:1304},
         {k:"int",n:"wide_key",at:1312,w:16,sg:0},
@@ -5302,11 +5313,14 @@ export const TableCookWrite = (() => {
       case "f32":
         if (typeof value !== "number") { return false; }
         if (!globalThis.Number.isFinite(globalThis.Math.fround(value))) { return refuseFloat(ctx); }
+        // a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+        if (fd.c === 1 && value === 0) { value = 0; }
         if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
         if (!globalThis.Number.isFinite(value)) { return refuseFloat(ctx); }
+        if (fd.c === 1 && value === 0) { value = 0; }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":

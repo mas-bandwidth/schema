@@ -4437,7 +4437,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.serverTime;
+    TableBitWriter._float32Cell[0] = (value.serverTime == 0 ? 0.0 : value.serverTime);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(30, tableMessageRefBits);
       assert(!value.serverTime.isFinite || ((TableFixedLayout._f32..[0] = value.serverTime)[0] >= 0.0 && TableFixedLayout._f32[0] <= 65535.0));
@@ -4550,7 +4550,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimX;
+    TableBitWriter._float32Cell[0] = (value.aimX == 0 ? 0.0 : value.aimX);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(37, tableMessageRefBits);
       assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -4576,7 +4576,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimY;
+    TableBitWriter._float32Cell[0] = (value.aimY == 0 ? 0.0 : value.aimY);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(38, tableMessageRefBits);
       assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -4602,7 +4602,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimZ;
+    TableBitWriter._float32Cell[0] = (value.aimZ == 0 ? 0.0 : value.aimZ);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(39, tableMessageRefBits);
       assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -4664,7 +4664,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.ping;
+    TableBitWriter._float32Cell[0] = (value.ping == 0 ? 0.0 : value.ping);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(44, tableMessageRefBits);
       assert(!value.ping.isFinite || ((TableFixedLayout._f32..[0] = value.ping)[0] >= 0.0 && TableFixedLayout._f32[0] <= 250.0));
@@ -6049,7 +6049,7 @@ void tableMixedFixedWriteBody(
   assert(!value.serverTime.isFinite || ((TableFixedLayout._f32..[0] = value.serverTime)[0] >= 0.0 && TableFixedLayout._f32[0] <= 65535.0));
   view.setUint32(
     at + 50,
-    TableFixedLayout.float32Bits(value.serverTime),
+    TableFixedLayout.float32Bits((value.serverTime == 0 ? 0.0 : value.serverTime)),
     Endian.little,
   );
   assert(value.entitiesCount >= 1);
@@ -6108,19 +6108,19 @@ void tableMixedFixedWriteBody(
   assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1167,
-    TableFixedLayout.float32Bits(value.aimX),
+    TableFixedLayout.float32Bits((value.aimX == 0 ? 0.0 : value.aimX)),
     Endian.little,
   );
   assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1171,
-    TableFixedLayout.float32Bits(value.aimY),
+    TableFixedLayout.float32Bits((value.aimY == 0 ? 0.0 : value.aimY)),
     Endian.little,
   );
   assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1175,
-    TableFixedLayout.float32Bits(value.aimZ),
+    TableFixedLayout.float32Bits((value.aimZ == 0 ? 0.0 : value.aimZ)),
     Endian.little,
   );
   view.setUint32(
@@ -6135,7 +6135,7 @@ void tableMixedFixedWriteBody(
   assert(!value.ping.isFinite || ((TableFixedLayout._f32..[0] = value.ping)[0] >= 0.0 && TableFixedLayout._f32[0] <= 250.0));
   view.setUint32(
     at + 1207,
-    TableFixedLayout.float32Bits(value.ping),
+    TableFixedLayout.float32Bits((value.ping == 0 ? 0.0 : value.ping)),
     Endian.little,
   );
   assert(value.crcHint >= 0 && value.crcHint <= 16777215);

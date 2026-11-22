@@ -2106,10 +2106,38 @@ defmodule Benchtable.Table do
   defp map_entries(_f, nil), do: []
 
   defp map_entries(f, values) do
+    check_map_keys(f, values)
+
     values
     |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)
     |> Enum.map(fn {key, value} -> %{"key" => map_key_value(f, key), "value" => value} end)
   end
+
+  # A KEY OF THE WRONG TYPE IS REFUSED (SPEC-TABLES §2.8): a string-keyed map
+  # holds binaries; an integer-keyed one holds integers, or the canonical
+  # decimal text a load hands back for one (the loaded value's integer keys are
+  # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
+  # that names the same integer as another ("7" beside 7) is refused, so no
+  # key is written twice and none raises.
+  defp check_map_keys(%{key_kind: 12}, values) do
+    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+  end
+
+  defp check_map_keys(_f, values) do
+    ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
+    if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
+  end
+
+  defp map_int_key(key) when is_integer(key), do: key
+
+  defp map_int_key(key) when is_binary(key) do
+    case Integer.parse(key) do
+      {v, ""} -> if Integer.to_string(v) == key, do: v, else: throw(:invalid_value)
+      _ -> throw(:invalid_value)
+    end
+  end
+
+  defp map_int_key(_key), do: throw(:invalid_value)
 
   defp map_sort_key(%{key_kind: 12}, key), do: key
 
@@ -2435,10 +2463,11 @@ defmodule Benchtable.Table do
   end
 
   # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
-  # value is padded with the element default, a longer one is cut at N.
+  # value is padded with the element default, and a longer one is refused
+  # (check_field, as to_json refuses it), never cut at N.
   defp pad_fixed(%{fixed_array: n} = f, elements) when is_list(elements) do
-    kept = Enum.take(elements, n)
-    kept ++ List.duplicate(f.elem_default, n - length(kept))
+    if length(elements) > n, do: throw(:invalid_value)
+    elements ++ List.duplicate(f.elem_default, n - length(elements))
   end
 
   defp pad_fixed(_f, elements), do: elements
@@ -2464,6 +2493,7 @@ defmodule Benchtable.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    check_field(a, payload)
     {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
@@ -5202,6 +5232,9 @@ defmodule Benchtable.Table do
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
+
+      if Map.has_key?(value, f.name) and field_active?(f, desc, value),
+        do: check_field(f, Map.fetch!(value, f.name))
     end)
   end
 
@@ -5239,6 +5272,62 @@ defmodule Benchtable.Table do
     do: throw(:invalid_value)
 
   defp float_in_range(_v, _w, _lo, _hi), do: :ok
+
+  # EVERY FIELD IS CHECKED ON WRITE, not only a required one (docs/SPEC.md
+  # §5.1 rows 1-5 and 11, as the Go leg's Reason twin does): a ranged or
+  # bits(N) integer off its domain, a counted or fixed array past its bound, a
+  # string(N) or bytes(N) past N, and an enum
+  # name that is no variant or a deprecated one (docs/SPEC-TABLES.md §2.15) are
+  # refused, so nothing is truncated into the width or written as is. A field the
+  # value does not carry reads its declared default, and a nil holds nothing.
+  defp check_field(_f, nil), do: :ok
+  defp check_field(%{t: :int} = f, v), do: required_value(f, v)
+
+  defp check_field(%{t: :float, min: _lo, max: _hi} = f, v) when is_number(v),
+    do: required_value(f, v)
+
+  defp check_field(%{t: :string} = f, v) do
+    if not is_binary(v) or
+         (not Map.get(f, :unbounded, false) and Map.has_key?(f, :size) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+  end
+
+  defp check_field(%{t: :bytes} = f, v) do
+    if not is_binary(v) or (Map.has_key?(f, :size) and f.size > 0 and byte_size(v) > f.size),
+      do: throw(:invalid_value)
+  end
+
+  defp check_field(%{t: :enum} = f, v), do: check_enum(f, v)
+
+  defp check_field(%{t: :list} = f, v) when is_list(v) do
+    n = length(v)
+
+    if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
+      do: throw(:invalid_value)
+
+    required_value(f, v)
+    if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
+  end
+
+  defp check_field(%{t: :keyed} = f, slots) when is_map(slots) do
+    Enum.each(f.key_names, fn name ->
+      check_field(f.item, Map.get(slots, name, f.item.default))
+    end)
+  end
+
+  defp check_field(_f, _v), do: :ok
+
+  # An enum value is nil, the reserved "None", or the name of a variant that is
+  # not deprecated; any other name is a refusal and never a raise.
+  defp check_enum(_f, nil), do: :ok
+  defp check_enum(_f, "None"), do: :ok
+
+  defp check_enum(f, name) when is_binary(name) do
+    if not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, []),
+      do: throw(:invalid_value)
+  end
+
+  defp check_enum(_f, _bad), do: throw(:invalid_value)
 
   defp required_value(%{t: :list} = f, values) do
     Enum.each(pad_fixed(f, values), fn v ->
@@ -6093,8 +6182,10 @@ defmodule Benchtable.Table do
 
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
 
-  defp json_field(%{t: :enum}, name, _depth) when is_binary(name),
-    do: ["\"", json_escape(name), "\""]
+  defp json_field(%{t: :enum} = f, name, _depth) when is_binary(name) do
+    check_enum(f, name)
+    ["\"", json_escape(name), "\""]
+  end
 
   defp json_field(%{t: :enum}, _bad, _depth), do: throw(:invalid_value)
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
@@ -6188,8 +6279,10 @@ defmodule Benchtable.Table do
   defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
 
-  defp json_list_elem(%{elem_kind: 30}, e, _depth) when is_binary(e),
-    do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30} = f, e, _depth) when is_binary(e) do
+    check_enum(f, e)
+    ["\"", json_escape(e), "\""]
+  end
 
   defp json_list_elem(%{elem_kind: 30}, _bad, _depth), do: throw(:invalid_value)
 

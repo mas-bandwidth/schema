@@ -137,6 +137,14 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
+	if len(c.order) == 0 {
+		t.Fatal("MANIFEST.txt names no unit")
+	}
+	for _, s := range []string{"wire", "report", "retain-save"} {
+		if len(c.want[s]) == 0 {
+			t.Fatalf("MANIFEST.txt holds no %s row", s)
+		}
+	}
 	c.manifest = m.String()
 	return c
 }
@@ -459,6 +467,8 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 			}
 			got := runWireSurfaces(t, c, surfaces, sabotage(t, ctl.file, ctl.from, ctl.to))
 			for _, s := range surfaces {
+				// a surface the break does not own stays green, so an empty
+				// list here is the pass; the red surface is held non-empty below
 				for _, name := range failing(c, got, s) {
 					if owns := ctl.owns[s]; owns == nil || !owns(name) {
 						t.Errorf("%s: %s / %s went red, and the break does not own it", ctl.name, s, name)

@@ -911,7 +911,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	case f.Type.Kind == ir.TBool:
 		g.pf("%sout.raw(%s ? 'true' : 'false');\n", ind, expr)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, expr, f.Type.Kind == ir.TFloat32)
+		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, dartStoredFloat(f, expr), f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
 		g.pf("%sout.raw(_jsonEnum(%s, %sName, '%s'));\n", ind, expr, dartName(enumRef(f).Name), where)
 	case jsonIntegerWide(f):

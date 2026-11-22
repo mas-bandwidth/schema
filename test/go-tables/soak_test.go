@@ -170,6 +170,9 @@ func TestSoak(t *testing.T) {
 	// one warm pass, so the steady phase below measures the loop rather than
 	// the first touch of every page in it
 	pass := func() {
+		if len(corpus) == 0 {
+			t.Fatal("corpus is empty: the loop below would check nothing")
+		}
 		for _, c := range corpus {
 			if !bytes.Equal(c.roundTrip(scratch), c.wire) {
 				t.Fatalf("%s: the wire round trip does not reproduce the golden", c.name)
@@ -341,7 +344,11 @@ func isCodecFrame(fn string) bool {
 }
 
 func TestReviewerRealSoakClosureAttribution(t *testing.T) {
-	for _, row := range soakCorpus(t) {
+	allSoakCorpus := soakCorpus(t)
+	if len(allSoakCorpus) == 0 {
+		t.Fatal("soakCorpus(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allSoakCorpus {
 		for name, fn := range map[string]func([]byte) []byte{"wire": row.roundTrip, "text": row.textTrip, "json": row.jsonTrip} {
 			symbol := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 			if !isCodecFrame(symbol) {

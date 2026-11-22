@@ -4536,7 +4536,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimX;
+    TableBitWriter._float32Cell[0] = (value.aimX == 0 ? 0.0 : value.aimX);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(16, tableMessageRefBits);
       assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -4562,7 +4562,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimY;
+    TableBitWriter._float32Cell[0] = (value.aimY == 0 ? 0.0 : value.aimY);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(17, tableMessageRefBits);
       assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -4588,7 +4588,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     }
   }
   {
-    TableBitWriter._float32Cell[0] = value.aimZ;
+    TableBitWriter._float32Cell[0] = (value.aimZ == 0 ? 0.0 : value.aimZ);
     if (TableBitWriter._float32Words[0] != 0) {
       w.put(18, tableMessageRefBits);
       assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
@@ -5990,19 +5990,19 @@ void benchMixedFixedWriteBody(
   assert(!value.aimX.isFinite || ((TableFixedLayout._f32..[0] = value.aimX)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1165,
-    TableFixedLayout.float32Bits(value.aimX),
+    TableFixedLayout.float32Bits((value.aimX == 0 ? 0.0 : value.aimX)),
     Endian.little,
   );
   assert(!value.aimY.isFinite || ((TableFixedLayout._f32..[0] = value.aimY)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1169,
-    TableFixedLayout.float32Bits(value.aimY),
+    TableFixedLayout.float32Bits((value.aimY == 0 ? 0.0 : value.aimY)),
     Endian.little,
   );
   assert(!value.aimZ.isFinite || ((TableFixedLayout._f32..[0] = value.aimZ)[0] >= -1.0 && TableFixedLayout._f32[0] <= 1.0));
   view.setUint32(
     at + 1173,
-    TableFixedLayout.float32Bits(value.aimZ),
+    TableFixedLayout.float32Bits((value.aimZ == 0 ? 0.0 : value.aimZ)),
     Endian.little,
   );
   view.setUint32(

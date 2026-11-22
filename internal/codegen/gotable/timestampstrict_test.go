@@ -157,6 +157,9 @@ func TestGoTimestampStrictRFC3339(t *testing.T) {
 	if st == nil {
 		t.Fatal("no table Root")
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, tc := range cases {
 		t.Run("engine/"+tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -1027,9 +1027,9 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\tout.raw(e ? 'true' : 'false');\n")
 			case wireKindF32:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, true));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, true));\n", dartStoredFloat(f, "e"))
 			case wireKindF64:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, false));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, false));\n", dartStoredFloat(f, "e"))
 			case wireKindString:
 				g.pf("\t\t\tout.raw(_jsonString(e));\n")
 			case wireKindEnum:
@@ -1071,7 +1071,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		if f.Type.Kind == ir.TFloat32 {
 			single = "true"
 		}
-		g.pf("\tout.raw(_jsonFloat(v.%s, %s));\n", name, single)
+		g.pf("\tout.raw(_jsonFloat(%s, %s));\n", dartStoredFloat(f, "v."+name), single)
 	case enumRef(f) != nil:
 		g.pf("\tout.raw(_jsonEnum(v.%s, %sName, '%s.%s'));\n", name, dartName(enumRef(f).Name), st.Name, f.Name)
 	default:

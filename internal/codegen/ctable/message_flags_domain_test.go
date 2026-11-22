@@ -76,6 +76,9 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 		if hits == 0 {
 			t.Fatal("flags assertion omission matched nothing")
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
 		for name, data := range files {
 			if gate.Match(data) {
 				t.Fatalf("flags assertion survived in %s", name)
