@@ -1277,6 +1277,12 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		g.pf("%s  if (!holds) { %s; }\n", ind, messageOutOfRange)
 		g.pf("%s  x = %s;\n", ind, narrowInt("x", signed, int64(width)))
 	}
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A NEWER WRITER ANNOUNCES A WIDER MASK, and the reader holds each
+		// value to its OWN W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK
+		// TO ITS WIDTH): a bit at or above it refuses the batch out_of_range.
+		g.pf("%s  if ((x >> %dn) !== 0n) { %s; }\n", ind, fl.WireBits, messageOutOfRange)
+	}
 	g.emitMessageIntRange(f, "x", ind+"  ")
 	g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)
 }
