@@ -272,6 +272,13 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 
 func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 	t.Helper()
+	return runCPPProbeWithPrelude(t, u, "", body)
+}
+
+// runCPPProbeWithPrelude is runCPPCountRefusalProbe with a block of text placed
+// after the includes, before main.
+func runCPPProbeWithPrelude(t *testing.T, u *ir.Unit, prelude, body string) ([]byte, error) {
+	t.Helper()
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
@@ -317,11 +324,13 @@ func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string) ([]byte, err
 %s
 using namespace %s;
 
+%s
+
 int main(void) {
 %s
     return 0;
 }
-`, includes.String(), u.Package, body)
+`, includes.String(), u.Package, prelude, body)
 	mainPath := filepath.Join(dir, "main.cpp")
 	if err := os.WriteFile(mainPath, []byte(src), 0o600); err != nil {
 		t.Fatal(err)

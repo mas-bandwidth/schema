@@ -617,13 +617,13 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     char buffer[32];
     if ( !wide )
     {
-        const float value = (float) strtod( token.c_str(), NULL );
+        const float value = (float) TableJsonStrtod( token.c_str() );
         uint32_t bits = 0;
         memcpy( &bits, &value, sizeof( bits ) );
         snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
         return std::string( buffer );
     }
-    const double value = strtod( token.c_str(), NULL );
+    const double value = TableJsonStrtod( token.c_str() );
     uint64_t bits = 0;
     memcpy( &bits, &value, sizeof( bits ) );
     snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
@@ -1274,7 +1274,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         else { out += integer; }
         return true;
     }
-    double d = strtod( n.text.c_str(), NULL );
+    double d = TableJsonStrtod( n.text.c_str() );
     if ( f->has_range )
     {
         if ( d < f->range_min || d > f->range_max )

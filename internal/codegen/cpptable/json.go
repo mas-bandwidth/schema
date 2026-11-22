@@ -945,20 +945,64 @@ static const int32_t kTableJsonMaxKey = 256;
 // never the token.
 static const int32_t kTableJsonMaxNumber = 1024;
 
-// The decimal point the C runtime is CURRENTLY using. Number conversion is
-// the one locale-sensitive corner of the grammar — JSON's point is always
-// '.', the runtime's is whatever the program set — so every number crosses
-// this one character on the way out and on the way back in. Nothing else in
-// the walk consults the locale.
-inline char TableJsonDecimalPoint()
+// Number conversion is the one locale-sensitive corner of the grammar: JSON's
+// point is always '.', the runtime's is whatever the program set, and it may
+// be more than one byte. The walk never reads that setting and never swaps
+// bytes of a number's text. Each conversion runs with THIS THREAD's locale
+// switched to the "C" locale for the call and restored after it, so a number
+// reads and writes the same under any locale the program set, and another
+// thread's locale (or the global one) is never touched.
+#if defined(_WIN32)
+inline _locale_t TableJsonCLocale()
 {
-    const struct lconv * conv = localeconv();
-    if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
-    {
-        return conv->decimal_point[0];
-    }
-    return '.';
+    static _locale_t c = _create_locale( LC_ALL, "C" );
+    return c;
 }
+inline double TableJsonStrtod( const char * text ) { return _strtod_l( text, NULL, TableJsonCLocale() ); }
+inline float TableJsonStrtof( const char * text ) { return _strtof_l( text, NULL, TableJsonCLocale() ); }
+inline int TableJsonFormatG( char * text, size_t size, int digits, double value )
+{
+    return _snprintf_l( text, size, "%.*g", TableJsonCLocale(), digits, value );
+}
+#else
+inline locale_t TableJsonCLocale()
+{
+    static locale_t c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 );
+    return c;
+}
+struct TableJsonCNumbers
+{
+    locale_t previous;
+    bool swapped;
+    TableJsonCNumbers() : previous( (locale_t) 0 ), swapped( false )
+    {
+        const locale_t c = TableJsonCLocale();
+        if ( c != (locale_t) 0 )
+        {
+            previous = uselocale( c );
+            swapped = previous != (locale_t) 0;
+        }
+    }
+    ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
+    TableJsonCNumbers( const TableJsonCNumbers & ) = delete;
+    TableJsonCNumbers & operator=( const TableJsonCNumbers & ) = delete;
+};
+inline double TableJsonStrtod( const char * text )
+{
+    TableJsonCNumbers scope;
+    return strtod( text, NULL );
+}
+inline float TableJsonStrtof( const char * text )
+{
+    TableJsonCNumbers scope;
+    return strtof( text, NULL );
+}
+inline int TableJsonFormatG( char * text, size_t size, int digits, double value )
+{
+    TableJsonCNumbers scope;
+    return snprintf( text, size, "%.*g", digits, value );
+}
+#endif
 
 // ---- storage access: the descriptors give an offset and a width, and the
 // ---- storage is the HOST's, so every load and store goes through a width
@@ -1969,26 +2013,16 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
     int length = 0;
     for ( int digits = low;; digits++ )
     {
-        length = snprintf( text, sizeof( text ), "%.*g", digits, value );
+        length = TableJsonFormatG( text, sizeof( text ), digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
         if ( digits >= high ) { break; }
-        // the round-trip check runs BEFORE the decimal point is normalised:
-        // the token still carries whatever point snprintf just produced
         if ( single )
         {
-            if ( (double) strtof( text, NULL ) == value ) { break; }
+            if ( (double) TableJsonStrtof( text ) == value ) { break; }
         }
         else
         {
-            if ( strtod( text, NULL ) == value ) { break; }
-        }
-    }
-    char point = TableJsonDecimalPoint();
-    if ( point != '.' )
-    {
-        for ( int i = 0; i < length; i++ )
-        {
-            if ( text[i] == point ) { text[i] = '.'; }
+            if ( TableJsonStrtod( text ) == value ) { break; }
         }
     }
     out.raw( text, length );
@@ -3253,9 +3287,8 @@ inline bool TableJsonIntegerTokenOnly( const char * token, int32_t length )
     return true;
 }
 
-// the token's exact double, through the runtime's own converter — which
-// speaks the LOCALE's decimal point, so the token crosses back over that
-// character on its way in.
+// the token's exact double, through the runtime's own converter run in the
+// "C" locale (TableJsonStrtod), so the token's '.' is read as written.
 //
 // A MANTISSA LONGER THAN THE WORKING BUFFER IS NORMALIZED, not refused: the
 // value does not depend on how many bytes spell it (§16.2), so the significant
@@ -3319,6 +3352,8 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         }
         if ( !nonzero )
         {
+            // a zero keeps its sign, as the short spelling does: "-0" is -0
+            if ( negative ) { work[n++] = '-'; }
             work[n++] = '0';
         }
         else
@@ -3353,16 +3388,8 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         }
     }
     work[n] = 0;
-    char point = TableJsonDecimalPoint();
-    if ( point != '.' )
-    {
-        for ( int32_t i = 0; i < n; i++ )
-        {
-            if ( work[i] == '.' ) { work[i] = point; }
-        }
-    }
-    if ( single ) { return (double) strtof( work, NULL ); }
-    return strtod( work, NULL );
+    if ( single ) { return (double) TableJsonStrtof( work ); }
+    return TableJsonStrtod( work );
 }
 
 // ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
@@ -5250,7 +5277,6 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -5897,7 +5923,6 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
