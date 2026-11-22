@@ -28,9 +28,9 @@ SCHEMA_SQUIRREL_RESOURCE_BOUNDS_ALLOC_COUNTER ?= runtime_readmemstats
 # push and pull-request triggers run; it needs no sq and no corpus build.
 .PHONY: schema-squirrel-resource-bounds-fast
 schema-squirrel-resource-bounds-fast:
-	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
+	@nice -n 19 $(GOTESTRUN) -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSquirrelResourceBounds(Gate|StemIsNotAPort)$$' -v
-	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
+	@nice -n 19 $(GOTESTRUN) -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSquirrelResourceBoundsAllocationCounter$$' -v
 
 # THE WHOLE CAMPAIGN: the fast half plus the nightly run of the port's own

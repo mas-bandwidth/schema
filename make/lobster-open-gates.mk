@@ -58,9 +58,9 @@ tables-lobster-order-negative-control: lobster-dist-present
 # a registered name nothing defines. Pure Go.
 .PHONY: tables-lobster-names tables-lobster-names-negative-control
 tables-lobster-names:
-	SCHEMA_SLOW=1 go test ./compiler -run '^(TestLobsterTableRuntimeNamesAreClaimed|TestLobsterRuntimeFileNamesAreClaimed)$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 $(GOTESTRUN) ./compiler -run '^(TestLobsterTableRuntimeNamesAreClaimed|TestLobsterRuntimeFileNamesAreClaimed)$$' -count=1 -timeout 600s
 tables-lobster-names-negative-control:
-	SCHEMA_SLOW=1 go test ./compiler -run '^TestLobsterRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 $(GOTESTRUN) ./compiler -run '^TestLobsterRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
 
 # I13: the random text differential against the Go engine
 # (textdifferential_test.go); the control caps a float32 at six digits.

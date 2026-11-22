@@ -461,7 +461,7 @@ TOOLCHAIN_PINS_lua := LUA
 # controls remove the runtime discard guards and expose those same values.
 .PHONY: tables-lua-damage-discard-negative-control
 tables-lua-damage-discard-negative-control: toolchain-lua
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/luatable -run '^TestLua(Message)?DamageDiscardNegativeControl$$'
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 ./internal/codegen/luatable -run '^TestLua(Message)?DamageDiscardNegativeControl$$'
 
 test-lua: tables-lua-damage-discard-negative-control
 

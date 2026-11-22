@@ -65,10 +65,33 @@ func TestReadPassesTextThrough(t *testing.T) {
 }
 
 func TestRunRefusesNoArgumentsAndForeignFlags(t *testing.T) {
-	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-v", "./x"}, {"-list", "X", "./x"}} {
+	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-list", "X", "./x"}} {
 		var out, errb bytes.Buffer
 		if code := run(args, &out, &errb); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)
+		}
+	}
+}
+
+// A negative control's `if go test; then FAILED; fi` must not read a refusal
+// as the planted defect going red.
+func TestControlCode(t *testing.T) {
+	for _, c := range []struct {
+		name         string
+		goTestExit   int
+		control      bool
+		verdictCode  int
+		want         int
+		whatItProves string
+	}{
+		{"refusal under -control exits 0 so the control's then-branch fires", 0, true, 1, 0, "no test ran is not caught"},
+		{"refusal without -control stays 1", 0, false, 1, 1, "positive recipes refuse"},
+		{"a real red test under -control keeps its status", 1, true, 1, 1, "the planted defect was caught"},
+		{"a broken build under -control keeps its status", 2, true, 2, 2, "go test's own status"},
+		{"a clean pass under -control is 0", 0, true, 0, 0, "the control stayed green"},
+	} {
+		if got := controlCode(c.verdictCode, c.goTestExit, c.control); got != c.want {
+			t.Errorf("%s: controlCode = %d, want %d (%s)", c.name, got, c.want, c.whatItProves)
 		}
 	}
 }

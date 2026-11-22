@@ -12,7 +12,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-block-read-negative-control python-block-buil
 test-python: python-block-read-negative-control python-block-build-negative-control
 
 python-block-read-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonBlockReadNegativeControls ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run TestPythonBlockReadNegativeControls ./internal/codegen/pythontable/
 
 python-block-build-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonBlockBuilderNegativeControls ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run TestPythonBlockBuilderNegativeControls ./internal/codegen/pythontable/

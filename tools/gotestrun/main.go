@@ -134,16 +134,21 @@ func summary(t tally) string {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	each := false
-	if len(args) > 0 && args[0] == "-each" {
-		each, args = true, args[1:]
+	each, control := false, false
+	for len(args) > 0 && (args[0] == "-each" || args[0] == "-control") {
+		if args[0] == "-each" {
+			each = true
+		} else {
+			control = true
+		}
+		args = args[1:]
 	}
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: gotestrun [-each] <go test arguments, e.g. -run '^TestX$' ./pkg>")
+		_, _ = fmt.Fprintln(stderr, "usage: gotestrun [-each] [-control] <go test arguments, e.g. -run '^TestX$' ./pkg>")
 		return 2
 	}
 	for _, a := range args {
-		if a == "-json" || a == "-v" || a == "-list" || strings.HasPrefix(a, "-list=") || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
+		if a == "-json" || a == "-list" || strings.HasPrefix(a, "-list=") || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
 			_, _ = fmt.Fprintf(stderr, "gotestrun: %s is not for this wrapper (it already runs go test -json)\n", a)
 			return 2
 		}
@@ -176,6 +181,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintln(stderr, summary(t))
 	if why != "" {
 		_, _ = fmt.Fprintf(stderr, "gotestrun: REFUSED: %s\n", why)
+	}
+	return controlCode(code, exit, control)
+}
+
+// controlCode is the exit status of a -control run. A negative control plants
+// a defect and expects go test to go RED, in the shape `if go test ...; then
+// echo NEGATIVE CONTROL FAILED; exit 1; fi`: it reads exit 0 as "the planted
+// defect stayed green". A refusal of this wrapper (no test ran, or all
+// skipped: go test itself exited 0) is not the planted defect going red, so
+// under -control it exits 0 too, and the control's own `then` branch fires
+// with the REFUSED line in its log, exactly as it did on a bare go test.
+// Without this, a mistyped control pattern exits 1 and reads as "caught": a
+// silent pass. A real failure (go test exited non-zero: a test went red, or
+// the build broke) keeps its status, which is what the control wants.
+func controlCode(code, goTestExit int, control bool) int {
+	if control && goTestExit == 0 {
+		return 0
 	}
 	return code
 }

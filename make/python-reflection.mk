@@ -12,12 +12,12 @@ test-python: python-reflection-core python-reflection-negative-control $(PYTHON_
 python-reflection: python-reflection-core $(PYTHON_REFLECTION_STRICT_ROWS)
 
 python-reflection-core: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonReflection' -skip '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonReflectionDriver' ./compiler/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestPythonReflection' -skip '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestPythonReflectionDriver' ./compiler/
 
 $(PYTHON_REFLECTION_STRICT_ROWS): python-ci-reflection-strict-%: python-toolchain-check
-	SCHEMA_SLOW=1 PYTHON_REFLECTION_STRICT_SHARD=$* go test -v -count=1 -timeout 600s -run '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 PYTHON_REFLECTION_STRICT_SHARD=$* $(GOTESTRUN) -v -count=1 -timeout 600s -run '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
 
 python-reflection-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonReflection(CorpusNegativeControl|KindHoleNegativeControl|VocabularyNegativeControl|FieldVocabularyNegativeControl|LayoutNegativeControl|ResetLargeArraysNegativeControl|AccessorNegativeControl|AnnotationAgreementNegativeControl|DescriptorDocsNegativeControl)' ./internal/codegen/pythontable/
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonReflectionDriver(NegativeControl|PacketUnionNegativeControl)' ./compiler/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestPythonReflection(CorpusNegativeControl|KindHoleNegativeControl|VocabularyNegativeControl|FieldVocabularyNegativeControl|LayoutNegativeControl|ResetLargeArraysNegativeControl|AccessorNegativeControl|AnnotationAgreementNegativeControl|DescriptorDocsNegativeControl)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestPythonReflectionDriver(NegativeControl|PacketUnionNegativeControl)' ./compiler/

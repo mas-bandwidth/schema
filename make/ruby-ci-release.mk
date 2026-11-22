@@ -3,9 +3,9 @@
 
 .PHONY: ruby-readiness ruby-readiness-negative-control
 ruby-readiness: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyReadiness$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestRubyReadiness$$' ./internal/codegen/rubytable/
 ruby-readiness-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyReadinessNegativeControl$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestRubyReadinessNegativeControl$$' ./internal/codegen/rubytable/
 test-ruby: ruby-readiness ruby-readiness-negative-control
 
 .PHONY: tables-ruby-bench-gate tables-ruby-bench-gate-negative-control

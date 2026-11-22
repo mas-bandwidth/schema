@@ -583,7 +583,7 @@ tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/man
 tables-elixir-offsets:
 	@mkdir -p build
 	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 		> build/tables-elixir-offsets.log 2>&1; \
 		status=$$?; cat build/tables-elixir-offsets.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
@@ -603,7 +603,7 @@ ELIXIR_OFFSETS_SED := -e 's|B.u64halves(data, a.offset_of_offset)|B.u64(data, a.
 tables-elixir-offsets-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS),internal/codegen/elixirtable/block.go,ELIXIR_OFFSETS_SED)
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			go test -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
+			$(GOTESTRUN) -control -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a whole-word offset_of read left the forged-offset assertion green"; \
@@ -629,7 +629,7 @@ ELIXIR_COOK_SED := \
 tables-elixir-cook-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_COOK),internal/codegen/elixirtable/cook.go,ELIXIR_COOK_SED)
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			go test -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
+			$(GOTESTRUN) -control -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a whole-word cook delta read left the forged-delta assertion green"; \
@@ -1140,7 +1140,7 @@ test-elixir:
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	@rm -rf build/conformance-elixir-variable-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-class
 
@@ -1161,7 +1161,7 @@ test-elixir: tables-elixir-variable-class
 # writer's bytes as the engine reads them (§5).
 .PHONY: tables-elixir-variable-fixed-class
 tables-elixir-variable-fixed-class: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
 	@rm -rf build/conformance-elixir-variable-fixed-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-fixed-class
 
@@ -1176,7 +1176,7 @@ test-elixir: tables-elixir-variable-fixed-class
 .PHONY: tables-elixir-wasrows
 tables-elixir-wasrows:
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
 test-elixir: tables-elixir-wasrows
 
 # THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
@@ -1210,7 +1210,7 @@ test-elixir: tables-elixir-file-module
 .PHONY: tables-elixir-json-differential tables-elixir-json-differential-negative-control
 tables-elixir-json-differential:
 	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
 	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
@@ -1219,7 +1219,7 @@ tables-elixir-json-differential:
 
 tables-elixir-json-differential-negative-control:
 	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
 	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
@@ -1241,7 +1241,7 @@ test-elixir: tables-elixir-json-differential tables-elixir-json-differential-neg
 .PHONY: tables-elixir-finite-float tables-elixir-finite-float-negative-control
 tables-elixir-finite-float:
 	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
 	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
@@ -1250,7 +1250,7 @@ tables-elixir-finite-float:
 
 tables-elixir-finite-float-negative-control:
 	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
 	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
@@ -1274,7 +1274,7 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 # instances.
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
 	@rm -rf build/conformance-elixir-variable-arms
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-arms
 
@@ -1288,7 +1288,7 @@ test-elixir: tables-elixir-variable-arms
 # carries and writes <case>.absent for the rest.
 .PHONY: tables-elixir-block-build
 tables-elixir-block-build: build/conformance-elixir-manifest/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
 	@rm -rf build/conformance-elixir-block-build
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-block-build
 
@@ -1499,7 +1499,7 @@ ERL_BIN    ?=
 .PHONY: tables-elixir-versioning
 tables-elixir-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
 	@echo 'tables Elixir versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
@@ -1517,7 +1517,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedruntime.go":"%s/build/elixir-versioning-nc/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			go test -overlay build/elixir-versioning-nc/overlay.json \
+			$(GOTESTRUN) -control -overlay build/elixir-versioning-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew' \
 			> build/elixir-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
@@ -1549,7 +1549,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 .PHONY: tables-elixir-t13
 tables-elixir-t13:
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
 	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
 
 # THE MESSAGE FORM'S BATCH ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3).
@@ -1572,7 +1572,7 @@ tables-elixir-t13:
 tables-elixir-message-batch:
 	@mkdir -p build
 	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormBatchElixir$$' \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormBatchElixir$$' \
 		> build/tables-elixir-message-batch.log 2>&1; \
 		status=$$?; cat build/tables-elixir-message-batch.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
@@ -1593,7 +1593,7 @@ tables-elixir-message-batch:
 tables-elixir-message-conformance: build/conformance-harness build-conformance-elixir
 	@mkdir -p build
 	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormConformanceElixir$$' \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestMessageFormConformanceElixir$$' \
 		> build/tables-elixir-message-conformance.log 2>&1; \
 		status=$$?; cat build/tables-elixir-message-conformance.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
@@ -1607,7 +1607,7 @@ test-elixir: tables-elixir-message-conformance
 .PHONY: tables-elixir-fixed-roadmap-t12
 tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
 	@echo 'tables Elixir T12: R27 manifest oracle, union-field-arms and payload-free-arms verified'
 
 # M5 (#407): 1-based keyed array accessors (<field>_at/2, put_<field>_at/3,
@@ -1617,7 +1617,7 @@ tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
 tables-elixir-keyed:
 	@mkdir -p build
 	@SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
-		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
+		$(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 		> build/tables-elixir-keyed.log 2>&1; \
 		status=$$?; cat build/tables-elixir-keyed.log; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
@@ -1639,7 +1639,7 @@ tables-elixir-keyed-none-negative-control:
 	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-none-nc/elixir.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-none-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
-			go test -overlay build/elixir-keyed-none-nc/overlay.json \
+			$(GOTESTRUN) -overlay build/elixir-keyed-none-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 			> build/elixir-keyed-none-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the key >= 1 guard left TestKeyedAccessorCoversBothEndsElixir green"; \
@@ -1662,7 +1662,7 @@ tables-elixir-keyed-max-negative-control:
 	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/elixir-keyed-max-nc/elixir.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-keyed-max-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
-			go test -overlay build/elixir-keyed-max-nc/overlay.json \
+			$(GOTESTRUN) -overlay build/elixir-keyed-max-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestKeyedAccessorCoversBothEndsElixir$$' \
 			> build/elixir-keyed-max-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the key <= max guard left TestKeyedAccessorCoversBothEndsElixir green"; \
@@ -1690,7 +1690,7 @@ tables-elixir-cook-blob-negative-control:
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-blob-nc/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-blob-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
-			go test -overlay build/elixir-cook-blob-nc/overlay.json \
+			$(GOTESTRUN) -overlay build/elixir-cook-blob-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestCookNumbersABlobByItsSlotElixir$$' \
 			> build/elixir-cook-blob-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: keying the cook's blob by its bytes left TestCookNumbersABlobByItsSlotElixir green"; \
@@ -1872,7 +1872,7 @@ ELIXIR_DISCARD_NC := build/elixir-discard-nc
 
 .PHONY: tables-elixir-discard tables-elixir-discard-negative-control
 tables-elixir-discard:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
 		-run '^TestDamageDiscardsTheWholeLoadElixir$$'
 
 tables-elixir-discard-negative-control:
@@ -1885,7 +1885,7 @@ tables-elixir-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_DISCARD_NC)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ELIXIR_DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) -control -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadElixir$$' ./internal/codegen/elixirtable > $(ELIXIR_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Elixir discard is gone and the gate stayed green"; \
 		cat $(ELIXIR_DISCARD_NC)/log; exit 1; \
@@ -2141,10 +2141,10 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 		$(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/elixir-view/$$pkg.listing; \
 		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/elixir-view/unflattened.listing; fi \
 	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
-	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
+	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view $(GOTESTRUN) ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/elixir-view/negative
 	@cp build/elixir-view/unflattened.listing build/elixir-view/negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR > build/elixir-view/negative.log 2>&1; then echo "Elixir UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR > build/elixir-view/negative.log 2>&1; then echo "Elixir UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/elixir-view/negative.log
 	@echo "Elixir UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
@@ -2194,7 +2194,7 @@ test-elixir: conformance-elixir-framing conformance-negative-control-elixir-fram
 # into a failure.
 .PHONY: tables-elixir-cook-map
 tables-elixir-cook-map:
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) $(GOTESTRUN) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 		-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$'
 
 test-elixir: tables-elixir-cook-map
@@ -2221,7 +2221,7 @@ define ELIXIR_COOK_MAP_CONTROL
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-map-nc-$(1)/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-map-nc-$(1)/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			go test -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+			$(GOTESTRUN) -control -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 			-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$' \
 			> build/elixir-cook-map-nc-$(1)/log 2>&1; then \
 		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) left the map and list cook gate green"; exit 1; \

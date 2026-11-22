@@ -22,7 +22,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unions
 python-ci-vt-unions: python-vt-unions python-vt-unions-negative-control
 
 python-vt-unions: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtUnions$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtUnions$$' ./internal/codegen/pythontable/
 
 python-vt-unions-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPython(VtUnionsNegativeControl|UnionCountedBirthNegativeControl)'  ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run 'TestPython(VtUnionsNegativeControl|UnionCountedBirthNegativeControl)'  ./internal/codegen/pythontable/

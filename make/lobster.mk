@@ -177,4 +177,4 @@ GOLDENS_LEGS      += update-goldens-lobster
 # test-lobster already includes these tests through its package-wide command.
 .PHONY: tables-lobster-view
 tables-lobster-view: toolchain-lobster
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v

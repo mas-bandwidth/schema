@@ -86,7 +86,8 @@ func runRecipes(name, text string) []runRecipe {
 		for _, m := range goInvocation.FindAllStringIndex(ll.text, -1) {
 			inv := ll.text[m[0]:m[1]]
 			fields := strings.Fields(inv)
-			if len(fields) < 2 || fields[0] != "go" || fields[1] != "test" {
+			wrapped := strings.HasPrefix(inv, "$(GOTESTRUN")
+			if !wrapped && (len(fields) < 2 || fields[0] != "go" || fields[1] != "test") {
 				continue
 			}
 			rm := runArg.FindStringSubmatchIndex(inv)

@@ -21,23 +21,23 @@ PYTHON_FIXED_EVOLUTION_PATTERN_retirement := ^TestPythonFixedProofEvolutionRetir
 PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_FIXED_EVOLUTION_TARGETS) python-fixed-proof-evolution-negative-control python-fixed-evolution-ci-coverage
 .PHONY: python-fixed-proof-evolution python-fixed-proof-evolution-negative-control python-fixed-evolution-ci-coverage python-fixed-evolution-ci-patterns $(PYTHON_FIXED_EVOLUTION_TARGETS)
 python-fixed-proof-evolution: dist-python tables-fixedform-corpus
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_FIXED_EVOLUTION_AGGREGATE)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_FIXED_EVOLUTION_AGGREGATE)' ./internal/codegen/pythontable/
 $(PYTHON_FIXED_EVOLUTION_TARGETS): dist-python tables-fixedform-corpus
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_FIXED_EVOLUTION_PATTERN_$(@:python-fixed-proof-evolution-row-%=%))' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -v -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_FIXED_EVOLUTION_PATTERN_$(@:python-fixed-proof-evolution-row-%=%))' ./internal/codegen/pythontable/
 python-fixed-evolution-ci-patterns:
 	@printf '%s\n' 'aggregate $(PYTHON_FIXED_EVOLUTION_AGGREGATE)' $(foreach row,$(PYTHON_FIXED_EVOLUTION_ROWS),'$(row) $(PYTHON_FIXED_EVOLUTION_PATTERN_$(row))')
 python-fixed-evolution-ci-coverage:
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonFixedEvolutionCICoverage$$' ./internal/ci/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_python -run '^TestPythonFixedEvolutionCICoverage$$' ./internal/ci/
 python-fixed-proof-evolution-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolution(NegativeControl|Hostile|HostileEnvelope|HostileShapes)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolution(NegativeControl|Hostile|HostileEnvelope|HostileShapes)$$' ./internal/codegen/pythontable/
 test-python: $(PYTHON_FIXED_EVOLUTION_TARGETS) python-fixed-proof-evolution-negative-control python-fixed-evolution-ci-coverage
 # Every ordered pair of the fixed form's numeric kinds, read by Python and by
 # the live C++ reader built with the same lineage. Needs no corpus, so the
 # tests also run in the automatic package shards.
 .PHONY: python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control
 python-fixed-proof-evolution-kinds: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairs$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairs$$' ./internal/codegen/pythontable/
 python-fixed-proof-evolution-kinds-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairsNegativeControl$$' ./internal/codegen/pythontable/
 test-python: python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control

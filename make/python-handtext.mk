@@ -11,16 +11,16 @@ PYTHON_CI_SUPPORT_GROUPS += python-handtext-core python-handtext-go-reference py
 
 python-handtext: python-handtext-core python-handtext-go-reference python-handtext-cpp-reference
 python-handtext-core: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CORE)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CORE)' ./internal/codegen/pythontable/
 python-handtext-go-reference: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_GO_REFERENCE)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_GO_REFERENCE)' ./internal/codegen/pythontable/
 python-handtext-cpp-reference: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CPP_REFERENCE)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CPP_REFERENCE)' ./internal/codegen/pythontable/
 
 python-handtext-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CONTROLS)' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CONTROLS)' ./internal/codegen/pythontable/
 python-handtext-ci-coverage:
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonHandtextCISelection$$' ./internal/ci/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_python -run '^TestPythonHandtextCISelection$$' ./internal/ci/
 python-handtext-ci-patterns:
 	@printf '%s\n' '$(PYTHON_HANDTEXT_CORE)' '$(PYTHON_HANDTEXT_GO_REFERENCE)' '$(PYTHON_HANDTEXT_CPP_REFERENCE)' '$(PYTHON_HANDTEXT_CONTROLS)'
 

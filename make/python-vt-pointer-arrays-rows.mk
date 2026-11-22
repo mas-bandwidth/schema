@@ -13,6 +13,6 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-pointer-arrays-rows
 python-ci-vt-pointer-arrays-rows: python-vt-pointer-arrays-rows python-vt-pointer-arrays-rows-negative-control
 test-python: python-vt-pointer-arrays-rows python-vt-pointer-arrays-rows-negative-control
 python-vt-pointer-arrays-rows: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtPointerArraysRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtPointerArraysRows$$' ./internal/codegen/pythontable/
 python-vt-pointer-arrays-rows-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtPointerArraysRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtPointerArraysRowsNegativeControl$$' ./internal/codegen/pythontable/

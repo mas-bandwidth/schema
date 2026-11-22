@@ -25,10 +25,10 @@ MOO_TEXT_CONTROLS := NegativeControl$$
 
 .PHONY: tables-moo-json tables-moo-json-differential tables-moo-json-negative-controls
 tables-moo-json: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -run '$(MOO_TEXT_GATES)' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -run '$(MOO_TEXT_GATES)' ./internal/codegen/mootable/
 tables-moo-json-differential: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -run 'TestMooJsonTextDifferential$$' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -run 'TestMooJsonTextDifferential$$' ./internal/codegen/mootable/
 tables-moo-json-negative-controls: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ./internal/codegen/mootable/
 
 test-moo: tables-moo-json tables-moo-json-differential tables-moo-json-negative-controls

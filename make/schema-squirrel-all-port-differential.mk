@@ -56,6 +56,6 @@ schema-squirrel-all-port-differential-fast:
 # Registered in make/negative-controls.json (group squirrel).
 .PHONY: schema-squirrel-all-port-differential-negative-control
 schema-squirrel-all-port-differential-negative-control:
-	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
+	@nice -n 19 $(GOTESTRUN) -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSquirrelAllPortDifferentialDetectsADivergence$$'
 	@echo 'squirrel all-port differential negative control: the planted wire byte is caught and named'

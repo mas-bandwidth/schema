@@ -104,10 +104,10 @@ test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-contro
 # a missing C++ compiler a FAILURE rather than a skip.
 .PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
 tables-cpp-text-differential:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables C++ text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-cpp-text-differential-negative-control:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
 	@echo 'tables C++ text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C++ TABLES SOAK (docs/PORTING.md I9, issue #416's C++ half). The one-shot
