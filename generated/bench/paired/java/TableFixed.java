@@ -2172,6 +2172,14 @@ public final class TableFixed {
                         for (long k = 0; k < myVariants; k++) {
                             if (mine.id(mi + 1 + (int) k) == vid) {
                                 landed = (short) (k + 1);
+                                // A DEPRECATED VARIANT (§2.15) READS AS THE FIELD'S
+                                // DEFAULT, or None for an array element, and counts
+                                // nothing: its entry's aux lane carries that ordinal
+                                // plus one, zero for a variant not deprecated.
+                                final int vrow = (mi + 1 + (int) k) * dstLanes + dstAux;
+                                if (c.dest != null && vrow < c.dest.length && c.dest[vrow] != 0) {
+                                    landed = (short) (c.dest[vrow] - 1);
+                                }
                                 break;
                             }
                         }

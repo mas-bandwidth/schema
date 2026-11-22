@@ -724,7 +724,7 @@ func enumVariants(g *goose.Gen, e *ir.Enum) string {
 	g.Declare(name)
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
-		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %s, id: 0x%016x }", goose.RuntimeNamespace, stringLit(e.Variants[i]), ir.TableWireId(e.VariantWireName(i)))
+		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %s, id: 0x%016x, deprecated: %v }", goose.RuntimeNamespace, stringLit(e.Variants[i]), ir.TableWireId(e.VariantWireName(i)), i < len(e.VariantDeprecated) && e.VariantDeprecated[i])
 	}
 	g.Pf("let %s: %s::VariantDesc[%d] = [%s];\n", name, goose.RuntimeNamespace, len(parts), strings.Join(parts, ", "))
 	return name

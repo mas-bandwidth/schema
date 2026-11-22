@@ -117,7 +117,7 @@ func emitTableWireUnit(g *goose.Gen) error {
 				name := fmt.Sprintf("_TableUnitKey%d", len(keys))
 				parts := make([]string, len(e.Variants))
 				for j := range e.Variants {
-					parts[j] = fmt.Sprintf("%s::VariantDesc { name: %q, id: 0x%016x }", goose.RuntimeNamespace, e.Variants[j], ir.TableWireId(e.VariantWireName(j)))
+					parts[j] = fmt.Sprintf("%s::VariantDesc { name: %q, id: 0x%016x, deprecated: false }", goose.RuntimeNamespace, e.Variants[j], ir.TableWireId(e.VariantWireName(j)))
 				}
 				g.Declare(name)
 				g.Pf("let %s: %s::VariantDesc[%d] = [%s];\n", name, goose.RuntimeNamespace, len(parts), strings.Join(parts, ", "))

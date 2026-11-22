@@ -46,6 +46,7 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -232,6 +233,15 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		case *ir.Enum:
 			fixedWalkEnum(w, r, id, note, at)
+			// §2.15: a deprecated variant's entry carries, in its aux lane, the
+			// ordinal the compiled plan lands it on PLUS ONE (the field's declared
+			// default, or None for an array element); zero is "not deprecated".
+			land, _ := strconv.Atoi(deprecatedLanding(f))
+			for i := range r.Variants {
+				if variantDeprecated(r, i) {
+					w.dst[len(w.dst)-len(r.Variants)+i].aux = int64(land) + 1
+				}
+			}
 			return
 		}
 	}
@@ -1739,6 +1749,12 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
 			g.pf("%s    if (q > %dL) { q = 0L; %s }\n", ind, len(r.Variants), scatterRefuse(rep, walked, "outOfRange"))
+			for i := range r.Variants {
+				if variantDeprecated(r, i) {
+					// §2.15: a deprecated variant reads as the default, uncounted
+					g.pf("%s    if (q == %dL) { q = %sL; }\n", ind, i+1, deprecatedLanding(f))
+				}
+			}
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return
