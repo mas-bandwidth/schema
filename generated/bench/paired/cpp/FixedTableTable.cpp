@@ -3039,7 +3039,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             }
             in.pos++;
             if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
-            if ( key[0] == '&' && in.graph != NULL )
+            if ( key[0] == '&' )
             {
                 if ( !first )
                 {
@@ -4444,9 +4444,37 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth, char, uint64_t & )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char, uint64_t & )
 {
-    return TableJsonSkipValue( in, depth + 1 );
+    // no pointer, so no label table: the prefix is still held to its grammar
+    // (a well-formed first &node), and the value is skipped whole
+    if ( !TableJsonKeyEquals( "&node", key, key_length ) )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    TableJsonSpace( in );
+    if ( in.pos >= in.size || in.text[in.pos] < '1' || in.text[in.pos] > '9' )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    uint64_t value = 0;
+    while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' )
+    {
+        const uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in.report->damaged = true;
+            in.bad = true;
+            return false;
+        }
+        value = value * 10 + digit;
+        in.pos++;
+    }
+    return true;
 }
 
 inline void TableJsonSkippedClose( TableJsonIn &, uint64_t ) {}

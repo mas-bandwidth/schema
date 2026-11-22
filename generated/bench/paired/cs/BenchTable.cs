@@ -2469,7 +2469,7 @@ namespace Bench
                         input.Pos++;
                         keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                         if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
-                        if (used > 0 && key[0] == '&' && input.Labels != null)
+                        if (used > 0 && key[0] == '&')
                         {
                             if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
                             // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
@@ -2477,9 +2477,17 @@ namespace Bench
                             // follow a label not yet defined, and the definition is open
                             // until this object closes. What the reader does not place is
                             // the value, never the label.
-                            bool known = input.Labels.TryGetValue(label, out Label held);
                             first = false; c = Peek(text, ref input);
                             if (c != ',' && c != close) { input.Bad = true; return false; }
+                            if (input.Labels == null)
+                            {
+                                // a unit with no pointer has no label table: the prefix is still
+                                // held to its grammar, and the value is skipped whole
+                                input.Pos++;
+                                if (c == close) { return true; }
+                                continue;
+                            }
+                            bool known = input.Labels.TryGetValue(label, out Label held);
                             if (c == ',') { input.Pos++; c = Peek(text, ref input); }
                             bool bare = c == close;
                             if (bare != known) { input.Bad = true; return false; }

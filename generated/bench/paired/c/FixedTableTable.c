@@ -1762,7 +1762,22 @@ static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t 
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
 static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, char close, uint64_t * opened )
-{ (void)key; (void)close; (void)opened; in->bad = 1; return 0; }
+{
+    /* no pointer, so no label table: the prefix is still held to its grammar (a
+       well-formed first &node), and the value is skipped whole */
+    uint64_t value = 0;
+    (void)close; (void)opened;
+    if ( strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
+    bench_table_json_space(in);
+    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' ) { in->bad = 1; return 0; }
+    while ( in->pos < in->size && in->text[in->pos] >= '0' && in->text[in->pos] <= '9' )
+    {
+        uint64_t digit = (uint64_t)(in->text[in->pos]-'0');
+        if ( value > (UINT64_MAX-digit)/10 ) { in->bad = 1; return 0; }
+        value = value*10+digit; in->pos++;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t label )
 { (void)in; (void)label; }
 #endif
@@ -1909,7 +1924,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
             added = bench_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !bench_table_json_skipped_ampersand(in,key,close,&opened) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' ) { if ( !first ) { in->bad = 1; return 0; } if ( !bench_table_json_skipped_ampersand(in,key,close,&opened) ) { return 0; } consumed = 1; }
         }
         first = 0;
         if ( !consumed && !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }

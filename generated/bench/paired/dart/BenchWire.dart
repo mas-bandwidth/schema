@@ -6039,11 +6039,14 @@ void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r)
     final val = entries[idx].value;
     _jsonText(key);
     _jsonName(key, r);
-    if (r.variableRoot && key.startsWith('&')) {
+    if (key.startsWith('&')) {
       final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
       if (label == null) {
         throw const FormatException('reserved ampersand prefix');
       }
+      // a unit with no pointer has no label table: the prefix is still held to
+      // its grammar, and the value is skipped whole
+      if (!r.variableRoot) continue;
       if (entries.length == 1) {
         if (!r.labelsSeen.contains(label) || r.labelsOpen.contains(label)) {
           throw const FormatException('undefined node label');
