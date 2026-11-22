@@ -1,0 +1,16 @@
+{
+  "about": "Review findings F-012 and F-013 (2026-11-21) as a filesystem corpus. The batch is unit/Player.schema's two Player messages packed from in/a (level 7) and in/b (level 33). Each case lays out {work}, unpacks the batch into its two destinations, and is either refused (nothing under {work} changes, every same_entry is the entry it was) or lands (the destinations read 7 and 33 and pack back to the batch byte for byte). folding_volume cases run only where the volume takes the two spellings for one name.",
+  "cases": [
+    {"id": "F-012/one-existing-directory-twice", "layout": {"files": {"out/keep.txt": "keep"}}, "dests": ["out", "out"], "refused": true},
+    {"id": "F-012/a-symlinked-spelling-of-the-directory", "layout": {"files": {"out/keep.txt": "keep"}, "symlinks": {"alias": "out"}}, "dests": ["out", "alias"], "refused": true},
+    {"id": "F-012/one-fresh-directory-twice", "dests": ["fresh", "fresh"], "refused": true},
+    {"id": "F-012/fresh-names-differing-only-by-case", "dests": ["Out", "out"], "refused": true, "folding_volume": true},
+    {"id": "F-012/a-fresh-parent-then-its-fresh-child", "dests": ["parent", "parent/child"], "refused": true},
+    {"id": "F-012/a-fresh-child-then-its-fresh-parent", "dests": ["parent/child", "parent"], "refused": true},
+    {"id": "F-012/an-existing-child-then-its-existing-parent", "layout": {"files": {"parent/child/keep.txt": "keep"}}, "dests": ["parent/child", "parent"], "refused": true},
+    {"id": "F-012/control-disjoint-fresh-and-existing", "layout": {"files": {"existing/level.json": "999\n"}}, "dests": ["fresh/a", "existing"], "refused": false},
+    {"id": "F-013/second-obstructed-first-holds-a-prior-value", "layout": {"files": {"first/level.json": "999\n", "first/.notes": "mine", "second/level.json/inside.txt": "in the way"}}, "dests": ["first", "second"], "refused": true, "same_entry": ["first/level.json", "first/.notes"]},
+    {"id": "F-013/second-obstructed-first-absent", "layout": {"files": {"second/level.json/inside.txt": "in the way"}}, "dests": ["first", "second"], "refused": true},
+    {"id": "F-013/control-unobstructed", "layout": {"files": {"first/level.json": "999\n", "first/.notes": "mine"}}, "dests": ["first", "second"], "refused": false, "same_entry": ["first/.notes"]}
+  ]
+}

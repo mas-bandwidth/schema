@@ -1,0 +1,9 @@
+# The Windows-only test files no lane of .github/workflows/windows.yml
+# compiles, one per line, in order. d/ and m/ are the controls: a real
+# go test of the package from the tree's root.
+e/vet_windows_test.go
+h/echo_windows_test.go
+i/stepoff_windows_test.go
+j/cd_windows_test.go
+k/wd_windows_test.go
+l/joboff_windows_test.go

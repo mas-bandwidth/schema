@@ -285,7 +285,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.emitBlockOpen(bl)
 	g.emitBlockBuild(bl)
 	g.emitBlockAccessors(bl)
-	g.pf("  return Object.freeze({\n")
+	g.pf("  return globalThis.Object.freeze({\n")
 	g.pf("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
 	g.pf("    // maxima (docs/SPEC-TABLES.md §19.1). A JavaScript consumer does not allocate\n")
 	g.pf("    // a block — the bytes are handed to it — but it caps by this: a playback\n")
@@ -329,7 +329,7 @@ func (g *blockGen) emitStrideChecks(bl *ir.BlockLayout) {
 	g.pf("  function Layout() {\n")
 	g.pf("    if (!layoutChecked) {\n")
 	g.pf("      if (!TableBlockLayout.verify(projection, strides)) {\n")
-	g.pf("        throw new Error(\"%sBlock: this build's generated layout constants disagree with each other (docs/SPEC-TABLES.md §19.3) — regenerate\");\n", bl.Table.Name)
+	g.pf("        throw new globalThis.Error(\"%sBlock: this build's generated layout constants disagree with each other (docs/SPEC-TABLES.md §19.3) — regenerate\");\n", bl.Table.Name)
 	g.pf("      }\n")
 	g.pf("      layoutChecked = true;\n")
 	g.pf("    }\n")
@@ -378,13 +378,13 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // (test/conformance/README.md).\n")
 	g.pf("  function openCheck(bytes) {\n")
 	g.pf("    if (bytes.length < %d) { return \"truncated\"; }\n", bl.Projection.Size)
-	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("    const view = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("    if (view.getBigUint64(0, true) !== TableBlockMagic) {\n")
 	g.pf("      return view.getBigUint64(0, false) === TableBlockMagic ? \"foreign_order\" : \"not_a_cook\";\n")
 	g.pf("    }\n")
 	g.pf("    if (view.getBigUint64(16, true) !== TableBlockByteOrder) { return \"not_a_cook\"; }\n")
 	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return \"wrong_build_version\"; }\n")
-	g.pf("    const extent = BigInt(bytes.length);\n")
+	g.pf("    const extent = globalThis.BigInt(bytes.length);\n")
 	g.pf("    let used = %dn;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
@@ -394,8 +394,8 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		}
 		g.pf("    {\n")
 		g.pf("      const offsetOf = view.getBigUint64(%d, true);\n", a.OffsetOfOffset)
-		g.pf("      const count = BigInt(view.getUint32(%d, true));\n", a.CountOffset)
-		g.pf("      const stride = BigInt(view.getUint32(%d, true));\n", a.StrideOffset)
+		g.pf("      const count = globalThis.BigInt(view.getUint32(%d, true));\n", a.CountOffset)
+		g.pf("      const stride = globalThis.BigInt(view.getUint32(%d, true));\n", a.StrideOffset)
 		g.pf("      if (stride !== %dn) { return \"bad_layout\"; }\n", a.Stride)
 		g.pf("      // past the DECLARED MAXIMUM: Begin refuses this on the producer side\n")
 		g.pf("      // and Open refuses it here, because a consumer that sizes anything by\n")
@@ -417,16 +417,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    if (padding > extent - used) { return \"truncated\"; }\n")
 	g.pf("    used += padding;\n")
 	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { return \"unaligned_base\"; } // the base's alignment\n", ir.BlockAlign)
-	g.pf("    return { Bytes: bytes, View: view, Used: Number(used) };\n")
+	g.pf("    return { Bytes: bytes, View: view, Used: globalThis.Number(used) };\n")
 	g.pf("  }\n\n")
 	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
+	g.pf("    if (!(bytes instanceof globalThis.Uint8Array)) {\n")
+	g.pf("      throw new globalThis.TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
 	g.pf("    }\n")
 	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { // the base's alignment\n", ir.BlockAlign)
-	g.pf("      throw new RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
+	g.pf("      throw new globalThis.RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
 	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n", ir.BlockAlign)
-	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("        \"into a fresh Uint8Array first: new globalThis.Uint8Array(bytes)\");\n")
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
 	g.pf("    const handle = openCheck(bytes);\n")
@@ -436,8 +436,8 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // all is the reference's null base, unaligned_base, rather than a throw.\n")
 	g.pf("  function OpenReason(bytes) {\n")
 	g.pf("    if (bytes === null || bytes === undefined) { return \"unaligned_base\"; }\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sBlock.OpenReason takes the block's bytes as a Uint8Array, not \" + typeof bytes);\n", bl.Table.Name)
+	g.pf("    if (!(bytes instanceof globalThis.Uint8Array)) {\n")
+	g.pf("      throw new globalThis.TypeError(\"%sBlock.OpenReason takes the block's bytes as a Uint8Array, not \" + typeof bytes);\n", bl.Table.Name)
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
 	g.pf("    const handle = openCheck(bytes);\n")
@@ -476,11 +476,11 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	} else {
 		g.pf("  function Begin(bytes) {\n")
 	}
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sBlock.Begin takes the block's extent as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", name)
+	g.pf("    if (!(bytes instanceof globalThis.Uint8Array)) {\n")
+	g.pf("      throw new globalThis.TypeError(\"%sBlock.Begin takes the block's extent as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", name)
 	g.pf("    }\n")
 	g.pf("    if ((bytes.byteOffset %% %d) !== 0) {\n", ir.BlockAlign)
-	g.pf("      throw new RangeError(\"%sBlock.Begin: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", name)
+	g.pf("      throw new globalThis.RangeError(\"%sBlock.Begin: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", name)
 	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — copy the bytes into a fresh Uint8Array first\");\n", ir.BlockAlign)
 	g.pf("    }\n")
 	g.pf("    Layout();\n")
@@ -488,9 +488,9 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.pf("    const n%s = counts && counts.%s !== undefined ? counts.%s : 0;\n", field, field, field)
-		g.pf("    if (!Number.isInteger(n%s) || n%s < 0 || n%s > %d) { return -1; } // past the declared maximum\n", field, field, field, a.Max)
+		g.pf("    if (!globalThis.Number.isInteger(n%s) || n%s < 0 || n%s > %d) { return -1; } // past the declared maximum\n", field, field, field, a.Max)
 	}
-	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("    const view = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("    view.setBigUint64(0, TableBlockMagic, true); // §19.1's prologue\n")
 	g.pf("    view.setBigUint64(8, BuildVersion, true); // §20\n")
 	g.pf("    view.setBigUint64(16, TableBlockByteOrder, true); // §20.3\n")
@@ -500,13 +500,13 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		if a.ElemAlign() > alignment {
 			alignment = a.ElemAlign()
 		}
-		g.pf("    offset = Math.floor((offset + %d) / %d) * %d; // the array's own start alignment\n", alignment-1, alignment, alignment)
-		g.pf("    view.setBigUint64(%d, BigInt(offset), true); // offset_of\n", a.OffsetOfOffset)
+		g.pf("    offset = globalThis.Math.floor((offset + %d) / %d) * %d; // the array's own start alignment\n", alignment-1, alignment, alignment)
+		g.pf("    view.setBigUint64(%d, globalThis.BigInt(offset), true); // offset_of\n", a.OffsetOfOffset)
 		g.pf("    view.setUint32(%d, n%s, true); // count\n", a.CountOffset, ir.GoExportName(a.Field.Name))
 		g.pf("    view.setUint32(%d, %d, true); // stride: this build's constant\n", a.StrideOffset, a.Stride)
 		g.pf("    offset += n%s * %d;\n", ir.GoExportName(a.Field.Name), a.Stride)
 	}
-	g.pf("    return Math.floor((offset + %d) / %d) * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
+	g.pf("    return globalThis.Math.floor((offset + %d) / %d) * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
 	g.pf("  }\n\n")
 }
 
@@ -642,10 +642,10 @@ func (g *blockGen) emitBlockRecordDescriptor(record string, ml *ir.MemberLayout,
 	if bl != nil {
 		name = bl.Table.Name
 	}
-	g.pf("  const %s = Object.freeze({\n", symbol)
+	g.pf("  const %s = globalThis.Object.freeze({\n", symbol)
 	g.pf("    Name: %q, BuildVersion: BuildVersion, Size: %d, Align: %d, NumFields: %d,\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
-	g.pf("    Fields: Object.freeze([\n")
+	g.pf("    Fields: globalThis.Object.freeze([\n")
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		kind := tableScalarKind(f)
@@ -780,9 +780,9 @@ export const TableBlockByteOrder = 1n;
 // A failure is THIS BUILD's defect — its own constants disagree — and the
 // first Open of the block throws, naming it. It is not a null: a null says the
 // bytes are not this build's, and these bytes were never looked at.
-export const TableBlockLayout = Object.freeze({
+export const TableBlockLayout = globalThis.Object.freeze({
   verify(projection, strides) {
-    const seen = new Set();
+    const seen = new globalThis.Set();
     function record(info, isProjection) {
       if (info === null || seen.has(info)) { return true; }
       seen.add(info);

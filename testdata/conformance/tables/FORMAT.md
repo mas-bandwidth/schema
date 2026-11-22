@@ -42,6 +42,7 @@ unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text] [wire-refused]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
+message-batch <case> <connection> <root> <sent json> <shape> <verdict>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 report       <case> <unit> <root> <wire file>
 rewrite      <case> <unit> <root> <wire file>
@@ -125,6 +126,24 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   emits `refused` or the historical `<name>.absent` file. Diagnostic text is
   ignored; this is an answered PASS case, not a missing feature. Emitted value
   bytes or a missing answer fail. Accepted message write-back covers every body.
+- **`message-batch`** is the count a refused batch returns (docs/SPEC-TABLES.md
+  §3.3, §6.5: "the batch is accepted whole, every body delivered, or refused
+  with a count of `0`"), answered on the `message` surface. `make
+  conformance-generate` writes the row's wire, `message-batch/<case>.bin`: two
+  bodies of `<sent json>` in the row's `<shape>`, which is `whole` (the lawful
+  batch), `cut` (its last byte gone, so it ends inside the second body),
+  `byte-after-pad` (one byte more), or `out-of-range` (a ranged value past its
+  maximum in the second body). The driver loads the wire with room for every
+  body (storage for 256, the most a batch carries; a caller's capacity is a
+  resource limit outside the verdict contract, §6.5, and its rows run in each
+  leg's own tests) and writes one line, `count <n>`: the count the loader
+  reported to its caller exactly as reported. A leg whose loader returns a
+  fresh list answers that list's length, and one whose loader raises answers
+  `count 0`, since it delivered no list. `<verdict>` is withheld from the
+  driver: `delivered` owes the wire's count and `refused` owes `count 0`.
+  Nothing is asserted about the storage after a refusal ("nothing in the
+  caller's storage is a value to use", §3.3) or about the reason
+  (rulings.json, `refusal-verdict-only`).
 - **`retain`** reads through the retaining path under the row's two caller
   capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
   implementation used in a roomy load. `<ids>` is `full` or an explicit entry
@@ -216,6 +235,7 @@ The harness removes expected verdicts and golden paths before calling a driver.
 Construction input remains data the driver needs. These derived lines are:
 
 ```
+message-batch <case> <connection> <root> <wire>
 retain <case> <unit> <root> <wire> <capacity> <ids>
 framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->

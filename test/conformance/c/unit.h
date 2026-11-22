@@ -135,6 +135,18 @@
      ok=SCHEMA_CONFORMANCE_Q(FN##_save_messages)(values,count,*out,*size,&inner)==*size; \
      done:;SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);return ok; \
     } \
+    /* a message-batch row: the count load_messages returned into storage for \
+       256 bodies (docs/SPEC-TABLES.md §3.3), -1 for a refused announcement */ \
+    static int64_t schema_conformance_message_count_##TYPE(const uint8_t * a,int64_t an,const uint8_t * b,int64_t n) \
+    { \
+     enum { vocab_cap = SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE) > 4096 ? SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE) : 4096 }; \
+     SCHEMA_CONFORMANCE_Q(table_message_entry_t) entries[vocab_cap];SCHEMA_CONFORMANCE_Q(table_vocabulary_t) v=SCHEMA_CONFORMANCE_Q(table_vocabulary)(entries,vocab_cap); \
+     SCHEMA_CONFORMANCE_Q(table_report_t) inner={0};int64_t count=256;int i;static SCHEMA_CONFORMANCE_Q(FN##_t) values[256]; \
+     for(i=0;i<256;i++)SCHEMA_CONFORMANCE_Q(FN##_reset)(values+i); \
+     if(!SCHEMA_CONFORMANCE_Q(announce_read)(&v,a,an,&inner))return -1; \
+     (void)SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load_messages))(values,&count,&v,b,n,&inner); \
+     return count; \
+    } \
     static SCHEMA_CONFORMANCE_Q(FN##_t) schema_conformance_storage_##TYPE; \
     static void * schema_conformance_make_##TYPE( void ) \
     { \
@@ -283,12 +295,12 @@
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, NULL, NULL, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
-      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE, NULL, NULL, schema_conformance_share_##TYPE, NULL, NULL }
+      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE, NULL, NULL, schema_conformance_share_##TYPE, NULL, NULL, NULL }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
       schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL, schema_conformance_damage_##TYPE, \
-      schema_conformance_load_variable_##TYPE, NULL, schema_conformance_measure_variable_##TYPE, schema_conformance_save_variable_##TYPE }
+      schema_conformance_load_variable_##TYPE, NULL, schema_conformance_measure_variable_##TYPE, schema_conformance_save_variable_##TYPE, schema_conformance_message_count_##TYPE }
 
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

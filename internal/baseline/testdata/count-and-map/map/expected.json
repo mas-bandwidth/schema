@@ -1,0 +1,51 @@
+{
+  "verdict": "refuse",
+  "contains": "count_over_bound",
+  "saves": [
+    {
+      "name": "one",
+      "input": {
+        "items": {
+          "9": [
+            7
+          ]
+        }
+      },
+      "old": {
+        "items": {
+          "9": [
+            7
+          ]
+        }
+      },
+      "refusal": "count_over_bound"
+    },
+    {
+      "name": "two",
+      "input": {
+        "items": {
+          "9": [
+            7,
+            8
+          ]
+        }
+      },
+      "old": {
+        "items": {
+          "9": [
+            7,
+            8
+          ]
+        }
+      },
+      "new": {
+        "items": {
+          "9": [
+            7,
+            8
+          ]
+        }
+      }
+    }
+  ]
+}

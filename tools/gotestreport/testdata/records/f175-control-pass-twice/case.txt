@@ -1,0 +1,5 @@
+# F-175 control: go test -count=2 and TestRepeat passes both runs.
+args: -require-record -provides tool:rust
+exit: 0
+want: 1 test(s): 1 passed
+want: skip ledger: 0 skip(s)

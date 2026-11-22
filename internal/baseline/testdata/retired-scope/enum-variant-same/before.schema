@@ -1,0 +1,7 @@
+package sample
+enum First { Keep, Value }
+enum Second { Value }
+table Root {
+ first First
+ second Second
+}
