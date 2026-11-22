@@ -38,7 +38,7 @@ const (
 func IdCapSchema() string {
 	var b strings.Builder
 	b.WriteString("package idcap\n\nenum K {\n")
-	for i := 0; i < IdCapVariants; i++ {
+	for i := range IdCapVariants {
 		fmt.Fprintf(&b, "    V%d\n", i)
 	}
 	b.WriteString("}\n\ntable Root {\n    keys [K]uint8\n    x uint8\n    y uint8\n}\n")
@@ -62,7 +62,7 @@ const AnnounceOverhead = 1
 func AnnounceSchema(entries int) string {
 	var b strings.Builder
 	b.WriteString("package idcap\n\nenum K {\n")
-	for i := 0; i < entries-AnnounceOverhead; i++ {
+	for i := range entries - AnnounceOverhead {
 		fmt.Fprintf(&b, "    V%d\n", i)
 	}
 	b.WriteString("}\n\nfixed table Root {\n    keys [K]uint8\n}\n")

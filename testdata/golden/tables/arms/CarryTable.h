@@ -662,6 +662,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 32;
     static const int32_t kBuckets = 64;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -705,7 +708,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -7904,7 +7907,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -7937,7 +7944,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -10290,7 +10297,7 @@ inline void HandReset( Hand & value )
         value.entries[i].plain = 0;
         value.entries[i].type = CarryType::None;
     }
-    value.entries_count = 0;
+    value.entries_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.past = 0;
 }
 
@@ -11239,7 +11246,8 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -11288,7 +11296,8 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -18223,7 +18232,8 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
@@ -18273,7 +18283,8 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.entries_count > 0 )
+    bool rides_entries = value.entries_count > 0;
+    if ( rides_entries )
     {
         const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;

@@ -356,7 +356,7 @@ func writeUnionFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "        if(v.%s.tag!=0){w.putLeb(w.ref(F_%s));w.put8(15);%sVariable.writePayload(w,graph,v.%s);}\n", m, m, un.Name, m)
 		return
 	}
-	fmt.Fprintf(b, "        if(!v.%s.isEmpty()){w.putLeb(w.ref(F_%s));w.put8(14);\n", m, m)
+	fmt.Fprintf(b, "        if(%s){w.putLeb(w.ref(F_%s));w.put8(14);\n", variableRidesGuard(b, f, "v"), m)
 	writeVariablePayload(b, u, st.Name, f, "v."+m, "w", 0)
 	b.WriteString("        }\n")
 }

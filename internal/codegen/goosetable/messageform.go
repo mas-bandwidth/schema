@@ -532,6 +532,27 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 			// (SPEC.md §5.1 row 3)
 			e.p(ind, "if %sCount < %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, f.ArrayMin)
 		}
+		if f.ElidesAtBirth() {
+			// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3,
+			// the §22.2 [M..N]T row; tablewire messageElides): exactly Min
+			// elements, each off the wire (a table by a body that is its
+			// terminator alone, a float by its bits), is not written.
+			e.p(ind, "{")
+			el := elemOf(f)
+			i := e.loopVar()
+			e.p(ind+1, "var born%s = %sCount == %d;", i, pl.val, f.ArrayMin)
+			e.p(ind+1, "var %s: i64 = 0;", i)
+			e.p(ind+1, "while born%s && %s < %d {", i, i, f.ArrayMin)
+			r := e.slotRides(ind+2, el, pl.at(i).val, def.at(i).val)
+			e.p(ind+2, "if %s { born%s = false; }", r, i)
+			e.p(ind+2, "%s += 1;", i)
+			e.p(ind+1, "}")
+			e.p(ind+1, "if %sCount != 0 && !born%s {", pl.val, i)
+			header(ind + 2)
+			e.p(ind+1, "}")
+			e.p(ind, "}")
+			break
+		}
 		e.p(ind, "if %sCount != 0 {", pl.val)
 		header(ind + 1)
 		e.p(ind, "}")
@@ -575,6 +596,9 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 		switch {
 		case f.Type.Optional, e.isUnion(f) && f.Array == ir.ArrayNone, e.isStruct(f):
 		case f.Array == ir.ArrayCounted:
+			if el := elemOf(f); f.ElidesAtBirth() && !e.isStruct(el) && !e.isUnion(el) {
+				return true
+			}
 		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		case (f.Array == ir.ArrayFixed || f.KeyEnum != "") && e.isUnion(f):
 		default:

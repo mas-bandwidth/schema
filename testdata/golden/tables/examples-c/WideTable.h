@@ -366,7 +366,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==156) { w->overflow=1; return 0; }
+    if(v->count>=156) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; tabledemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -5351,7 +5351,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5359,7 +5359,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -6191,7 +6191,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_b
  }
  { /* samples */
  schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
- if(value->samples_count>0) {
+ if(value->samples_count > 0) {
   tabledemo_table_bit_put(w,103,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
   tabledemo_table_bit_put(w,(uint64_t)value->samples_count-0,17);
@@ -6352,7 +6352,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
- if(!(value->samples_count>0))goto damaged;
+ if(!(value->samples_count > 0))goto damaged;
  }
  break;
  }

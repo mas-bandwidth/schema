@@ -3794,6 +3794,147 @@ export function FixedTableFixedCheckDead(view, at, report) {
   }
 }
 
+const MixedWeaponFixedByName = new globalThis.Map([["None", 0], ["Fists", 1], ["Pistol", 2], ["Shotgun", 3], ["Rifle", 4], ["Sniper", 5], ["Smg", 6], ["Rocket", 7], ["Grenade", 8], ["Plasma", 9], ["Railgun", 10], ["Flamer", 11], ["Mine", 12], ["Turret", 13], ["Drone", 14], ["Repair", 15]]);
+function MixedWeaponFixedFromName(name) {
+  if (typeof name !== "string") { return name; }
+  const ordinal = MixedWeaponFixedByName.get(name);
+  return ordinal === undefined ? name : ordinal;
+}
+
+// MixedEntityFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function MixedEntityFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.entityId !== undefined) { dst.entityId = src.entityId; }
+  if (src.posX !== undefined) { dst.posX = src.posX; }
+  if (src.posY !== undefined) { dst.posY = src.posY; }
+  if (src.posZ !== undefined) { dst.posZ = src.posZ; }
+  if (src.yaw !== undefined) { dst.yaw = src.yaw; }
+  if (src.pitch !== undefined) { dst.pitch = src.pitch; }
+  if (src.velX !== undefined) { dst.velX = src.velX; }
+  if (src.velY !== undefined) { dst.velY = src.velY; }
+  if (src.velZ !== undefined) { dst.velZ = src.velZ; }
+  if (src.health !== undefined) { dst.health = src.health; }
+  if (src.weapon !== null && src.weapon !== undefined) { dst.weapon = MixedWeaponFixedFromName(src.weapon); }
+  if (src.damage !== undefined) { dst.damage = src.damage; }
+  if (src.moving !== undefined) { dst.moving = src.moving; }
+  if (src.firing !== undefined) { dst.firing = src.firing; }
+  return dst;
+}
+
+// MixedStatFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function MixedStatFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.statId !== undefined) { dst.statId = src.statId; }
+  if (src.delta !== undefined) { dst.delta = src.delta; }
+  return dst;
+}
+
+// MixedHitEventFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function MixedHitEventFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.targetId !== undefined) { dst.targetId = src.targetId; }
+  if (src.damage !== undefined) { dst.damage = src.damage; }
+  if (src.hitKind !== undefined) { dst.hitKind = src.hitKind; }
+  if (src.crit !== undefined) { dst.crit = src.crit; }
+  return dst;
+}
+
+// MixedChatEventFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function MixedChatEventFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.channel !== undefined) { dst.channel = src.channel; }
+  if (src.speaker !== undefined) { dst.speaker = src.speaker; }
+  return dst;
+}
+
+// MixedPickupEventFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function MixedPickupEventFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.itemId !== undefined) { dst.itemId = src.itemId; }
+  if (src.amount !== undefined) { dst.amount = src.amount; }
+  return dst;
+}
+
+// BenchMixedFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function BenchMixedFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  if (src.sequence !== undefined) { dst.sequence = src.sequence; }
+  if (src.ackSequence !== undefined) { dst.ackSequence = src.ackSequence; }
+  if (src.ackBits !== undefined) { dst.ackBits = src.ackBits; }
+  if (src.sessionId !== undefined) { dst.sessionId = src.sessionId; }
+  if (src.clientId !== undefined) { dst.clientId = src.clientId; }
+  if (src.nonce !== undefined) { dst.nonce = src.nonce; }
+  if (src.worldTime !== undefined) { dst.worldTime = src.worldTime; }
+  if (src.frameTick !== undefined) { dst.frameTick = src.frameTick; }
+  if (src.serverTime !== undefined) { dst.serverTime = src.serverTime; }
+  if (src.entities !== null && typeof src.entities === "object" && typeof src.entities.length === "number") {
+    const n = globalThis.Math.min(src.entities.length, 8);
+    dst.entitiesCount = typeof src.entitiesCount === "number" ? src.entitiesCount : src.entities.length;
+    for (let i = 0; i < n; i++) {
+      MixedEntityFixedFromText(src.entities[i], dst.entities[i]);
+    }
+  }
+  if (src.stats !== null && typeof src.stats === "object" && typeof src.stats.length === "number") {
+    const n = globalThis.Math.min(src.stats.length, 80);
+    dst.statsCount = typeof src.statsCount === "number" ? src.statsCount : src.stats.length;
+    for (let i = 0; i < n; i++) {
+      MixedStatFixedFromText(src.stats[i], dst.stats[i]);
+    }
+  }
+  if (src.gameEvent !== undefined) { dst.gameEvent = src.gameEvent; }
+  if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number") {
+    const n = globalThis.Math.min(src.loadout.length, 4);
+    for (let i = 0; i < n; i++) {
+      if (src.loadout[i] !== undefined) { dst.loadout[i] = src.loadout[i]; }
+    }
+  }
+  if (src.playerName !== undefined) { dst.playerName = src.playerName; }
+  if (src.playerNameLength !== undefined) { dst.playerNameLength = src.playerNameLength; }
+  if (src.payload !== undefined) { dst.payload = src.payload; }
+  if (src.payloadLength !== undefined) { dst.payloadLength = src.payloadLength; }
+  if (src.aimX !== undefined) { dst.aimX = src.aimX; }
+  if (src.aimY !== undefined) { dst.aimY = src.aimY; }
+  if (src.aimZ !== undefined) { dst.aimZ = src.aimZ; }
+  if (src.recoil !== undefined) { dst.recoil = src.recoil; }
+  if (src.drift !== undefined) { dst.drift = src.drift; }
+  if (src.wideKey !== undefined) { dst.wideKey = src.wideKey; }
+  if (src.flux !== undefined) { dst.flux = src.flux; }
+  if (src.ping !== undefined) { dst.ping = src.ping; }
+  if (src.crcHint !== undefined) { dst.crcHint = src.crcHint; }
+  if (src.hasExtra !== undefined) { dst.hasExtra = src.hasExtra; }
+  if (src.extra !== undefined) { dst.extra = src.extra; }
+  if (src.idleTicks !== undefined) { dst.idleTicks = src.idleTicks; }
+  return dst;
+}
+
+// FixedTableFixedFromText fills the fixed class's storage from the variable
+// class's value (a text read's): the live-length arrays gain their
+// <Name>Count and the enum names become ordinals. Nothing is checked here:
+// <T>FixedCheckBody holds the result to the declaration.
+export function FixedTableFixedFromText(src, dst) {
+  if (src === null || typeof src !== "object") { return dst; }
+  BenchMixedFixedFromText(src.value, dst.value);
+  return dst;
+}
+
 // ---- MixedEntity, THE MESSAGE FORM'S BODY (docs/SPEC-TABLES.md §3.3) ----
 //
 // A body is a sequence of references and payloads ending at its own zero
@@ -4627,7 +4768,13 @@ export function BenchMixedSaveMessageBody(w, value) {
     w.Put(9n, TableMessageRefBitsHere);
     w.Put(globalThis.BigInt(value.serverTime) - 0n, 24);
   }
-  if (value.entitiesCount > 0) {
+  let _born_value_entities = value.entitiesCount === 1;
+  for (let _bornAt_value_entities = 0; _born_value_entities && _bornAt_value_entities < 1; _bornAt_value_entities++) {
+    const _msgProbe4 = new TableBitWriter(null, true);
+    if (!MixedEntitySaveMessageBody(_msgProbe4, value.entities[_bornAt_value_entities])) { return false; }
+    if ((_msgProbe4.Bits > TableMessageRefBitsHere)) { _born_value_entities = false; }
+  }
+  if ((value.entitiesCount > 0 && !_born_value_entities)) {
     w.Put(10n, TableMessageRefBitsHere);
     w.Put(globalThis.BigInt(value.entitiesCount) - 1n, 3);
     for (let _i4 = 0; _i4 < value.entitiesCount; _i4++) {
@@ -4898,6 +5045,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 9;
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
+        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = globalThis.Number(n);
@@ -4918,6 +5066,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           }
           value.entitiesCount = keep;
         }
+        let _born_value_entities = value.entitiesCount === 1;
+        for (let _bornAt_value_entities = 0; _born_value_entities && _bornAt_value_entities < 1; _bornAt_value_entities++) {
+          const _msgProbe11 = new TableBitWriter(null, true);
+          if (!MixedEntitySaveMessageBody(_msgProbe11, value.entities[_bornAt_value_entities])) { return false; }
+          if ((_msgProbe11.Bits > TableMessageRefBitsHere)) { _born_value_entities = false; }
+        }
+        if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && globalThis.Number(entry.Shape.Min) === 1 && globalThis.Number(entry.Shape.Max) === 8 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !((value.entitiesCount > 0 && !_born_value_entities))) { r.Report.Damaged = true; return false; }
         if (widened) { r.Report.Widened++; }
         break;
       }

@@ -1789,12 +1789,30 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_token_integer( const char * to
 
 #ifdef SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
-static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key );
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened );
+static SCHEMA_UNUSED void blockdemo_table_json_skipped_close( blockdemo_table_json_in_t * in, uint64_t label );
 #else
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key )
-{ (void)key; in->bad = 1; return 0; }
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened )
+{
+    /* no pointer, so no label table: the prefix is still held to its grammar (a
+       well-formed first &node), and the value is skipped whole */
+    uint64_t value = 0;
+    (void)close; (void)opened;
+    if ( strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
+    blockdemo_table_json_space(in);
+    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' ) { in->bad = 1; return 0; }
+    while ( in->pos < in->size && in->text[in->pos] >= '0' && in->text[in->pos] <= '9' )
+    {
+        uint64_t digit = (uint64_t)(in->text[in->pos]-'0');
+        if ( value > (UINT64_MAX-digit)/10 ) { in->bad = 1; return 0; }
+        value = value*10+digit; in->pos++;
+    }
+    return 1;
+}
+static SCHEMA_UNUSED void blockdemo_table_json_skipped_close( blockdemo_table_json_in_t * in, uint64_t label )
+{ (void)in; (void)label; }
 #endif
 
 /* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
@@ -1908,13 +1926,14 @@ static SCHEMA_UNUSED int blockdemo_table_json_skip_members( blockdemo_table_json
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
+    uint64_t opened = 0; /* the label this object defines, open until it closes */
     if ( depth > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
         char c = blockdemo_table_json_peek( in );
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; if ( opened != 0 ) { blockdemo_table_json_skipped_close( in, opened ); } return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
         int consumed = 0;
         if ( close == '}' )
@@ -1938,13 +1957,13 @@ static SCHEMA_UNUSED int blockdemo_table_json_skip_members( blockdemo_table_json
             added = blockdemo_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !blockdemo_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' ) { if ( !first ) { in->bad = 1; return 0; } if ( !blockdemo_table_json_skipped_ampersand(in,key,close,&opened) ) { return 0; } consumed = 1; }
         }
         first = 0;
         if ( !consumed && !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = blockdemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; if ( opened != 0 ) { blockdemo_table_json_skipped_close( in, opened ); } return 1; }
         in->bad = 1;
         return 0;
     }

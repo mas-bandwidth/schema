@@ -358,8 +358,8 @@ func luauFixedCorpus(t *testing.T) string {
 		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS:
 		// `make tables-luau-versioning` builds it first and sets
 		// SCHEMA_REQUIRE_CORPUS=1
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}

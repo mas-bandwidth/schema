@@ -366,7 +366,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==156) { w->overflow=1; return 0; }
+    if(v->count>=156) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; tabledemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -5351,7 +5351,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5359,7 +5359,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -7059,7 +7059,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  }
  { /* edges */
  schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
- if(value->edges_count>0) {
+ if(value->edges_count > 0) {
   tabledemo_table_bit_put(w,61,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->edges_count-0,3);
@@ -7652,7 +7652,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_message_body(tabledemo_tab
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
- if(!(value->edges_count>0))goto damaged;
+ if(!(value->edges_count > 0))goto damaged;
  }
  break;
  }
@@ -8774,7 +8774,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  }
  { /* counts */
  schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
- if(value->counts_count>0) {
+ if(value->counts_count > 0) {
   tabledemo_table_bit_put(w,78,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->counts_count-0,3);
@@ -9343,7 +9343,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_message_body(tabledemo_t
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
- if(!(value->counts_count>0))goto damaged;
+ if(!(value->counts_count > 0))goto damaged;
  }
  break;
  }
@@ -10871,11 +10871,8 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_load( tabledemo_range
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_signed_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_signed_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
@@ -11473,11 +11470,8 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_load( tabledemo_ran
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_unsigned_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_unsigned_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
@@ -12018,11 +12012,8 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_load( tabledemo_range
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_ranged_widths_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_ranged_widths_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
