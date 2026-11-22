@@ -62,12 +62,12 @@ public final class Int128 {
     // Signed ordering: the high lanes compare signed, the low lanes break
     // ties unsigned.
     public int compareTo(Int128 other) {
-        final int c = Long.compare(hi, other.hi);
-        return c != 0 ? c : Long.compareUnsigned(lo, other.lo);
+        final int c = java.lang.Long.compare(hi, other.hi);
+        return c != 0 ? c : java.lang.Long.compareUnsigned(lo, other.lo);
     }
 
-    @Override
-    public boolean equals(Object obj) {
+    @java.lang.Override
+    public boolean equals(java.lang.Object obj) {
         if (!(obj instanceof Int128)) {
             return false;
         }
@@ -75,14 +75,14 @@ public final class Int128 {
         return lo == other.lo && hi == other.hi;
     }
 
-    @Override
+    @java.lang.Override
     public int hashCode() {
-        return Long.hashCode(lo) * 31 + Long.hashCode(hi);
+        return java.lang.Long.hashCode(lo) * 31 + java.lang.Long.hashCode(hi);
     }
 
     // Hex of the 128-bit pattern (toString would render signs, not bits).
-    @Override
-    public String toString() {
-        return String.format("0x%016x%016x", hi, lo);
+    @java.lang.Override
+    public java.lang.String toString() {
+        return java.lang.String.format("0x%016x%016x", hi, lo);
     }
 }

@@ -1,12 +1,13 @@
 package javatable
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRetainSaveJava holds the Java retaining pair to the reference's pinned
@@ -51,7 +52,7 @@ func TestRetainSaveJava(t *testing.T) {
 			}
 			dir := compileCookUnit(t, javac, files, "tblrt1", map[string]string{"RetainSaveDriver": retainSaveDriver})
 			wires := filepath.Join("..", "..", "..", "testdata", "wire", "tables")
-			out, err := exec.Command(javaBin, "-ea", "-cp", dir, "RetainSaveDriver",
+			out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, "RetainSaveDriver",
 				filepath.Join(wires, "retain_rt2.bin"),
 				filepath.Join(wires, "retain_rt1_save.bin"),
 				filepath.Join(wires, "retain_rt1_save_id_short.bin")).CombinedOutput()

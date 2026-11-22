@@ -23,6 +23,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestRustJsonCommentIsWellFormedUTF8(t *testing.T) {
@@ -134,7 +136,7 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := rustcBuild(t, root)
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if line, ok := strings.CutPrefix(line, "MISMATCH "); ok {
 			t.Errorf("%s", line)

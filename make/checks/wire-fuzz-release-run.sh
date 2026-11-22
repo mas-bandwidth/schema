@@ -66,7 +66,40 @@ if [ "$leg" = python ]; then
 fi
 
 if [ $status -eq 0 ] && grep -qE '(^|[^0-9])0 divergences' "$log" && grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' "$log"; then
-	mutants=$(sed -nE 's/.* = ([0-9]+) mutants.*/\1/p' "$log" | tail -1)
+	# THE RUN'S OWN COUNT IS HELD TO WHAT WAS ASKED. The harness ends a clean
+	# run with
+	#   <arm>: seed <S>, ... <E> enumerated + <R> random = <M> mutants, 0 divergences
+	# and a pass is that line with S the seed asked for, R the budget asked
+	# for, M = E + R and the arm named. A process that printed "0 divergences"
+	# after 1 mutant, after none, or with no count at all used to certify a
+	# row at N=100000.
+	summary=$(grep -E ': seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$log" | tail -1)
+	count='.*, ([0-9]+) enumerated \+ ([0-9]+) random = ([0-9]+) mutants, 0 divergences.*'
+	got_seed=$(printf '%s\n' "$summary" | sed -nE 's/^[a-z-]+( retain)?: seed ([0-9]+), .*/\2/p')
+	enumerated=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\1/p")
+	random=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\2/p")
+	mutants=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\3/p")
+	if [ -z "$got_seed" ] || [ -z "$enumerated" ] || [ -z "$random" ] || [ -z "$mutants" ]; then
+		emit "RED: the run reports no 'seed <S>, ... <E> enumerated + <R> random = <M> mutants' count"
+		exit 0
+	fi
+	if [ "$got_seed" != "$seed" ]; then
+		emit "RED: the run reports seed $got_seed and seed $seed was asked for"
+		exit 0
+	fi
+	if [ "$random" != "$n" ]; then
+		emit "RED: the run reports $random random mutants and $n were asked for"
+		exit 0
+	fi
+	if [ "$mutants" -eq 0 ] || [ "$mutants" -ne $((enumerated + random)) ]; then
+		emit "RED: the run reports $mutants mutants for $enumerated enumerated + $random random"
+		exit 0
+	fi
+	case "$arm:$summary" in
+	retain:*" retain: seed "*) ;;
+	retain:*) emit "RED: the retain arm was asked for and the run does not name it"; exit 0 ;;
+	*" retain: seed "*) emit "RED: the plain arm was asked for and the run names retain"; exit 0 ;;
+	esac
 	if [ -n "$owed" ]; then
 		emit "RED: owed but green ($mutants mutants): remove '$leg $arm' from $owedfile"
 	else

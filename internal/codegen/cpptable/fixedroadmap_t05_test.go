@@ -26,13 +26,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppRunFixedProbe generates the cpp fixed form for `schemaPath` (a unit under
@@ -79,7 +80,6 @@ func cppRunFixedProbe(t *testing.T, schemaPath, root, body string) ([]byte, erro
 
 using namespace %s;
 
-
 static int64_t find_bytes( const uint8_t * d, int64_t len, const uint8_t * needle, int64_t k )
 {
     for ( int64_t i = 0; i + k <= len; ++i ) { if ( memcmp( d + i, needle, (size_t) k ) == 0 ) { return i; } }
@@ -108,10 +108,10 @@ int main( void )
 	}
 	serialize, _ := filepath.Abs("../../../../serialize")
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 func TestFixedRoadmapCppT05Evolution(t *testing.T) {

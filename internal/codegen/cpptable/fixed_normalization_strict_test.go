@@ -19,6 +19,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppNormDamageProbe = `#include <cstdio>
@@ -228,10 +230,10 @@ func cppNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 	args := []string{"-std=c++17", "-O1", "-I" + dir, filepath.Join(dir, "probe.cpp")}
 	args = append(args, srcs...)
 	args = append(args, "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("compile probe: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 func TestCppFixedNormalizationIsDamage(t *testing.T) {

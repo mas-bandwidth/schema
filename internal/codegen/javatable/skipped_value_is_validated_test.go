@@ -11,12 +11,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const skippedValueProbe = `package skippedreader;
@@ -148,7 +149,7 @@ func TestJavaSkippedValueIsValidated(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -156,7 +157,7 @@ func TestJavaSkippedValueIsValidated(t *testing.T) {
 	for _, row := range rows {
 		run = append(run, row.name, row.probe, row.path)
 	}
-	out, err := exec.Command(javaBin, run...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, run...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

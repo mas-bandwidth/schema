@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func countAcross(files map[string][]byte, needle string) int {
@@ -568,7 +569,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "build", ".")
+	cmd := testproc.Command(t, "go", "build", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("a typed EnumName call does not compile: %v\n%s", err, out)
@@ -668,7 +669,7 @@ func TestClampTopOfRange(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the clamped writer failed its probe: %v\n%s", err, out)

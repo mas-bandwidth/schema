@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const (
@@ -85,7 +86,7 @@ func runFixLoadProbe(t *testing.T, reader string, older []string, testSource str
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

@@ -65,7 +65,7 @@ func identityCCFlags(t testing.TB) []string {
 	if cc == "" {
 		cc = "cc"
 	}
-	return gccFortifySilence(cc)
+	return gccFortifySilence(t, cc)
 }
 
 // textTermBytes is the terminator width a text flavour stores past the bound:

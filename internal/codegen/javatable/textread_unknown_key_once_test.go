@@ -11,13 +11,14 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const repeatedKeyEveryObjectSchema = `package probe
@@ -129,7 +130,7 @@ func TestJavaTextRepeatedKeyEveryObject(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -141,7 +142,7 @@ func TestJavaTextRepeatedKeyEveryObject(t *testing.T) {
 		}
 		run = append(run, row.name, p)
 	}
-	out, err := exec.Command(javaBin, run...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, run...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

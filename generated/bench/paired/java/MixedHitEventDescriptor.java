@@ -22,25 +22,39 @@ public final class MixedHitEventDescriptor {
             t.name = "MixedHitEvent";
             t.table = false;
             t.doc = "";
-            t.tags = new String[0];
+            t.tags = new java.lang.String[0];
             TableFieldInfo[] fields = new TableFieldInfo[4];
             TableFieldInfo f0 = TableFieldInfo.of("target_id", 7, "value", 0L);
-            f0.view("target_id", "bits(12)", 0xb7bc9ac015a25050L, false, "", "", new String[0]);
+            f0.view(
+                    "target_id",
+                    "bits(12)",
+                    0xb7bc9ac015a25050L,
+                    false,
+                    "",
+                    "",
+                    new java.lang.String[0]);
             f0.at(false, false, 0, 4, -1, -1);
             f0.longs(MixedHitEventDescriptor::get_0, MixedHitEventDescriptor::set_0);
             fields[0] = f0;
             TableFieldInfo f1 = TableFieldInfo.of("damage", 4, "value", 0L);
-            f1.view("damage", "int32", 0x7f6308be8ab37fc0L, false, "", "", new String[0]);
+            f1.view("damage", "int32", 0x7f6308be8ab37fc0L, false, "", "", new java.lang.String[0]);
             f1.at(false, false, 4, 4, -1, -1);
             f1.longs(MixedHitEventDescriptor::get_1, MixedHitEventDescriptor::set_1);
             fields[1] = f1;
             TableFieldInfo f2 = TableFieldInfo.of("hit_kind", 4, "value", 0L);
-            f2.view("hit_kind", "int32", 0x01fbc365b059b925L, false, "", "", new String[0]);
+            f2.view(
+                    "hit_kind",
+                    "int32",
+                    0x01fbc365b059b925L,
+                    false,
+                    "",
+                    "",
+                    new java.lang.String[0]);
             f2.at(false, false, 8, 4, -1, -1);
             f2.longs(MixedHitEventDescriptor::get_2, MixedHitEventDescriptor::set_2);
             fields[2] = f2;
             TableFieldInfo f3 = TableFieldInfo.of("crit", 1, "value", 0L);
-            f3.view("crit", "bool", 0x126167908c9aa52dL, false, "", "", new String[0]);
+            f3.view("crit", "bool", 0x126167908c9aa52dL, false, "", "", new java.lang.String[0]);
             f3.at(false, false, 12, 1, -1, -1);
             f3.longs(MixedHitEventDescriptor::get_3, MixedHitEventDescriptor::set_3);
             fields[3] = f3;
@@ -51,39 +65,39 @@ public final class MixedHitEventDescriptor {
         }
     }
 
-    private static long get_0(Object h, int i) {
-        return Integer.toUnsignedLong(((MixedHitEventVariable.Value) h).targetId);
+    private static long get_0(java.lang.Object h, int i) {
+        return java.lang.Integer.toUnsignedLong(((MixedHitEventVariable.Value) h).targetId);
     }
 
-    private static void set_0(Object h, int i, long x) {
+    private static void set_0(java.lang.Object h, int i, long x) {
         ((MixedHitEventVariable.Value) h).targetId = (int) x;
     }
 
-    private static long get_1(Object h, int i) {
+    private static long get_1(java.lang.Object h, int i) {
         return ((MixedHitEventVariable.Value) h).damage;
     }
 
-    private static void set_1(Object h, int i, long x) {
+    private static void set_1(java.lang.Object h, int i, long x) {
         ((MixedHitEventVariable.Value) h).damage = (int) x;
     }
 
-    private static long get_2(Object h, int i) {
+    private static long get_2(java.lang.Object h, int i) {
         return ((MixedHitEventVariable.Value) h).hitKind;
     }
 
-    private static void set_2(Object h, int i, long x) {
+    private static void set_2(java.lang.Object h, int i, long x) {
         ((MixedHitEventVariable.Value) h).hitKind = (int) x;
     }
 
-    private static long get_3(Object h, int i) {
+    private static long get_3(java.lang.Object h, int i) {
         return ((MixedHitEventVariable.Value) h).crit ? 1L : 0L;
     }
 
-    private static void set_3(Object h, int i, long x) {
+    private static void set_3(java.lang.Object h, int i, long x) {
         ((MixedHitEventVariable.Value) h).crit = x != 0;
     }
 
-    private static void reset(Object h) {
+    private static void reset(java.lang.Object h) {
         MixedHitEventVariable.Value v = (MixedHitEventVariable.Value) h;
         v.targetId = 0;
         v.damage = 0;

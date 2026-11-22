@@ -56,7 +56,7 @@ func GenerateBlock(u *ir.Unit) (map[string][]byte, error) {
 // by-value member otherwise.
 func blockRecord(u *ir.Unit, blocks *ir.BlockUnit, ml *ir.MemberLayout, bl *ir.BlockLayout, projection bool, indent string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{\n%sname = %q,\n%sbuildVersion = %s,\n%ssize = %d,\n%salign = %d,\n%sfields = {\n",
+	luau.Fprintf(&b, "{\n%sname = %q,\n%sbuildVersion = %s,\n%ssize = %d,\n%salign = %d,\n%sfields = {\n",
 		indent, ml.Name, indent, luau.IntegerLit(new(big.Int).SetUint64(ir.BuildVersion(u))), indent, ml.Size, indent, ml.Align, indent)
 	inner := indent + "\t"
 	for _, fl := range ml.Fields {
@@ -72,7 +72,7 @@ func blockRecord(u *ir.Unit, blocks *ir.BlockUnit, ml *ir.MemberLayout, bl *ir.B
 				elem = blockRecord(u, blocks, row, nil, false, inner+"\t")
 			}
 		}
-		fmt.Fprintf(&b, "%s{ name = %q, offset = %d, size = %d, kind = %d, outOfLine = %t, isArray = %t, arrayBound = %d, elemSize = %d",
+		luau.Fprintf(&b, "%s{ name = %q, offset = %d, size = %d, kind = %d, outOfLine = %t, isArray = %t, arrayBound = %d, elemSize = %d",
 			inner, f.Name, fl.Offset, fl.Size, ir.TableScalarKind(f), outOfLine, facts.IsArray, facts.ArrayBound, facts.ElemSize)
 		if facts.CountOffset >= 0 {
 			fmt.Fprintf(&b, ", countOffset = %d", facts.CountOffset)
