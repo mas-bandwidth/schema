@@ -25,21 +25,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-const countedBirthSchema = `package birth
-
-type Rec
-{
-    n int32 = 55
-    on bool
+// each element shape is its own unit, as the matrix's pinned units are: the
+// message vocabulary is the unit's, and its widths follow the unit's roots
+var countedBirthSchemas = map[string]string{
+	"I32": "package birth\n\nfixed table FixI32 { few [2..4]int32 }\ntable VarI32 { few [2..4]int32 }\n",
+	"Rec": "package birth\n\ntype Rec\n{\n    n int32 = 55\n    on bool\n}\n\nfixed table FixRec { few [2..4]Rec }\ntable VarRec { few [2..4]Rec }\n",
+	"F64": "package birth\n\nfixed table FixF64 { few [2..4]float64 }\ntable VarF64 { few [2..4]float64 }\n",
 }
-
-fixed table FixI32 { few [2..4]int32 }
-fixed table FixRec { few [2..4]Rec }
-fixed table FixF64 { few [2..4]float64 }
-table VarI32 { few [2..4]int32 }
-table VarRec { few [2..4]Rec }
-table VarF64 { few [2..4]float64 }
-`
 
 type countedBirthCase struct {
 	name, fix, vari, text string
@@ -64,10 +56,19 @@ func countedBirthCases() []countedBirthCase {
 func TestLuauCountedArrayBornAtItsMinimum(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
-	g := generateFiles(t, map[string]string{"birth.schema": countedBirthSchema})
+	for shape, schema := range countedBirthSchemas {
+		t.Run(shape, func(t *testing.T) {
+			t.Parallel()
+			countedBirthShape(t, shape, schema)
+		})
+	}
+}
+
+func countedBirthShape(t *testing.T, shape, schema string) {
+	g := generateFiles(t, map[string]string{"birth.schema": schema})
 	srcDir := t.TempDir()
 	schemaPath := filepath.Join(srcDir, "birth.schema")
-	if err := os.WriteFile(schemaPath, []byte(countedBirthSchema), 0o644); err != nil {
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	unit, err := compiler.New().Load([]string{schemaPath})
@@ -124,6 +125,9 @@ end
 `, mods[0])
 	want := map[string]string{}
 	for _, c := range countedBirthCases() {
+		if !strings.HasSuffix(c.fix, shape) {
+			continue
+		}
 		text := c.text
 		if text == "" {
 			text = "{}"
