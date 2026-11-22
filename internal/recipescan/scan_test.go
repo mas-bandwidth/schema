@@ -277,10 +277,28 @@ func TestTreeLosingPipefailIsRed(t *testing.T) {
 		"root SHELL line removed":   {"Makefile": strings.Replace(mk, shellLine, "", 1)},
 		"fragment sets SHELL := sh": {frag: "SHELL := sh\n" + read(frag)},
 		".SHELLFLAGS added to root": {"Makefile": strings.Replace(mk, shellLine, shellLine+".SHELLFLAGS := -e -c\n", 1)},
+		// every form make obeys as an assignment (cold review of bda906475)
+		"fragment: override SHELL := sh":         {frag: "override SHELL := sh\n" + read(frag)},
+		"root: override SHELL := sh appended":    {"Makefile": mk + "override SHELL := sh\n"},
+		"fragment: export SHELL := sh":           {frag: "export SHELL := sh\n" + read(frag)},
+		"fragment: target-specific SHELL":        {frag: "cards-conformance-all: SHELL := sh\n" + read(frag)},
+		"root: target-specific SHELL":            {"Makefile": mk + "cards-conformance-all: SHELL := sh\n"},
+		"fragment: private target SHELL":         {frag: "cards-conformance-all: private SHELL = sh\n" + read(frag)},
+		"fragment: SHELL space-indented in ifeq": {frag: "ifeq (1,1)\n  SHELL := sh\nendif\n" + read(frag)},
+		"fragment: SHELL ::= sh":                 {frag: "SHELL ::= sh\n" + read(frag)},
+		"fragment: SHELL ?= sh":                  {frag: "SHELL ?= sh\n" + read(frag)},
+		"fragment: SHELL != echo sh":             {frag: "SHELL != echo sh\n" + read(frag)},
+		"root: SHELL += -x":                      {"Makefile": mk + "SHELL += -x\n"},
+		"fragment: .SHELLFLAGS += -x":            {frag: ".SHELLFLAGS += -x\n" + read(frag)},
+		"root: .SHELLFLAGS += -x":                {"Makefile": mk + ".SHELLFLAGS += -x\n"},
+		"root: override .SHELLFLAGS := -e -c":    {"Makefile": mk + "override .SHELLFLAGS := -e -c\n"},
+		"root: target .SHELLFLAGS = -c":          {"Makefile": mk + "all: .SHELLFLAGS = -c\n"},
 	} {
-		got := withRule(treeFindings(t, edits), RuleNoStrictShell)
-		if len(got) == 0 {
-			t.Errorf("%s: want a no-strict-shell finding, got none", name)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := withRule(treeFindings(t, edits), RuleNoStrictShell); len(got) == 0 {
+				t.Errorf("%s: want a no-strict-shell finding, got none", name)
+			}
+		})
 	}
 }

@@ -497,8 +497,11 @@ func groupExitsNonZero(group []token) bool {
 // "SHELL := bash -o pipefail" the same way. A makefile that sets .SHELLFLAGS
 // at all is a finding.
 var (
-	shellAssign = regexp.MustCompile(`(?m)^SHELL\s*:?=\s*(.*?)\s*$`)
-	flagsAssign = regexp.MustCompile(`(?m)^\.SHELLFLAGS\s*:?=\s*(.*)$`)
+	// Every line make obeys as an assignment: leading spaces (a tab starts a
+	// recipe), override / export / private, a target-specific "target:"
+	// prefix, and each operator (=, :=, ::=, ?=, +=, !=).
+	shellAssign = regexp.MustCompile(assignPattern(`SHELL`))
+	flagsAssign = regexp.MustCompile(assignPattern(`\.SHELLFLAGS`))
 )
 
 func strictShell(src string) (pipefail, errexit bool) {
@@ -767,4 +770,12 @@ func pipeUse(toks []token, k, depth int) string {
 		d = "sub"
 	}
 	return d + " [" + before + "] [" + after + "]"
+}
+
+// assignPattern matches a makefile line that assigns the variable name (a
+// regular expression), capturing the value.
+func assignPattern(name string) string {
+	const mods = `(?:(?:override|export|private)[ \t]+)*`
+	return `(?m)^ *` + mods + `(?:[^\s:=#][^:=#\n]*:[ \t]*` + mods + `)?` + name +
+		`[ \t]*(?:::=|:=|\?=|\+=|!=|=)[ \t]*(.*?)[ \t\r]*$`
 }

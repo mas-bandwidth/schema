@@ -400,7 +400,7 @@ JAVA_FORMAT_STYLE ?= --aosp
 # jar answers "Unable to access jarfile .../google-java-format-1.37.0-all-deps.jar",
 # which carries the version in its path. The first draft of this probe passed
 # on exactly that, so the missing-formatter control plants that case.
-java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -qx 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)'
+java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -x 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)' >/dev/null
 # deferred, so test-java's own JAVA_REQUIRE_FORMATTER (below) reaches the gate
 JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
 
