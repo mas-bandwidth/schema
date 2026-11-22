@@ -552,7 +552,7 @@ jobs:
           # diff touches (including C++ and ccommon optimizations, which set
           # broad=yes for leg-gate's oracle rule), while keeping shared root
           # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
-          # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
+          # sweeps bounded so a single push never dispatches 18 * 4 = 72 jobs.
           shared_broad=no
           if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
@@ -1163,10 +1163,11 @@ jobs:
           make tables-lua-format-negative-control
 
   # PER-LANGUAGE OPTIMIZATION VERIFICATION GATE (make verify-<lang>-<gate>).
-  # Three parallel < 2m jobs per touched language across all 18 ports:
+  # Four parallel < 2m jobs per touched language across all 18 ports:
   #   conformance — all 21 table surfaces (--claims) + packet wire + defaults/UTF-8
   #   bench       — packet wire 64-variant byte-checked hot loop + table wire gate
   #   fuzz        — deterministic wire-fuzz smoke (plain + --retain, stateful reuse)
+  #   tablegen    — generated-schema table round trips (make/verify-widen-18.mk)
   verify-leg:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
@@ -1180,7 +1181,7 @@ jobs:
       fail-fast: false
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.verify_legs) }}
-        gate: [conformance, bench, fuzz]
+        gate: [conformance, bench, fuzz, tablegen]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
