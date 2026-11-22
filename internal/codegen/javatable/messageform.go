@@ -2127,6 +2127,29 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		}
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
+	if f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required {
+		// a [A..B] array BORN at A elements, each writing nothing, elides
+		// (docs/SPEC-TABLES.md §2.3, §22.2; the engine's messageElides); a
+		// table element writes nothing when its body is the terminator alone
+		rides := g.nextTemp("rides")
+		idx := g.nextTemp("i")
+		g.pf("%sboolean %s = %sCount > 0;\n", ind, rides, expr)
+		g.pf("%sif (%sCount == %d) {\n", ind, expr, f.BornCount())
+		g.pf("%s    %s = false;\n", ind, rides)
+		g.pf("%s    for (int %s = 0; %s < %d; %s++) {\n", ind, idx, idx, f.BornCount(), idx)
+		if isStructType(f.Type) {
+			st := f.Type.Ref.(*ir.Struct)
+			probe := g.nextTemp("probe")
+			g.pf("%s        TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
+			g.pf("%s        if (!%s.saveMessageBody(%s, %s[%s])) { return false; }\n", ind, messageClass(st.Name), probe, expr, idx)
+			g.pf("%s        if (%s.bits > %dL) { %s = true; break; }\n", ind, probe, g.refBits, rides)
+		} else {
+			g.pf("%s        if (%s) { %s = true; break; }\n", ind, g.scalarOrUnionRidesExpr(f, fmt.Sprintf("%s[%s]", expr, idx)), rides)
+		}
+		g.pf("%s    }\n", ind)
+		g.pf("%s}\n", ind)
+		return rides
+	}
 	if f.Array == ir.ArrayCounted {
 		return expr + "Count > 0"
 	}

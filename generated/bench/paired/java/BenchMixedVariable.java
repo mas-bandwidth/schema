@@ -22,7 +22,8 @@ public final class BenchMixedVariable {
         public long worldTime = 0L;
         public long frameTick = 0L;
         public int serverTime = 0x00000000;
-        public java.util.List<MixedEntityVariable.Value> entities = new java.util.ArrayList<>();
+        public java.util.List<MixedEntityVariable.Value> entities =
+                new java.util.ArrayList<>(java.util.Arrays.asList(new MixedEntityVariable.Value()));
         public java.util.List<MixedStatVariable.Value> stats = new java.util.ArrayList<>();
         public MixedEventVariable.Value gameEvent = new MixedEventVariable.Value();
         public java.util.List<java.lang.Integer> loadout = new java.util.ArrayList<>();
@@ -1458,7 +1459,17 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        if (!v.entities.isEmpty()) {
+        boolean rides_entities = !v.entities.isEmpty();
+        if (v.entities.size() == 1) {
+            rides_entities = false;
+            for (int i = 0; i < 1; i++) {
+                if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
+                    rides_entities = true;
+                    break;
+                }
+            }
+        }
+        if (rides_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -2909,6 +2920,7 @@ public final class BenchMixedVariable {
                     }
                     if (in.peek() == '[') {
                         in.p++;
+                        v.entities.clear();
                         int idx = 0;
                         int ab = 8;
                         while (true) {
