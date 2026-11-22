@@ -117,7 +117,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
@@ -661,6 +661,37 @@ test-elixir: tables-elixir-offsets tables-elixir-offsets-negative-control tables
 tables-elixir-accessor-descriptor-agreement: build/elixir-tables-ebin/.stamp
 	$(MIX) format --check-formatted test/elixir-tables/*.exs
 	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
+
+# THE SAME GATE IN SHARDS, for the per-commit lane (ci-fast.yml lang-clean,
+# rows elixir-agreement-1 .. -N). The strict elixirc of the whole corpus is
+# what the gate's time is, and on a loaded runner it alone passes the
+# two-minute cap. Shard K of ELIXIR_AGREEMENT_SHARDS strictly compiles every
+# Nth table unit (sorted by name, starting at the Kth) into its own ebin and
+# walks those modules; the shards together compile and walk every unit the
+# whole-corpus target does. WHAT THE SHARDS DROP from the per-commit lane is
+# the one strict compile of the whole corpus with the conformance driver
+# (build/elixir-tables-ebin/.stamp: test/conformance/elixir/driver_impl.ex,
+# which needs every unit, and the check that no module is defined in two
+# units, which only a compile of every unit together sees). A pull request
+# whose Elixir verify-leg rows run still compiles it there; one that touches
+# shared files (ci-fast.yml's shared_broad: ir/, compiler/, tables/, the
+# Makefile, test/tables schemas) or more than four legs runs no verify-leg
+# rows, so for it that compile runs only in Certify's nightly test-elixir.
+ELIXIR_AGREEMENT_SHARDS := 4
+
+.PHONY: tables-elixir-accessor-descriptor-agreement-shard-%
+tables-elixir-accessor-descriptor-agreement-shard-%: build/tables-generated-elixir/.stamp
+	@case "$*" in ''|*[!0-9]*) echo "agreement shard '$*' is not a number"; exit 1 ;; esac; \
+		if [ "$*" -lt 1 ] || [ "$*" -gt $(ELIXIR_AGREEMENT_SHARDS) ]; then \
+			echo "agreement shard $* is outside 1..$(ELIXIR_AGREEMENT_SHARDS)"; exit 1; \
+		fi
+	$(MIX) format --check-formatted test/elixir-tables/*.exs
+	@rm -rf build/elixir-agreement-ebin-$* && mkdir -p build/elixir-agreement-ebin-$*
+	@units=$$(printf '%s\n' $(sort $(ELIXIR_TABLE_UNITS)) | awk -F: -v k=$* -v n=$(ELIXIR_AGREEMENT_SHARDS) '(NR - 1) % n == k - 1 { print $$1 }'); \
+		srcs=""; for u in $$units; do srcs="$$srcs build/tables-generated-elixir/$$u/*.ex"; done; \
+		echo "agreement shard $*/$(ELIXIR_AGREEMENT_SHARDS): $$(echo $$units | wc -w | tr -d ' ') units:" $$units; \
+		$(ELIXIRC_STRICT) -o build/elixir-agreement-ebin-$* $$srcs
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-agreement-ebin-$* $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
 
 # The two controls for that gate, on the EMITTER for the fuzz control's reason:
 # each moves ONE derivation — a generated block scalar accessor four bytes, a

@@ -1,0 +1,18 @@
+package highlighting
+
+table Event
+{
+    timestamp timestamp
+    note string(32) = "timestamp wstring"
+}
+
+type Gate
+{
+    timestamp bool
+    if timestamp
+    {
+        value int32
+    }
+}
+
+// timestamp and wstring are words in a comment.
