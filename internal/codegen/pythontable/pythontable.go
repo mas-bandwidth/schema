@@ -2090,11 +2090,15 @@ func compressedFloat(f *ir.Field) bool {
 }
 
 // floatBound is a compressed float's range end, and 0.0 on every other field.
+// THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): the end is the
+// float32 nearest the declared bound (a declared 0.1 is 0.10000000149011612),
+// and the runtime narrows the value to float32 before it compares, so every
+// descriptor that reaches a range test carries this end and never the double.
 func floatBound(f *ir.Field, v float64) string {
 	if !compressedFloat(f) {
 		return "0.0"
 	}
-	return pyFloatLiteral(v)
+	return pyFloatLiteral(float64(float32(v)))
 }
 
 func pyFloatLiteral(v float64) string {
