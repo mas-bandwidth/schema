@@ -4264,6 +4264,10 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
 	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
+	# and the Go test that holds the same map-holding cook
+	# (internal/tablecook/list_test.go) reads it here, the one place it is
+	# written: under SCHEMA_REQUIRE_CORPUS an absent cook fails, never skips.
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
@@ -7477,8 +7481,12 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judg
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
+# The version is past every tag but keeps the current major: releasetag refuses
+# a tag whose major go.mod cannot carry (internal/modulemove.ReleaseGate), and a
+# v3 tag over the /v2 go.mod is the one exception pin allows until #4445.
+RELEASE_GATE_VERSION ?= v3.99999.0
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=$(RELEASE_GATE_VERSION) RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
@@ -7492,7 +7500,7 @@ release-refuses-on-differential:
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+	@grep -q '^release: would tag $(RELEASE_GATE_VERSION) ' $(RELEASE_GATE_TEST)/guard.out || \
 		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
 	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
 		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
@@ -7729,15 +7737,18 @@ test: slow-gate-scan
 # `test`: it rides ci-full.yml beside the steps it credits. Nothing is
 # MOVED to nightly by this; the scan above, which is the gate, is on `test`.
 #
-# `|| true` ON THE TRANSCRIPT AND NOWHERE ELSE: this target's job is to read
-# which tests the gate skipped, and it must still read that when some unrelated
-# test is red. The red itself is `test`'s to report, not this target's, and the
-# accounting below exits nonzero on its own finding.
+# GO'S EXIT STATUS IS HANDED TO THE ACCOUNTING, NOT DROPPED. The accounting
+# still reads the whole transcript and writes its table when go test failed,
+# then exits nonzero naming the status: a transcript from a run that failed,
+# did not build, or was cut short cannot prove every gated test reached its
+# gate. It was `|| true` here, and a transcript cut after its first skip was
+# a green one-owner verdict (the reviewer's F-233). Every package in the
+# transcript must also close with its own pass, fail or skip record.
 .PHONY: slow-gate-coverage
 slow-gate-coverage: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" ./... > build/slowgate/all-plain.log 2>&1; echo $$? > build/slowgate/all-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log -go-exit "$$(cat build/slowgate/all-plain.status)"
 
 # THE SAME ACCOUNTING, SHARDED, for ci-full.yml's slow-gate rows. The two
 # halves below were killed at the fleet's 120 s per-commit limit (130 s and
@@ -7764,12 +7775,12 @@ SLOWGATE_SHARDS ?= 26
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1; echo $$? > build/slowgate/codegen-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log -go-exit "$$(cat build/slowgate/codegen-plain.status)"
 slow-gate-coverage-rest: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
-	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1; echo $$? > build/slowgate/rest-plain.status
+	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log -go-exit "$$(cat build/slowgate/rest-plain.status)"
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the
 # retry-and-classify logic behind the nightly is a committed script

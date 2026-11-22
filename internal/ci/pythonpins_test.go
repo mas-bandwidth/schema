@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
@@ -102,7 +104,7 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 		"test/conformance/python/surfaces/*",
 		"compiler/*python*.go",
 	} {
-		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		matches, err := provesran.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			t.Fatal(err)
 		}

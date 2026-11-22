@@ -4894,8 +4894,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages(blockdemo_render_
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -5879,8 +5879,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages(blockdemo_render_sh
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6766,8 +6766,8 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages(blockdemo_render_
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -7485,8 +7485,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages(blockdemo_render
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -8210,8 +8210,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages(blockdemo_r
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -8973,8 +8973,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages(blockdemo_re
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -9792,8 +9792,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages(blockdemo_
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10457,8 +10457,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages(blockdemo_render_l
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -11210,8 +11210,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_rend
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -12827,8 +12827,8 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages(blockdemo_render_f
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -13312,8 +13312,8 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages(blockdemo_render
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -13901,8 +13901,8 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages(blockdemo_ren
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }

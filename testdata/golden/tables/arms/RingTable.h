@@ -10956,9 +10956,9 @@ inline int64_t NodeSaveMessages( const Node * values, int64_t count, uint8_t * b
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -10977,8 +10977,7 @@ inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabul
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
