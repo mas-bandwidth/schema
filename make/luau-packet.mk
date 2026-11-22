@@ -59,7 +59,8 @@ packet-utf8-luau-negative-control: packet-utf8-luau
 
 # ---------------------------------------------------------------- defaults
 # pins.luau carries testdata/wire/packet-defaults in as source: one entry per
-# pin, its bytes as hex and its consumed bits.
+# pin, its bytes as hex and its consumed bits. A .bin with no .bits (the C and
+# C++ constant-default writer corpus, test/conformance/packet) is not a pin.
 LUAU_PACKET_DEFAULT_PINS := $(wildcard testdata/wire/packet-defaults/*.bin testdata/wire/packet-defaults/*.bits)
 define luau-packet-defaults-tree
 	$(call luau-packet-generate,$(1),test/packet-defaults/Defaults.schema,$(2))
@@ -68,6 +69,7 @@ define luau-packet-defaults-tree
 	{ printf 'return {\n'; \
 	  for f in testdata/wire/packet-defaults/*.bin; do \
 		n=$$(basename $$f .bin); \
+		[ -f testdata/wire/packet-defaults/$$n.bits ] || continue; \
 		printf '\t["%s"] = { hex = "%s", bits = %s },\n' "$$n" "$$(od -An -v -tx1 $$f | tr -d ' \n')" "$$(tr -d ' \n' < testdata/wire/packet-defaults/$$n.bits)"; \
 	  done; printf '}\n'; } > $(1)/pins.luau
 endef
