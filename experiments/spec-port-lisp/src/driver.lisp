@@ -14,12 +14,13 @@
 (defvar *instances* '())
 (defvar *manifest-lines* '())
 
-(defparameter +surfaces+ '("wire" "json-read" "json-write"))
+(defparameter +surfaces+ '("wire" "json-read" "json-write" "json-hostile"))
 
 (defvar *json-write-refusals* '())
+(defvar *json-hostiles* '())
 
 (defun read-manifest (path)
-  (setf *instances* '() *manifest-lines* '() *json-write-refusals* '())
+  (setf *instances* '() *manifest-lines* '() *json-write-refusals* '() *json-hostiles* '())
   (clrhash *manifest-units*)
   (with-open-file (s path :external-format :utf-8)
     (loop for line = (read-line s nil)
@@ -32,9 +33,12 @@
                        ((string= (first f) "instance")
                         (push f *instances*))
                        ((string= (first f) "json-write-refusal")
-                        (push f *json-write-refusals*)))))))
+                        (push f *json-write-refusals*))
+                       ((string= (first f) "json-hostile")
+                        (push f *json-hostiles*)))))))
   (setf *instances* (nreverse *instances*) *manifest-lines* (nreverse *manifest-lines*)
-        *json-write-refusals* (nreverse *json-write-refusals*)))
+        *json-write-refusals* (nreverse *json-write-refusals*)
+        *json-hostiles* (nreverse *json-hostiles*)))
 
 (defun unit-for (key)
   (or (gethash key *loaded-units*)
@@ -116,10 +120,26 @@
               (refusal () (values :refused nil))))))))
 
 (defun json-write-refusal-p (case) (string= (first case) "json-write-refusal"))
+(defun json-hostile-p (case) (string= (first case) "json-hostile"))
+
+(defun answer-json-hostile (row)
+  "The single text read of <tree>/<root>.json; on acceptance the value's
+text and its wire: (values :read (text . wire))."
+  (destructuring-bind (kw name ukey root tree &rest more) row
+    (declare (ignore kw name more))
+    (with-unit (u ukey)
+      (let ((decl (root-decl u root)))
+        (if (not (variable-root-p decl))
+            (values :absent nil)
+            (handler-case
+                (let ((tv (json-read-value decl (read-file-octets (format nil "~a/~a.json" tree root)))))
+                  (values :read (cons (json-write-value tv) (wire-save tv))))
+              (refusal () (values :refused nil))))))))
 
 (defun surface-cases (surface)
   "The instance lines a surface answers."
   (cond ((string= surface "wire") *instances*)
+        ((string= surface "json-hostile") *json-hostiles*)
         ((string= surface "json-write")
          (append (remove-if (lambda (i) (member "no-text" (instance-flags i) :test #'string=)) *instances*)
                  *json-write-refusals*))
@@ -127,6 +147,7 @@
 
 (defun answer (surface inst)
   (cond ((json-write-refusal-p inst) (answer-json-write-refusal inst))
+        ((json-hostile-p inst) (answer-json-hostile inst))
         ((string= surface "wire") (answer-wire inst))
         ((string= surface "json-read") (answer-json-read inst))
         ((string= surface "json-write") (answer-json-write inst))))
@@ -140,6 +161,8 @@
           (handler-case (answer surface inst)
             (error (e) (format *error-output* "~a ~a: ~a~%" surface name e) (values :error nil)))
         (ecase kind
+          (:read (write-file-octets (answer-file outdir file) (read-answer-bytes (car bytes)))
+           (write-file-octets (answer-file outdir (concatenate 'string name ".wire")) (cdr bytes)))
           (:bytes (write-file-octets (answer-file outdir file) bytes))
           (:refused (write-text-file (answer-file outdir file) (format nil "refused~%")))
           (:absent (write-file-octets (answer-file outdir (concatenate 'string name ".absent")) (make-octets 0)))
@@ -147,9 +170,17 @@
 
 ;;; This port's own check against the committed answers (fast checks only).
 
+(defun read-answer-bytes (text)
+  (concatenate 'octets (string-to-octets (format nil "read~%")) text))
+
 (defun expected (surface inst)
   (let ((name (second inst)) (flags (instance-flags inst)))
     (cond ((json-write-refusal-p inst) :refused)
+          ((json-hostile-p inst)
+           (if (string= (sixth inst) "refused")
+               :refused
+               (cons (read-answer-bytes (read-file-octets (format nil "~a.value.json" (fifth inst))))
+                     (read-file-octets (format nil "testdata/conformance/tables/save-wire/~a.bin" name)))))
           ((member "wire-refused" flags :test #'string=) :refused)
           ((string= surface "json-write") (read-file-octets (json-golden-path name)))
           (t (read-file-octets (fifth inst))))))
@@ -163,7 +194,9 @@
         (let ((want (expected surface inst)))
           (cond ((eq kind :absent) (incf absent))
                 ((or (and (eq want :refused) (eq kind :refused))
-                     (and (eq kind :bytes) (not (eq want :refused)) (equalp bytes want)))
+                     (and (eq kind :bytes) (not (eq want :refused)) (equalp bytes want))
+                     (and (eq kind :read) (consp want)
+                          (equalp (read-answer-bytes (car bytes)) (car want)) (equalp (cdr bytes) (cdr want))))
                  (incf pass))
                 (t (incf fail)
                    (push (format nil "~a: ~a~@[ ~a~]" (second inst) kind
