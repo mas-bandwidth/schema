@@ -151,7 +151,7 @@ internal sealed class TableMessageEntry
 const tableMessageSource = `
     static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
     static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-    static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
+    static bool MessageKind(byte kind) { return kind <= 30 || kind == 32 || kind == 36; } // 31 is held by name, never written (R17): an announcement naming it is malformed, as one naming 33 or 34 is
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
     static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
     static int ValueBits(byte kind, TableMessageShape s)

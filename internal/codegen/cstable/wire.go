@@ -793,7 +793,6 @@ public static partial class TableWire
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     return Slice(out _);
                 case 15:
