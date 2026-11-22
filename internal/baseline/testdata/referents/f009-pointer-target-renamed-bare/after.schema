@@ -1,0 +1,11 @@
+package referents
+
+table Renamed
+{
+    n int32
+}
+
+table Root
+{
+    selected *Renamed
+}

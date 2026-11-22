@@ -1,0 +1,12 @@
+package decls
+
+table Extra
+{
+    v int32
+}
+
+table Holder
+{
+    c     int32
+    extra *Extra
+}

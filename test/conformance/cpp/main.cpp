@@ -569,6 +569,7 @@ static const MsgCodec msg_codecs[] = {
     // the prior-writer rows (FORMAT.md `message-prior`): one field per shape a
     // ranged value takes, read against an earlier release's announcement
     MSGCODEC( "tblprior", tblprior, Prior ),
+    MSGCODEC( "messagedemo", messagedemo, ToolMessage ),
 };
 
 // ---------------------------------------------------------------------------
