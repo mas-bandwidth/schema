@@ -355,9 +355,6 @@ function TableVariableWriteInt(w, width, v) {
 
 // an enum value's reference: the variant name's id, 0 for None, and -1 for a
 // value no variant names, which the save refuses (§5)
-// None has two spellings in memory, null and the string "None"; both are the
-// one value, so every compare of an enum goes through this
-function TableVariableEnumNorm(val) { return val === "None" ? null : val; }
 function TableVariableEnumRef(e, ids, val) {
   if (val === null || val === "None") { return 0; }
   for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
@@ -443,7 +440,8 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "enum":
-      if (TableVariableEnumNorm(val) !== TableVariableEnumNorm(fd.def)) {
+      // None is null or the string "None": one value, so one compare
+      if ((val === "None" ? null : val) !== fd.def) {
         const ref = ids.ref(fd.id);
         const vref = TableVariableEnumRef(fd, ids, val);
         if (vref < 0) { return false; }
