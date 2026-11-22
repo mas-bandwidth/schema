@@ -1,0 +1,10 @@
+# THE FRONT-END VECTOR for Literals.schema (docs/SPEC-CONFORMANCE.md §8, rows 26-27).
+# id <what> <alias UTF-8 bytes, hex> <wire id>: fnv1a64 over those bytes.
+# f32/f64 <field>.<fact> <IEEE-754 bits>: the literal rounded to float64, then to the field's width.
+id table.Literals c38974c3a9 0xd6e58e0287fc9537
+id field.renamed 6e61c3af7665 0x1e858bc68a6332ab
+id arm.plain c3a4726d 0xcdaeb5c6da2f3327
+f32 tie32.default 0x3f800000
+f32 tie32.min 0x3f800000
+f64 tie64.default 0x3ff0000010000000
+f32 sum32.default 0x3e99999a
