@@ -89,9 +89,9 @@ main at the branch base, plus this branch's Go engine and JS fixes.
 |---|---|---|
 | `rr-depth-placed-union-map-129` | C++, C, C#, C# (unity), Goose, Java, JS, Lobster, MOO, Rust, Squirrel | the JSON read does not count a placed union's object and a map's object toward the depth cap |
 | `rr-depth-placed-keyed-map-129` | C#, C# (unity), Goose, Java, JS, Lobster, MOO, Rust, Squirrel | the JSON read does not count a placed map's object toward the depth cap |
-| every `rr-depth-*-129` row (`placed-table-map`, `placed-array-map`, `placed-list-map`, `placed-keyed-map`, `placed-union-map`, `placed-pointer-array`, `skipped-keyed-slot`, `skipped-union-arm`) | C#, C# (unity), Goose, Java, JS | the JSON read does not count a placed or skipped container toward the depth cap (the C++ and C legs fail `placed-pointer-array`, `placed-union-map`, `skipped-keyed-slot`, `skipped-union-arm`; Rust stops on `placed-pointer-chain-129`, its read does not count a pointer chain) |
+| every `rr-depth-*-129` row (`placed-table-map`, `placed-array-map`, `placed-list-map`, `placed-keyed-map`, `placed-union-map`, `placed-pointer-array`, `skipped-keyed-slot`, `skipped-union-arm`) | C#, C# (unity), Goose, Java, JS | the JSON read does not count a placed or skipped container toward the depth cap (the C++ and C legs now count an array and an unplaced keyed slot, fixed on rowan/ledger-c-cpp; Rust stops on `placed-pointer-chain-129`, its read does not count a pointer chain) |
 | `rr-depth-*` rows | Go, Lua, Luau, Squirrel | FIXED on this branch: a value skipped under an unknown union arm or enum key sits one level below that object, and an array (even empty) is a container one level below its table; the Go emitter, Lua and Luau runtimes counted it a level too shallow (Squirrel by #4707) |
-| `rr-num-negative-zero-long-token` | C++ | fixed by #4651 (open) |
+| `rr-num-negative-zero-long-token` | C++ | fixed on rowan/ledger-c-cpp: an all-zero mantissa keeps the token sign in the long-token path |
 | `rr_wref_f32_past_range`, `rr_fref_f32_past_range`, `rr_jref_f32_past_range` | Dart, Goose | the writers test the double for finiteness, not the float32 it rounds to |
 
 Every other (leg, row) pair passes; Dart answers the four `mapdemo` rows ABSENT.
