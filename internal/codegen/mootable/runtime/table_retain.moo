@@ -520,6 +520,10 @@ local function e_ref(em: any, o: any, id: string)
 			st.idset[id] = true
 		end
 	end
+	if #em.c.ids.list >= 4096 and em.c.ids.index[id] == nil then
+		em.bad = true
+		return
+	end
 	o_leb(o, em.api.ref(em.c.ids, id))
 end
 

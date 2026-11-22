@@ -60,6 +60,8 @@ let report = schema_rt.LoadReport {}
 let rec = schema_rt.json_read("Root", seed, report)
 assert rec
 let before = schema_rt.save(rec)
+// a refused read leaves the record at its declared defaults (§6.5)
+let fresh = schema_rt.save(schema_rt.new_record(schema_rt.table_of("Root")))
 def probe(i:int, accept:bool):
     let input = read_file("input{i}")
     assert input
@@ -74,7 +76,7 @@ def probe(i:int, accept:bool):
         assert schema_rt.json_read_into(rec, seed, schema_rt.LoadReport {})
     else:
         assert report.refused
-        assert schema_rt.save(rec) == before
+        assert schema_rt.save(rec) == fresh
         assert schema_rt.json_read_into(rec, seed, report)
         assert not report.refused and report.reason == "" and report.unknown == 0
     assert schema_rt.save(rec) == before

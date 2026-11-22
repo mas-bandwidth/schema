@@ -667,10 +667,14 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 	// a skipped object's keys are held to the layer's rule too: a repeated
 	// key refuses in every object of the text (§16.2, §16.12)
 	var keys map[string]struct{}
+	definition := uint64(0) // the label this object defines, open until it closes
 	for {
 		c := in.peek()
 		if c == close {
 			in.pos++
+			if definition != 0 {
+				in.graph[definition] = labelEntry{}
+			}
 			return true
 		}
 		if c == 0 {
@@ -702,23 +706,57 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return in.fail("malformed: a repeated key")
 			}
 			keys[string(key)] = struct{}{}
-			if len(key) > 0 && key[0] == '&' && in.graph != nil {
-				if !first || !in.skippedAmpersand(string(key)) {
+			if len(key) > 0 && key[0] == '&' {
+				if !first || string(key) != "&node" {
 					in.bad = true
 					return false
 				}
 				first = false
+				// THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): what the
+				// reader does not place is the value, never the label. A label
+				// alone must name a definition already closed, fields after one
+				// must follow a label not yet defined, and the definition stays
+				// OPEN until this object closes.
+				label, ok := in.scanLabel()
+				if !ok {
+					return false
+				}
+				if in.graph == nil {
+					// a unit with no pointer has no label table: the prefix is
+					// still held to its grammar (a well-formed &node, first), and
+					// the value is skipped whole
+					c = in.peek()
+					if c == ',' {
+						in.pos++
+						continue
+					}
+					if c == close {
+						in.pos++
+						return true
+					}
+					in.bad = true
+					return false
+				}
+				entry, defined := in.graph[label]
 				c = in.peek()
 				if c == ',' {
 					in.pos++
-					continue
+					c = in.peek()
+				} else if c != close {
+					in.bad = true
+					return false
+				}
+				if bare := c == close; bare != defined || (bare && entry.open) {
+					in.bad = true
+					return false
 				}
 				if c == close {
 					in.pos++
 					return true
 				}
-				in.bad = true
-				return false
+				in.graph[label] = labelEntry{open: true}
+				definition = label
+				continue
 			}
 		}
 		first = false
@@ -732,6 +770,9 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 		}
 		if c == close {
 			in.pos++
+			if definition != 0 {
+				in.graph[definition] = labelEntry{}
+			}
 			return true
 		}
 		in.bad = true
@@ -1113,27 +1154,6 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		return false
 	}
 	in.graph[label] = labelEntry{node: cell.Node, st: st}
-	return true
-}
-
-// skippedAmpersand handles an `&`-prefixed key opening an object the walk is
-// SKIPPING — a value past an array's bound, an unknown key's value, a value of
-// the wrong shape. A definition in there still takes its label, so the numbering
-// survives whatever the storage could not hold (§16.7): the label is registered
-// with no node, and a reference to it reads null. Any other prefixed key is
-// the reserved prefix out of place. A FIXED root never reaches this: what a
-// reader does not place it does not police, and the value is skipped whole.
-func (in *reader) skippedAmpersand(key string) bool {
-	if in.graph == nil || key != "&node" {
-		return false
-	}
-	label, ok := in.scanLabel()
-	if !ok {
-		return false
-	}
-	if _, defined := in.graph[label]; !defined {
-		in.graph[label] = labelEntry{}
-	}
 	return true
 }
 

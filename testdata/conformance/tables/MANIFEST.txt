@@ -686,6 +686,9 @@ json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/confo
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
+# R7: in a unit with no pointer a skipped value still refuses a stray & key or an &node not first
+json-hostile skipped-ampersand-stray-key             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-stray-key refused
+json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-node-not-first refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -853,6 +856,15 @@ json-hostile label-self-reference          graphdemo  Scene       testdata/confo
 json-hostile label-type-mismatch           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-type-mismatch refused
 json-hostile label-dropped-definition      graphdemo  Scene       testdata/conformance/tables/json-hostile/label-dropped-definition refused
 json-hostile label-in-unknown-key          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key read
+# R7 (2026-11-22): a label inside a value this reader SKIPS obeys the label rules (§16.7): a duplicate, a
+# reference before its definition and a reference to a definition still open all refuse.
+json-hostile skipped-label-defined-twice             graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice refused
+json-hostile skipped-label-defined-twice-nested      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice-nested refused
+json-hostile skipped-label-defined-after-placed      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-after-placed refused
+json-hostile skipped-label-forward-reference         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-forward-reference refused
+json-hostile skipped-label-undefined-reference       graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-undefined-reference refused
+json-hostile skipped-label-self-reference            graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-self-reference refused
+json-hostile skipped-label-reference-defined         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-reference-defined read
 json-hostile shared-node-by-label          graphdemo  Scene       testdata/conformance/tables/json-hostile/shared-node-by-label read
 
 # THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
