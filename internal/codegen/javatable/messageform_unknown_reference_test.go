@@ -47,7 +47,10 @@ func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
 		t.Fatalf("announce: %v", err)
 	}
 	mutant := mustHex(t, mutantMatchUnknownRef)
-	bodies, _ := tablewire.MessageCount(mutant, v)
+	bodies, cerr := tablewire.MessageCount(mutant, v)
+	if cerr != nil || bodies < 1 {
+		t.Fatalf("the mutant's body count cannot be read (%d bodies, %v): the oracle below would decode into no instance", bodies, cerr)
+	}
 	batch := make([]*tabletext.Instance, bodies)
 	for i := range batch {
 		batch[i] = tabletext.NewModel(u).New(u.Tables["MatchResult"])

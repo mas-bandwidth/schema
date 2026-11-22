@@ -781,6 +781,9 @@ fixed table Holder
 	if !find(got, baseline.Warn, "table A", "A2 and B each carry enough of its 4 identities") {
 		t.Fatalf("an undecidable rename must name its contenders, got:%s", summary(got))
 	}
+	if len(got) == 0 {
+		t.Fatal("got is empty: the loop below would check nothing")
+	}
 	for _, f := range got {
 		if f.Verdict == baseline.Refuse && strings.HasPrefix(f.Where, "B.") {
 			t.Errorf("B is brand new; no edit inside it ever happened, got: %s", f)

@@ -93,6 +93,9 @@ func TestPythonReflectionDriverCorpus(t *testing.T) {
 			if _, ok := files[filepath.ToSlash(filepath.Join(u.Package, "_schema/unit_view.py"))]; !ok {
 				t.Fatal("unit view missing")
 			}
+			if len(files) == 0 {
+				t.Fatal("files is empty: the loop below would check nothing")
+			}
 			for path, body := range files {
 				if strings.Contains(path, "/_schema/") || !strings.HasSuffix(path, ".py") {
 					continue
@@ -321,6 +324,9 @@ func TestPythonReflectionDriverAllKinds(t *testing.T) {
 			files, err := c.Generate(u, "python", nil)
 			if err != nil {
 				t.Fatalf("kind hole: %v", err)
+			}
+			if len(files) == 0 {
+				t.Fatal("files is empty: the loop below would check nothing")
 			}
 			for path, body := range files {
 				if strings.Contains(path, "/_schema/") || !strings.HasSuffix(path, ".py") {

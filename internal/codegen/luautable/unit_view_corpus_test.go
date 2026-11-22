@@ -126,6 +126,9 @@ func TestLuauUnitViewCorpus(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter (it runs the unit view's listing)")
 	t.Parallel()
 	units := luauViewUnits(t)
+	if len(units) == 0 {
+		t.Fatal("units is empty: the loop below would check nothing")
+	}
 	for _, vu := range units {
 		u, files := luauViewFiles(t, vu.paths)
 		t.Run(vu.key, func(t *testing.T) {

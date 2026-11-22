@@ -204,9 +204,12 @@ public final class BenchMixedFixed {
         TableFixed.put32(b, at + 1145, v.payloadLength);
         java.lang.System.arraycopy(v.payload, 0, b, at + 1149, v.payloadLength);
         java.util.Arrays.fill(b, at + 1149 + v.payloadLength, at + 1165, (byte) 0);
-        TableFixed.put32(b, at + 1165, java.lang.Float.floatToRawIntBits(v.aimX));
-        TableFixed.put32(b, at + 1169, java.lang.Float.floatToRawIntBits(v.aimY));
-        TableFixed.put32(b, at + 1173, java.lang.Float.floatToRawIntBits(v.aimZ));
+        TableFixed.put32(
+                b, at + 1165, java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX)));
+        TableFixed.put32(
+                b, at + 1169, java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY)));
+        TableFixed.put32(
+                b, at + 1173, java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ)));
         TableFixed.put32(b, at + 1177, java.lang.Float.floatToRawIntBits(v.recoil));
         TableFixed.put64(b, at + 1181, java.lang.Double.doubleToRawLongBits(v.drift));
         TableFixed.put64(b, at + 1189, v.wideKey.lo);
@@ -236,6 +239,15 @@ public final class BenchMixedFixed {
         assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
         assert TableFixed.textOk(TableFixed.textUtf8, v.playerName, 0, v.playerNameLength);
         assert v.payloadLength >= 0 && v.payloadLength <= 16;
+        assert !java.lang.Float.isFinite(v.aimX)
+                || (v.aimX >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimX <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimY)
+                || (v.aimY >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimY <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimZ)
+                || (v.aimZ >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimZ <= java.lang.Float.intBitsToFloat(0x3f800000));
         {
             final Int128 min = new Int128(0xfffffff000000000L, 0L);
             final Int128 max = new Int128(0x1000000000L, 0L);

@@ -278,6 +278,8 @@ func (g *cookGen) emitCookScalarStore(f *ir.Field, expr, at string, width int64,
 	// ind is the store's own indent; the lines below are spelled one level
 	// in from their enclosing statement, so step back out by one
 	ind = strings.TrimSuffix(ind, "  ")
+	// a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+	expr = dartStoredFloat(f, expr)
 	switch {
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s  out.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
@@ -1069,7 +1071,7 @@ var (
 
 func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
 	g.pf("%s", textListWriteCheck(f, expr, ind, "wire.", "return false;"))
-	g.pf("%s", requiredRangeCheck(f, expr, ind, "return false;"))
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "TableCookWriteReport._cookFloat32", "return false;"))
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		owner := expr[:lastDot(expr)]

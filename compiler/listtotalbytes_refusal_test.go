@@ -21,7 +21,11 @@ func TestListTotalBytesRefusedOffGo(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
-		for _, lang := range c.Targets() {
+		allTargets := c.Targets()
+		if len(allTargets) == 0 {
+			t.Fatal("c.Targets() is empty: the loop below would check nothing")
+		}
+		for _, lang := range allTargets {
 			_, err := c.Generate(u, lang, Options{"runtime": "standalone"})
 			if carries(lang, carryTextListTotal) {
 				if err != nil {

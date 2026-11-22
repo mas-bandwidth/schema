@@ -70,6 +70,9 @@ func TestStrictOnlySquirrelNoTolerantEntry(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		check("examples/"+name, string(files[name]))
 	}
@@ -108,6 +111,9 @@ fixed table Root { a uint16
 		fixedNames = append(fixedNames, name)
 	}
 	sort.Strings(fixedNames)
+	if len(fixedNames) == 0 {
+		t.Fatal("fixedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range fixedNames {
 		check("fixed/"+name, string(fixedFiles[name]))
 	}

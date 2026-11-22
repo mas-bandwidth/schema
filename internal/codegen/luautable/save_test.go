@@ -193,6 +193,9 @@ func TestLuauTableSaveNegativeControl(t *testing.T) {
 	}
 	sort.Strings(keys)
 	const anchor = "\tif not required and at_default(fd, val) then return true end\n"
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, key := range keys {
 		g := generateUnit(t, units, key)
 		if g.err != nil {

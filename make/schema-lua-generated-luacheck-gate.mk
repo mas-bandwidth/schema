@@ -138,7 +138,7 @@ tables-lua-luacheck: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUAC
 .PHONY: tables-lua-luacheck-negative-control
 tables-lua-luacheck-negative-control: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUACHECK_CONFIG)
 	@rm -rf build/lua-luacheck-control && mkdir -p build/lua-luacheck-control
-	@set -e; clean=$$(find $(LUA_LUACHECK_CORPUS) -name serialize_int.lua | head -1); \
+	@set -e; clean=$$(find $(LUA_LUACHECK_CORPUS) -name serialize_int.lua | sed -n 1p); \
 	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no serialize_int.lua"; exit 1; fi; \
 	cp "$$clean" build/lua-luacheck-control/clean.lua; \
 	if ! $(LUACHECK) --config $(LUA_LUACHECK_CONFIG) --no-color build/lua-luacheck-control/clean.lua > build/lua-luacheck-control/clean.log 2>&1; then \
@@ -212,7 +212,7 @@ tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 .PHONY: tables-lua-format-negative-control
 tables-lua-format-negative-control: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 	@rm -rf build/lua-format-control && mkdir -p build/lua-format-control
-	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | head -1); \
+	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | sed -n 1p); \
 	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no one-line early-out to plant"; exit 1; fi; \
 	cp "$$clean" build/lua-format-control/clean.lua; \
 	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/clean.lua > build/lua-format-control/clean.log 2>&1; then \

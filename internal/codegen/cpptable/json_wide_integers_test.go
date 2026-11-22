@@ -358,6 +358,9 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		t.Fatalf("the C++ probe reported undefined behaviour:\n%s", probeOut)
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for i, row := range rows {
 		raw, err := os.ReadFile(filepath.Join(outDir, fmt.Sprintf("row-%d", i)))
 		if err != nil {

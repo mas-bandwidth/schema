@@ -346,6 +346,9 @@ func testNestedAbsentRecordOptional(t *testing.T) {
 			t.Errorf("%s: the lawful record answered n=%d; it must read its one record", r.name, n)
 		}
 	}
+	if len(mutants) == 0 {
+		t.Fatal("mutants is empty: the loop below would check nothing")
+	}
 	for _, m := range mutants {
 		if got[m.file] != -1 {
 			t.Errorf("%s: %s, a byte of an absent nested `extra` payload set to 1, answered n=%d; a dead byte that is not zero refuses the whole load",

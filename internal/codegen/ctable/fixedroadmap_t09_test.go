@@ -444,11 +444,23 @@ int main(void)
     value[0].v = 1.0f;        /* the declared max, in range */
     value[1].v = -1.0f;       /* the declared min, in range */
     value[2].v = 0.123456f;   /* off the 0.01 grid: it rides as the float, never requantized */
-    value[3].v = 2.0f;        /* above max: the read refuses */
-    value[4].v = -2.0f;       /* below min: the read refuses */
+    value[3].v = 0.5f;
+    value[4].v = -0.5f;
     need = compressed_float_fixed_measure(5);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(compressed_float_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
+    /* 2.0f and -2.0f, above max and below min, forged into records 3 and 4
+       where the saved values are checked first: the writer asserts its write
+       check, row 10 included, so a debug build never writes them
+       (docs/SPEC.md §5.1) */
+    {
+        uint8_t * r3 = file + kTableFixedHeaderBytes + 4 + compressed_float_fixed_layout_bytes
+                     + 3 * compressed_float_fixed_record_bytes + 8;
+        uint8_t * r4 = r3 + compressed_float_fixed_record_bytes;
+        CHECK(table_fixed_get32(r3) == 0x3f000000u && table_fixed_get32(r4) == 0xbf000000u);
+        table_fixed_put32(r3, 0x40000000u);
+        table_fixed_put32(r4, 0xc0000000u);
+    }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
     n = compressed_float_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);

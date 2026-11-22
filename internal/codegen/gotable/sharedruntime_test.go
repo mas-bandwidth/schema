@@ -30,6 +30,9 @@ func TestGoSharedRuntimePackageIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, want := range files {
 		path := filepath.Join(sharedRuntimeDir, name)
 		if os.Getenv("SCHEMA_WRITE_GORUNTIME") == "1" {
@@ -254,6 +257,9 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 			// the message form's runtime (the bit codecs, the vocabulary) is
 			// table-independent too, though it lives in <Package>TableMessage.go
 			// and not in the home file: it is imported, not copied (§8.4)
+			if len(shared) == 0 {
+				t.Fatal("shared is empty: the loop below would check nothing")
+			}
 			for name, src := range shared {
 				for _, copied := range []string{"type TableBitReader struct", "func (r *TableBitReader) Get(", "func (v *TableVocabulary) Init("} {
 					if bytes.Contains(src, []byte(copied)) {

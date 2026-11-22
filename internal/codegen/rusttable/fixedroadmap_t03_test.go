@@ -336,6 +336,9 @@ fixed table T
 		t.Fatalf("W11: Generate: %v", err)
 	}
 	block := t03ByteArray(t, t03Fixed(t, files), "T_FIXED_BLOCK")
+	if len(w) == 0 {
+		t.Fatal("w is empty: the loop below would check nothing")
+	}
 	for i, e := range w {
 		if e.Note != "blob" {
 			continue
@@ -390,7 +393,8 @@ fixed table Big
 	if ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes {
 		t.Fatalf("R6: the fixture body = %d, not past %d", ir.TableFixedTypeBytes(st), ir.TableFixedRecordMaxBytes)
 	}
-	for _, r := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: a table past the ceiling is a fixed-form root")
 		}

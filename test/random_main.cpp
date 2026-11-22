@@ -26,6 +26,9 @@
 
 static uint64_t g_seed = 0;
 static int g_iter = 0;
+// every round trip and each defaults block is one counted unit: main prints
+// "ran N, failed M" and build/mustrun holds N to the count the recipe registers
+static int g_ran = 0;
 
 struct Rng
 {
@@ -469,6 +472,7 @@ static bool roundtrip( Rng & r,
                        int64_t maxBytes )
 {
     alignas( 8 ) static uint8_t buffer[4096 + 8];  // + 8: read buffer allocations extend 8 bytes past the data (the reader loads 64-bit windows)
+    g_ran++; // one counted unit per round trip
     T in;
     fillFn( r, in );
     serialize::WriteStream ws( buffer, sizeof( buffer ) );
@@ -483,7 +487,7 @@ static bool roundtrip( Rng & r,
     return true;
 }
 
-int main()
+static int run_all()
 {
     g_seed = 0x5EED0001;
     if ( const char * env = std::getenv( "SCHEMA_RANDOM_SEED" ) )
@@ -517,6 +521,7 @@ int main()
 
     // the specified defaults are the constructed state (SPEC §4.2)
     {
+        g_ran++; // the defaults block is one counted unit
         ProbeConfig fresh;
         if ( fresh.retries != -1 || fresh.preferred != Weapon::Railgun )
         {
@@ -540,4 +545,12 @@ int main()
 
     printf( "OK (%d iterations, seed %llu)\n", iterations, (unsigned long long) g_seed );
     return 0;
+}
+
+int main()
+{
+    int status = run_all();
+    int failed = status != 0 ? 1 : 0;
+    printf( "schema_test_random: ran %d, failed %d\n", g_ran, failed );
+    return ( failed != 0 || g_ran == 0 ) ? 1 : 0;
 }

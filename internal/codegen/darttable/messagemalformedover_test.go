@@ -158,7 +158,12 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, announcement, mut
 	if err := vocab.AnnounceRead(announcement, &tabletext.Report{}); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
-	bodies, _ := tablewire.MessageCount(mutant, vocab)
+	// The count only sizes the storage; a count the oracle cannot read must
+	// answer zero bodies, and the decode below gives the verdict.
+	bodies, cerr := tablewire.MessageCount(mutant, vocab)
+	if cerr != nil && bodies != 0 {
+		t.Fatalf("%s %s: the oracle's count refused (%v) yet answered %d bodies", unitPath, root, cerr, bodies)
+	}
 	if bodies < 1 {
 		bodies = 1
 	}
