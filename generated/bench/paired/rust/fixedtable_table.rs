@@ -262,6 +262,7 @@ pub fn fixed_table_save(v: &FixedTable) -> Vec<u8> {
         out.extend_from_slice(&payload);
     }
     // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.
+    ids.check_bound();
     if let Some(why) = ids.refused.take() { panic!("{}", why); }
     out.push(0); // the root body's zero reference
     for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }
@@ -305,6 +306,7 @@ pub fn fixed_table_save_checked(v: &FixedTable) -> Result<Vec<u8>, String> {
         leb_write(&mut out, payload.len() as u64);
         out.extend_from_slice(&payload);
     }
+    ids.check_bound();
     if let Some(why) = ids.refused.take() { return Err(why); }
     out.push(0); // the root body's zero reference
     for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }
@@ -359,6 +361,7 @@ pub fn fixed_table_save_retain(v: &FixedTable, retain: &mut TableRetain, report:
     }
     retain_count_unplaced(retain, report);
     // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.
+    ids.check_bound();
     if let Some(why) = ids.refused.take() { panic!("{}", why); }
     out.push(0); // the root body's zero reference
     for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }

@@ -954,6 +954,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
@@ -5123,14 +5128,40 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # (docs/SPEC-TABLES.md §16.2, §16.7).
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) do
+      # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must
+      # name a definition already closed; fields after one must follow a label
+      # not yet defined, and the definition is open until this object closes.
+      # What the reader does not place is the value.
       defs = Process.get(:elixir_json_defs, %{})
-      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
-    end
+      open = Process.get(:elixir_json_open, %{})
 
-    Enum.each(rest, fn {k, v} ->
-      json_skip_key(k)
-      json_skip_value(v)
-    end)
+      if rest == [] do
+        if Map.has_key?(open, label) or not Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+      else
+        if Map.has_key?(open, label) or Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
+        Process.put(:elixir_json_open, Map.put(open, label, true))
+
+        Enum.each(rest, fn {k, v} ->
+          json_skip_key(k)
+          json_skip_value(v)
+        end)
+
+        Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+        Process.put(:elixir_json_defs, Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped))
+      end
+    else
+      Enum.each(rest, fn {k, v} ->
+        json_skip_key(k)
+        json_skip_value(v)
+      end)
+    end
   end
 
   defp json_skip_value({:obj, pairs}) do
@@ -6145,7 +6176,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_object_val reads one member's value; in a variable-class document
   # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
-    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+    if String.starts_with?(key, "&") do
       if key != "&node" or acc != [] do
         :error
       else
@@ -7082,6 +7113,11 @@ const variableRetainSource = `
 
       {s, body} = save_fields_retain(desc, value, {idx_map, %{}, [], retain, report}, [], [])
       {{_idx_map, _ids, order, retain, report}, body} = save_node_table_retain(nodes, s, body)
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       # a record whose path no longer names a body was lost by the caller's
@@ -7094,6 +7130,7 @@ const variableRetainSource = `
        retain, report}
     catch
       :blob_shared -> {:error, :blob_shared}
+      :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
     end
@@ -8586,7 +8623,7 @@ const variableRetainSource = `
           ref = length(order) + 1
           {ref, Map.put(ids, id, ref), [id | order], retain}
         else
-          if length(retain.ids) >= retain.id_cap do
+          if length(retain.ids) >= retain.id_cap or length(order) >= 4096 do
             {0, ids, order, retain}
           else
             ref = length(order) + 1

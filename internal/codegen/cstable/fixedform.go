@@ -1119,7 +1119,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				// `ordinal` land their value and move nothing). A forged ordinal
 				// past the top variant is the BOUNDS PASS's to clamp and count,
 				// on BOTH plans (§5.4, §4.6).
-				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
+				setRawReport: fixedEnumReport(f, r, expr),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
@@ -1266,7 +1266,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				// `ordinal` land their value and move nothing). A forged ordinal
 				// past the top variant is the BOUNDS PASS's to clamp and count,
 				// on BOTH plans (§5.4, §4.6).
-				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
+				setRawReport: fixedEnumReport(f, r, expr),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{
@@ -1718,6 +1718,10 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
 			return
 		case *ir.Enum:
+			if cond := enumDeprecatedCond(r, "(ulong)"+expr); cond != "" {
+				// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+				g.pf("%sSystem.Diagnostics.Debug.Assert(!(%s), \"a deprecated enum variant is written\");\n", ind, cond)
+			}
 			w := int64(r.StorageBits / 8)
 			switch w {
 			case 1:

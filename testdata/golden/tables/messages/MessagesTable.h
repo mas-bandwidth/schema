@@ -648,6 +648,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 60;
     static const int32_t kBuckets = 128;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -691,7 +694,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -8322,7 +8325,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -8355,7 +8362,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -10134,9 +10141,9 @@ inline void InsertTextReset( InsertText & value )
         value.origins[i].note.value_length = 0;
         value.origins[i].type = OriginType::None;
     }
-    value.origins_count = 0;
+    value.origins_count = 0; // born at Min (docs/SPEC.md §4.2)
     memset( value.modes, 0, sizeof( value.modes ) );
-    value.modes_count = 0;
+    value.modes_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.modes_present = false;
 }
 
@@ -10182,7 +10189,7 @@ inline void TransactionReset( Transaction & value )
     {
         EditReset( value.edits[i] );
     }
-    value.edits_count = 0;
+    value.edits_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 2; i++ )
     {
         InsertTextReset( value.pending[i].insert );
@@ -10236,12 +10243,12 @@ inline void ToolMessageReset( ToolMessage & value )
         value.history[i].origin.type = OriginType::None;
         value.history[i].type = ToolBodyType::None;
     }
-    value.history_count = 0;
+    value.history_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
         ScriptReset( value.trace[i] );
     }
-    value.trace_count = 0;
+    value.trace_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.trace_present = false;
     memset( value.marks, 0, sizeof( value.marks ) );
     value.marks_present = false;
@@ -12211,7 +12218,8 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         const uint64_t ref_origins = ids.ref_at( 14, 0x4437d86681113b74ull );
         int64_t body_origins = 0;
@@ -12383,7 +12391,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         const uint64_t ref_origins = ids.ref_at( 14, 0x4437d86681113b74ull );
         int64_t body_origins = 0;
@@ -13367,7 +13376,8 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         bits += kTableMessageRefBitsHere;
         bits += 2;
@@ -13494,7 +13504,8 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         w.put( 8, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.origins_count ) - 0, 2 );
@@ -17517,7 +17528,8 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
     if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         const uint64_t ref_edits = ids.ref_at( 29, 0x9478d06b697549e6ull );
         int64_t body_edits = 0;
@@ -17661,7 +17673,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
         w.raw( value.reason, value.reason_length );
     }
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         const uint64_t ref_edits = ids.ref_at( 29, 0x9478d06b697549e6ull );
         int64_t body_edits = 0;
@@ -18806,7 +18819,8 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
         bits += (int64_t) value.reason_length * 8;
     }
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         bits += kTableMessageRefBitsHere;
         bits += 2;
@@ -18923,7 +18937,8 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
         w.putbytes( (const uint8_t *) value.reason, value.reason_length );
     }
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         w.put( 23, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.edits_count ) - 0, 2 );
@@ -20005,7 +20020,8 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
         int64_t body_history = 0;
@@ -20422,7 +20438,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
         int64_t body_history = 0;
@@ -22291,7 +22308,8 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         bits += kTableMessageRefBitsHere;
         bits += 2;
@@ -22551,7 +22569,8 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         w.put( 19, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.history_count ) - 0, 2 );
@@ -38521,7 +38540,8 @@ inline int64_t InsertTextMeasureBodyRetain( TableRetainIds & ids, const InsertTe
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         const uint64_t ref_origins = ids.ref_at( 14, 0x4437d86681113b74ull );
         int64_t body_origins = 0;
@@ -38684,7 +38704,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
         }
     }
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.origins_count > 0 )
+    bool rides_origins = value.origins_count > 0;
+    if ( rides_origins )
     {
         const uint64_t ref_origins = ids.ref_at( 14, 0x4437d86681113b74ull );
         int64_t body_origins = 0;
@@ -40641,7 +40662,8 @@ inline int64_t TransactionMeasureBodyRetain( TableRetainIds & ids, const Transac
     if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         const uint64_t ref_edits = ids.ref_at( 29, 0x9478d06b697549e6ull );
         int64_t body_edits = 0;
@@ -40776,7 +40798,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableR
         w.raw( value.reason, value.reason_length );
     }
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.edits_count > 0 )
+    bool rides_edits = value.edits_count > 0;
+    if ( rides_edits )
     {
         const uint64_t ref_edits = ids.ref_at( 29, 0x9478d06b697549e6ull );
         int64_t body_edits = 0;
@@ -41936,7 +41959,8 @@ inline int64_t ToolMessageMeasureBodyRetain( TableRetainIds & ids, const ToolMes
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
         int64_t body_history = 0;
@@ -42344,7 +42368,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
         }
     }
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.history_count > 0 )
+    bool rides_history = value.history_count > 0;
+    if ( rides_history )
     {
         const uint64_t ref_history = ids.ref_at( 9, 0x33428945bbd5f2ffull );
         int64_t body_history = 0;
