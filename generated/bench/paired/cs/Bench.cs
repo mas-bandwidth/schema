@@ -295,6 +295,9 @@ namespace Bench
                 Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
                 Debug.Assert(value.B >= 0 && value.B <= 65535, "value.B out of range [0, 65535]");
                 Debug.Assert(value.C >= -1000000 && value.C <= 1000000, "value.C out of range [-1000000, 1000000]");
+                Debug.Assert((ulong)value.Bits7 < 1ul << 7, "value.Bits7 is wider than its 7-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.Bits13 < 1ul << 13, "value.Bits13 is wider than its 13-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.Bits23 < 1ul << 23, "value.Bits23 is wider than its 23-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)(unchecked((uint)(value.A) - unchecked((uint)(-100))))) & 0xffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.B)))) & 0xffffUL;
                 ulong f2 = ((ulong)(unchecked((uint)(value.C) - unchecked((uint)(-1000000))))) & 0x1fffffUL;
@@ -582,6 +585,13 @@ namespace Bench
         {
             {
                 // flat run: 156 bits in 3 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.B7 < 1ul << 7, "value.B7 is wider than its 7-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B13 < 1ul << 13, "value.B13 is wider than its 13-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B23 < 1ul << 23, "value.B23 is wider than its 23-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B3 < 1ul << 3, "value.B3 is wider than its 3-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B11 < 1ul << 11, "value.B11 is wider than its 11-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B19 < 1ul << 19, "value.B19 is wider than its 19-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B48 < 1ul << 48, "value.B48 is wider than its 48-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.B7) & 0x7fUL;
                 ulong f1 = ((ulong)value.B13) & 0x1fffUL;
                 ulong f2 = ((ulong)value.B23) & 0x7fffffUL;
@@ -813,9 +823,12 @@ namespace Bench
         {
             {
                 // flat run: 135 bits in 3 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.EntityId < 1ul << 12, "value.EntityId is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.PosX >= -16383 && value.PosX <= 16383, "value.PosX out of range [-16383, 16383]");
                 Debug.Assert(value.PosY >= -16383 && value.PosY <= 16383, "value.PosY out of range [-16383, 16383]");
                 Debug.Assert(value.PosZ >= -16383 && value.PosZ <= 16383, "value.PosZ out of range [-16383, 16383]");
+                Debug.Assert((ulong)value.Yaw < 1ul << 9, "value.Yaw is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.Pitch < 1ul << 9, "value.Pitch is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.VelX >= -2048 && value.VelX <= 2047, "value.VelX out of range [-2048, 2047]");
                 Debug.Assert(value.VelY >= -2048 && value.VelY <= 2047, "value.VelY out of range [-2048, 2047]");
                 Debug.Assert(value.VelZ >= -2048 && value.VelZ <= 2047, "value.VelZ out of range [-2048, 2047]");
@@ -965,6 +978,7 @@ namespace Bench
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.StatId < 1ul << 8, "value.StatId is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Delta >= -512 && value.Delta <= 511, "value.Delta out of range [-512, 511]");
                 ulong f0 = ((ulong)value.StatId) & 0xffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.Delta) - unchecked((uint)(-512))))) & 0x3ffUL;
@@ -1045,6 +1059,7 @@ namespace Bench
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.TargetId < 1ul << 12, "value.TargetId is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
                 Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
@@ -1131,6 +1146,7 @@ namespace Bench
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
+                Debug.Assert((ulong)value.Speaker < 1ul << 12, "value.Speaker is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)(unchecked((uint)(value.Channel)))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
@@ -1208,6 +1224,7 @@ namespace Bench
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.ItemId < 1ul << 10, "value.ItemId is wider than its 10-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.Amount)))) & 0xffUL;
@@ -1459,8 +1476,10 @@ namespace Bench
         {
             {
                 // flat run: 329 bits in 6 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.Sequence < 1ul << 16, "value.Sequence is wider than its 16-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.AckSequence >= 0 && value.AckSequence <= 65535, "value.AckSequence out of range [0, 65535]");
                 Debug.Assert(value.WorldTime >= -1000000000000 && value.WorldTime <= 1000000000000, "value.WorldTime out of range [-1000000000000, 1000000000000]");
+                Debug.Assert((ulong)value.FrameTick < 1ul << 48, "value.FrameTick is wider than its 48-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = (49374UL) & 0xffffUL;
                 ulong f1 = ((ulong)value.Sequence) & 0xffffUL;
                 ulong f2 = ((ulong)(unchecked((uint)(value.AckSequence)))) & 0xffffUL;
@@ -1659,6 +1678,7 @@ namespace Bench
             }
             {
                 // flat run: 37 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.CrcHint < 1ul << 24, "value.CrcHint is wider than its 24-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Extra >= 0 && value.Extra <= 255, "value.Extra out of range [0, 255]");
                 Debug.Assert(value.IdleTicks >= 0 && value.IdleTicks <= 15, "value.IdleTicks out of range [0, 15]");
                 ulong f0 = ((ulong)value.CrcHint) & 0xffffffUL;

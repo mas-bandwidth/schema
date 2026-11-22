@@ -532,6 +532,7 @@ namespace Realworld
             }
             {
                 // flat run: 11 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F011Bits < 1ul << 10, "value.F011Bits is wider than its 10-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.F011Bits) & 0x3ffUL;
                 ulong f1 = value.F012Bool ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 10));
@@ -595,6 +596,7 @@ namespace Realworld
             {
                 return false;
             }
+            Debug.Assert((ulong)value.F023Bits < 1ul << 25, "value.F023Bits is wider than its 25-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.F023Bits, 25))
             {
                 return false;
@@ -607,6 +609,7 @@ namespace Realworld
             {
                 return false;
             }
+            Debug.Assert((ulong)value.F026Bits < 1ul << 9, "value.F026Bits is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.F026Bits, 9))
             {
                 return false;
@@ -619,6 +622,7 @@ namespace Realworld
                     return false;
                 }
             }
+            Debug.Assert((ulong)value.F028Bits < 1ul << 4, "value.F028Bits is wider than its 4-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.F028Bits, 4))
             {
                 return false;
@@ -636,10 +640,13 @@ namespace Realworld
             }
             {
                 // flat run: 69 bits in 2 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F031Bits < 1ul << 1, "value.F031Bits is wider than its 1-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.F032Int >= -3 && value.F032Int <= 3, "value.F032Int out of range [-3, 3]");
                 Debug.Assert(value.F033Uint <= 142780, "value.F033Uint out of range [0, 142780]");
                 Debug.Assert(value.F034Uint <= 14149, "value.F034Uint out of range [0, 14149]");
+                Debug.Assert((ulong)value.F035Bits < 1ul << 9, "value.F035Bits is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert((uint)value.F036Enum <= 5, "value.F036Enum above the enum wire range [0, 5]"); // headroom above the wire range cannot ride
+                Debug.Assert((ulong)value.F039Bits < 1ul << 19, "value.F039Bits is wider than its 19-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.F031Bits) & 0x1UL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.F032Int) - unchecked((uint)(-3))))) & 0x7UL;
                 ulong f2 = ((ulong)(unchecked((uint)(value.F033Uint)))) & 0x3ffffUL;
@@ -667,6 +674,7 @@ namespace Realworld
             {
                 // flat run: 38 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.F041Int >= -55 && value.F041Int <= 55, "value.F041Int out of range [-55, 55]");
+                Debug.Assert((ulong)value.F042Bits < 1ul << 30, "value.F042Bits is wider than its 30-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)(unchecked((uint)(value.F041Int) - unchecked((uint)(-55))))) & 0x7fUL;
                 ulong f1 = ((ulong)value.F042Bits) & 0x3fffffffUL;
                 ulong f2 = value.F043Bool ? 1UL : 0UL;
@@ -684,6 +692,7 @@ namespace Realworld
                 }
                 {
                     // flat run: 49 bits in 1 chunk(s) — the field placement is folded
+                    Debug.Assert((ulong)value.F045Bits < 1ul << 12, "value.F045Bits is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                     Debug.Assert(value.F046Uint <= 76063, "value.F046Uint out of range [0, 76063]");
                     Debug.Assert(value.F047Int >= -430976 && value.F047Int <= 430976, "value.F047Int out of range [-430976, 430976]");
                     ulong f0 = ((ulong)value.F045Bits) & 0xfffUL;
@@ -755,6 +764,7 @@ namespace Realworld
             {
                 return false;
             }
+            Debug.Assert((ulong)value.F060Bits < 1ul << 8, "value.F060Bits is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.F060Bits, 8))
             {
                 return false;
@@ -815,6 +825,7 @@ namespace Realworld
             }
             {
                 // flat run: 13 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F069Bits < 1ul << 11, "value.F069Bits is wider than its 11-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.F070Uint <= 2, "value.F070Uint out of range [0, 2]");
                 ulong f0 = ((ulong)value.F069Bits) & 0x7ffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.F070Uint)))) & 0x3UL;
@@ -857,6 +868,7 @@ namespace Realworld
                     // flat run: 100 bits in 2 chunk(s) — the field placement is folded
                     Debug.Assert(value.F076Int >= -26218 && value.F076Int <= 26218, "value.F076Int out of range [-26218, 26218]");
                     Debug.Assert(value.F077Int >= -17 && value.F077Int <= 17, "value.F077Int out of range [-17, 17]");
+                    Debug.Assert((ulong)value.F078Bits < 1ul << 9, "value.F078Bits is wider than its 9-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                     Debug.Assert(value.F079Uint <= 17, "value.F079Uint out of range [0, 17]");
                     ulong f0 = unchecked((ulong)value.F075U64);
                     ulong f1 = ((ulong)(unchecked((uint)(value.F076Int) - unchecked((uint)(-26218))))) & 0xffffUL;
@@ -877,6 +889,8 @@ namespace Realworld
             }
             {
                 // flat run: 58 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F081Bits < 1ul << 29, "value.F081Bits is wider than its 29-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.F082Bits < 1ul << 25, "value.F082Bits is wider than its 25-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert((uint)value.F083Enum <= 5, "value.F083Enum above the enum wire range [0, 5]"); // headroom above the wire range cannot ride
                 ulong f0 = value.F080Bool ? 1UL : 0UL;
                 ulong f1 = ((ulong)value.F081Bits) & 0x1fffffffUL;
@@ -897,6 +911,7 @@ namespace Realworld
             }
             {
                 // flat run: 30 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F085Bits < 1ul << 21, "value.F085Bits is wider than its 21-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.F086Uint <= 399, "value.F086Uint out of range [0, 399]");
                 ulong f0 = ((ulong)value.F085Bits) & 0x1fffffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.F086Uint)))) & 0x1ffUL;
@@ -913,6 +928,7 @@ namespace Realworld
             {
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
                 Debug.Assert(value.F088Int >= -694 && value.F088Int <= 694, "value.F088Int out of range [-694, 694]");
+                Debug.Assert((ulong)value.F089Bits < 1ul << 48, "value.F089Bits is wider than its 48-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.F090Uint <= 214, "value.F090Uint out of range [0, 214]");
                 Debug.Assert((ulong)value.F091Flags < 1ul << 5, "value.F091Flags has a mask bit above the 5-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)(unchecked((uint)(value.F088Int) - unchecked((uint)(-694))))) & 0x7ffUL;
@@ -944,6 +960,8 @@ namespace Realworld
             }
             {
                 // flat run: 30 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.F096Bits < 1ul << 18, "value.F096Bits is wider than its 18-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.F097Bits < 1ul << 12, "value.F097Bits is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.F096Bits) & 0x3ffffUL;
                 ulong f1 = ((ulong)value.F097Bits) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 18));

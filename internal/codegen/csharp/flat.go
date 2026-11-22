@@ -262,8 +262,16 @@ func (g *gen) flatWriteFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
 		if w < 1 || w > 64 {
 			return flatPiece{}, false
 		}
-		return flatPiece{item: item, bits: w,
-			expr: flatMasked("(ulong)"+name, w)}, true
+		p := flatPiece{item: item, bits: w,
+			expr: flatMasked("(ulong)"+name, w)}
+		if w != 32 && w != 64 { // as wide as its storage: nothing can exceed it
+			p.guard = func(ind string) {
+				g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1ul << %d", name, w),
+					fmt.Sprintf("%s is wider than its %d-bit wire width", name, w),
+					" // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)")
+			}
+		}
+		return p, true
 
 	case ir.TInt:
 		if f.Type.Width > 64 {

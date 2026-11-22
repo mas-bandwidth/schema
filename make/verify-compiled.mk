@@ -30,7 +30,7 @@ cards-go-conformance: cards-conformance-go
 # prerequisites must not rely on WFR_DEPS_* being defined at parse time).
 VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp build/conformance-cpp
 VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c tables-c-view
-VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs
+VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs packet-write-refusal-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
 VERIFY_FUZZ_DEPS_go     := build/conformance-go
 VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all build/conformance-rust

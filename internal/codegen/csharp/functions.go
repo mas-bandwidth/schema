@@ -876,6 +876,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		if w := f.Type.Width; w != 32 && w != 64 { // as wide as its storage: nothing can exceed it
+			g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1ul << %d", name, w),
+				fmt.Sprintf("%s is wider than its %d-bit wire width", name, w),
+				" // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)")
+		}
 		if f.Type.Width <= 32 {
 			g.call(ind, fmt.Sprintf("%s.SerializeBits(ref %s, %d)", g.rv(), name, f.Type.Width), "")
 		} else {
