@@ -7189,12 +7189,12 @@ inline void BenchMixedReset( BenchMixed & value )
     {
         MixedEntityReset( value.entities[i] );
     }
-    value.entities_count = 0;
+    value.entities_count = 1; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 80; i++ )
     {
         MixedStatReset( value.stats[i] );
     }
-    value.stats_count = 0;
+    value.stats_count = 0; // born at Min (docs/SPEC.md §4.2)
     MixedHitEventReset( value.game_event.hit );
     MixedChatEventReset( value.game_event.chat );
     MixedPickupEventReset( value.game_event.pickup );
@@ -12645,8 +12645,21 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( value.server_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int32_t birth_mark = ids.count;
+            const int64_t birth_bytes = MixedEntityMeasureBody( ids, value.entities[birth_i] );
+            ids.truncate( birth_mark );
+            const bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -12660,7 +12673,8 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         bytes += TableLebBytes( ref_entities ) + 1 + TableLebBytes( (uint64_t) ( body_entities ) ) + ( body_entities ); // entities
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
@@ -12817,8 +12831,21 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
         w.put32( uint32_t( value.server_time ) );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int32_t birth_mark = ids.count;
+            const int64_t birth_bytes = MixedEntityMeasureBody( ids, value.entities[birth_i] );
+            ids.truncate( birth_mark );
+            const bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -12849,7 +12876,8 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
@@ -14722,8 +14750,19 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
         bits += kTableMessageRefBitsHere;
         bits += 24;
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int64_t birth_bits = MixedEntityMeasureMessageBody( 0, value.entities[birth_i] );
+            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -14735,7 +14774,8 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         bits += kTableMessageRefBitsHere;
         bits += 7;
@@ -14930,8 +14970,19 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
         w.put( 9, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.server_time ), 24 );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int64_t birth_bits = MixedEntityMeasureMessageBody( 0, value.entities[birth_i] );
+            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         w.put( 10, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
@@ -14941,7 +14992,8 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         w.put( 11, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.stats_count ) - 0, 7 );
@@ -15851,6 +15903,25 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         if ( !MixedEntityLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.entities[i] : scratch ) ) ) { return false; }
                     }
                     value.entities_count = kept;
+                }
+                if ( same_shape )
+                {
+                    bool rides_entities = value.entities_count > 0;
+                    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+                    {
+                        rides_entities = false;
+                        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+                        {
+                            const int64_t birth_bits = MixedEntityMeasureMessageBody( 0, value.entities[birth_i] );
+                            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere;
+                            if ( !birth_default ) { rides_entities = true; }
+                        }
+                    }
+                    if ( !rides_entities )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 break;
             }

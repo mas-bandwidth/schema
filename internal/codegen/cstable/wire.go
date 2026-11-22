@@ -870,7 +870,9 @@ public static partial class TableWire
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
             // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
-            // is A default elements, and that is what the writer elides
+            // is A default elements, and that is what the writer elides; a table
+            // element is at its default when its body is its terminator alone
+            // (Empty), as the reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }

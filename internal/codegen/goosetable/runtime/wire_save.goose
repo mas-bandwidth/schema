@@ -514,6 +514,7 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
                 return;
             }
             if n == 0 { return; }
+            if born_elides(c, s, d, n) { return; }
             field_array(c, s, d, n);
             return;
         }
@@ -558,6 +559,42 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     }
     if is_default(c, s, d) { return; }
     field_simple(c, s, d);
+}
+
+// born_elides: A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md
+// §3.3, the §22.2 [M..N]T row; tablewire encodeArray, allBirth;
+// ir.Field.ElidesAtBirth). A plain counted field (not optional, not required)
+// holding exactly Min elements, each at its default (a float by its bits; a
+// table by a body that is its terminator alone), stays off the wire. A table
+// element is probed by writing its body and cutting it back off.
+recursive fn born_elides(c: SaveCtx&, s: i64, d: FieldDesc, n: i64) -> bool {
+    if d.array != ArrayCounted || d.min <= 0 || n != d.min || d.required || d.optional { return false; }
+    if s < 0 || !c.vals[s].made { return false; }
+    let e = d.elem;
+    guard e else { return false; }
+    let ek = if e.shape == ShapePtr { KindPointer } else { d.ek };
+    for k in n {
+        let es = if k < c.vals[s].count { c.vals[s].first + k } else { -1 };
+        if ek == KindString && e.shape == ShapeTab {
+            // a plain text list's element is its record's one value
+            let t = save_table_index(c, e.ref);
+            if !elem_default(c, slot_of(c, es, 0), c.unit.tables[t].fields[0]) { return false; }
+            continue;
+        }
+        if e.shape == ShapeTab {
+            let at = c.out.len;
+            let mark = c.ids.len;
+            let t = save_table_index(c, e.ref);
+            let start = c.out.len;
+            body(c, t, if es >= 0 && c.vals[es].made { es } else { -1 }, false);
+            let bare = c.out.len - start <= 1;
+            cut(c, at, mark);
+            if !bare { return false; }
+            continue;
+        }
+        if !elem_default(c, es, e) { return false; }
+    }
+    return true;
 }
 
 // elem_default: an element slot at its default (an element declares none).

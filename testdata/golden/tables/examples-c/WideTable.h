@@ -6191,7 +6191,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_b
  }
  { /* samples */
  schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
- if(value->samples_count>0) {
+ if(value->samples_count > 0) {
   tabledemo_table_bit_put(w,103,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
   tabledemo_table_bit_put(w,(uint64_t)value->samples_count-0,17);
@@ -6352,7 +6352,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
- if(!(value->samples_count>0))goto damaged;
+ if(!(value->samples_count > 0))goto damaged;
  }
  break;
  }

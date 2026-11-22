@@ -6797,7 +6797,14 @@ problems.
 **ELISION, DEFAULTS AND THE READ REPORT ARE UNCHANGED.** A field at its declared
 default is not written, an empty string, array, union or all-default nested
 table is not written, a field under a false guard is not written, and presence
-rather than content decides `?T` and `*T`. The declared default is part of the
+rather than content decides `?T` and `*T`. **A COUNTED ARRAY WITH A POSITIVE
+MINIMUM ELIDES AT ITS BIRTH VALUE**, on this form as on the variable one
+(§22.2's `[M..N]T` row): a plain `few [2..4]int32` holding two zeros is not
+written, so a one-field record is the three bytes `02 00 00`, and an absent
+field reads back as those two zeros. A batch that stores that value anyway
+is a field stored at its declared default, refused below as a spelling no
+conforming writer produces;
+two elements of which one is live, or three zeros, ride and read. The declared default is part of the
 wire contract exactly as §3 and §4 state it. The counters keep their meanings and
 their sources, `retained` and `retain_lost` keep theirs (§6.6), and this form
 adds no counter and moves none. **The only report-side addition is a REASON on
@@ -14361,7 +14368,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch  FixedFromText
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -20745,7 +20752,7 @@ fixed form writes it as held too, and §22.6 says so.
 | `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
 | `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
 | `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
-| `[Min..N]T` with Min above zero (born at Min, SPEC §4.6), neither `required` nor `?` | it is at its BORN state: the live count is exactly Min AND each of those Min elements is at its default, judged as that element's own row above (a table element whose body is its terminator alone; an enum or union element at the zero reference). A field elides at birth exactly when both hold, and at no other count | the live count and that many elements. A reader meeting a count below Min refuses `count_over_bound` in EVERY form (table, message and fixed), and an elided field reads back as Min default elements |
+| `[Min..N]T` with Min above zero (born at Min, SPEC §4.6), neither `required` nor `?` | it is at its BORN state: the live count is exactly Min AND each of those Min elements is at its default, judged as that element's own row above (a table element whose body is its terminator alone; an enum or union element at the zero reference). A field elides at birth exactly when both hold, and at no other count | the live count and that many elements. A reader meeting a count below Min refuses `count_over_bound` in EVERY form (table, message and fixed), and an elided field reads back as Min default elements; so Min elements of which one is live, and Min + 1 default elements, both ride |
 | `bytes(N)` | its bytes equal the declared default's (empty when none is declared) | kind `14` over element kind `6`: `L`, `0x06`, `N`, the bytes, so two bytes `01 02` are `ref 0E 04 06 02 01 02` |
 | `[E]T` (enum-keyed) | no slot is present | the present slots in ascending ORDINAL of the key enum, each `key reference, L, element`; a slot holding its default (a table slot whose body is its terminator alone) is not present (§3.2) |
 | a union | it is `None` | the arm reference, the arm's kind byte, `L`, the arm payload (§3's arm table); a SET arm is never elided, whatever it holds |

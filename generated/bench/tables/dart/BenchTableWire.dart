@@ -2647,7 +2647,7 @@ final class TableMixed {
   int worldTime = 0;
   int frameTick = 0;
   double serverTime = 0.0;
-  List<TableEntity> entities = <TableEntity>[];
+  List<TableEntity> entities = List<TableEntity>.generate(1, (_) => TableEntity());
   List<TableStat> stats = <TableStat>[];
   TableEvent gameEvent = TableEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3074,6 +3074,8 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
   if (v.entities.isNotEmpty) {
+    final bornMark = w.state.mark();
+    var born = v.entities.length == 1;
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3083,13 +3085,18 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
       final b = s.sub();
       b.path = [...w.path, 10, i];
       tableEntityWireSaveBody(b, e);
+      if (b.buf.length > 1) born = false;
       s.putLeb(b.buf.length);
       s.putBytes(b.buf);
     }
-    w.putLeb(ref);
-    w.putByte(14);
-    w.putLeb(s.buf.length);
-    w.putBytes(s.buf);
+    if (born) {
+      w.state.rollback(bornMark);
+    } else {
+      w.putLeb(ref);
+      w.putByte(14);
+      w.putLeb(s.buf.length);
+      w.putBytes(s.buf);
+    }
   }
   assert(v.stats.length >= 0 && v.stats.length <= 80);
   if (v.stats.isNotEmpty) {

@@ -6715,7 +6715,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
  }
  { /* hardpoints */
  schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
- if(value->hardpoints_count>0) {
+ if(value->hardpoints_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -6938,7 +6938,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
- if(!(value->hardpoints_count>0))goto damaged;
+ if(!(value->hardpoints_count > 0))goto damaged;
  }
  break;
  }
@@ -8250,7 +8250,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
  }
  { /* reserves */
  schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
- if(value->reserves_count>0) {
+ if(value->reserves_count > 0) {
   tabledemo_table_bit_put(w,31,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
   tabledemo_table_bit_put(w,(uint64_t)value->reserves_count-0,2);
@@ -9329,11 +9329,8 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_gunner_settings_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_gunner_settings_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -10439,11 +10436,8 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_global_settings_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_global_settings_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]

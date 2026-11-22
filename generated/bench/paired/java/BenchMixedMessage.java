@@ -114,7 +114,20 @@ public final class BenchMixedMessage {
         }
         {
             assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
-            if (v.entitiesCount > 0) {
+            boolean born_v_entities = v.entitiesCount == 1;
+            for (int bornAt_v_entities = 0;
+                    born_v_entities && bornAt_v_entities < 1;
+                    bornAt_v_entities++) {
+                TableMessage.Writer bornProbe_v_entities = new TableMessage.Writer(null, 0, true);
+                if (!MixedEntityMessage.saveMessageBody(
+                        bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                    return false;
+                }
+                if (bornProbe_v_entities.bits != 7L) {
+                    born_v_entities = false;
+                }
+            }
+            if (v.entitiesCount > 0 && !born_v_entities) {
                 w.put(10L, 7);
                 assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
                 w.put((long) (v.entitiesCount) - 1L, 3);
@@ -815,11 +828,25 @@ public final class BenchMixedMessage {
                     }
                 }
                 v.entitiesCount = (int) keep19;
+                boolean born_v_entities = v.entitiesCount == 1;
+                for (int bornAt_v_entities = 0;
+                        born_v_entities && bornAt_v_entities < 1;
+                        bornAt_v_entities++) {
+                    TableMessage.Writer bornProbe_v_entities =
+                            new TableMessage.Writer(null, 0, true);
+                    if (!MixedEntityMessage.saveMessageBody(
+                            bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                        return false;
+                    }
+                    if (bornProbe_v_entities.bits != 7L) {
+                        born_v_entities = false;
+                    }
+                }
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.entitiesCount > 0)) {
+                        && !(v.entitiesCount > 0 && !born_v_entities)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }

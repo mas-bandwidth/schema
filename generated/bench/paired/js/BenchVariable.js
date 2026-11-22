@@ -1244,6 +1244,11 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { return true; }
+      // THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the engine's
+      // encodeArray allBirth): a [M..N]T holding exactly M elements, each at
+      // its default (a table element by a body that is its terminator alone),
+      // rides nothing, its id rolled back with it
+      const born = !fd.fixed && fd.min > 0 && n === fd.min;
       if (fd.fixed && fd.e.s !== "tab") {
         let allDef = true;
         for (let i = 0; i < n; i++) {
@@ -1251,14 +1256,29 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      w.leb(ids.ref(fd.id));
-      w.u8(14);
+      if (born && fd.e.s !== "tab") {
+        // a union or a pointer element is at its default at null (None, no node)
+        const nul = fd.e.s === "union" || fd.e.s === "ptr";
+        let allDef = true;
+        for (let i = 0; i < n; i++) {
+          if (nul ? val[i] !== null : !TableVariableElemIsDefault(fd.e, val[i])) { allDef = false; break; }
+        }
+        if (allDef) { return true; }
+      }
+      const mark = ids.mark();
+      const ref = ids.ref(fd.id);
       const body = new TableVariableWriter();
       body.u8(fd.ek);
       body.leb(n);
+      let allBirth = born && fd.e.s === "tab";
       for (let i = 0; i < n; i++) {
+        const at = body.len;
         if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (allBirth && !(body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0)) { allBirth = false; }
       }
+      if (allBirth) { ids.rollback(mark); return true; }
+      w.leb(ref);
+      w.u8(14);
       w.leb(body.len);
       w.raw(body.b);
       return true;

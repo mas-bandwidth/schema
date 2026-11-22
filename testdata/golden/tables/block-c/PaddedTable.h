@@ -5341,7 +5341,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_message_body(blockdemo_tabl
  }
  { /* rows */
  schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
- if(value->rows_count>0) {
+ if(value->rows_count > 0) {
   blockdemo_table_bit_put(w,3,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
   blockdemo_table_bit_put(w,(uint64_t)value->rows_count-0,7);
