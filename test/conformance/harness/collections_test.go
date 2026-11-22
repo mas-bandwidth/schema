@@ -82,6 +82,9 @@ func cCollectionDifferential(t *testing.T, mode string) {
 		t.Fatal(err)
 	}
 	defer expected.kill()
+	if len(roots) == 0 {
+		t.Fatal("roots is empty: the loop below would check nothing")
+	}
 	for i := range roots {
 		if !actual.known[i] || !expected.known[i] {
 			t.Fatalf("codec absent for %s.%s", roots[i].unit, roots[i].root)

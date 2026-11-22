@@ -96,7 +96,11 @@ func TestTimestampKindInGo(t *testing.T) {
 	}
 	// and the FIXED layout names the slot as the int64's own, since its kind set
 	// is the closed one of docs/FIXED-FORM-ALGORITHM.md §1
-	for _, e := range ir.TableFixedWalkRoot(u.Files[0].Tables[0]) {
+	allTableFixedWalkRoot := ir.TableFixedWalkRoot(u.Files[0].Tables[0])
+	if len(allTableFixedWalkRoot) == 0 {
+		t.Fatal("ir.TableFixedWalkRoot(u.Files[0].Tables[0]) is empty: the loop below would check nothing")
+	}
+	for _, e := range allTableFixedWalkRoot {
 		if e.Note == "started" && (e.Kind != ir.TableKindI64 || e.Size != 8) {
 			t.Errorf("the fixed layout entry for a timestamp is kind %d size %d, want 5 and 8", e.Kind, e.Size)
 		}

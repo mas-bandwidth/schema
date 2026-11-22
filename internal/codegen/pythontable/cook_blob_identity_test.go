@@ -56,7 +56,11 @@ for shared in (False, True):
 		}
 	}
 	want := strings.Join(expected, "\n") + "\n"
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if got != want {
 			t.Errorf("%s: blob identity bytes differ: %s", name, fmt.Sprintf("got %q want %q", got, want))
@@ -74,7 +78,11 @@ for shared in (False, True):
 		planted[path] = []byte(strings.Replace(text, from, "if current.blobs and current.blobs[-1].value is target_value:\n                current.blobs.append(current.blobs[-1])\n                continue\n            "+from, 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
-		for name, runner := range cookPins() {
+		allCookPinss := cookPins()
+		if len(allCookPinss) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name, runner := range allCookPinss {
 			got := strings.Split(strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))), "\n")
 			if len(got) != 4 || got[0] != expected[0] || got[1] != expected[1] || got[2] == expected[2] || got[3] == expected[3] {
 				t.Errorf("%s: blob slot control did not isolate the fault", name)

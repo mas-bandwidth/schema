@@ -193,6 +193,9 @@ func TestSpecJsonIntegers(t *testing.T) {
 		for _, r := range numberTokenRows {
 			numberToken[r.name+".refused.json"] = true
 		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
+		}
 		for _, e := range entries {
 			// the two manifests, the unit both bind (Integers.schema), and
 			// the bare-number exemption list

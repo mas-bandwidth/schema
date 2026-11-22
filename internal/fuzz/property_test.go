@@ -7,6 +7,7 @@ package fuzz_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,13 +18,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
+// corpusDirs are the two corpora the property tests run over. Both are
+// required: each is a unit of its own, and one missing used to drop a whole
+// corpus while the test still passed on the other (F-048).
+var corpusDirs = []string{"../../examples", "../../examples128"}
+
 func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 	t.Helper()
+	out, err := corpusUnitsFrom(corpusDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// corpusUnitsFrom reads every .schema file of each directory into one unit
+// per directory. A directory that cannot be read, a file that cannot be read
+// or does not parse, and a directory with no .schema file are each an error:
+// the caller asked for that corpus, and checking less than it is not a pass.
+func corpusUnitsFrom(dirs []string) (map[string][]check.SourceFile, error) {
 	out := map[string][]check.SourceFile{}
-	for _, dir := range []string{"../../examples", "../../examples128"} {
+	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("corpus %s: %w", dir, err)
 		}
 		var files []check.SourceFile
 		for _, e := range entries {
@@ -32,25 +50,26 @@ func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 			}
 			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("corpus %s: %w", dir, err)
 			}
 			ast, perrs := parser.Parse(e.Name(), b)
 			if len(perrs) > 0 {
-				t.Fatalf("%s/%s does not parse: %v", dir, e.Name(), perrs[0])
+				return nil, fmt.Errorf("%s/%s does not parse: %w", dir, e.Name(), perrs[0])
 			}
 			files = append(files, check.SourceFile{
 				Path: e.Name(), Name: e.Name(),
 				Base: strings.TrimSuffix(e.Name(), ".schema"), Bytes: b, AST: ast,
 			})
 		}
-		if len(files) > 0 {
-			out[dir] = files
+		if len(files) == 0 {
+			return nil, fmt.Errorf("corpus %s holds no .schema file", dir)
 		}
+		out[dir] = files
 	}
-	if len(out) == 0 {
-		t.Fatal("no corpus units found")
+	if len(out) != len(dirs) {
+		return nil, fmt.Errorf("read %d corpus units from %d directories", len(out), len(dirs))
 	}
-	return out
+	return out, nil
 }
 
 // Generated output must be byte-identical across repeated runs of the same
@@ -62,7 +81,11 @@ func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 // high probability across this many passes.
 func TestGeneratedOutputIsDeterministic(t *testing.T) {
 	const passes = 12
-	for dir, files := range corpusUnits(t) {
+	allCorpusUnits := corpusUnits(t)
+	if len(allCorpusUnits) == 0 {
+		t.Fatal("corpusUnits(t) is empty: the loop below would check nothing")
+	}
+	for dir, files := range allCorpusUnits {
 		unit, cerrs := check.Unit(files)
 		if len(cerrs) > 0 {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
@@ -81,6 +104,9 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 		gens := make([]gen, 0, len(backends))
 		for _, b := range backends {
 			gens = append(gens, gen{b.name, func() (map[string][]byte, error) { return b.generate(unit) }})
+		}
+		if len(gens) == 0 {
+			t.Fatal("gens is empty: the loop below would check nothing")
 		}
 		for _, g := range gens {
 			first, err := g.run()
@@ -117,7 +143,11 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 // identical input — anything else silently breaks compatibility between two
 // builds of the SAME schema.
 func TestProtocolIdIsStable(t *testing.T) {
-	for dir, files := range corpusUnits(t) {
+	allCorpusUnits := corpusUnits(t)
+	if len(allCorpusUnits) == 0 {
+		t.Fatal("corpusUnits(t) is empty: the loop below would check nothing")
+	}
+	for dir, files := range allCorpusUnits {
 		unit, cerrs := check.Unit(files)
 		if len(cerrs) > 0 {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
@@ -141,20 +171,14 @@ func TestProtocolIdIsStable(t *testing.T) {
 // keeps changing its own output makes "run fmt" an unstable operation and
 // turns every commit into a diff fight. Checked over the whole corpus.
 func TestFormatIsIdempotent(t *testing.T) {
-	for _, dir := range []string{"../../examples", "../../examples128"} {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() || filepath.Ext(e.Name()) != ".schema" {
-				continue
-			}
-			path := filepath.Join(dir, e.Name())
-			src, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
+	// corpusUnits refuses a missing or empty corpus and an unreadable file:
+	// skipping one used to let this test pass formatting nothing (F-048).
+	formatted := 0
+	for dir, files := range corpusUnits(t) {
+		for _, f := range files {
+			path := filepath.Join(dir, f.Name)
+			src := f.Bytes
+			formatted++
 			once, err := format.Format(path, src)
 			if err != nil {
 				t.Fatalf("%s: format failed: %v", path, err)
@@ -167,6 +191,9 @@ func TestFormatIsIdempotent(t *testing.T) {
 				t.Errorf("%s: formatting is NOT idempotent — fmt(fmt(x)) != fmt(x)", path)
 			}
 		}
+	}
+	if formatted == 0 {
+		t.Fatal("formatted no .schema file: idempotence was checked over nothing")
 	}
 }
 

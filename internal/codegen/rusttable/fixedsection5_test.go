@@ -95,6 +95,9 @@ func TestFixedIdentityReadForcesNoPlanCompile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateLineage: %v", err)
 	}
+	if len(tables) == 0 {
+		t.Fatal("tables is empty: the loop below would check nothing")
+	}
 	for name, data := range tables {
 		text := string(data)
 		at := strings.Index(text, "let identity = found ==")

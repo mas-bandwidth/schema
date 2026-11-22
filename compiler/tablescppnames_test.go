@@ -118,6 +118,9 @@ func TestCppTableRuntimeNamesAreClaimed(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		switch {
 		case !tablenames.Registered(name):
@@ -129,7 +132,11 @@ func TestCppTableRuntimeNamesAreClaimed(t *testing.T) {
 				"only — add the Cpp bit so the claim says who defines it", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Cpp) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Cpp)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Cpp) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the C++ backend defines %s, but nothing in the emitted "+
 				"C++ names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -225,6 +232,9 @@ func TestCppPacketRuntimeNamesAreAccountedFor(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if _, ok := cppPacketVocabulary[name]; !ok {
 			t.Errorf("the C++ packet emitter spells %s and cppPacketVocabulary does not account for it — "+

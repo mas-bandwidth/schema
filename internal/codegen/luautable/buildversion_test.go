@@ -225,7 +225,8 @@ func buildVersionGate(t *testing.T, mutate func(t *testing.T, files map[string][
 func TestLuauBuildVersion(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block and cook runtimes)")
 	t.Parallel()
-	for clause, whys := range buildVersionGate(t, nil) {
+	allBuildVersionGate := buildVersionGate(t, nil)
+	for clause, whys := range allBuildVersionGate {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
 		}

@@ -415,6 +415,9 @@ func TestLuauTextListTotalBytesBound(t *testing.T) {
 			}
 			want := goTotalOracleOutput(t, tc.field, wires)
 			got, save := runListTotalProbe(t, g, tc.field, wires)
+			if len(got) == 0 {
+				t.Fatal("got is empty: the loop below would check nothing")
+			}
 			for i := range got {
 				if got[i] != want[i] {
 					t.Errorf("load %d = %q, want Go's %q", i, got[i], want[i])

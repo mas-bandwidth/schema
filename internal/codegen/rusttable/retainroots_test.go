@@ -64,6 +64,9 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 			t.Errorf("%s: the Rust generator emits its retaining codec but wire_fuzz_all.rs does not dispatch it", key)
 		}
 	}
+	if len(dispatched) == 0 {
+		t.Fatal("dispatched is empty: the loop below would check nothing")
+	}
 	for key := range dispatched {
 		if !carried[key] {
 			t.Errorf("%s: wire_fuzz_all.rs dispatches it but no roster unit's Rust output carries its retaining codec", key)
@@ -447,7 +450,14 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = stdin.Close(); _ = cmd.Wait() }()
+	// EOF on stdin ends the driver's stream and it returns from main, so
+	// anything but a clean exit (a panic, a signal) is a driver that broke.
+	defer func() {
+		_ = stdin.Close()
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("the driver did not exit cleanly at the end of its input: %v\n%s", err, stderr.String())
+		}
+	}()
 	stdout := bufio.NewReader(stdoutPipe)
 
 	var roster bytes.Buffer

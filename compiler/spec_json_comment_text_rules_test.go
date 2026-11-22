@@ -147,6 +147,9 @@ func TestSpecJsonCommentTextRules(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the vectors' directory: %v", err)
 		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
+		}
 		for _, e := range entries {
 			if e.IsDir() || e.Name() == "manifest.tsv" {
 				continue
