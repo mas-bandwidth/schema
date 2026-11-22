@@ -64,9 +64,11 @@ var derivedRows = map[string]derivedRow{
 		}
 		return []caseKey{{"wire", f[1]}, {"json-read", f[1]}, {"json-write", f[1] + ".json"}}
 	}},
-	"json-write-refusal":    {ref: refUnit, col: 2, cases: func(f []string) []caseKey { return []caseKey{{"json-write", f[1] + ".json"}} }},
-	"message":               {ref: refConn, col: 2, cases: ownName},
-	"message-refusal":       {ref: refConn, col: 2, cases: ownName},
+	"json-write-refusal": {ref: refUnit, col: 2, cases: func(f []string) []caseKey { return []caseKey{{"json-write", f[1] + ".json"}} }},
+	"message":            {ref: refConn, col: 2, cases: ownName},
+	"message-refusal":    {ref: refConn, col: 2, cases: ownName},
+	// a batch row is scored on the message surface (run.go, m.Batches)
+	"message-batch":         {ref: refConn, col: 2, cases: func(f []string) []caseKey { return []caseKey{{"message", f[1]}} }},
 	"write-refusal-message": {ref: refConn, col: 2, cases: ownName},
 	"write-refusal":         {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-fixed":   {ref: refUnit, col: 2, cases: ownName},

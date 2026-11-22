@@ -45,7 +45,7 @@ optional-to-plain	Seat	-	read	0	0	docs/USAGE.md	a present body at its defaults r
 optional-to-plain	Seat	-	read	0	0	docs/VERSIONING.md	an old plain reader reads that body as the declared defaults
 pointer-to-plain	Seat	-	refused	-	-	docs/USAGE.md	moving a field between `*T` and either of the other two refuses the load (`kind_mismatch`
 pointer-to-plain	Seat	-	refused	-	-	docs/SPEC-TABLES.md	between a pointer and either of the other two is a REFUSED edit: §4's kind mismatch, and the whole load refuses `kind_mismatch`.
-timestamp-respelled	Event	-	refused	-	-	docs/SPEC-TABLES.md	field respelled between `int64` and `timestamp` is a kind mismatch, and the whole load refuses in both directions
+timestamp-respelled	Event	-	refused	-	-	docs/SPEC-TABLES.md	field respelled between `int64` and `timestamp` is a kind mismatch in both
 union-arm-kind-changed	Hold	-	refused	-	-	docs/PORTING.md	a retyped arm is an ordinary KIND MISMATCH, and the whole load refuses `kind_mismatch`
 union-arm-unchanged	Hold	-	read	0	0	docs/PORTING.md	a retyped arm is an ordinary KIND MISMATCH, and the whole load refuses `kind_mismatch`
 damaged-cut	Ship	cut:17	refused	-	-	docs/USAGE.md	a read that meets it refuses the whole load (`wire_damaged`) and hands back nothing to use

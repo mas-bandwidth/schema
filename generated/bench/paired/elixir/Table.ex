@@ -2546,7 +2546,7 @@ defmodule Bench.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    check_field(a, payload)
+    write_value(a, if(payload == nil, do: a.default, else: payload))
     {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
@@ -5326,6 +5326,15 @@ defmodule Bench.Table do
 
   defp write_value(_f, _v), do: :ok
 
+  # An enum value is nil, the reserved "None", or the name of a variant that is
+  # not deprecated (docs/SPEC-TABLES.md §2.15); any other name is a refusal and
+  # never a raise.
+  defp write_enum_name(f, name) do
+    if name not in [nil, "None"] and
+         (not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),
+       do: throw(:invalid_value)
+  end
+
   # one array element by the array's element kind: a table element is a body
   # (its own fields are held when save_fields writes it), a string its UTF-8
   # and bound, an enum a member name, a union an arm, a float its range at its
@@ -5339,15 +5348,6 @@ defmodule Bench.Table do
   # "None" is the reserved nil spelling a fixed root's optional enum array
   # carries (json_list_elem/3 writes it as is)
   defp write_element(%{elem_kind: 30} = f, e), do: write_enum_name(f, e)
-
-  # An enum value is nil, the reserved "None", or the name of a variant that is
-  # not deprecated (docs/SPEC-TABLES.md §2.15); any other name is a refusal and
-  # never a raise.
-  defp write_enum_name(f, name) do
-    if name not in [nil, "None"] and
-         (not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),
-       do: throw(:invalid_value)
-  end
 
   defp write_element(%{elem_kind: 15} = f, e), do: write_arm(f.elem, e)
 
@@ -6239,7 +6239,7 @@ defmodule Bench.Table do
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
 
   defp json_field(%{t: :enum} = f, name, _depth) when is_binary(name) do
-    check_enum(f, name)
+    write_enum_name(f, name)
     ["\"", json_escape(name), "\""]
   end
 
@@ -6336,7 +6336,7 @@ defmodule Bench.Table do
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
 
   defp json_list_elem(%{elem_kind: 30} = f, e, _depth) when is_binary(e) do
-    check_enum(f, e)
+    write_enum_name(f, e)
     ["\"", json_escape(e), "\""]
   end
 

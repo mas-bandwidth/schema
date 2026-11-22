@@ -35,13 +35,22 @@ func TestGoBasenameCorpus(t *testing.T) {
 		named = append(named, path)
 		t.Run(row[0], func(t *testing.T) {
 			c := New()
-			unit, err := c.Load([]string{path})
-			if err != nil {
-				t.Fatal(err)
-			}
 			name := strings.TrimSuffix(row[0], ".schema") + ".go"
-			files, err := c.Generate(unit, "go", Options{})
+			unit, err := c.Load([]string{path})
+			var files map[string][]byte
+			if row[1] != "refuse-load" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				files, err = c.Generate(unit, "go", Options{})
+			}
 			switch row[1] {
+			case "refuse-load":
+				// a basename with a dot is no identifier (SPEC §4.6, FRONTEND-4):
+				// the front end refuses it before the Go target sees it
+				if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "becomes generated identifiers") {
+					t.Errorf("Load: want an identifier refusal naming %s, got %v", row[0], err)
+				}
 			case "accept":
 				if err != nil || len(files[name]) == 0 {
 					t.Errorf("Go generation: want %s, got error %v", name, err)
