@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // idTableProbeLoads is enough loads of a 4096-entry trailer that a pairwise
@@ -168,10 +169,10 @@ public final class IdProbeDriver {
 	sources = append(sources, driver)
 
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "IdProbeDriver",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "IdProbeDriver",
 		td, strconv.Itoa(idTableProbeLoads)).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

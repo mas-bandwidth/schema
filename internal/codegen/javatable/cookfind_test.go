@@ -1,12 +1,13 @@
 package javatable
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A COOKED MAP HAS FIND (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8): a binary
@@ -64,7 +65,7 @@ func runCookFind(t *testing.T, plant bool) (string, bool) {
 	}
 	dir := compileCookUnit(t, javac, files, "mapdemo", map[string]string{"CookFindProbe": cookFindDriver})
 	golden := filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "cook-write", "map_full.cook")
-	out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CookFindProbe", golden).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CookFindProbe", golden).CombinedOutput()
 	return string(out), err == nil
 }
 

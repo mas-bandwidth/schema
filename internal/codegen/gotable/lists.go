@@ -20,13 +20,13 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	name := st.Name + ir.GoExportName(f.Name)
 	typ := containerElementType(g.unit, f)
 	holder := "*TableList[" + typ + "]"
-	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,(*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil{return nil};", name, holder, typ, typ, typ)
+	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,holder.container(),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil{return nil};", name, holder, typ, typ, typ)
 	if isStructRef(f.Type) && !f.Type.Pointer {
 		g.pf("%sReset(p);", f.Type.Name)
 	}
 	g.pf("return p}\n")
-	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),unsafe.Pointer(element),int64(unsafe.Sizeof(*element)))}\n", name, holder, typ)
-	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
+	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,holder.container(),unsafe.Pointer(element),int64(unsafe.Sizeof(*element)))}\n", name, holder, typ)
+	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin(holder.container(),int64(unsafe.Sizeof(*(*%s)(nil))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
 }
 
 // emitListRead reads an unbounded array (docs/SPEC-TABLES.md §2.9): its header
@@ -52,7 +52,7 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.retainDiscard("r")
 	// a widened element kind counts once the count is known to land: the
 	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
-	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, stop, kind)
+	g.pf("%sslot:=(%s).container();if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, stop, kind)
 	if f.TextTotal > 0 {
 		g.pf("%sspent:=int64(0)\n", i)
 	}
@@ -90,9 +90,9 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 			w = writer
 		}
 		if f.IsMap() {
-			g.pf("%s cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),%s,%s.Ids.Numbering.arena);defer cursor.Release()\n", ind, expr, g.mapDescriptor(f), writer)
+			g.pf("%s cursor:=tableMapCursor((%s).container(),%s,%s.Ids.Numbering.arena);defer cursor.Release()\n", ind, expr, g.mapDescriptor(f), writer)
 		} else {
-			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*(*%s)(nil))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
+			g.pf("%s cursor:=tableContainerCursorBegin((%s).container(),int64(unsafe.Sizeof(*(*%s)(nil))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
 		}
 		g.pf("%s for i:=int32(0);i<%s.Count;i++ { p:=(*%s)(cursor.Next());if p==nil {return false};\n", ind, expr, typ)
 		element := f
@@ -105,7 +105,7 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 		g.emitWireArrayElement(element, "(*p)", w, ind+"\t")
 		g.pf("%s }\n", ind)
 		if pass == 0 {
-			g.pf("%s if %s.Overflow {return false};n:=int64(1)+tableLebBytes(uint64(%s.Count))+%s.Offset\n", ind, body, expr, body)
+			g.pf("%s n:=int64(1)+tableLebBytes(uint64(%s.Count))+%s.Offset;if %s.Overflow||n<0 {return false}\n", ind, expr, body, body)
 			if framed {
 				g.emitPutLeb(ind+" ", writer, "uint64(n)")
 			}
@@ -122,7 +122,9 @@ const tableContainerSource = `
 type tableContainer struct { Ref int64; Count int32; _ int32 }
 type TableList[T any] struct { Ref int64; Count int32; _ int32 }
 func (l *TableList[T]) Clear() { *l=TableList[T]{} }
-func (l *TableList[T]) At(index int32,arena ...*TableArena) *T {if l==nil||index<0||index>=l.Count{return nil};c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(l)),int64(unsafe.Sizeof(*new(T))),tableOptionalArena(arena));return (*T)(c.At(index))}
+// container is the list's untyped head: TableList[T] and tableContainer share one layout.
+func (l *TableList[T]) container() *tableContainer { return (*tableContainer)(unsafe.Pointer(l)) }
+func (l *TableList[T]) At(index int32,arena ...*TableArena) *T {if l==nil||index<0||index>=l.Count{return nil};c:=tableContainerCursorBegin(l.container(),int64(unsafe.Sizeof(*new(T))),tableOptionalArena(arena));return (*T)(c.At(index))}
 type tableContainerHead struct { First,Last int64; Live int32; _ [12]byte }
 type tableContainerChunk struct { Next int64; Count,Capacity int32; Dead uint64; _ uint64 }
 type tableContainerCursor struct { order []int64; memory []byte; p unsafe.Pointer; chunk *tableContainerChunk; arena *TableArena; size int64; index int32 }

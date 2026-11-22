@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The read-closed unit: the same flags, enum, union, string-keyed map and
@@ -170,7 +171,7 @@ class JsonNameCapProbe {
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
 	}
-	cmd := exec.Command(csDotnet(), args...)
+	cmd := testproc.Command(t, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dirOut, dirOut)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
@@ -183,7 +184,7 @@ class JsonNameCapProbe {
 	for _, v := range vectors {
 		runArgs = append(runArgs, v.root, v.path)
 	}
-	cmd = exec.Command(csDotnet(), append([]string{"exec", filepath.Join(dirOut, "probe.dll")}, runArgs...)...)
+	cmd = testproc.Command(t, csDotnet(), append([]string{"exec", filepath.Join(dirOut, "probe.dll")}, runArgs...)...)
 	cmd.Env = csDotnetEnv(dirOut, dirOut)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

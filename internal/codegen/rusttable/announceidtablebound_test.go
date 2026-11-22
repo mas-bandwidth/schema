@@ -23,6 +23,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const announceIdTableBoundSchema = `package probe
@@ -133,12 +135,12 @@ func runAnnounceCrate(t *testing.T, bin string, modules map[string][]byte, runti
 		args = append(args, "-C", "linker="+cc)
 	}
 	args = append(args, "-o", binPath, "main.rs")
-	build := exec.Command("rustc", args...)
+	build := testproc.Command(t, "rustc", args...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the announcement probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(binPath)
+	run := testproc.Command(t, binPath)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {

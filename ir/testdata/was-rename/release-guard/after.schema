@@ -1,0 +1,4 @@
+package demo
+type Award { enabled bool | was = "active"
+ if enabled { grade int32 } }
+table Save { award Award }

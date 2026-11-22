@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // rustDiscardUnit has a fixed root and a variable root, each carrying a nested
@@ -251,11 +253,11 @@ func runRustDiscardProbe(t *testing.T, u *ir.Unit, body string) (string, error) 
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }

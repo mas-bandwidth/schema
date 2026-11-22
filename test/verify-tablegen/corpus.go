@@ -29,7 +29,7 @@ const (
 	// array read back at count 0 rather than its birth count) hands its own
 	// writer a value that hides the writer's defect; a value placed by text
 	// is the value the text names, and the message the writer owes for it is
-	// the engine's (pinned.go)
+	// the engine's (pinned.go).
 	opJSONMsg uint8 = 7
 )
 

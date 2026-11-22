@@ -1,0 +1,18 @@
+package demo
+
+enum Grade
+{
+    Bronze
+    Argent | was = "Silver"
+    Gold
+}
+
+type Shot
+{
+    grade Grade = Argent
+}
+
+table Player
+{
+    grade Grade = Argent
+}

@@ -35,6 +35,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const textDifferentialJavaSchema = `package probe
@@ -175,12 +177,12 @@ func javaToolsRequired(t *testing.T) (string, string) {
 	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "1" {
 		ok := false
 		if jc, j := os.Getenv("JAVAC"), os.Getenv("JAVA"); jc != "" && j != "" {
-			ok = exec.Command(jc, "-version").Run() == nil
+			ok = testproc.Command(t, jc, "-version").Run() == nil
 		}
 		if !ok {
 			if jc, err := exec.LookPath("javac"); err == nil {
 				if _, err := exec.LookPath("java"); err == nil {
-					ok = exec.Command(jc, "-version").Run() == nil
+					ok = testproc.Command(t, jc, "-version").Run() == nil
 				}
 			}
 		}
@@ -236,14 +238,14 @@ func runTextDifferentialJava(t *testing.T, edit func(map[string][]byte)) ([]byte
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probeMain)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	env := append(os.Environ(),
 		"SCHEMA_TEXT_DIFF_SEED="+strconv.FormatUint(textDifferentialJavaSeed, 10),
 		"SCHEMA_TEXT_DIFF_N="+strconv.Itoa(textDifferentialJavaN))
 	runProbe := func(mode string) ([]byte, error) {
-		cmd := exec.Command(javaBin, "-ea", "-cp", classes, "TextDiffProbe", mode, dir)
+		cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "TextDiffProbe", mode, dir)
 		cmd.Env = env
 		return cmd.CombinedOutput()
 	}
