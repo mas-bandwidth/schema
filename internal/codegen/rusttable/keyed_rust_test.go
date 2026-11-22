@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE KEYED ARRAY INDEXES BY KEY, REFUSED AT BOTH ENDS (docs/PORTING.md M5,
@@ -121,7 +123,7 @@ func keyedRun(t *testing.T, edit func(map[string][]byte)) []string {
 		t.Fatal(err)
 	}
 	bin := rustcBuild(t, dir)
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	var red []string
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if clause, ok := strings.CutPrefix(line, "RED "); ok {

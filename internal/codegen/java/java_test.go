@@ -11,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The Java compressed-float writer must clamp the quantized integer to the step
@@ -151,12 +153,12 @@ func runCompressedFloatProbe(t *testing.T, generated string) {
 	if err := os.WriteFile(filepath.Join(src, "Driver.java"), []byte(compressedFloatProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", classes,
 		filepath.Join(src, "cfloatclamp", "Probe.java"), filepath.Join(src, "Driver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
@@ -178,7 +180,7 @@ func compressedFloatJavaTools(t *testing.T) (javac, javaBin string) {
 		if st, err := os.Stat(j); err != nil || st.IsDir() {
 			return false
 		}
-		return exec.Command(jc, "-version").Run() == nil
+		return testproc.Command(t, jc, "-version").Run() == nil
 	}
 	if try(os.Getenv("JAVAC"), os.Getenv("JAVA")) {
 		return os.Getenv("JAVAC"), os.Getenv("JAVA")
@@ -328,12 +330,12 @@ func runBulkAlignProbe(t *testing.T, generated string) {
 	if err := os.WriteFile(filepath.Join(src, "BulkAlignDriver.java"), []byte(bulkAlignDriver), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", classes,
 		filepath.Join(src, "bulkalign", "BulkAlign.java"), filepath.Join(src, "BulkAlignDriver.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, "BulkAlignDriver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, "BulkAlignDriver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

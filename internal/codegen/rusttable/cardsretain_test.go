@@ -16,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // update rewrites the committed retained golden (docs/SPEC-TABLES.md §6.6) from
@@ -260,7 +262,7 @@ func retainBinary(t *testing.T, schemaPath, probe string) string {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -433,7 +435,7 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 	wire := filepath.Join(dir, "populated.wire")
 	rewritten := filepath.Join(dir, "rewritten.wire")
 
-	out, err := exec.Command(producer, wire).CombinedOutput()
+	out, err := testproc.Command(t, producer, wire).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the newer declaration did not save: %v\n%s", err, out)
 	}
@@ -443,7 +445,7 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err = exec.Command(roundTrip, wire, rewritten, "1048576", "131072").CombinedOutput()
+	out, err = testproc.Command(t, roundTrip, wire, rewritten, "1048576", "131072").CombinedOutput()
 	if err != nil {
 		t.Fatalf("the older declaration's retained round trip did not run: %v\n%s", err, out)
 	}
@@ -474,7 +476,7 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 			len(rewrittenBytes), len(want), firstDiff(rewrittenBytes, want))
 	}
 
-	out, err = exec.Command(verifier, rewritten).CombinedOutput()
+	out, err = testproc.Command(t, verifier, rewritten).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "VERIFIED") {
 		t.Errorf("the newer declaration did not reread the retained values equal: %v\n%s", err, out)
 	}
@@ -509,7 +511,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 
 	dir := t.TempDir()
 	wire := filepath.Join(dir, "populated.wire")
-	if out, err := exec.Command(producer, wire).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, producer, wire).CombinedOutput(); err != nil {
 		t.Fatalf("the newer declaration did not save: %v\n%s", err, out)
 	}
 	before, err := os.ReadFile(wire)
@@ -519,7 +521,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 
 	// One byte short: the whole record is dropped, not truncated.
 	short := filepath.Join(dir, "short.wire")
-	out, err := exec.Command(roundTrip, wire, short, "3", "131072").CombinedOutput()
+	out, err := testproc.Command(t, roundTrip, wire, short, "3", "131072").CombinedOutput()
 	if err != nil {
 		t.Fatalf("the retained round trip did not run: %v\n%s", err, out)
 	}
@@ -531,7 +533,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 	// One id short at the save: the retained record's id cannot be interned, so
 	// the record is dropped at the save and counted one retain_lost.
 	noIds := filepath.Join(dir, "noids.wire")
-	out, err = exec.Command(roundTrip, wire, noIds, "1048576", "0").CombinedOutput()
+	out, err = testproc.Command(t, roundTrip, wire, noIds, "1048576", "0").CombinedOutput()
 	if err != nil {
 		t.Fatalf("the retained round trip did not run: %v\n%s", err, out)
 	}
@@ -550,7 +552,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 	// never retained silently and the report blocks a lossless claim.
 	enumProducer := retainBinary(t, testdataCards(t, "newer.schema"), retainEnumProducerProbe)
 	enumWire := filepath.Join(dir, "enum.wire")
-	if out, err := exec.Command(enumProducer, enumWire).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, enumProducer, enumWire).CombinedOutput(); err != nil {
 		t.Fatalf("the enum producer did not save: %v\n%s", err, out)
 	}
 	enumBefore, err := os.ReadFile(enumWire)
@@ -558,7 +560,7 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	enumOut := filepath.Join(dir, "enum-out.wire")
-	out, err = exec.Command(roundTrip, enumWire, enumOut, "1048576", "131072").CombinedOutput()
+	out, err = testproc.Command(t, roundTrip, enumWire, enumOut, "1048576", "131072").CombinedOutput()
 	if err != nil {
 		t.Fatalf("the enum round trip did not run: %v\n%s", err, out)
 	}

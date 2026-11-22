@@ -2,13 +2,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func compileAndRunJavaProbe(t *testing.T, schema, pkg, driver string) (map[string][]byte, string) {
@@ -55,13 +56,13 @@ func compileAndRunJavaProbe(t *testing.T, schema, pkg, driver string) (map[strin
 		t.Fatal(err)
 	}
 	args := append([]string{"--release", "17", "-encoding", "UTF-8", "-d", classesDir}, sources...)
-	if out, err := exec.Command("javac", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "javac", args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	if driver == "" {
 		return files, ""
 	}
-	out, err := exec.Command("java", "-ea", "-cp", classesDir, "Main").CombinedOutput()
+	out, err := testproc.Command(t, "java", "-ea", "-cp", classesDir, "Main").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

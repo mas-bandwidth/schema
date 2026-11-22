@@ -28,6 +28,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const wireLengths32BitSchema = `package probe
@@ -241,7 +243,7 @@ func rust32BitTarget(t *testing.T) string {
 		"wasm32-wasip1",
 		"armv7-unknown-linux-gnueabihf",
 	} {
-		out, err := exec.Command("rustc", "--print", "target-libdir", "--target", triple).Output()
+		out, err := testproc.Command(t, "rustc", "--print", "target-libdir", "--target", triple).Output()
 		if err != nil {
 			t.Logf("passing over %s: rustc does not know it: %v", triple, err)
 			continue
@@ -309,7 +311,7 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 	t.Helper()
 	args := []string{"--edition", "2024", "-O", "-A", "warnings"}
 	if strings.HasPrefix(target, "wasm32-") {
-		lld, err := rustLLD()
+		lld, err := rustLLD(t)
 		if err != nil {
 			return err
 		}
@@ -324,7 +326,7 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 		args = append(args, "--target", target)
 	}
 	args = append(args, "-o", bin, "main.rs")
-	build := exec.Command("rustc", args...)
+	build := testproc.Command(t, "rustc", args...)
 	build.Dir = dir
 	out, err := build.CombinedOutput()
 	if err != nil {
@@ -335,12 +337,12 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 
 // rustLLD returns the absolute path of the rust-lld that ships in rustc's own
 // sysroot for the host, the linker a wasm32 target needs in place of the host cc.
-func rustLLD() (string, error) {
-	sysroot, err := exec.Command("rustc", "--print", "sysroot").Output()
+func rustLLD(t testing.TB) (string, error) {
+	sysroot, err := testproc.Command(t, "rustc", "--print", "sysroot").Output()
 	if err != nil {
 		return "", fmt.Errorf("rustc --print sysroot: %w", err)
 	}
-	host, err := exec.Command("rustc", "--print", "host-tuple").Output()
+	host, err := testproc.Command(t, "rustc", "--print", "host-tuple").Output()
 	if err != nil {
 		return "", fmt.Errorf("rustc --print host-tuple: %w", err)
 	}
@@ -354,7 +356,7 @@ func rustLLD() (string, error) {
 // targetCommand runs a binary built for target under the runner cargo names for
 // that target (CARGO_TARGET_<TRIPLE>_RUNNER, for example wasmtime), and
 // directly when the variable is unset.
-func targetCommand(target, bin string) *exec.Cmd {
+func targetCommand(t testing.TB, target, bin string) *testproc.Cmd {
 	key := "CARGO_TARGET_" + strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(target)) + "_RUNNER"
 	runner := strings.Fields(os.Getenv(key))
 	if len(runner) == 0 && strings.HasPrefix(target, "wasm32-") {
@@ -363,9 +365,9 @@ func targetCommand(target, bin string) *exec.Cmd {
 		}
 	}
 	if len(runner) == 0 {
-		return exec.Command(bin)
+		return testproc.Command(t, bin)
 	}
-	return exec.Command(runner[0], append(runner[1:], bin)...)
+	return testproc.Command(t, runner[0], append(runner[1:], bin)...)
 }
 
 func wire32Verdicts(out []byte) map[string]bool {
@@ -381,7 +383,7 @@ func wire32Verdicts(out []byte) map[string]bool {
 
 func runWire32Probe(t *testing.T, bin, dir string) map[string]bool {
 	t.Helper()
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {
@@ -427,7 +429,7 @@ func TestRustWireLengthsOn32BitTargets(t *testing.T) {
 		}
 		t.Skipf("the probe did not build for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v", target, err)
 	}
-	run := targetCommand(target, targetBin)
+	run := targetCommand(t, target, targetBin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {

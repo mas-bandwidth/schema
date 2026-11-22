@@ -29,6 +29,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapRustT12FramingText(t *testing.T) {
@@ -403,7 +405,7 @@ func t12FixedFormRun(t *testing.T, corpus string) string {
 			return
 		}
 		rustMakeMu.Lock()
-		cmd := exec.Command("make", "-C", repo, "tables-rust-fixedform")
+		cmd := testproc.Command(t, "make", "-C", repo, "tables-rust-fixedform")
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()
 		rustMakeMu.Unlock()
@@ -511,13 +513,13 @@ pub use probe_records::*;
 		return "", err
 	}
 	bin := filepath.Join(dir, "t12probe")
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	build.Dir = dir
 	build.Env = os.Environ()
 	if out, err := build.CombinedOutput(); err != nil {
 		return string(out), fmt.Errorf("rustc build: %w", err)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

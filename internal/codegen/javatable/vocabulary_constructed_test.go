@@ -10,7 +10,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const constructedVocabularySchema = `package vocabprobe
@@ -75,7 +76,7 @@ func goZeroVocabularyVerdict(t *testing.T, u *ir.Unit) (announce, batch bool) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestZeroVocabularyVerdict$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestZeroVocabularyVerdict$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOFLAGS=-mod=mod", "GOSUMDB=off")
 	out, err := cmd.CombinedOutput()
@@ -131,10 +132,10 @@ func runConstructedVocabularyJava(t *testing.T, u *ir.Unit, main string) string 
 	}
 	srcs = append(srcs, driverPath)
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, srcs...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

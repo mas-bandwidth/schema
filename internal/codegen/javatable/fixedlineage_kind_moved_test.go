@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A LINEAGE ENTRY WHOSE KIND MOVED IS NOT A LAWFUL LINEAGE
@@ -93,10 +94,10 @@ func javaKindMovedRun(t *testing.T, sabotage func(string) string) string {
 	}
 	javac, javaBin := javaTools(t)
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, append(args, probe)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append(args, probe)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "KindMovedProbe", file).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "KindMovedProbe", file).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

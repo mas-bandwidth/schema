@@ -1,0 +1,11 @@
+package alias
+
+type B
+{
+    y uint16 = 9
+}
+
+table TB
+{
+    b B
+}

@@ -1,0 +1,16 @@
+{
+  "layout": [
+    {"path": "p1/generate.go", "lines": ["package p1", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "func Thing() {}"]},
+    {"path": "shared/twin.go", "hardlink": "p1/generate.go"},
+    {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.5.0@ generate --lang go --out .", "func Other() {}"]}
+  ],
+  "cases": [
+    {"id": "hardlink-publish-fails-on-second", "finding": "F-157", "note": "rollback used to detach the hard link and stamp the file with now", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "fail": [{"onto": "p2/generate.go", "from": 1, "until": 1}], "error": "nothing was changed"},
+    {"id": "hardlink-pin-v2.6.0", "finding": "F-157", "note": "control: a pin that succeeds writes a new file; the other name keeps the old bytes", "version": "v2.6.0", "dirs": ["p1", "p2"],
+     "after": [
+       {"path": "p1/generate.go", "lines": ["package p1", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "func Thing() {}"]},
+       {"path": "p2/generate.go", "lines": ["package p2", "", "@PIN /v2 v2.6.0@ generate --lang go --out .", "func Other() {}"]}]},
+    {"id": "hardlink-refuse-patch-zero", "finding": "F-162", "version": "v3.0.0-0.20261121185943-f397f5f7765d", "dirs": ["p1", "p2"], "error": "patch 0 has none"}
+  ]
+}

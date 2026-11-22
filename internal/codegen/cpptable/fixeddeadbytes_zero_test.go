@@ -15,7 +15,6 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +22,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppFixedDeadBytesProbeMain = `#include <cstdio>
@@ -131,7 +132,7 @@ func cppFixedDeadBytesProbe(t *testing.T) string {
 	}
 	serialize, _ := filepath.Abs("../../../../serialize")
 	args := []string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe")}
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
@@ -157,7 +158,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 			if !want.Refused {
 				verdict = "read"
 			}
-			out, err := exec.Command(probe, filepath.Join(corpus, vec.File), verdict).CombinedOutput()
+			out, err := testproc.Command(t, probe, filepath.Join(corpus, vec.File), verdict).CombinedOutput()
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", vec.File, err, out)
 			}
