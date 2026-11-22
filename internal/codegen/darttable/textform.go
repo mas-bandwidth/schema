@@ -239,7 +239,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune & 0xF]);
     } else {
       if (rune >= 0xD800 && rune <= 0xDFFF) {
-        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+        assert(false, 'invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
       }
       b.write(String.fromCharCode(rune));
     }
@@ -1342,8 +1342,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 		g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 		g.pf("\t}\n")
 	}
-	// a missing required field keeps its own throw: its reason rides on missingFields
-	g.pf("\t} on FormatException catch (e) {\n\t\tif (r.missingFields.isNotEmpty) rethrow;\n\t\tr.refuse(_jsonFormatReason(e.message));\n\t}\n")
+	g.pf("\t} on FormatException catch (e) {\n\t\tr.refuse(_jsonFormatReason(e.message));\n\t}\n")
 	// A caller who supplied a report reads the verdict from it and lands the
 	// type's defaults; a caller who did not gets the refusal as a throw.
 	g.pf("\tif (r.refused) {\n")

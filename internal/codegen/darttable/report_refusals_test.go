@@ -39,6 +39,15 @@ table Ranged {
     opt ?int32 | max = 10
 }
 
+table Needs {
+    a int32 | required
+}
+
+table Lists {
+    names [..2]string(4)
+    open []string
+}
+
 fixed table Msg {
     a int32
     b int32
@@ -146,6 +155,29 @@ void main() {
     check(short.every((x) => x == 0xa5), 'short buffer was written');
     final full = Uint8List(need);
     check(f.msgSaveMessages(values, full, report) == need, 'full buffer');
+  }
+  // 6. a missing required field is a refusal with a reason, never a throw
+  {
+    final r = w.TableTextReport();
+    try {
+      w.needsFromJson('{}', r);
+    } on FormatException catch (e) {
+      throw StateError('missing_required threw: ${e.message}');
+    }
+    check(r.refused && r.reason == 'missing_required: a', 'missing_required reason: ${r.reason}');
+    final ok = w.TableTextReport();
+    w.needsFromJson('{"a":1}', ok);
+    check(!ok.refused, 'present required refused');
+  }
+
+  // 7. text-list and unbounded-text write checks are debug asserts
+  {
+    var asserted = false;
+    try { w.listsWireSave(w.Lists()..names = [w.ListsNamesText()..value = 'toolong']); } on AssertionError { asserted = true; }
+    check(asserted, 'text list WireSave must assert');
+    asserted = false;
+    try { w.listsWireSave(w.Lists()..open = [w.ListsOpenText()..value = 'a\u0000b']); } on AssertionError { asserted = true; }
+    check(asserted, 'unbounded text WireSave must assert');
   }
   print('OK');
 }
