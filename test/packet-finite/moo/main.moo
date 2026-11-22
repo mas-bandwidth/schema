@@ -22,6 +22,10 @@ local f = require("./Finite")
 
 local U64 = serialize.Uint64
 local failed = 0
+-- vectors counts the vectors run (each write/..., read/..., finite/... and
+-- exact/... name, and the baseline); the last stdout line is
+-- "packet finite floats moo: ran N, failed M" (tools/mustrun reads it).
+local vectors = 0
 
 local function fail(vector: string, detail: string)
 	print("FAILED: " .. vector .. ": " .. detail)
@@ -125,6 +129,7 @@ local nonFinite64 = {
 }
 
 local function checkWriteRefused(vector: string, value: any)
+	vectors += 1
 	local stream = serialize.WriteStream.new(buffer.create(f.FloatsMaxBytes))
 	local ran, ok = pcall(f.WriteFloats, stream, value)
 	if not ran then
@@ -161,6 +166,7 @@ for _, slot in writeSlots64 do
 end
 
 -- THE READ HALF.
+vectors += 1
 local wrote, clean = write(baseline())
 if not wrote then
 	fail("baseline", "the baseline write refused")
@@ -193,6 +199,7 @@ for _, slot in slots32 do
 		local b = crafted()
 		putBits(b, at, 32, bits)
 		local vector = string.format("read/%s/0x%08x", name, bits)
+		vectors += 1
 		local ok, refusal = read(b, f.NewFloats())
 		if ok then
 			fail(vector, "the read accepted a non-finite pattern")
@@ -200,6 +207,7 @@ for _, slot in slots32 do
 			fail(vector, "the read refused with " .. refusal .. ", want non_finite_float")
 		end
 	end
+	vectors += 1
 	local b = crafted()
 	putBits(b, at, 32, 0x7f7fffff)
 	local into = f.NewFloats()
@@ -215,6 +223,7 @@ for _, slot in slots64 do
 		local b = crafted()
 		put64(b, at, pattern)
 		local vector = string.format("read/%s/%s", name, hex64(pattern))
+		vectors += 1
 		local ok, refusal = read(b, f.NewFloats())
 		if ok then
 			fail(vector, "the read accepted a non-finite pattern")
@@ -222,6 +231,7 @@ for _, slot in slots64 do
 			fail(vector, "the read refused with " .. refusal .. ", want non_finite_float")
 		end
 	end
+	vectors += 1
 	local largest = U64.new(0xffffffff, 0x7fefffff)
 	local b = crafted()
 	put64(b, at, largest)
@@ -241,6 +251,7 @@ local exact = {
 }
 for _, case in exact do
 	local name, b32, b64 = case[1] :: string, case[2] :: number, case[3]
+	vectors += 1
 	local value = baseline()
 	value.Narrow = b32
 	value.Narrows[3] = b32
@@ -267,7 +278,8 @@ for _, case in exact do
 	end
 end
 
-if failed > 0 then
+print(string.format("packet finite floats moo: ran %d, failed %d", vectors, failed))
+if failed > 0 or vectors == 0 then
 	error(string.format("packet finite floats moo: %d vector(s) failed", failed), 0)
 end
 print("packet finite floats moo: write and read refusals at every float slot, -0 and the subnormals OK")

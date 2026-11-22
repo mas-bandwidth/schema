@@ -44,7 +44,7 @@ conformance-cpp-cook-write-negative-control: build/tables-generated/.stamp build
 	$(CPP_COOK_WRITE_NC)/schema generate --lang cpp --out $(CPP_COOK_WRITE_NC_GEN)/examples tables/examples > $(CPP_COOK_WRITE_NC)/generate.log 2>&1 || \
 		{ cat $(CPP_COOK_WRITE_NC)/generate.log; echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not generate the examples unit"; exit 1; }
 	@! sed -n '/^inline bool RootConfigCookBody( uint8_t \* at, const RootConfig & value, TableByteOrder order )$$/,/^}$$/p' \
-		$(CPP_COOK_WRITE_NC_GEN)/examples/TablesTable.h | grep -q 'i < value.weapons_count' || \
+		$(CPP_COOK_WRITE_NC_GEN)/examples/TablesTable.h | grep 'i < value.weapons_count' >/dev/null || \
 		{ echo "NEGATIVE CONTROL FAILED: the generated cook writer still stops at the count"; exit 1; }
 	@$(MAKE) --no-print-directory $(CPP_COOK_WRITE_NC_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) $(CPP_COOK_WRITE_NC_INCLUDES) test/conformance/cpp/main.cpp \

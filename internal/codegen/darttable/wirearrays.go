@@ -204,7 +204,7 @@ func (g *wireGen) emitWidenedElems(f *ir.Field, ek int, out, p, ind string) {
 	case ek == wireKindF64:
 		// a widened float32 element is refused on its raw bits as any float
 		// read is (docs/SPEC-TABLES.md §3.3)
-		g.pf("%s\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
+		g.pf("%s\t%s\n", ind, rangedFloatAdd(f, out, fmt.Sprintf("%s.readF32(%s.pos, '%s')", p, p, g.floatOwner(f)), p+".pos += 4;", p+".report"))
 	case ir.TableKindWide(ek):
 		g.pf("%s\tvar x = _getWide(%s, w, %v);\n", ind, p, ir.TableKindSigned(ek))
 		g.emitWideClamp(f, "x", p, ind+"\t")

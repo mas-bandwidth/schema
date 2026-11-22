@@ -82,13 +82,18 @@ schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
 	$(if $(filter debug,$(RUST_HOSTILE_PROFILES)),$(RUST_HOSTILE_CARGO))
 
 # Both profiles run and report before the target decides, so a red release run
-# never hides what the debug run says.
+# never hides what the debug run says. The registered count: each profile's run
+# prints `rust-hostile (<profile>): ran N, failed M`, where N is every case the
+# port answered (a SKIP is not run), and build/mustrun holds N to this number in
+# both profiles, so a manifest that loses cases or a case that starts skipping is
+# red. A commit that adds a hostile case changes it.
+RUST_HOSTILE_CASES ?= 192
 .PHONY: schema-rust-runs-hostile-corpus
-schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
+schema-rust-runs-hostile-corpus: build/mustrun schema-rust-runs-hostile-corpus-build
 	@status=0; \
 	for profile in $(RUST_HOSTILE_PROFILES); do \
 		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv || status=1; \
-		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
+		$(MUSTRUN) -name "schema-rust-runs-hostile-corpus ($$profile)" -count $(RUST_HOSTILE_CASES) -- $(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
 	done; \
 	exit $$status
 

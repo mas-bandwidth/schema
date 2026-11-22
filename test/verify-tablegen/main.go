@@ -441,6 +441,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// A corpus of no case (--schemas 0, or an emptied pack) verifies nothing, and
+	// every leg would still print TABLEGEN_OK <lang> 0.
+	if len(cases) == 0 {
+		fmt.Fprintln(os.Stderr, "vtablegen: the corpus holds no case: nothing would be verified")
+		os.Exit(1)
+	}
 	if *genOnlyFlag {
 		fmt.Printf("TABLEGEN_CORPUS seed=%d pairs=%d cases=%d bytes=%d\n", meta.Seed, meta.Schemas, meta.CaseCount, len(packed))
 		return

@@ -58,7 +58,8 @@ func TestElixirFixedCompressedStoresAreRanged(t *testing.T) {
 	}
 	runtime := string(files["FixedRuntime.ex"])
 	for _, want := range []string{
-		"def cf32_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,",
+		// held at float32 (§3.3): the value is narrowed before the test
+		"def cf32_bits(value, {lo, hi}) when is_float(value) do\n    bits = cf32_bits(value)\n    <<n::float-32-little>> = <<bits::little-32>>\n\n    if n < lo or n > hi do",
 		"def cf64_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,",
 	} {
 		if !strings.Contains(runtime, want) {

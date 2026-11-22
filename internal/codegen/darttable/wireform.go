@@ -464,8 +464,19 @@ func widenKinds(declKind int, signed bool) []struct{ k, w int } {
 	return out
 }
 
-// fmtFloat renders a float bound as a Dart double literal (§3, §4).
-func fmtFloat(v float64) string { return fmt.Sprintf("%g", v) }
+// rangedFloatAdd is the statement that appends one float element read by
+// `read` to `dest` and moves the reader past it by `advance`. A compressed
+// element is held to its range as the scalar read holds it: at the float32
+// nearest each end for a float32 (docs/SPEC-TABLES.md §3.3, THE RANGE IS HELD
+// AT FLOAT32), one past an end refusing out_of_range through `report`, and a
+// -0 landing as +0. A NaN or an infinity is read's own refusal.
+func rangedFloatAdd(f *ir.Field, dest, read, advance, report string) string {
+	lo, hi, ok := fixedFloatClampEnds(f)
+	if !ok {
+		return fmt.Sprintf("%s.add(%s); %s", dest, read, advance)
+	}
+	return fmt.Sprintf("{ final cf = %s; %s if (cf < %s || cf > %s) %s.refuse('out_of_range'); %s.add(cf == 0 ? 0.0 : cf); }", read, advance, lo, hi, report, dest)
+}
 
 func (g *wireGen) emit() {
 	g.pf("// The VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, in Dart:\n")
@@ -2348,6 +2359,11 @@ int readU32(Uint8List d, int off) {
   return v;
 }
 
+// _rangeF32 is the one reusable cell a write check narrows a compressed
+// float32 through before its range test (docs/SPEC-TABLES.md §3.3): store the
+// value, read [0], no allocation per check.
+final Float32List _rangeF32 = Float32List(1);
+
 // _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
 // (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
 // little-endian, exactly as the other backends write it.
@@ -2577,7 +2593,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
-	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "_rangeF32", ""))
 	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
 	if f.Type.TextUnbounded() {
 		guard := ""
@@ -3301,11 +3317,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch'); return;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tif (r.report.nonFiniteFloat.isNotEmpty) return;\n", ind)
-		if f.HasFloatRange {
-			// one past an end clamps and counts, and a -0 lands as +0,
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			// one past an end refuses, held at the float32 nearest each end
+			// (§3.3, THE RANGE IS HELD AT FLOAT32), and a -0 lands as +0,
 			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMin))
-			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMax))
+			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			g.pf("%s\t\tif (d == 0) d = 0.0;\n", ind)
 		}
 		g.pf("%s\t\tv.%s = d;\n", ind, name)
@@ -3406,15 +3423,15 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t%s.add(%s.readBool());\n", ind, dest, arr)
 	case wireKindF32:
 		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
-		g.pf("%s\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
+		g.pf("%s\t\t\t%s\n", ind, rangedFloatAdd(f, dest, fmt.Sprintf("%s.readF32(%s.pos, '%s')", arr, arr, g.floatOwner(f)), arr+".pos += 4;", "r.report"))
 	case wireKindF64:
 		// f64 widens an f32 element kind (§4). The array already counted widened.
 		g.pf("%s\t\t\tif (elemKind == %d) {\n", ind, wireKindF32)
 		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
+		g.pf("%s\t\t\t\t%s\n", ind, rangedFloatAdd(f, dest, fmt.Sprintf("%s.readF32(%s.pos, '%s')", arr, arr, g.floatOwner(f)), arr+".pos += 4;", "r.report"))
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
 		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
+		g.pf("%s\t\t\t\t%s\n", ind, rangedFloatAdd(f, dest, fmt.Sprintf("%s.readF64(%s.pos, '%s')", arr, arr, g.floatOwner(f)), arr+".pos += 8;", "r.report"))
 		g.pf("%s\t\t\t} else { r.report.refuse('wire_damaged'); break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
@@ -4242,8 +4259,8 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
 	}
 	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
-		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+		if _, _, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
 		}
 	}
 }

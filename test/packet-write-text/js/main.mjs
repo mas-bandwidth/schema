@@ -16,6 +16,9 @@ for (const line of readFileSync(new URL("../cases.txt", import.meta.url), "utf8"
   const bytes = hex === "-"
     ? new Uint8Array(0)
     : Uint8Array.from(Buffer.from(hex.replaceAll(" ", ""), "hex"));
+  if (verdict !== "written" && verdict !== "refused") {
+    throw new Error(`cases.txt: ${name}: verdict "${verdict}" is neither written nor refused`);
+  }
   cases.push({ name, bytes, written: verdict === "written" });
 }
 
@@ -93,5 +96,7 @@ for (const testCase of cases) {
   }
 }
 
-if (failures !== 0) process.exit(1);
-console.log("packet write text JavaScript: both tiers refuse ill-formed text and round-trip well-formed text");
+// One unit per shared case: tools/mustrun holds the count to the one the recipe
+// registers, so an emptied or shortened cases.txt is red.
+console.log(`packet write text JavaScript: ran ${cases.length}, failed ${failures}`);
+if (failures !== 0 || cases.length === 0) process.exit(1);

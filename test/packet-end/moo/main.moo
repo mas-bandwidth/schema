@@ -13,6 +13,12 @@ local e = require("./End")
 local inputs = require("./inputs") :: any
 
 local failed = 0
+-- ran counts the cases; the last stdout line is "packet end moo: ran N,
+-- failed M" (tools/mustrun reads it). used holds the vectors this main read:
+-- every *.bin the driver carried in from testdata/wire/packet-end must be one
+-- of them, and there must be some.
+local ran = 0
+local used: { [string]: boolean } = {}
 
 local function fail(case: string, detail: string)
 	print("FAILED: " .. case .. ": " .. detail)
@@ -20,6 +26,8 @@ local function fail(case: string, detail: string)
 end
 
 local function read(name: string): (boolean, any, number)
+	ran += 1
+	used[name] = true
 	local rs = serialize.ReadStream.new(inputs[name])
 	local value = e.NewEnd()
 	local ok = e.ReadEnd(rs, value)
@@ -51,7 +59,22 @@ do -- fb: the final byte's five unused bits are set
 	end
 end
 
-if failed > 0 then
+do
+	local carried = 0
+	for name in inputs do
+		if string.sub(name, -4) == ".bin" then
+			carried += 1
+			if not used[name] then
+				fail(name, "a vector in the directory that this main does not read")
+			end
+		end
+	end
+	if carried == 0 then
+		fail("listing", "the vector directory is empty")
+	end
+end
+print(string.format("packet end moo: ran %d, failed %d", ran, failed))
+if failed > 0 or ran == 0 then
 	error(string.format("packet end moo: %d case(s) failed", failed), 0)
 end
 print("packet end moo: the exact packet reads as 3; trailing data and non-zero padding are refused")

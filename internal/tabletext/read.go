@@ -1776,7 +1776,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		return in.fail("out_of_range: " + f.Name)
 	}
 	if f.HasFloatRange {
-		if value < f.FMin || value > f.FMax {
+		if !ir.CompressedFloatInRange(f.FMin, f.FMax, value) {
 			return in.fail("out_of_range: " + f.Name)
 		}
 		if value == 0 {
