@@ -156,6 +156,19 @@ func (g *tableGen) fieldDiffers(f *ir.Field, expr string) string {
 	return fmt.Sprintf("%s != %s", expr, g.fieldDefaultExpr(f))
 }
 
+// storedFloatBits names the function whose bits a float store writes: a
+// COMPRESSED float's (a declared range) is TableStoredFloatBits, which writes
+// +0 for its -0 (docs/SPEC-TABLES.md §3.3; docs/rulings.json
+// fixed-compressed-negzero), and a plain float's is `plain`, the bits as held,
+// so its -0 rides bit-exact. Every writer — variable, fixed, message, cook —
+// spells its float store through here.
+func storedFloatBits(f *ir.Field, plain string) string {
+	if f.HasFloatRange {
+		return "TableStoredFloatBits"
+	}
+	return plain
+}
+
 // fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
 // condition under which a slot elides.
 func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
@@ -2002,11 +2015,11 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md §3.3)
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
+		g.pf("%sw.put32( %s( %s ) );\n", ind, storedFloatBits(f, "table_float_to_bits"), expr)
 	case tkF64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
+		g.pf("%sw.put64( %s( %s ) );\n", ind, storedFloatBits(f, "table_double_to_bits"), expr)
 	case tkString:
 		g.pf("%s{\n", ind)
 		if ir.TextListUnbounded(f) {
