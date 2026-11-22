@@ -701,7 +701,7 @@ func parseSurfaces(list string) (map[string]bool, error) {
 		return nil, nil
 	}
 	set := map[string]bool{}
-	for _, s := range strings.Split(list, ",") {
+	for s := range strings.SplitSeq(list, ",") {
 		if !slices.Contains(surfaces, s) {
 			return nil, fmt.Errorf("--surfaces: %q is not a surface (%s)", s, strings.Join(surfaces, ","))
 		}
