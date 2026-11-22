@@ -104,7 +104,9 @@ public final class F32EndsDriver {
         }
         if (expect.equals("refused")) {
             if (got) { return "the " + form + " read was not refused"; }
-            return reason.startsWith("out_of_range") || reason.equals("outOfRange") ? "" : "refused, but not out_of_range: " + reason;
+            // Only the verdict must agree across ports (docs/rulings.json,
+            // refusal-verdict-only): the reason is this port's own.
+            return "";
         }
         if (!got) { return "the " + form + " read refused the value at the float32 end"; }
         if (saved == null) { return "saving again what was just read was refused"; }
