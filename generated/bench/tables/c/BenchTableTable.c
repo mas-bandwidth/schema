@@ -2473,6 +2473,8 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         int64_t t;
         char c;
         if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        /* THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2): the union object is one */
+        if ( depth + 1 > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         in->pos++;
         benchtable_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( benchtable_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
@@ -2488,7 +2490,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
         }
         else
         {
@@ -2497,14 +2499,14 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
             char want = arm != NULL ? benchtable_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( !( arm != NULL ? benchtable_table_json_shape_accepts( arm, benchtable_table_json_value_shape( in ) ) : benchtable_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && benchtable_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !benchtable_table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth+2 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
                     if ( !benchtable_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !benchtable_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                    if ( !benchtable_table_json_read_table( in, payload, arms->arms[tag].table, depth+2 ) ) { return 0; }
                 } else if ( !benchtable_table_json_literal( in, "null" ) ) { return 0; }
                 benchtable_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
