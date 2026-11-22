@@ -1480,6 +1480,7 @@ jobs:
               make -o tables-fixedform-corpus tables-go-fixedform ;;
             conformance-go-rows-a) make conformance-go-rows-a ;;
             conformance-go-rows-b) make conformance-go-rows-b ;;
+            conformance-go-driver-unit) make conformance-go-driver-unit ;;
             cards-conformance-go-negative-control) make cards-conformance-go-negative-control ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac

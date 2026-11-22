@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -211,17 +212,20 @@ func surfaceWire(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.load(value, wire, &rep) {
-			// SPEC-TABLES §2.5: a blob belongs to one slot, and the one read
-			// refuses a file whose two slots name one blob. That refusal is
-			// this row's answer (the corpus marks it wire-refused); any other
-			// refusal of a corpus instance is a failure.
-			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) {
-				if err := spillAbsentReason(out, f[1], rep.err.Error()); err != nil {
-					return err
-				}
-				continue
+			// THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+			// (docs/rulings.json refusal-verdict-only): a .absent holding the
+			// reason, which the harness passes on a row the corpus marks
+			// wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
+			// on a row that owes the bytes. It never aborts the surface (review
+			// F-089: the other rows went unanswered).
+			reason := "refused"
+			if rep.err != nil {
+				reason = rep.err.Error()
 			}
-			return fmt.Errorf("%s: load refused %s (%v)", f[1], f[4], rep.err)
+			if err := spillAbsentReason(out, f[1], reason); err != nil {
+				return err
+			}
+			continue
 		}
 		size := c.measure(value)
 		if size < 0 {
@@ -517,17 +521,21 @@ func damageText(value any, damage string) error {
 	if !field.IsValid() || !length.IsValid() {
 		return fmt.Errorf("damage %q names no text field of %s", damage, v.Type())
 	}
-	var units []uint64
+	var units []uint16
 	if kind == "narrow" {
-		units = []uint64{0x61, 0xff, 0x62}
+		units = []uint16{0x61, 0xff, 0x62}
 	} else {
-		units = []uint64{0x61, 0xd800, 0x62}
+		units = []uint16{0x61, 0xd800, 0x62}
 	}
-	for i, u := range units {
-		field.Index(i).SetUint(u)
+	// THE CHECKED STORE (writerefusal.go): a wide damage named on a narrow
+	// field would otherwise land D800 as 00 and be scored as the damage.
+	if field.Len() < len(units) {
+		return fmt.Errorf("damage %q needs %d units and %s holds %d", damage, len(units), v.Type(), field.Len())
 	}
-	length.SetInt(int64(len(units)))
-	return nil
+	if err := writeRefusalGoUnits(field, units); err != nil {
+		return fmt.Errorf("damage %q: %s cannot hold it: %w", damage, v.Type(), err)
+	}
+	return writeRefusalGoStore(length, big.NewInt(int64(len(units))))
 }
 
 func surfaceBlock(lines []line, out string) error {

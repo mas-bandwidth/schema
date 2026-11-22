@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'framing').each do |row|
+  RubyConformance.cases(manifest, 'framing') do |row|
     case_name, unit, root, wire = row[1, 4]
     tree = if unit == 'tblr1'
              ENV['RUBY_FRAMING_GENERATED'] || File.join(RubyConformance::ROOT, 'tblr1', '_framing')

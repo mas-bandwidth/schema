@@ -34,10 +34,12 @@ module RubyConformanceMain
       FileUtils.mkdir_p(outdir)
       $LOAD_PATH.unshift(SURFACES) unless $LOAD_PATH.include?(SURFACES)
       require_relative 'surfaces/_common'
+      RubyConformance.surface = name
       mod = Module.new
       mod.module_eval(File.read(path, encoding: 'UTF-8'), path, 1)
       mod.run(manifest, outdir)
-      return 0
+      # every case ran; one that hit a driver error reds the surface
+      return RubyConformance.driver_errors.positive? ? 1 : 0
     end
     $stderr.write("usage: main.rb <manifest> list\n       main.rb <manifest> <surface> <outdir>\n")
     2

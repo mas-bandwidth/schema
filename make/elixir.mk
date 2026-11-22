@@ -108,7 +108,10 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # the union-arm evolution pairs (§4), tblk1/tblk2 the enum-kind pair,
 # tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
 # units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
-# sixteen (§2.8, the cook's node alignment rule). The variable-class surfaces (wire,
+# sixteen (§2.8, the cook's node alignment rule); shapes (test/tables/shapes),
+# the manifest's opt-in unit, compiled for the driver's case-outcomes fixture
+# (elixir-case-outcomes); `list` names it once the fixed writer refuses a
+# ranged float32 past its bound. The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -130,9 +133,10 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
+	shapes:test/tables/shapes \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema
 	@mkdir -p build/tables-generated-elixir
 	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -427,6 +431,23 @@ test-elixir: conformance-negative-control-elixir-walk conformance-negative-contr
 
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
+
+# THE DRIVER'S CASE OUTCOMES (review F-174; test/conformance/elixir/case-outcomes):
+# the real driver over a committed fixture manifest, each case held to its
+# answer. A codec absent for the case writes an EMPTY <case>.absent; a present
+# codec's refusal is the surface's refusal answer (on the wire surface,
+# <case>.absent holding the read's reason, beside the legal control that
+# round-trips); a driver error names its case on stderr, leaves no answer,
+# and reds the surface after the cases behind it have run. The out-of-width
+# ordinal and tag rows (256, 2^32 against a one-byte enum and union tag) are
+# refused by the codec, never narrowed into a legal value by the driver.
+# Seconds: one BEAM per surface over the ebin build-conformance-elixir built.
+.PHONY: elixir-case-outcomes
+elixir-case-outcomes: build-conformance-elixir
+	BEAM_PATH="$(BEAM_PATH)" sh test/conformance/case-outcomes/check.sh test/conformance/elixir/driver \
+		test/conformance/elixir/case-outcomes/manifest.txt test/conformance/elixir/case-outcomes/expected.txt \
+		build/elixir-case-outcomes
+test-elixir: elixir-case-outcomes
 
 # THE ELIXIR LEG's own gates, beside the harness's matrix row. They read the
 # DERIVED manifest the harness writes, so each is `conformance` plus one run.
