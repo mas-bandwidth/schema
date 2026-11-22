@@ -4,7 +4,7 @@
 .PHONY: schema-ruby-runs-hostile-corpus schema-ruby-runs-hostile-corpus-negative-control schema-ruby-resource-bounds schema-ruby-resource-bounds-negative-control ruby-hostile
 
 schema-ruby-runs-hostile-corpus: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestSchemaRubyRunsHostileCorpus$$' ./internal/ci/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestSchemaRubyRunsHostileCorpus|TestSchemaRubyHostileScorerOutcomes)$$' ./internal/ci/
 
 schema-ruby-runs-hostile-corpus-negative-control: ruby-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestSchemaRubyHostileCorpusPlantedReader$$' ./internal/ci/

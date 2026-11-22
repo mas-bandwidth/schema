@@ -63,6 +63,7 @@ $(JAVA_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh mak
 
 .PHONY: schema-java-runs-hostile-corpus
 schema-java-runs-hostile-corpus: $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
+	$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" \
 		"$(JAVA_HOSTILE_BUILD)/packet"
 
