@@ -1,0 +1,17 @@
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-debug/packetwriterefusalunity.deps.json
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-debug/packetwriterefusalunity.dll
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-debug/packetwriterefusalunity.pdb
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.csproj.AssemblyReference.cache
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.GeneratedMSBuildEditorConfig.editorconfig
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.AssemblyInfoInputs.cache
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.AssemblyInfo.cs
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.csproj.CoreCompileInputs.cache
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwr.273E03B8.Up2Date
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.dll
+/home/nova/scratch-rowan/sch-wrp-unity/test/packet-write-refusal/unity/lib/obj/Debug/netstandard2.1/packetwriterefusalunity.pdb
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-negative/bin/packetwriterefusalunity.deps.json
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-negative/bin/packetwriterefusalunity.dll
+/home/nova/scratch-rowan/sch-wrp-unity/build/packet-write-refusal/unity-negative/bin/packetwriterefusalunity.pdb
+/home/nova/scratch-rowan/sch-wrp-unity/build/orig-bin/packetwriterefusalunity.deps.json
+/home/nova/scratch-rowan/sch-wrp-unity/build/orig-bin/packetwriterefusalunity.dll
+/home/nova/scratch-rowan/sch-wrp-unity/build/orig-bin/packetwriterefusalunity.pdb

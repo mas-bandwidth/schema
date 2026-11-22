@@ -6,6 +6,7 @@
 // package example — protocol id 0x2bf51af687ac0abd
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -728,6 +729,9 @@ namespace Example
         {
             {
                 // 64 bits folded into 1 word(s)
+                Debug.Assert((ulong)value.A < 1UL << 20, "value.A is wider than its 20 bits");
+                Debug.Assert((ulong)value.B < 1UL << 20, "value.B is wider than its 20 bits");
+                Debug.Assert((ulong)value.C < 1UL << 24, "value.C is wider than its 24 bits");
                 ulong f0 = ((ulong)value.A) & 0xfffffUL;
                 ulong f1 = ((ulong)value.B) & 0xfffffUL;
                 ulong f2 = ((ulong)value.C) & 0xffffffUL;
@@ -928,6 +932,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Trailer < 1UL << 16, "value.Trailer is wider than its 16 bits");
             if (!batch.SerializeBits(ref value.Trailer, 16))
             {
                 return false;
@@ -1012,6 +1017,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Pad5 < 1UL << 24, "value.Pad5 is wider than its 24 bits");
             if (!batch.SerializeBits(ref value.Pad5, 24))
             {
                 return false;

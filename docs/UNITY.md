@@ -325,6 +325,7 @@ referenced as its own netstandard2.1 assembly. A small .NET host drives it:
   C++ pins and the construction form, storage byte for byte.
 - `make packet-utf8-unity` — the read-side UTF-8 refusal against the C++ oracle
   over the pinned rows and a bit-flip sweep.
+- `make packet-write-refusal-unity` — the write-refusal-packet surface: each refused value traps a Debug.Assert and its lawful twin is written.
 - `make unity-tables` — the table core surface and Form-1 bool/integer corpus
   against the Go engine, with planted negative controls.
 - `make unity-fixed` — all 56 fixed-table rows (scalars, 128-bit integers and
