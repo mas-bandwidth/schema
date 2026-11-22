@@ -4601,6 +4601,25 @@ ONLY PLACE A VALUE IS ASSIGNED.** This is the rule, stated once, that every
 other section cites. It is five rules and none of them is a form's own
 business.
 
+**WHAT IS IMPLEMENTED TODAY, stated before the rules because two arms do not
+yet follow the first sentence.** The three FORMS — variable `1`, message `2`
+and fixed `3` — are live and every file of one begins with its form byte. The
+two ACCELERATORS, the COOK (§7) and the BLOCK (§19), are implemented and
+shipped too, and a file of either begins with its own EIGHT-BYTE MAGIC and
+carries no form byte: `SCHMCOOK` opens a little-endian cook (§7.1) and
+`SCHMABLK` a little-endian block (§19.1), each byte-reversed in a file written
+big-endian. Bytes `4` and `5` are RESERVED for them, and what is planned is the
+BYTE, never the format: no build writes or reads either byte. **So a tool that
+names a file reads the MAGIC first and the form byte second.** The two cannot
+be confused, because no byte the registry assigns or reserves is the first byte
+of either magic in either order (`0x53` and `0x4B`). `schema check` names all
+five from their leading bytes and names the command that validates each —
+`schema unpack` for a form, `schema cook-check` for a cook, and the generated
+`BlockOpen` for a block, which no command reads — and every other first byte is
+refused by name with the list of what is recognised. One part schema writes has
+no leading bytes of its own: a cook's SEPARATED ATTRIBUTION part (§7.1) is the
+directory alone, is read only beside its cook, and is named by no tool.
+
 - **A SCHEMA FILE IS A UNION OF FIVE ARMS AND THE FORM BYTE IS ITS TAG** —
   *"so in effect, form byte is like a union id"*, the project owner. It is
   therefore under exactly the rule the baseline lock (§18) enforces for a union
@@ -4626,8 +4645,9 @@ business.
   ```
 
   The hash is **OVER THE LAYOUT** for the fixed form and for the message form,
-  and **OVER THE BUILD** for the cook and the block form, both planned (§7,
-  §19). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
+  and **OVER THE BUILD** for the cook and the block form, for which THIS HEADER
+  is planned: both are implemented under a header of their own today (§7.1,
+  §19.1). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
   header pays it whether or not the form maps its body today: **the fixed form
   does not need the alignment and pads anyway**, so that the bytes do not move a
   second time the day the cook and the block form join the registry under this
@@ -4673,8 +4693,10 @@ the connection announced once, and none of this section's byte framing rides
 in it. The FIXED FORM, form byte `3`, is a hash and a record of values at their
 bounds under a LAYOUT, and none of this section's framing rides in it
 either. **§3.4 carries the registry**, whose other two rows — `4` the cook and
-`5` the block form — are PLANNED, and THE FIRST BYTE above is the rule for
-adding to it.
+`5` the block form — are RESERVED BYTES that nothing writes yet: the cook and
+the block themselves are implemented, and a file of either begins with its
+magic (§7.1, §19.1). THE FIRST BYTE above is the rule for adding to the
+registry.
 
 - **The FORM BYTE is `1` for a file, and it is the whole header** — the
   variable form is the one arm with no hash to carry and no body to align
@@ -8605,8 +8627,8 @@ reader refuses it by name.
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
 | `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 |
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
-| `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
-| `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
+| `4` | **the COOK** — the BYTE is PLANNED and no build writes it; the cook is implemented and a file of it begins with the magic `SCHMCOOK` (§7.1). Under this byte the header's hash is over the BUILD | §7 |
+| `5` | **the BLOCK form** — the BYTE is PLANNED and no build writes it; the block is implemented and a file of it begins with the magic `SCHMABLK` (§19.1). Under this byte the header's hash is over the BUILD | §19 |
 
 **THE RULE FOR ADDING ONE, restated from §3.3's own precedent and from §3's
 union-tag rule.** A form byte with no reader outside the tree that defines it is
@@ -8677,7 +8699,17 @@ added moves it without anyone remembering to.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
-  no first byte at all.
+  no first byte at all. **AND THE MAGIC BEFORE THE BYTE**: a cook and a block
+  in either byte order are named `COOK` and `BLOCK FORM` from their magic, each
+  line names the command that validates the file, and an unknown first byte's
+  refusal lists what is recognised. One classifier, `ir.ClassifyFile`, answers
+  for `check`, for the cook's own readers, and for `unpack`, `cook`,
+  `cook-check` and `uncook` when they are handed a file of a format they do not
+  read. `cmd/schema/fileclass_test.go` drives every writing command the CLI's
+  source dispatches and holds that `check` names each file it leaves, that the
+  command the line names accepts that file, and that a command with a write
+  the test does not drive fails it; `ir/fileformat_test.go` holds the table
+  against the registry.
 - **A BYTE-FLIP FUZZ OVER A WHOLE FILE, UNDER A SANITIZER, and it is not
   optional.** A record carries no lengths and no terminators, so EVERY OFFSET
   THIS READER USES IS ARITHMETIC OVER SIZES A STRANGER WROTE DOWN — a layout

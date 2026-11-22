@@ -1,6 +1,6 @@
 // The schema compiler CLI (SPEC §7).
 //
-//	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers its FORM BYTE (§3)
+//	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers what it is by its leading bytes (§3)
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
 //	schema testgen    [--lang go|lua|squirrel] [--out generated] [--verbose] [dir|files...]  emit the round-trip and damage tests of every table
 //	schema id         [dir|files...]                 print the protocol id
@@ -31,6 +31,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -40,6 +41,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -97,15 +99,19 @@ func main() {
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
-		// WHAT BYTE 0 SAYS, FIRST (docs/SPEC-TABLES.md §3, "THE FIRST BYTE").
-		// Every schema file begins with the form byte, so a file handed to
-		// `check` is answered by its form before anything else is said about
-		// it: one line, `FORM <n> <name>`, or a refusal that names the byte.
-		// A tool that read a file and never told you which of the five arms
-		// it was would be hiding the one fact the rest of the read depends on.
+		// WHAT THE LEADING BYTES SAY, FIRST (docs/SPEC-TABLES.md §3, "THE
+		// FIRST BYTE"). A file handed to `check` is answered by its format
+		// before anything else is said about it, on one line: `FORM <n>
+		// <name>` for a form, which begins with its form byte; `COOK` or
+		// `BLOCK FORM` with the byte order for an accelerator, which begins
+		// with its magic; and beside each the command that validates it. Any
+		// other first byte is a refusal that names the byte and lists what is
+		// recognised. A tool that read a file and never told you which of the
+		// five arms it was would be hiding the one fact the rest of the read
+		// depends on.
 		args, wires := splitWireFiles(fs.Args())
 		for _, w := range wires {
-			fmt.Printf("%s: %s\n", w.path, ir.WireFormLine(w.head))
+			fmt.Printf("%s: %s\n", w.path, ir.FileLine(w.head))
 		}
 		// A CHECK OVER FILES ALONE IS FINISHED: there is no unit to compile,
 		// and defaulting to the working directory would compile something the
@@ -306,17 +312,14 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		for _, p := range paths {
-			var rewrote bool
-			if *migrate {
-				_, rewrote, err = compiler.MigrateFile(p)
-			} else {
-				_, rewrote, err = compiler.FormatFile(p)
-			}
-			if err != nil {
-				fail(err)
-			}
-			if rewrote && verbose {
+		// one request: every source formats before any is written, and the
+		// ones that change land together or not at all
+		rewrote, err := formatSources(atomicfile.OS(), paths, *migrate)
+		if err != nil {
+			fail(err)
+		}
+		if verbose {
+			for _, p := range rewrote {
 				fmt.Printf("formatted %s\n", p)
 			}
 		}
@@ -397,14 +400,14 @@ func main() {
 		// and the output is §3's — no envelope of schema's own.
 		fs := flag.NewFlagSet("pack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the tree mirrors")
-		out := fs.String("out", "", "file to write the root's wire bytes to")
+		out := fs.String("out", "", "file to write the root's wire bytes to; one run writes to an output at a time")
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same tree and the
 		// same text, written as the form byte and the root body alone. Its ids
 		// live in the CONNECTION's announced table, so `--announce <file>`
 		// writes that announcement beside the message — a receiver that has
 		// not read one holds no table and refuses every message on the wire.
 		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the variable form")
-		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`")
+		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`; it and --out land together or not at all when one run writes to them")
 		// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of
 		// messages in one buffer, one count and one bit stream. --root and its
 		// tree are the first message; each --batch names another, in order.
@@ -421,6 +424,13 @@ func main() {
 		}
 		if len(batch) > 0 && !*message {
 			fatalf("--batch is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
+		}
+		outs := []outputPath{{"--out", *out}}
+		if *announce != "" {
+			outs = []outputPath{{"--announce", *announce}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("pack", outs, nil); err != nil {
+			fatalf("%v", err)
 		}
 		unit := loadUnit(c, rest)
 		var bytes []byte
@@ -440,21 +450,23 @@ func main() {
 		// the next `make` skip the rule and the failure vanish, and writing
 		// `--announce` before the gate would replace a prior announcement
 		// while leaving the prior message beside it. The gate runs first, and
-		// both files land atomically after it.
+		// the pair publishes after it, both files or neither: a failure writing
+		// either keeps the earlier pair byte-for-byte. That holds when this run
+		// is the only one writing to these outputs (publish.go).
 		reportLine(report, verbose)
+		var announcement []byte
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *announce != "" {
-			announcement := c.Announce(unit)
-			if err := writeAtomic(*announce, announcement); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
-			}
+			announcement = c.Announce(unit)
+			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs("pack", pub, nil); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
+			if *announce != "" {
+				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
+			}
 			fmt.Printf("packed %s: %d bytes\n", *out, len(bytes))
 			for _, name := range skipped {
 				fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
@@ -488,6 +500,7 @@ func main() {
 			// the name this unit's closure gives it, its kind and its shape
 			text, described, derr := c.DescribeAnnouncement(unit, wire)
 			if derr != nil {
+				noteWrongFile(*in, wire, ir.FileVariable) // an announcement is a form-1 file
 				fail(derr)
 			}
 			fmt.Print(text)
@@ -503,6 +516,10 @@ func main() {
 				fatalf("%v", aerr)
 			}
 			report, err = c.UnpackMessages(unit, append([]compiler.MessageTree{{Root: *root, Dir: dir}}, batch...), announcement, wire, *oneFile)
+			if err != nil {
+				noteWrongFile(*announce, announcement, ir.FileVariable)
+				noteWrongFile(*in, wire, ir.FileMessage)
+			}
 		} else {
 			if len(batch) > 0 {
 				fatalf("--batch is the message form's own: pass --announce beside it (docs/SPEC-TABLES.md §3.3)")
@@ -512,6 +529,9 @@ func main() {
 				unpack = c.UnpackOneFile
 			}
 			report, err = unpack(unit, *root, wire, dir)
+			if err != nil {
+				noteWrongFile(*in, wire, ir.FileVariable, ir.FileFixed)
+			}
 		}
 		if err != nil {
 			fail(err)
@@ -527,9 +547,9 @@ func main() {
 		fs := flag.NewFlagSet("cook", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the bytes carry")
 		in := fs.String("in", "", "the wire file to cook, or a directory tree to pack and then cook")
-		out := fs.String("out", "", "file to write the cook to")
+		out := fs.String("out", "", "file to write the cook to; one run writes to an output at a time")
 		byteOrder := fs.String("byte-order", "little", "the byte order the cook is produced in: little or big")
-		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone")
+		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone; it and --out land together or not at all when one run writes to them")
 		fs.BoolVar(&verbose, "verbose", false, "print the cook's header facts and the wire report")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		if *root == "" || *in == "" || *out == "" {
@@ -543,10 +563,20 @@ func main() {
 		default:
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
 		}
+		outs := []outputPath{{"--out", *out}}
+		if *attribution != "" {
+			outs = []outputPath{{"--attribution", *attribution}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("cook", outs, []outputPath{{"--in", *in}}); err != nil {
+			fatalf("%v", err)
+		}
 		unit := loadUnit(c, fs.Args())
 		wire, packed := cookInput(c, unit, *root, *in, verbose)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
 		if err != nil {
+			if !packed {
+				noteWrongFile(*in, wire, ir.FileVariable, ir.FileFixed)
+			}
 			fail(err)
 		}
 		// TWO READS, TWO REPORTS, EACH NAMED. `cook --in <dir>` packs the tree
@@ -559,6 +589,10 @@ func main() {
 			stage = "cook"
 		}
 		reportLineStage(report, verbose, stage)
+		// the cook and its attribution publish together or not at all, so a
+		// failure writing either keeps the earlier pair byte-for-byte, when
+		// this run is the only one writing to these outputs (publish.go)
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *attribution != "" {
 			// the attribution is SEPARABLE (§6.3): a caller may place the two
 			// parts together or apart, and a build that ships no tooling need
@@ -568,12 +602,10 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			if err := writeAtomic(*attribution, side); err != nil {
-				fatalf("%v", err)
-			}
 			bytes = data
+			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs("cook", pub, []outputPath{{"--in", *in}}); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -606,9 +638,12 @@ func main() {
 			if err != nil {
 				fatalf("%v", err)
 			}
-			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+			joined, err := compiler.CookJoinAttribution(file, side)
+			if err != nil {
+				noteWrongFile(args[0], file, ir.FileCook)
 				fail(err)
 			}
+			file = joined
 		}
 		rest := args[1:]
 		if len(rest) == 0 {
@@ -617,6 +652,7 @@ func main() {
 		unit := loadUnit(c, rest)
 		res, err := c.CookCheck(unit, *root, file)
 		if err != nil {
+			noteWrongFile(args[0], file, ir.FileCook)
 			fail(err)
 		}
 		if verbose {
@@ -646,13 +682,17 @@ func main() {
 			if err != nil {
 				fatalf("%v", err)
 			}
-			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+			joined, err := compiler.CookJoinAttribution(file, side)
+			if err != nil {
+				noteWrongFile(*in, file, ir.FileCook)
 				fail(err)
 			}
+			file = joined
 		}
 		unit := loadUnit(c, fs.Args())
 		wire, err := c.Uncook(unit, *root, file)
 		if err != nil {
+			noteWrongFile(*in, file, ir.FileCook)
 			fail(err)
 		}
 		if err := writeAtomic(*out, wire); err != nil {
@@ -732,40 +772,17 @@ func packTree(verb string, args []string) (string, []string) {
 	return args[0], rest
 }
 
-// writeAtomic writes through a temporary beside the destination and renames it
-// into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable. An existing file keeps its mode; a new
-// one is 0644, the mode every generated file in this tree carries.
+// writeAtomic writes one output a person named through a temporary beside the
+// destination and renames it into place, so a run that never reaches this line
+// leaves nothing at all and a half-written file is never observable. An
+// existing file keeps its mode; a new one is 0644, the mode every generated
+// file in this tree carries. It is the one publisher every command writes
+// through (internal/atomicfile): a path that is a symbolic link is followed,
+// and the link stays; a directory that is not there is refused, not made.
 func writeAtomic(path string, data []byte) error {
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm()
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	// the temporary is removed on every failing path, so a refused run leaves
-	// the directory exactly as it found it
-	write := func() error {
-		if _, err := tmp.Write(data); err != nil {
-			_ = tmp.Close()
-			return err
-		}
-		if err := tmp.Close(); err != nil {
-			return err
-		}
-		if err := os.Chmod(name, mode); err != nil {
-			return err
-		}
-		return os.Rename(name, path)
-	}
-	if err := write(); err != nil {
-		_ = os.Remove(name)
-		return err
-	}
-	return nil
+	txn := atomicfile.New()
+	txn.With(outputFiles()).Write(path, data, 0o644)
+	return txn.Commit()
 }
 
 // reportLine prints what a pack or unpack counted and decides the exit code. A
@@ -825,11 +842,15 @@ help ai prints a block to paste into a project's AGENTS.md or CLAUDE.md: what
 the .schema files are, the commands, and the guide for AI assistants
 (docs/AI.md).
 
-check handed a SAVED FILE rather than a schema source answers its FORM BYTE
-first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
-the fixed form — or refuses it by name (docs/SPEC-TABLES.md §3). Every schema
-file begins with that byte and the registry there is the only place a value is
-assigned, so it is the first thing said about any file.
+check handed a SAVED FILE rather than a schema source says what it is first, on
+one line, from its leading bytes (docs/SPEC-TABLES.md §3): FORM 1 the variable
+form, FORM 2 the message form or FORM 3 the fixed form for a file that begins
+with its form byte; COOK or BLOCK FORM, with the byte order, for a file that
+begins with a cook's or a block's magic (§7.1, §19.1). Beside each it names the
+command that validates the file: unpack for a form, cook-check for a cook. Any
+other first byte is refused by name, with the list of what is recognised.
+unpack, cook, cook-check and uncook handed a file of a format they do not read
+name the format the same way before they exit nonzero.
 
 fmt is the only command that writes a schema file (schemafmt — one style, no
 options); a file already in format is not touched. Every other command reads
@@ -838,6 +859,14 @@ a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack, unpack and cook exit nonzero when their read
 refuses the input; a report that counts only lawful evolution prints its line
 and exits 0.
+
+pack --message --announce and cook --attribution write one artifact in two
+files, and a run publishes both or neither: a failure leaves the earlier pair
+as it was. That holds when one run writes to an output at a time. One
+publisher per destination is the contract, as with any compiler: schema takes
+no lock, and two runs writing the same output at once can leave one run's
+file beside the other's. Give concurrent runs their own outputs, or run them
+one after the other.
 
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
@@ -909,17 +938,32 @@ func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
-// source: its path, and the first byte, which is its form (§3).
+// source: its path, and its leading bytes, which say what it is (§3, §7.1,
+// §19.1).
 type wireFile struct {
 	path string
 	head []byte
 }
 
+// noteWrongFile is called when a command's read of a data file has refused,
+// before the refusal is reported: when the file is one of the formats schema
+// writes and NOT one this command reads, it says which, through the classifier
+// `check` prints from, so "not a cook" or "newer_form" over a file of another
+// format comes with that format's name and the command that does read it. A
+// file of the right format that failed for another reason gains no line: the
+// error already says what is wrong with it.
+func noteWrongFile(path string, data []byte, reads ...ir.FileKind) {
+	class := ir.ClassifyFile(data)
+	if class.Format != nil && !slices.Contains(reads, class.Kind()) {
+		fmt.Fprintf(os.Stderr, "schema: %s is %s\n", path, class.Line())
+	}
+}
+
 // splitWireFiles separates the arguments that name SAVED FILES from the ones
 // that name schema sources. A schema source is a `.schema` file or a directory
 // of them; anything else that exists as a regular file is a saved file, and
-// §3's first byte is the whole of what this command can say about it without
-// being told which root it is.
+// its leading bytes are the whole of what this command can say about it
+// without being told which root it is.
 //
 // A path that does not exist is left in the schema arguments, so its "no such
 // file" comes from the loader that owns that message and not from here.
@@ -934,15 +978,15 @@ func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
 			schemas = append(schemas, a)
 			continue
 		}
-		// ONE BYTE IS ALL THIS READS. A form byte is the whole header, and a
-		// tool that slurped a gigabyte to print one line would be answering a
-		// cheap question expensively.
+		// EIGHT BYTES ARE ALL THIS READS: the width of a magic, of which a
+		// form byte is the first. A tool that slurped a gigabyte to print one
+		// line would be answering a cheap question expensively.
 		f, err := os.Open(a) //nolint:gosec // the path is the caller's own argument
 		if err != nil {
 			fatalf("%v", err)
 		}
-		var head [1]byte
-		n, _ := f.Read(head[:])
+		var head [ir.FileHeadBytes]byte
+		n, _ := io.ReadFull(f, head[:]) // a short file is classified by what it holds
 		_ = f.Close()
 		wires = append(wires, wireFile{path: a, head: head[:n]})
 	}
@@ -981,7 +1025,11 @@ func (t *messageTrees) Set(value string) error {
 }
 
 // writeGenerated confines even third-party generator output and existing
-// symlinks to the requested output tree.
+// symlinks to the requested output tree, and publishes the run whole
+// (internal/atomicfile): every file is staged beside the one it replaces
+// before any is moved, so a file that cannot be written (a read-only file,
+// a full disk) refuses the run with the directory as it was, never with
+// some files new and the rest old.
 func writeGenerated(dir string, files map[string][]byte, lang string, removeStale bool, pkg string, schemaBases []string, verbose bool) error {
 	names := make([]string, 0, len(files))
 	for name := range files {
@@ -991,36 +1039,46 @@ func writeGenerated(dir string, files map[string][]byte, lang string, removeStal
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out, err := os.OpenRoot(dir)
+	txn := atomicfile.New()
+	defer txn.Close()
+	out, err := txn.OpenRoot(dir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	for _, name := range names {
-		if err := out.MkdirAll(filepath.Dir(name), 0o755); err != nil {
-			return err
-		}
-		if err := out.WriteFile(name, files[name], 0o644); err != nil {
-			return err
-		}
-		if verbose {
-			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
-		}
+		out.Write(name, files[name], 0o644)
 	}
 	// A default go generate removes stale surface files it wrote on an earlier
 	// run and this run did not write (SPEC-TABLES.md §8.8): a .go file whose
 	// first line is exactly the compiler's own header naming one of this
 	// unit's .schema files or its package. With --surface (removeStale false)
 	// nothing is removed; no other file is ever touched.
+	var stale []string
 	if removeStale && lang == "go" {
-		if err := removeStaleGoFiles(dir, files, pkg, schemaBases, verbose); err != nil {
+		if stale, err = staleGoFiles(dir, files, pkg, schemaBases); err != nil {
 			return err
+		}
+		for _, name := range stale {
+			out.Delete(name)
+		}
+	}
+	if err := txn.Commit(); err != nil {
+		return err
+	}
+	if verbose {
+		for _, name := range names {
+			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
+		}
+		for _, name := range stale {
+			fmt.Printf("removed %s\n", filepath.Join(dir, name))
 		}
 	}
 	return nil
 }
 
-func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaBases []string, verbose bool) error {
+// staleGoFiles names the surface files an earlier run wrote into dir and this
+// run does not emit. It reads and removes nothing.
+func staleGoFiles(dir string, files map[string][]byte, pkg string, schemaBases []string) ([]string, error) {
 	owned := make(map[string]bool, len(schemaBases)+1)
 	for _, b := range schemaBases {
 		owned[fmt.Sprintf("// Code generated by the schema compiler from %s.schema. DO NOT EDIT.", b)] = true
@@ -1028,8 +1086,9 @@ func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaB
 	owned[fmt.Sprintf("// Code generated by the schema compiler for package %s. DO NOT EDIT.", pkg)] = true
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var stale []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") {
@@ -1040,22 +1099,17 @@ func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaB
 		}
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		firstLine := data
 		if before, _, ok := bytes.Cut(data, []byte{'\n'}); ok {
 			firstLine = before
 		}
 		if owned[string(firstLine)] {
-			if err := os.Remove(filepath.Join(dir, name)); err != nil {
-				return err
-			}
-			if verbose {
-				fmt.Printf("removed %s\n", filepath.Join(dir, name))
-			}
+			stale = append(stale, name)
 		}
 	}
-	return nil
+	return stale, nil
 }
 
 // parseNewLegArgs accepts flags before or after the language name, so
