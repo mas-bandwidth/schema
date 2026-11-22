@@ -27,7 +27,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -369,6 +368,9 @@ func main() {
 				schemaBases = append(schemaBases, f.Base)
 			}
 		}
+		if err := refuseGeneratedOverSources("generate", *out, files, fs.Args()); err != nil {
+			fatalf("%v", err)
+		}
 		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
 			fail(err)
 		}
@@ -390,6 +392,9 @@ func main() {
 			fail(err)
 		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := refuseGeneratedOverSources("testgen", *out, files, fs.Args()); err != nil {
 			fatalf("%v", err)
 		}
 		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
@@ -429,7 +434,14 @@ func main() {
 		if *announce != "" {
 			outs = []outputPath{{"--announce", *announce}, {"--out", *out}}
 		}
-		if err := refuseAliasedPaths("pack", outs, nil); err != nil {
+		// the tree, every --batch tree and every schema source are what this
+		// run reads: no output may land on or in them
+		ins := []outputPath{{"the tree argument", dir}}
+		for _, m := range batch {
+			ins = append(ins, outputPath{"--batch", m.Dir})
+		}
+		ins = append(ins, sourceInputs(rest)...)
+		if err := refuseOutputsIntoInputs("pack", outs, ins); err != nil {
 			fatalf("%v", err)
 		}
 		unit := loadUnit(c, rest)
@@ -460,7 +472,7 @@ func main() {
 			announcement = c.Announce(unit)
 			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := publishOutputs("pack", pub, nil); err != nil {
+		if err := publishOutputs("pack", pub, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -567,7 +579,10 @@ func main() {
 		if *attribution != "" {
 			outs = []outputPath{{"--attribution", *attribution}, {"--out", *out}}
 		}
-		if err := refuseAliasedPaths("cook", outs, []outputPath{{"--in", *in}}); err != nil {
+		// --in (a file, or a tree to pack first) and every schema source are
+		// what this run reads: no output may land on or in them
+		ins := append([]outputPath{{"--in", *in}}, sourceInputs(fs.Args())...)
+		if err := refuseOutputsIntoInputs("cook", outs, ins); err != nil {
 			fatalf("%v", err)
 		}
 		unit := loadUnit(c, fs.Args())
@@ -605,7 +620,7 @@ func main() {
 			bytes = data
 			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := publishOutputs("cook", pub, []outputPath{{"--in", *in}}); err != nil {
+		if err := publishOutputs("cook", pub, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -673,6 +688,13 @@ func main() {
 		if *root == "" || *in == "" || *out == "" {
 			fatalf("uncook needs --root <Table>, --in <file> and --out <file>")
 		}
+		// the cook, its attribution file and every schema source are what
+		// this run reads: the output may not land on any of them
+		outs := []outputPath{{"--out", *out}}
+		ins := append([]outputPath{{"--in", *in}, {"--attribution", *attribution}}, sourceInputs(fs.Args())...)
+		if err := refuseOutputsIntoInputs("uncook", outs, ins); err != nil {
+			fatalf("%v", err)
+		}
 		file, err := os.ReadFile(*in)
 		if err != nil {
 			fatalf("%v", err)
@@ -695,7 +717,7 @@ func main() {
 			noteWrongFile(*in, file, ir.FileCook)
 			fail(err)
 		}
-		if err := writeAtomic(*out, wire); err != nil {
+		if err := publishOutputs("uncook", []pairOutput{{outs[0], wire}}, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -868,6 +890,13 @@ no lock, and two runs writing the same output at once can leave one run's
 file beside the other's. Give concurrent runs their own outputs, or run them
 one after the other.
 
+pack, cook and uncook refuse an output that names what the command reads: its
+input file, any path inside a tree it reads (the tree argument, a --batch
+tree, cook --in as a tree) or a schema source of the unit. generate and
+testgen refuse a file that resolves to a schema source. The answer is the
+file system's, so a symlink or another spelling of the same entry is refused
+too, and nothing is written.
+
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
 <Base>Table_gen_test.lua and Squirrel one <Base>Table_gen_test.nut per schema
@@ -1007,6 +1036,37 @@ func loadUnit(c *compiler.Compiler, args []string) *ir.Unit {
 	return u
 }
 
+// sourceInputs names every schema source a command's unit arguments load, as
+// inputs no output may resolve to (SPEC.md §7: fmt is the only command that
+// writes a schema file). Arguments that do not gather name nothing here: the
+// load that follows reports them.
+func sourceInputs(args []string) []outputPath {
+	if len(args) == 0 {
+		args = []string{"."}
+	}
+	paths, err := compiler.GatherPaths(args)
+	if err != nil {
+		return nil
+	}
+	ins := make([]outputPath, len(paths))
+	for i, p := range paths {
+		ins[i] = outputPath{sourceInput, p}
+	}
+	return ins
+}
+
+// refuseGeneratedOverSources holds generate and testgen to the same rule as
+// every other writing command: a file about to be written under dir may not
+// resolve to a schema source the unit was loaded from.
+func refuseGeneratedOverSources(verb, dir string, files map[string][]byte, unitArgs []string) error {
+	outs := make([]outputPath, 0, len(files))
+	for name := range files {
+		outs = append(outs, outputPath{"the generated file", filepath.Join(dir, name)})
+	}
+	sort.Slice(outs, func(i, j int) bool { return outs[i].path < outs[j].path })
+	return refuseSourceOutputs(verb, outs, sourceInputs(unitArgs))
+}
+
 // messageTrees is the repeatable `--batch <Table>=<tree-dir>` flag: the
 // messages of a BATCH after the first, in the order they ride
 // (docs/SPEC-TABLES.md §3.3). Which root each message is, is the
@@ -1022,94 +1082,6 @@ func (t *messageTrees) Set(value string) error {
 	}
 	*t = append(*t, compiler.MessageTree{Root: root, Dir: dir})
 	return nil
-}
-
-// writeGenerated confines even third-party generator output and existing
-// symlinks to the requested output tree, and publishes the run whole
-// (internal/atomicfile): every file is staged beside the one it replaces
-// before any is moved, so a file that cannot be written (a read-only file,
-// a full disk) refuses the run with the directory as it was, never with
-// some files new and the rest old.
-func writeGenerated(dir string, files map[string][]byte, lang string, removeStale bool, pkg string, schemaBases []string, verbose bool) error {
-	names := make([]string, 0, len(files))
-	for name := range files {
-		if !filepath.IsLocal(name) || strings.Contains(name, "\\") {
-			return fmt.Errorf("generator output %q is not a local path", name)
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	txn := atomicfile.New()
-	defer txn.Close()
-	out, err := txn.OpenRoot(dir)
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		out.Write(name, files[name], 0o644)
-	}
-	// A default go generate removes stale surface files it wrote on an earlier
-	// run and this run did not write (SPEC-TABLES.md §8.8): a .go file whose
-	// first line is exactly the compiler's own header naming one of this
-	// unit's .schema files or its package. With --surface (removeStale false)
-	// nothing is removed; no other file is ever touched.
-	var stale []string
-	if removeStale && lang == "go" {
-		if stale, err = staleGoFiles(dir, files, pkg, schemaBases); err != nil {
-			return err
-		}
-		for _, name := range stale {
-			out.Delete(name)
-		}
-	}
-	if err := txn.Commit(); err != nil {
-		return err
-	}
-	if verbose {
-		for _, name := range names {
-			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
-		}
-		for _, name := range stale {
-			fmt.Printf("removed %s\n", filepath.Join(dir, name))
-		}
-	}
-	return nil
-}
-
-// staleGoFiles names the surface files an earlier run wrote into dir and this
-// run does not emit. It reads and removes nothing.
-func staleGoFiles(dir string, files map[string][]byte, pkg string, schemaBases []string) ([]string, error) {
-	owned := make(map[string]bool, len(schemaBases)+1)
-	for _, b := range schemaBases {
-		owned[fmt.Sprintf("// Code generated by the schema compiler from %s.schema. DO NOT EDIT.", b)] = true
-	}
-	owned[fmt.Sprintf("// Code generated by the schema compiler for package %s. DO NOT EDIT.", pkg)] = true
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var stale []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") {
-			continue
-		}
-		if _, written := files[name]; written {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			return nil, err
-		}
-		firstLine := data
-		if before, _, ok := bytes.Cut(data, []byte{'\n'}); ok {
-			firstLine = before
-		}
-		if owned[string(firstLine)] {
-			stale = append(stale, name)
-		}
-	}
-	return stale, nil
 }
 
 // parseNewLegArgs accepts flags before or after the language name, so

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v2/internal/pathid"
 )
 
 // PAIRED OUTPUTS (pack --message --announce, cook --attribution): one artifact
@@ -38,12 +39,16 @@ type pairOutput struct {
 	data []byte
 }
 
-// refuseAliasedPaths is the check a command runs before any work: it refuses
-// two outputs that are one existing file, and an output that is the command's
-// input file. A destination that does not exist yet has no identity to compare
-// and cannot be an input; publishOutputs checks again, and finds two fresh
-// spellings of one entry before the second rename.
-func refuseAliasedPaths(verb string, outs []outputPath, ins []outputPath) error {
+// refuseOutputsIntoInputs is the one check every command that writes a file a
+// caller named runs before any work. It refuses two outputs that are one
+// existing file, and an output that resolves to the command's input file,
+// into a directory tree it reads, or to a schema source the unit was loaded
+// from (SPEC.md §7: fmt is the only command that writes a schema file). ins
+// holds all three, each under the name the refusal gives it. A destination
+// that does not exist yet cannot be an input file (it can still sit inside an
+// input tree, and is refused there); publishOutputs checks again, and finds
+// two fresh spellings of one entry before the second rename.
+func refuseOutputsIntoInputs(verb string, outs []outputPath, ins []outputPath) error {
 	return aliasError(verb, outs, ins)
 }
 
@@ -83,19 +88,52 @@ func aliasError(verb string, outs []outputPath, ins []outputPath) error {
 			}
 		}
 	}
+	return inputsError(verb, outs, infos, ins)
+}
+
+// sourceInput is the name sourceInputs gives a schema source among a command's
+// inputs; the refusal for one cites the rule that only fmt writes it.
+const sourceInput = "the schema source"
+
+// refuseSourceOutputs is refuseOutputsIntoInputs without the comparison of the
+// outputs with each other, for a command whose outputs are many files under
+// one directory it names (generate, testgen).
+func refuseSourceOutputs(verb string, outs []outputPath, ins []outputPath) error {
+	infos := make([]entryInfo, len(outs))
+	for i, o := range outs {
+		infos[i] = infoOf(o.path)
+	}
+	return inputsError(verb, outs, infos, ins)
+}
+
+func inputsError(verb string, outs []outputPath, infos []entryInfo, ins []outputPath) error {
 	for _, in := range ins {
 		if in.path == "" {
 			continue
 		}
 		read := infoOf(in.path)
-		if read.target == nil || read.target.IsDir() {
-			// a missing input fails on its own read; a tree is no file to replace
+		if read.target == nil {
+			// a missing input fails on its own read
+			continue
+		}
+		if read.target.IsDir() {
+			// AN INPUT TREE: every file in it is input, and a file added to it
+			// is input to the next run, so no output may land in it
+			for _, o := range outs {
+				if pathid.Inside(o.path, read.target) {
+					return fmt.Errorf("%s: %s %s is inside the directory %s names (%s): writing it would change the input the command reads", verb, o.flag, o.path, in.flag, in.path)
+				}
+			}
 			continue
 		}
 		for i, o := range outs {
-			if infos[i].one(read) {
-				return fmt.Errorf("%s: %s %s names the file %s reads (%s): writing it would replace the input", verb, o.flag, o.path, in.flag, in.path)
+			if !infos[i].one(read) {
+				continue
 			}
+			if in.flag == sourceInput {
+				return fmt.Errorf("%s: %s %s names the schema source %s, which this command reads: writing it would replace the source, and fmt is the only command that writes a schema file (SPEC.md §7)", verb, o.flag, o.path, in.path)
+			}
+			return fmt.Errorf("%s: %s %s names the file %s reads (%s): writing it would replace the input", verb, o.flag, o.path, in.flag, in.path)
 		}
 	}
 	return nil
