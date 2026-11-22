@@ -249,7 +249,8 @@ func TestLobsterRefusesByName(t *testing.T) {
 	t.Parallel()
 	// rename is from, to basename pairs applied after the check, for a name
 	// the checker refuses first (SPEC §4.6) and this surface's own guard
-	// still has to refuse behind it
+	// still has to refuse behind it; the pair "package", name renames the
+	// unit's package instead
 	load := func(files map[string]string, rename ...string) error {
 		dir := t.TempDir()
 		var paths []string
@@ -266,6 +267,10 @@ func TestLobsterRefusesByName(t *testing.T) {
 			t.Fatalf("the unit does not load: %v", err)
 		}
 		for i := 0; i+1 < len(rename); i += 2 {
+			if rename[i] == "package" {
+				u.Package = rename[i+1]
+				continue
+			}
 			irtest.Rebase(t, u, rename[i], rename[i+1])
 		}
 		if _, err := lobster.Generate(u); err != nil {
@@ -288,7 +293,10 @@ func TestLobsterRefusesByName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "collides with the Lobster runtime module schema_runtime.lobster") {
 		t.Errorf("a schema file named for the runtime: want the collision refused, got %v", err)
 	}
-	err = load(map[string]string{"K.schema": "package schema_rt\ntype T\n{\n    x uint8\n}\n"})
+	// schema check refuses the package schema_rt first (Goose's runtime
+	// namespace, SPEC §4.6), so this surface's own guard is reached by
+	// renaming the package after the check
+	err = load(map[string]string{"K.schema": "package lobsterns\ntype T\n{\n    x uint8\n}\n"}, "package", "schema_rt")
 	if err == nil || !strings.Contains(err.Error(), "package schema_rt cannot be the Lobster namespace") {
 		t.Errorf("a package named for the Lobster runtime namespace: want it refused by name, got %v", err)
 	}

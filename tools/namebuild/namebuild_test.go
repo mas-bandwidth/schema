@@ -19,14 +19,14 @@ var corpus = filepath.Join(root, "testdata", "name-buildability")
 
 // TestPlanCoversTheCorpus is the fast half: cases.tsv parses, every row has
 // its directory, and the plan runs every target of every row the checker
-// accepts, a refusing target only where the row names it.
+// accepts.
 func TestPlanCoversTheCorpus(t *testing.T) {
 	t.Parallel()
 	rows, err := ReadRows(corpus)
 	if err != nil {
 		t.Fatal(err)
 	}
-	accepted, refusing := 0, 0
+	accepted := 0
 	for _, r := range rows {
 		if _, err := ReadCase(filepath.Join(corpus, r.Case)); err != nil {
 			t.Fatalf("%s: %v", r.Case, err)
@@ -34,22 +34,10 @@ func TestPlanCoversTheCorpus(t *testing.T) {
 		if r.Verdict != RefuseAtCheck {
 			accepted++
 		}
-		if r.Verdict == RefuseAtGenerate {
-			refusing += len(r.Names)
-		}
 	}
 	jobs := Plan(rows)
 	if len(jobs) != accepted*len(Targets) {
 		t.Fatalf("plan has %d jobs, want %d rows x %d targets", len(jobs), accepted, len(Targets))
-	}
-	n := 0
-	for _, j := range jobs {
-		if j.Refuse {
-			n++
-		}
-	}
-	if n != refusing {
-		t.Fatalf("plan expects %d refusals at generate, cases.tsv names %d", n, refusing)
 	}
 	if len(Targets) != 18 {
 		t.Fatalf("%d targets, want 18", len(Targets))
@@ -60,8 +48,7 @@ func TestPlanCoversTheCorpus(t *testing.T) {
 }
 
 // TestNameBuildability is the nightly: every builds row generates and builds
-// and loads in all 18 targets, and every refuse-at-generate row is refused by
-// exactly the targets it names and builds in the rest. Its last log line is
+// and loads in all 18 targets. Its last log line is
 // the per-target summary.
 func TestNameBuildability(t *testing.T) {
 	slowtest.Gate(t, "every target's toolchain (the name-buildability nightly)")
@@ -195,12 +182,6 @@ func runJob(t *testing.T, run Runner, env Env, schema, work string, j Job, unity
 		return err
 	}
 	out, genErr := run(work, nil, schema, "generate", "--lang", j.Target, "--out", dir, src)
-	if j.Refuse {
-		if genErr == nil {
-			return fmt.Errorf("FAILED: generate --lang %s accepted it; cases.tsv says it refuses", j.Target)
-		}
-		return nil
-	}
 	if genErr != nil {
 		return fmt.Errorf("FAILED: generate --lang %s refused: %w\n%s", j.Target, genErr, out)
 	}

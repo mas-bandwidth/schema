@@ -8,12 +8,14 @@
 //   - refuse-at-check: the checker refuses it for every target
 //     (internal/check, TestNameBuildabilityCorpus, in the fast lane);
 //   - builds: the checker accepts it, and every target generates it and
-//     builds and loads the output with its own toolchain (this package);
-//   - refuse-at-generate: the checker accepts it, the --lang spellings the
-//     row names refuse it at generate, and every other target builds it.
+//     builds and loads the output with its own toolchain (this package).
+//
+// There is no third verdict: a name the checker accepts and an emitter
+// refuses at generate is a defect, and the checker runs the emitters' name
+// rules so it refuses such a name itself.
 //
 // TestNameBuildability is the nightly: under SCHEMA_SLOW=1 it builds the
-// compiler, generates every builds and refuse-at-generate row in every
+// compiler, generates every builds row in every
 // target, and builds and loads each output, every child through
 // internal/testproc. Its last line is the per-target summary.
 //
@@ -47,16 +49,15 @@ var Targets = []string{
 
 // Verdicts a row of cases.tsv takes.
 const (
-	RefuseAtCheck    = "refuse-at-check"
-	Builds           = "builds"
-	RefuseAtGenerate = "refuse-at-generate"
+	RefuseAtCheck = "refuse-at-check"
+	Builds        = "builds"
 )
 
 // Row is one line of cases.tsv.
 type Row struct {
 	Case    string   // the case directory under the corpus
-	Verdict string   // RefuseAtCheck, Builds or RefuseAtGenerate
-	Names   []string // a refuse-at-generate row's refusing targets; a refuse-at-check row's named target
+	Verdict string   // RefuseAtCheck or Builds
+	Names   []string // a refuse-at-check row's named target
 	Note    string
 }
 
@@ -84,15 +85,6 @@ func ReadRows(dir string) ([]Row, error) {
 		}
 		switch r.Verdict {
 		case RefuseAtCheck, Builds:
-		case RefuseAtGenerate:
-			if len(r.Names) == 0 {
-				return nil, fmt.Errorf("cases.tsv:%d: %s names no target", n, r.Verdict)
-			}
-			for _, t := range r.Names {
-				if !slices.Contains(Targets, t) {
-					return nil, fmt.Errorf("cases.tsv:%d: %q is not a target", n, t)
-				}
-			}
 		default:
 			return nil, fmt.Errorf("cases.tsv:%d: unknown verdict %q", n, r.Verdict)
 		}
@@ -101,11 +93,9 @@ func ReadRows(dir string) ([]Row, error) {
 	return rows, sc.Err()
 }
 
-// Job is one (case, target) the nightly runs: generate, then build and load
-// unless the row expects the target to refuse at generate.
+// Job is one (case, target) the nightly runs: generate, then build and load.
 type Job struct {
 	Case, Target string
-	Refuse       bool // generation must refuse
 }
 
 // Plan returns every job of rows, in row then target order. A
@@ -117,7 +107,7 @@ func Plan(rows []Row) []Job {
 			continue
 		}
 		for _, t := range Targets {
-			jobs = append(jobs, Job{Case: r.Case, Target: t, Refuse: r.Verdict == RefuseAtGenerate && slices.Contains(r.Names, t)})
+			jobs = append(jobs, Job{Case: r.Case, Target: t})
 		}
 	}
 	return jobs

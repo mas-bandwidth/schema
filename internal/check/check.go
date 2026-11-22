@@ -178,6 +178,10 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
+	c.checkEmitterNames()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
 
 	// The id comes LAST, from the assembled unit: the projection describes the
 	// resolved wire, so it cannot be computed until every bound, every default
@@ -204,6 +208,7 @@ func (c *checker) collectPackage() {
 	c.checkViewFileName()
 	c.checkCHeaderFileName()
 	c.checkFileNames()
+	c.checkDerivedFileNames()
 }
 
 // checkCHeaderFileName refuses a unit base name that spells a C standard

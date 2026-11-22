@@ -70,5 +70,5 @@ fixed table Session
 	if got := refuse(t, "package probe\ntable T\n{\n    at stamp\n}\n"); !strings.Contains(got, "undefined type stamp") {
 		t.Errorf("an undefined type: %s", got)
 	}
-	checkUnit(t, "package probe\ntype timestamp\n{\n    ns int64\n}\ntable Holder\n{\n    at timestamp\n}\n")
+	checkUnit(t, "package probe\nenum timestamp\n{\n    A\n}\ntable Holder\n{\n    at timestamp\n}\n")
 }

@@ -28,7 +28,7 @@ b_None	refuse-at-check	Python	rule 1: basename is a reserved word
 b_Number	builds	-	-
 b_Object	refuse-at-check	Dart	rule 1: basename is a reserved word
 b_Option	builds	-	-
-b_OtherWire	refuse-at-generate	c,cpp	an emitter refuses it at generate (a rule outside the checker today)
+b_OtherWire	refuse-at-check	C	the C and C++ emitters write OtherWire.h as Other's wire header
 b_Other_	builds	-	-
 b_PacketRuntime	refuse-at-check	Elixir	rule 2: basename hides a standard module, the runtime or a Go build constraint
 b_ProbeView	refuse-at-check	-	refused on main (survey control)
@@ -144,9 +144,9 @@ b_Serialize_Float_case1	refuse-at-check	Lua	rule 2: basename hides a standard mo
 b__M	refuse-at-check	Go	rule 2: a leading underscore drops the file from the Go package
 b_linux_amd64	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
 b_Holder_windows	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
-p_Integer	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
-p_Kernel	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
-p_Math_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_Integer	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+p_Kernel	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+p_Math_case1	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_Probe	builds	-	-
 p_System	builds	-	-
 p_alloc	builds	-	-
@@ -163,23 +163,23 @@ p_errors	builds	-	-
 p_fn	refuse-at-check	-	package name refused on main
 p_function	refuse-at-check	-	package name refused on main
 p_int	refuse-at-check	-	package name refused on main
-p_io	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_io	refuse-at-check	Python	the python emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_local	refuse-at-check	-	package name refused on main
-p_math	refuse-at-generate	python,ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_math	refuse-at-check	Python	the python,ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_mod	refuse-at-check	-	package name refused on main
 p_namespace	refuse-at-check	-	package name refused on main
 p_nil	refuse-at-check	-	package name refused on main
-p_os	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_os	refuse-at-check	Python	the python emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_self	refuse-at-check	-	package name refused on main
 p_serialize	builds	-	-
-p_std	refuse-at-generate	goose	an emitter refuses it at generate (a rule outside the checker today)
+p_std	refuse-at-check	Goose	the goose emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_string	refuse-at-check	-	package name refused on main
 p_struct	refuse-at-check	-	package name refused on main
-p_sys	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_sys	refuse-at-check	Python	the python emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 p_table	refuse-at-check	-	package name refused on main
 p_type	refuse-at-check	-	package name refused on main
-p_typing	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
-t_Array	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_typing	refuse-at-check	Python	the python emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_Array	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_BigInt	builds	-	-
 t_BitConverter	builds	-	-
 t_Bitwise	builds	-	-
@@ -187,7 +187,7 @@ t_Box	builds	-	-
 t_Buffer_case1	builds	-	-
 t_ByteData	refuse-at-check	-	type name is a reserved word (refused on main)
 t_Clone	builds	-	-
-t_Comparable	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Comparable	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_Convert	builds	-	-
 t_Copy	builds	-	-
 t_Debug	refuse-at-check	C#	rule 4: type name shadows a platform name
@@ -195,27 +195,27 @@ t_Default	refuse-at-check	Rust	refused on main (survey control)
 t_Diagnostics	builds	-	-
 t_Display	builds	-	-
 t_Double	builds	-	-
-t_Encoding	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Encoding	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_Endian	refuse-at-check	Dart	refused on main (survey control)
 t_Enum	builds	-	-
 t_Eq	builds	-	-
 t_Err	refuse-at-check	Rust	refused on main (survey control)
 t_Error_case1	refuse-at-check	Rust	refused on main (survey control)
-t_Exception	refuse-at-generate	python,ruby	an emitter refuses it at generate (a rule outside the checker today)
-t_Float	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Exception	refuse-at-check	Python	the python,ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_Float	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_Float32List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Float64List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Formatter	builds	-	-
 t_From	refuse-at-check	Rust	refused on main (survey control)
-t_Hash	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Hash	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_InlineArray	builds	-	-
 t_InlineBuffer4	refuse-at-check	C#	rule 4: type name shadows a platform name
 t_Int128	refuse-at-check	Dart	rule 4: type name shadows a platform name
-t_Integer	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
-t_Kernel	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Integer	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_Kernel	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_List	refuse-at-check	Dart	refused on main (survey control)
 t_Map	builds	-	-
-t_Math_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Math_case1	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_NULL	builds	-	-
 t_NonFiniteFloat	builds	-	-
 t_None	refuse-at-check	-	refused on main (survey control)
@@ -233,13 +233,13 @@ t_Reader	builds	-	-
 t_Result	refuse-at-check	Rust	refused on main (survey control)
 t_Schema	refuse-at-check	C#	refused on main (survey control)
 t_Self	refuse-at-check	Rust	refused on main (survey control)
-t_Serialize_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Serialize_case1	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_Single	builds	-	-
 t_Some	builds	-	-
 t_Span	builds	-	-
 t_Stream	refuse-at-check	Rust	refused on main (survey control)
 t_String	refuse-at-check	Dart	refused on main (survey control)
-t_Struct_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Struct_case1	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_System	builds	-	-
 t_TextValid	builds	-	-
 t_Type_case1	builds	-	-
@@ -248,14 +248,14 @@ t_Uint16List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Uint32List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Uint8List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Validation	builds	-	-
-t_ValueError	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+t_ValueError	refuse-at-check	Python	the python emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_Vec	builds	-	-
 t_WriteStream	refuse-at-check	Rust	refused on main (survey control)
 t_Writer	builds	-	-
-t_alloc	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_alloc	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_assert	refuse-at-check	-	refused on main (survey control)
 t_binary	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_bit32	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_bit32	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_bits	refuse-at-check	-	refused on main (survey control)
 t_buffer	refuse-at-check	Luau	rule 4: type name shadows a platform name
 t_core	refuse-at-check	Rust	rule 4: type name shadows a platform name
@@ -265,28 +265,28 @@ t_f32	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_f64	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_fmt	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_i64	refuse-at-check	Rust	rule 4: type name shadows a platform name
-t_io	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
-t_ipairs	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_io	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_ipairs	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_len	refuse-at-check	Go	refused on main (survey control)
 t_math	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_memcpy	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_memcpy	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_print	refuse-at-check	Go	refused on main (survey control)
 t_select	refuse-at-check	Go	refused on main (survey control)
 t_serialize	refuse-at-check	Rust	refused on main (survey control)
-t_size_t	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_size_t	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_std	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_str	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_struct	refuse-at-check	-	refused on main (survey control)
 t_table	refuse-at-check	-	refused on main (survey control)
-t_tonumber	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
-t_tostring	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_tonumber	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
+t_tostring	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_type	refuse-at-check	-	refused on main (survey control)
 t_u128	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_u8	refuse-at-check	Rust	rule 4: type name shadows a platform name
-t_uint8_t	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_uint8_t	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_unsafe	refuse-at-check	-	type name is a reserved word (refused on main)
 t_utf8	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_vector	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_vector	refuse-at-check	Ruby	the ruby emitter refuses the name; the checker runs its name rules (SPEC §4.6)
 t_usize	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_isize	refuse-at-check	Rust	rule 4: type name shadows a platform name
 t_i8	refuse-at-check	Rust	rule 4: type name shadows a platform name

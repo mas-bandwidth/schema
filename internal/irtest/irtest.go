@@ -35,3 +35,31 @@ func Rebase(t testing.TB, u *ir.Unit, from, to string) {
 	}
 	slices.SortStableFunc(u.Files, func(a, b *ir.File) int { return strings.Compare(a.Base, b.Base) })
 }
+
+// RenameStruct renames the unit's packet type from to the name to, after the
+// check, as if the checker had accepted that name: the declaration, the
+// unit's lookups, and every field of the unit's types and tables that names
+// it. The test fails when the unit has no packet type named from.
+func RenameStruct(t testing.TB, u *ir.Unit, from, to string) {
+	t.Helper()
+	s, ok := u.Structs[from]
+	if !ok {
+		t.Fatalf("irtest.RenameStruct: the unit has no type %s", from)
+	}
+	s.Name = to
+	delete(u.Structs, from)
+	u.Structs[to] = s
+	if base, ok := u.DeclFile[from]; ok {
+		delete(u.DeclFile, from)
+		u.DeclFile[to] = base
+	}
+	for _, owners := range []map[string]*ir.Struct{u.Structs, u.Tables} {
+		for _, o := range owners {
+			for _, f := range o.Fields {
+				if f.Type.Ref == ir.Decl(s) {
+					f.Type.Name = to
+				}
+			}
+		}
+	}
+}

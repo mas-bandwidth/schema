@@ -4,7 +4,7 @@
 // one target cannot express is refused for every target, naming that target
 // (SPEC §4.6, File-name safety and Platform-name safety). The nightly
 // tools/namebuild generates and builds every accepted row in every target.
-package check
+package check_test
 
 import (
 	"os"
@@ -13,13 +13,14 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/mas-bandwidth/schema/v2/compiler" // registers the emitters' name rules
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
 // nameBuildabilityRow is one line of cases.tsv: the case directory, its
-// verdict (refuse-at-check, builds, or refuse-at-generate), and for a refusal
-// at check the target its diagnostic must name, or for a refusal at generate
-// the --lang spellings that refuse it.
+// verdict (refuse-at-check or builds), and for a refusal at check the target
+// its diagnostic must name.
 type nameBuildabilityRow struct {
 	name, verdict, names string
 }
@@ -53,7 +54,7 @@ func checkCorpusCase(t *testing.T, dir string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var files []SourceFile
+	var files []check.SourceFile
 	var diags []string
 	for _, e := range ents {
 		if !strings.HasSuffix(e.Name(), ".schema") {
@@ -68,12 +69,12 @@ func checkCorpusCase(t *testing.T, dir string) []string {
 		for _, pe := range perrs {
 			diags = append(diags, pe.Error())
 		}
-		files = append(files, SourceFile{Path: path, Name: e.Name(), Base: strings.TrimSuffix(e.Name(), ".schema"), Bytes: src, AST: f})
+		files = append(files, check.SourceFile{Path: path, Name: e.Name(), Base: strings.TrimSuffix(e.Name(), ".schema"), Bytes: src, AST: f})
 	}
 	if len(diags) > 0 {
 		return diags
 	}
-	_, errs := Unit(files)
+	_, errs := check.Unit(files)
 	for _, e := range errs {
 		diags = append(diags, e.Error())
 	}
@@ -82,9 +83,8 @@ func checkCorpusCase(t *testing.T, dir string) []string {
 
 // TestNameBuildabilityCorpus: every row of the committed corpus takes the
 // verdict cases.tsv states. A refuse-at-check row is refused and its
-// diagnostic names the target that cannot express it; a builds or
-// refuse-at-generate row passes the checker (what an emitter then does is
-// the nightly's to prove). The rows and the directories are one set.
+// diagnostic names the target that cannot express it; a builds row passes
+// the checker (that every target then builds it is the nightly's to prove). The rows and the directories are one set.
 func TestNameBuildabilityCorpus(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join("..", "..", "testdata", "name-buildability")
@@ -119,7 +119,7 @@ func TestNameBuildabilityCorpus(t *testing.T) {
 				if r.names != "-" && !slices.ContainsFunc(diags, func(d string) bool { return strings.Contains(d, r.names) }) {
 					t.Fatalf("%s: refused, but no diagnostic names %s:\n%s", r.name, r.names, strings.Join(diags, "\n"))
 				}
-			case "builds", "refuse-at-generate":
+			case "builds":
 				if len(diags) > 0 {
 					t.Fatalf("%s: schema check refused it; want it accepted (%s):\n%s", r.name, r.verdict, strings.Join(diags, "\n"))
 				}
@@ -140,15 +140,15 @@ func TestBasenamesDifferingOnlyByCase(t *testing.T) {
 	const inner = "package probe\n\ntype Inner\n{\n    a uint8\n}\n"
 	const holder = "package probe\n\ntype Holder\n{\n    first Inner\n}\n"
 	unit := func(a, b string) []string {
-		var files []SourceFile
+		var files []check.SourceFile
 		for _, f := range []struct{ base, src string }{{a, inner}, {b, holder}} {
 			ast, perrs := parser.Parse(f.base+".schema", []byte(f.src))
 			if len(perrs) > 0 {
 				t.Fatal(perrs)
 			}
-			files = append(files, SourceFile{Path: f.base + ".schema", Name: f.base + ".schema", Base: f.base, Bytes: []byte(f.src), AST: ast})
+			files = append(files, check.SourceFile{Path: f.base + ".schema", Name: f.base + ".schema", Base: f.base, Bytes: []byte(f.src), AST: ast})
 		}
-		_, errs := Unit(files)
+		_, errs := check.Unit(files)
 		var out []string
 		for _, e := range errs {
 			out = append(out, e.Error())

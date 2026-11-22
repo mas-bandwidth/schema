@@ -348,3 +348,26 @@ func wordSet(words string) map[string]bool {
 	}
 	return out
 }
+
+// CheckPackageAndTypeNames holds the package and every type declaration's
+// name to the Ruby rules alone: the package's module constant is no constant
+// the interpreter defines, and a type is a Ruby constant the interpreter and
+// the runtime do not define. schema check runs it for every target (SPEC
+// §4.6), so a unit whose package or type Ruby cannot express is refused at
+// check, naming Ruby, rather than at generate.
+func CheckPackageAndTypeNames(u *ir.Unit) error {
+	c := checker{}
+	if err := c.checkPackage(u.Package); err != nil {
+		return err
+	}
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if s, ok := d.(*ir.Struct); ok {
+				if err := c.checkConstant(f.Base, "type "+s.Name, s.Name); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}

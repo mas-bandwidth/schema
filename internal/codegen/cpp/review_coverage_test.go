@@ -8,6 +8,8 @@ package cpp
 import (
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 )
 
 // TestGenerateRefusesHeaderCycleAndWireCollision reaches Generate's two
@@ -40,18 +42,22 @@ type BetaInner {
 		t.Errorf("the cycle refusal must print the cycle; got %v", err)
 	}
 
+	// schema check refuses Probe.schema beside ProbeWire.schema first (SPEC
+	// §4.6), so the emitter's own guard is reached by renaming the second
+	// file after the check
 	collide := unitFromSources(t, map[string]string{
 		"Probe.schema": `package t
 type Probe {
     x int32
 }
 `,
-		"ProbeWire.schema": `package t
+		"Second.schema": `package t
 type Other {
     y int32
 }
 `,
 	})
+	irtest.Rebase(t, collide, "Second", "ProbeWire")
 	if _, err := Generate(collide); err == nil || !strings.Contains(err.Error(), "schema files Probe and ProbeWire collide") {
 		t.Errorf("Probe.schema beside ProbeWire.schema must be refused by name; got %v", err)
 	}

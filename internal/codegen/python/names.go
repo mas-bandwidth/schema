@@ -264,3 +264,25 @@ func isIdentifier(s string) bool {
 	}
 	return true
 }
+
+// CheckPackageAndTypeNames holds the package and every type declaration's
+// name to the Python rules alone: the package is no standard-library module
+// and no keyword, and a type is no builtin, keyword or reserved prefix the
+// generated module would shadow. schema check runs it for every target (SPEC
+// §4.6), so a unit whose package or type Python cannot express is refused at
+// check, naming Python, rather than at generate.
+func CheckPackageAndTypeNames(u *ir.Unit) error {
+	if err := checkPackage(u.Package); err != nil {
+		return err
+	}
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if s, ok := d.(*ir.Struct); ok {
+				if err := checkDeclName(f.Base, "type", s.Name); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}

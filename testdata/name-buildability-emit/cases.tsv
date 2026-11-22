@@ -1,14 +1,12 @@
 # The name corpus (internal/nameemit): <case>	<targets it was red in>	<what broke>.
 # Each case is a directory of schema files: the name under test in Probe.schema
 # (or the file base, or the package), and a Holder in Other.schema that uses it.
-type_uint8_t	c,cpp,elixir	a type named uint8_t: C rewrote its own uint8_t to the user's; C++ hid ::uint8_t inside the namespace; Elixir lowered it to the module Probe.uint8_t
-type_memcpy	c,cpp,cs,elixir	a type named memcpy: C and C++ turned the emitter's memcpy calls into the user's type; C# CS8981 under warnings-as-errors; Elixir module Probe.memcpy
+# A name schema check refuses (a lowercase type is no Ruby constant, package
+# Math is the Ruby module Math; SPEC §4.6, emitter name rules) is no case: the
+# test fails on it, since the emitter never meets it from a checked unit.
 type_NULL	c,cpp	a type named NULL: C rewrote the emitter's NULL to PROBE_NULL; C++ declared struct __null
 type_INT32_MAX	cpp	a type named after a stdint macro: C++ declared a struct named by a number
-type_size_t	elixir	a lowercase type name: Elixir module Probe.size_t
-type_strlen	cs,elixir	a type named in lowercase letters only: C# CS8981; Elixir module Probe.strlen
 table_memcpy	c,cpp,cs	a table named memcpy: the table backends' own memcpy calls; C# CS8981
 table_uint8_t	c,cpp	a table named uint8_t: the table backends' own uint8_t
 table_Math	cs	a table named Math in a unit with tables: the C# table backend's Math.Min named the user's type
 enum_kind	cs,elixir	an enum named in lowercase letters only, keying an array: C# CS8981; Elixir module Probe.kind and its keyed accessors
-pkg_Math	cs	package Math: namespace Math hid System.Math from the code and from the serialize.cs runtime compiled beside it
