@@ -228,7 +228,7 @@ function TableVariableElemDefault(e) {
 
 function TableVariableElemIsDefault(e, x) {
   // a float compares its bit pattern (§3): a -0 under a +0 default rides
-  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, TableVariableHeldFloat(e, x), TableVariableHeldFloat(e, e.def)); }
   return x === e.def;
 }
 

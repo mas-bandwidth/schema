@@ -368,6 +368,12 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		}
 	}
+	if _, _, ok := fixedFloatClampEnds(f); ok {
+		// A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero): -0 === 0, so the value
+		// compare holds the +0 bits; a plain float's -0 rides bit-exact.
+		expr = "(" + expr + " === 0 ? 0 : " + expr + ")"
+	}
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 

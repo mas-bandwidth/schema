@@ -59,6 +59,15 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);
 }
 
+// TableVariableHeldFloat is the value a writer holds for a float (§3.3,
+// docs/rulings.json fixed-compressed-negzero): a COMPRESSED (ranged) float's
+// -0 is +0, so every writer stores and elides it as +0; a plain float's -0
+// rides bit-exact. A descriptor carries lo only for a ranged float, and -0
+// === 0 in JavaScript, so the test is the value compare.
+function TableVariableHeldFloat(d, v) {
+  return d.lo !== null && d.lo !== undefined && v === 0 ? 0 : v;
+}
+
 // the write that meets a non-finite float refuses the save, and names the
 // reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
 let TableVariableSaveWhy = null;
@@ -72,6 +81,7 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
+  v = TableVariableHeldFloat(d, v);
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -409,7 +419,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
+      if (!TableVariableSameFloat(fd.f32, TableVariableHeldFloat(fd, val), TableVariableHeldFloat(fd, fd.def))) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -2247,7 +2257,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      const t = TableVariableFloatText(val, d.f32);
+      const t = TableVariableFloatText(TableVariableHeldFloat(d, val), d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;

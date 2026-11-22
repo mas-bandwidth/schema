@@ -816,6 +816,15 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);
 }
 
+// TableVariableHeldFloat is the value a writer holds for a float (§3.3,
+// docs/rulings.json fixed-compressed-negzero): a COMPRESSED (ranged) float's
+// -0 is +0, so every writer stores and elides it as +0; a plain float's -0
+// rides bit-exact. A descriptor carries lo only for a ranged float, and -0
+// === 0 in JavaScript, so the test is the value compare.
+function TableVariableHeldFloat(d, v) {
+  return d.lo !== null && d.lo !== undefined && v === 0 ? 0 : v;
+}
+
 // the write that meets a non-finite float refuses the save, and names the
 // reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
 let TableVariableSaveWhy = null;
@@ -829,6 +838,7 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
+  v = TableVariableHeldFloat(d, v);
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -1166,7 +1176,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
+      if (!TableVariableSameFloat(fd.f32, TableVariableHeldFloat(fd, val), TableVariableHeldFloat(fd, fd.def))) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -2790,7 +2800,7 @@ function TableVariableElemDefault(e) {
 
 function TableVariableElemIsDefault(e, x) {
   // a float compares its bit pattern (§3): a -0 under a +0 default rides
-  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, TableVariableHeldFloat(e, x), TableVariableHeldFloat(e, e.def)); }
   return x === e.def;
 }
 
@@ -3714,7 +3724,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      const t = TableVariableFloatText(val, d.f32);
+      const t = TableVariableFloatText(TableVariableHeldFloat(d, val), d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;
@@ -5176,9 +5186,9 @@ export const TableCookWrite = (() => {
         {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
         {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
         {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
-        {k:"f32",n:"aim_x",at:1288},
-        {k:"f32",n:"aim_y",at:1292},
-        {k:"f32",n:"aim_z",at:1296},
+        {k:"f32",n:"aim_x",at:1288,rg:1},
+        {k:"f32",n:"aim_y",at:1292,rg:1},
+        {k:"f32",n:"aim_z",at:1296,rg:1},
         {k:"f32",n:"recoil",at:1300},
         {k:"f64",n:"drift",at:1304},
         {k:"int",n:"wide_key",at:1312,w:16,sg:0},
@@ -5287,6 +5297,8 @@ export const TableCookWrite = (() => {
     return writeValue(view, base + fd.at, fd, parent[fd.n], le, ctx);
   }
   function writeValue(view, at, fd, value, le, ctx) {
+    // a compressed float's -0 is stored as +0 (fixed-compressed-negzero)
+    if (fd.rg === 1 && value === 0) { value = 0; }
     switch (fd.k) {
       case "bool":
         if (typeof value !== "boolean") { return false; }
