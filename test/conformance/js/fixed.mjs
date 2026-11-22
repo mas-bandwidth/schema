@@ -63,6 +63,11 @@ export const fixedRoots = [
   ["vocabdemo", "Wide09", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9Table.js"],
+  // the 2026-11-22 unit (test/tables/surfaces): its three fixed roots with a
+  // file form; Big, past the 65536-byte ceiling, has none (§3.4)
+  ["tblsurf", "Narrow", "surfaces/SurfacesTable.js"],
+  ["tblsurf", "Wide", "surfaces/SurfacesTable.js"],
+  ["tblsurf", "Arrays", "surfaces/SurfacesTable.js"],
 ];
 
 export function isFixedRoot(unit, root) {
@@ -375,6 +380,8 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
     // above, which places only what a variable value can hold, so those rows
     // load, set and save the generated class with nothing in between.
     fixedValue: {
+      // the root's fresh value, for a row whose wire is `-`
+      fresh,
       load: (wire) => {
         const x = fresh();
         const r = new T.TableFixedReport();

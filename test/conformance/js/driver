@@ -11,4 +11,12 @@
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
+#
+# THE PROCESS LOCALE (json-write-into, FL-14): Node takes its locale from the
+# environment at startup and has no setlocale, so the comma-decimal locale the
+# harness names is made this process's here; the surface checks it took.
+if [ -n "${SCHEMA_COMMA_LOCALE:-}" ]; then
+	LC_ALL="$SCHEMA_COMMA_LOCALE"
+	export LC_ALL
+fi
 exec "${NODE:-node}" test/conformance/js/main.mjs "$@"
