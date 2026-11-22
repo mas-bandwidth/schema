@@ -53,11 +53,7 @@ print(tostring(F.read(T.BatchDescriptor, fixed, file, small, 4096) == nil) .. " 
 		if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, err := luaurun.Try(t, g.dir, "main.luau", nil)
-		if err != nil {
-			return "ERROR " + stderr
-		}
-		return strings.TrimSpace(stdout)
+		return strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", nil)))
 	}
 	const want = "4097 nil\ntrue batch_too_large"
 	if got := run(false); got != want {
