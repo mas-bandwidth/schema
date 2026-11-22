@@ -366,6 +366,16 @@ module SchemaRuntimeUnit
 
             return value.all? { |item| @element.default?(item) }
           end
+          # A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md 3.3, the
+          # 22.2 [M..N]T row; ir.Field.ElidesAtBirth): a plain counted field
+          # holding exactly its minimum count of elements, each at its default
+          # (a float by its bits, a table by a body that is its terminator
+          # alone), is elided. The callers skip a required field before asking.
+          if @array_kind == 2 && @array_min.positive?
+            return false if @element.nil?
+
+            return value.length == @array_min && value.all? { |item| @element.default?(item) }
+          end
           value.empty?
         when 'union_array'
           return value.all? { |el| el.type.zero? } if @array_kind == 1
