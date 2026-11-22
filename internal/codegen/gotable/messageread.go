@@ -70,8 +70,11 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		open = "tableMessageBatchOpenSealed(vocabulary,data,read," + sealed + ")"
 	}
-	g.pf("// %sLoadMessages is the message read (docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a\n// count of 0 and every value it had written reset. A supplied report receives this read's report;\n// report.Err() is the reason.\n", st.Name)
-	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};r,count:=%s;defer func(){*read=r.Report;if read.Refused(){tableRefused(read)}}();if count<0{return 0,false};if count>int64(len(values)){tableMessageRefuse(&r.Report,\"batch_too_large\");return 0,false};for i := range count {if !%sLoadMessageBody(&r,&values[i])||r.Report.Refused(){for j := range i+1 {%sReset(&values[j])};return 0,false}};if !tableMessageBatchClose(&r){for j := range count {%sReset(&values[j])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), open, st.Name, st.Name, st.Name)
+	// R4 (docs/SPEC-TABLES.md §6.5): EVERY value handed in holds its declared
+	// default after ANY refusal — a framing refusal, batch_too_large, a body or
+	// the batch's close — not only the values the walk had reached.
+	g.pf("// %sLoadMessages is the message read (docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a\n// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this\n// read's report; report.Err() is the reason.\n", st.Name)
+	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(loaded int64,ok bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};r,count:=%s;defer func(){*read=r.Report;if read.Refused(){tableRefused(read)};if !ok{for j := range values {%sReset(&values[j])}}}();if count<0{return 0,false};if count>int64(len(values)){tableMessageRefuse(&r.Report,\"batch_too_large\");return 0,false};for i := range count {if !%sLoadMessageBody(&r,&values[i])||r.Report.Refused(){return 0,false}};if !tableMessageBatchClose(&r){return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), open, st.Name, st.Name)
 }
 func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, ind string) {
 	g.pf("%swidened:=false;if %s.Shape.Kind!=%d||%s.Element.Kind!=%d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)

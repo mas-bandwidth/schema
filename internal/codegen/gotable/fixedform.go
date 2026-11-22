@@ -1164,9 +1164,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	// THE PLAIN NAME IS THE READ, AND IT IS THE ONLY READ (docs/SPEC-TABLES.md §6.5).
 	g.pf("// %sFixedLoad is the fixed-form read (docs/SPEC-TABLES.md §3.4, §6.5): the record count,\n", st.Name)
-	g.pf("// or -1 with every value it had written reset. A supplied report receives this read's report,\n")
-	g.pf("// and report.Err() is the reason (tla/FixedLive.tla).\n")
+	g.pf("// or -1 with every value handed in reset to its declared defaults. A supplied report receives this\n")
+	g.pf("// read's report, and report.Err() is the reason (tla/FixedLive.tla, tla/FixedBatch.tla).\n")
+	// R4 (docs/SPEC-TABLES.md §6.5): EVERY row handed in holds its declared
+	// default after ANY refusal, the header's and the layout's as much as a
+	// record's, so the one reset is on the walk's refusal exit.
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
+	g.pf("\tn := fixedLoadWalk%s(values, data, plan, report)\n", st.Name)
+	g.pf("\tif n < 0 {\n\t\tfor j := range values {\n\t\t\t%sReset(&values[j])\n\t\t}\n\t}\n\treturn n\n}\n\n", st.Name)
+	g.pf("func fixedLoadWalk%s(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.
@@ -1268,10 +1274,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// ABI padding and unselected arms. There is no identity flag in the loop.
 	g.pf("\tdefBytes := %sFixedResetImage\n", st.Name)
 	// STEP 11: EVERY RECORD'S HASH AND TEXT FIRST, in a pass of its own ahead
-	// of the first prefill. REFUSE is total over the batch too: a refusal at
-	// record k leaves out[0..k-1] as untouched as out[k], so a hostile image is
-	// never partly landed or zero-filled
-	// (docs/FIXED-FORM-ALGORITHM.md §5.3, "TOTAL OVER THE BATCH, TOO"; §5.8
+	// of the first prefill. REFUSE is total over the batch too: a hostile
+	// image lands nothing, and FixedLoad's refusal exit then leaves every row
+	// handed in at its declared defaults (R4;
+	// docs/FIXED-FORM-ALGORITHM.md §5.3, "TOTAL OVER THE BATCH, TOO"; §5.8
 	// row 9). The text content is the §4.5 fix 11 refusal, checked here for
 	// the same reason, and so are a bool or present byte other than 0 or 1 and
 	// a forged ordinal or union tag past the writer's set.
@@ -1297,10 +1303,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
 		// and a NaN or an infinity refuses the whole batch as
-		// non_finite_float. Nothing of the batch is kept: every record this
-		// call wrote goes back to its defaults.
+		// non_finite_float. Nothing of the batch is kept: the refusal exit
+		// resets every row handed in.
 		g.pf("\t\tif why := %sFixedFiniteBody(&values[k : k+1][0]); why != \"\" {\n", st.Name)
-		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\ttableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())\n\t\t\treport.Field = why\n\t\t\treturn -1\n\t\t}\n")
 	}
 	if len(writerBounds) > 0 {
@@ -1308,7 +1313,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		for _, i := range writerBounds {
 			g.pf("\t\tcase %d:\n", i)
 			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k : k+1][0]) {\n", st.Name, i)
-			g.pf("\t\t\t\tfor j := range values[:k+1] { %sReset(&values[j]) }\n", st.Name)
 			g.pf("\t\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t\t}\n")
 		}
 		g.pf("\t\t}\n")
@@ -1317,7 +1321,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
 		g.pf("\t\tif !%sFixedBounds(&values[k : k+1][0]) {\n", st.Name)
-		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t}\n")
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")

@@ -1382,8 +1382,16 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 
 	e.p(0, "// %sFixedLoad reads a fixed-form file into values, whose length is the caller's", n)
 	e.p(0, "// capacity, and returns the record count, or -1 with report.reason naming the refusal;")
-	e.p(0, "// a refusal lands nothing (§5.3, TOTAL OVER THE BATCH).")
+	e.p(0, "// a refusal leaves every value handed in at its declared defaults (R4, SPEC-TABLES §6.5).")
 	e.p(0, "fn %sFixedLoad(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
+	e.p(1, "let n = _%sFixedLoadWalk(values, data, report);", n)
+	e.p(1, "if n < 0 {")
+	e.p(2, "var j: i64 = 0;")
+	e.p(2, "while j < values.len { values[j] = %s { .. }; j += 1; }", typ)
+	e.p(1, "}")
+	e.p(1, "return n;")
+	e.p(0, "}\n")
+	e.p(0, "fn _%sFixedLoadWalk(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::FixedReport { .. };")
 	if st.Integrity == "crc32c" {
 		e.p(1, "if schema_rt::fixed_open_integrity(data, report) < 0 { return -1; }")
@@ -1407,15 +1415,11 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 		// A FLOAT IS FINITE (SPEC-TABLES §3.3): the finite pass runs before
 		// the bounds pass and a NaN or an infinity refuses the whole batch
 		e.p(2, "if !_%sFixedFinite(values[k]) {", n)
-		e.p(3, "var j: i64 = 0;")
-		e.p(3, "while j <= k { values[j] = %s { .. }; j += 1; }", typ)
 		e.p(3, "return schema_rt::fixed_refuse(report, schema_rt::FixedRefuseNonFiniteFloat, false);")
 		e.p(2, "}")
 	}
 	e.p(2, "let why = _%sFixedStrictRefuse(values[k]);", n)
 	e.p(2, "if why != 0 {")
-	e.p(3, "var j: i64 = 0;")
-	e.p(3, "while j <= k { values[j] = %s { .. }; j += 1; }", typ)
 	e.p(3, "return schema_rt::fixed_refuse(report, why, false);")
 	e.p(2, "}")
 	e.p(2, "k += 1;")

@@ -15,7 +15,6 @@ package tablewire
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -64,7 +63,8 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //     itself", which is MessageCount.
 //   - DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md
 //     §4): the returned count is zero, the read refuses, and every
-//     body's storage holds its declared defaults.
+//     body's storage holds its declared defaults — as it does after
+//     EVERY refusal, batch_too_large included (R4).
 func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
 	if len(insts) > 0 {
 		if err := messageRoot(m, insts[0].Def); err != nil {
@@ -74,15 +74,11 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 	n, err := decodeMessagesWalk(m, insts, data, v, report)
 	if err != nil {
 		// THE BATCH IS ACCEPTED WHOLE OR REFUSED (docs/SPEC-TABLES.md §6.5):
-		// no body is delivered, so the count is zero and every body the walk
-		// touched returns to its declared defaults.
-		// M ABOVE THE CALLER'S STORAGE refuses "before it decodes anything"
-		// (§3.3), so the storage is exactly what the caller handed in.
-		var batch *MessageRefusal
-		if !errors.As(err, &batch) || batch.Reason != ReasonBatchTooLarge {
-			for _, inst := range insts {
-				m.Clear(inst)
-			}
+		// no body is delivered, so the count is zero and EVERY instance handed
+		// in holds its declared defaults, whatever refused: a framing refusal,
+		// batch_too_large and a body alike (R4).
+		for _, inst := range insts {
+			m.Clear(inst)
 		}
 		refuseReport(report, err)
 		return 0, false, err
