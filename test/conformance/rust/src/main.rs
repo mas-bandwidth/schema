@@ -992,6 +992,27 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tabledemo, PackConfig, PackConfigRow, pack_config_cook_write, pack_config_fixed_save, pack_config_fixed_measure);
                 Some($body)
             }
+            ("tabledemo", "CountedMin") => {
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{counted_min_from_json_bytes as $from_json, counted_min_load as $load, counted_min_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, CountedMin, CountedMinRow, counted_min_cook_write, counted_min_fixed_save, counted_min_fixed_measure);
+                Some($body)
+            }
+            ("tabledemo", "FloatBound") => {
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{float_bound_from_json_bytes as $from_json, float_bound_load as $load, float_bound_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, FloatBound, FloatBoundRow, float_bound_cook_write, float_bound_fixed_save, float_bound_fixed_measure);
+                Some($body)
+            }
+            ("tabledemo", "Moods") => {
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{moods_from_json_bytes as $from_json, moods_load as $load, moods_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, Moods, MoodsRow, moods_cook_write, moods_fixed_save, moods_fixed_measure);
+                Some($body)
+            }
             ("tabledemo", "LoadoutConfig") => {
                 #[allow(unused_imports, unused_variables)]
                 use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_to_json_checked as $to_json};
@@ -1341,6 +1362,9 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
         ("tabledemo", "PackConfig") => fixed_read!(tabledemo, pack_config_fixed_load, pack_config_fixed_save, pack_config_fixed_measure, PackConfigRow, data),
+        ("tabledemo", "CountedMin") => fixed_read!(tabledemo, counted_min_fixed_load, counted_min_fixed_save, counted_min_fixed_measure, CountedMinRow, data),
+        ("tabledemo", "FloatBound") => fixed_read!(tabledemo, float_bound_fixed_load, float_bound_fixed_save, float_bound_fixed_measure, FloatBoundRow, data),
+        ("tabledemo", "Moods") => fixed_read!(tabledemo, moods_fixed_load, moods_fixed_save, moods_fixed_measure, MoodsRow, data),
         ("tabledemo", "ProfileConfig") => fixed_read!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, data),
         ("tabledemo", "RootConfig") => fixed_read!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, data),
         ("tabledemo", "WideBlob") => {
@@ -1463,6 +1487,24 @@ macro_rules! with_fixed_value_root {
                 use tabledemo as $k;
                 #[allow(unused_imports)]
                 use $k::{PackConfigRow as $row, PackConfig as $value, pack_config_fixed_load as $load, pack_config_fixed_save as $save, pack_config_fixed_measure as $measure, pack_config_to_json_checked as $to, pack_config_from_json_bytes as $from, pack_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "CountedMin") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{CountedMinRow as $row, CountedMin as $value, counted_min_fixed_load as $load, counted_min_fixed_save as $save, counted_min_fixed_measure as $measure, counted_min_to_json_checked as $to, counted_min_from_json_bytes as $from, counted_min_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "FloatBound") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{FloatBoundRow as $row, FloatBound as $value, float_bound_fixed_load as $load, float_bound_fixed_save as $save, float_bound_fixed_measure as $measure, float_bound_to_json_checked as $to, float_bound_from_json_bytes as $from, float_bound_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "Moods") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{MoodsRow as $row, Moods as $value, moods_fixed_load as $load, moods_fixed_save as $save, moods_fixed_measure as $measure, moods_to_json_checked as $to, moods_from_json_bytes as $from, moods_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ProfileConfig") => {
@@ -2013,6 +2055,9 @@ macro_rules! with_cook_root {
             ("tabledemo", "LoadoutConfig") => { use tabledemo::{loadout_config_load as $load, loadout_config_cook_write as $cook, loadout_config_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "ArchiveConfig") => { use tabledemo::{archive_config_load as $load, archive_config_cook_write as $cook, archive_config_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "KeyedConfig") => { use tabledemo::{keyed_config_load as $load, keyed_config_cook_write as $cook, keyed_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "CountedMin") => { use tabledemo::{counted_min_load as $load, counted_min_cook_write as $cook, counted_min_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "FloatBound") => { use tabledemo::{float_bound_load as $load, float_bound_cook_write as $cook, float_bound_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "Moods") => { use tabledemo::{moods_load as $load, moods_cook_write as $cook, moods_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook, wide_blob_from_json_bytes as $from}; Some($body) }
             ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
             ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }

@@ -1874,3 +1874,17 @@ rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/
 unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
+
+# SPEC ROWS ROOTS 1122: three rules no earlier root carries (tables/examples/Spec1122.schema): a counted array below its minimum A, a compressed float32 bound compared against the declared float64 bound, and an enum element naming a deprecated variant.
+json-hostile sp-count-min-below                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-below refused
+json-hostile sp-count-min-empty                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-empty refused
+json-hostile sp-count-min-at                    tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-at read
+json-hostile sp-count-min-max                   tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-max read
+json-hostile sp-count-min-over                  tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-over refused
+json-hostile sp-f32-bound-declared              tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-declared read
+json-hostile sp-f32-bound-inside                tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-inside read
+json-hostile sp-f32-bound-one-step-past         tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-one-step-past refused
+json-hostile sp-f32-bound-narrows               tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-narrows read
+json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-array read
+framing sp_count_min_below                      tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below.bin refused -
+framing sp_count_min_zero                       tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero.bin refused -
