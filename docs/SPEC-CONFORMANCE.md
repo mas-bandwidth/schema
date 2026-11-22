@@ -101,7 +101,8 @@ refusal-only R; failed F` over every case of every surface it was asked.
 CREDITED is a correct answer (a refusal only as above). ABSENT (a surface the
 port does not list, exit code 2, or `<case>.absent`) and REFUSAL-ONLY are
 reported separately and are **never counted as passes**: a port conforms only
-when C equals T.
+when every case is credited except the absences section 2 lets it declare, and
+it has no refusal-only case and no failure.
 
 Expected answers come from the committed goldens and manifests, never from
 another language's leg.
