@@ -107,7 +107,7 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
 		fmt.Fprintf(&b, "    0x%02x,\n", by)
 	}
 	b.WriteString("};\n\n")
-	b.WriteString(cppMessageAnnounce)
+	b.WriteString(strings.ReplaceAll(cppMessageAnnounce, "@BUILD_VERSION@", fmt.Sprintf("0x%016xull", ir.BuildVersion(u))))
 	return b.String()
 }
 
@@ -792,6 +792,11 @@ struct TableVocabulary
     mutable uint64_t seen_clock = 0;
     mutable int32_t seen_depth = 0;
     mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
+    // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
+    // once by the FIRST AnnounceRead and never after. Set, an announcement
+    // whose build version is not this unit's own is refused as
+    // build_version_mismatch and sets no vocabulary.
+    bool strict = false;
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -986,6 +991,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
         to->damaged = true;
+        return false;
+    }
+    // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // The unit's own build version is spelled here as the literal BuildVersion
+    // holds, because the cook runtime that declares BuildVersion follows this one.
+    if ( vocabulary.strict && version != @BUILD_VERSION@ )
+    {
+        to->refused = true;
+        to->reason = build_version_mismatch;
+        to->build_version_remote = version;
+        to->build_version_own = @BUILD_VERSION@;
         return false;
     }
 

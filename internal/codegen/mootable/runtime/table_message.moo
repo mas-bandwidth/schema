@@ -566,7 +566,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0, strict = false }
 end
 
 local function resetReport(report: any)
@@ -578,6 +578,8 @@ local function resetReport(report: any)
 	report.widened = 0
 	report.nonFinite = 0
 	report.nonFiniteField = nil
+	report.remote = nil
+	report.own = nil
 end
 
 MS.resetReport = resetReport
@@ -592,6 +594,21 @@ end
 -- whatever the buffer would hold (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
 -- CHECK; docs/LAYERS/1-framing.md F6)
 local ID_TABLE_BOUND = 4096
+
+-- homeBuild is this unit's own build version, the eight little-endian bytes
+-- MS.unit reads off the unit's announcement: what a strict announcement read
+-- compares the peer's against (§3.3).
+local homeBuild: string? = nil
+
+-- buildVersionValue is a build version's eight bytes as the unsigned 64-bit
+-- value a strict refusal names.
+local function buildVersionValue(bytes: string?): any
+	if bytes == nil then
+		return nil
+	end
+	local b = buffer.fromstring(bytes)
+	return Uint64.new(buffer.readu32(b, 0), buffer.readu32(b, 4))
+end
 
 local function announceRead(v: any, data: buffer, report: any): boolean
 	local len = buffer.len(data)
@@ -722,6 +739,15 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		report.damaged = true
 		return false
 	end
+	-- STRICT MODE IS OPT-IN (§3.3): with v.strict set, an announcement whose
+	-- build version is not this unit's own is refused build_version_mismatch,
+	-- sets no vocabulary, keeps the peer's build version and names both
+	-- versions as Uint64 values in report.remote and report.own.
+	if v.strict and version ~= homeBuild then
+		report.remote = buildVersionValue(version)
+		report.own = buildVersionValue(homeBuild)
+		return refuse(report, "build_version_mismatch")
+	end
 	local wb = words :: buffer
 	local we = buffer.len(wb)
 	local entries = {}
@@ -809,7 +835,9 @@ function MS.unit(bytes: string): buffer
 	local rep: any = {}
 	resetReport(rep)
 	homeBytes = bytes
-	if not announceRead(v, buffer.fromstring(bytes), rep) then
+	local read = announceRead(v, buffer.fromstring(bytes), rep)
+	homeBuild = v.buildVersion
+	if not read then
 		-- a unit whose closure announces a kind the message form does not
 		-- spell: the Go engine refuses that announcement too, and this build's
 		-- writer has no vocabulary to write with, which writeBatch names

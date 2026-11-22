@@ -156,4 +156,5 @@ skip unported ^UNPORTED
 # tool:other: a toolchain named only at run time ("<tool>: exec: ... not
 # found"). Last, so every named toolchain above is matched first.
 skip tool:other executable file not found
+skip tool:other ^(building a multi-byte-point locale requires localedef|the ps_AF locale source is not installed|localedef could not build the locale)
 skip tool:other ^(\S+ is not on PATH|no \S+ on PATH|none of .* is on PATH|\S+ unavailable)(: |$)
