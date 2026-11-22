@@ -13,9 +13,9 @@
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
 // committed byte oracle tables/cards/fuzz/card-populated.wire, and the
 // pointer, blob and list corpora pin the same bytes in testdata/wire/tables.
-// The id table is 64-bit, first-use order (§3). Kind 31 (escape) is never
-// written — no declaration maps to it — and the reader skips it by its L
-// (§3, §4). Every function below that implements a rule cites the section.
+// The id table is 64-bit, first-use order (§3). Kind 31 is held by name and
+// never written (R17): a reader meets it only as damage and refuses the whole
+// load, as it meets 33 or 34 (§3, §4). Every function below that implements a rule cites the section.
 package darttable
 
 import (
@@ -49,7 +49,7 @@ const (
 	wireKindArray  = 14
 	wireKindPtr    = 17
 	wireKindEnum   = 30
-	wireKindEscape = 31
+	wireKindHeldEscape = 31 // held by name, never written (R17)
 )
 
 // dartU64Literal renders a wire id (fnv1a64, §5) as a Dart int literal: the
@@ -1428,7 +1428,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final sl = readLeb();
         if (sl == null) return false;
@@ -2023,7 +2022,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
@@ -2033,15 +2031,14 @@ final class TableWireReader {
     return -1;
   }
 
-  // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
+  // _wireContent walks the length-bounded content of kinds 12-16 and 32
   // exactly as _wirePayload framed it.
   bool _wireContent(Uint8List b, int kind, List<int> out, int depth, [List<int>? order]) {
     switch (kind) {
       case 12:
         return _lebValid(b, 0, b.length);
-      case 31:
       case 32:
-        return kind != 32 || b.isEmpty;
+        return b.isEmpty;
       case 13:
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1, order);
       case 14:

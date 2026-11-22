@@ -246,7 +246,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
   if (w != 0) return _retainRaw(r, w);
   switch (kind) {
     case 12:
-    case 31:
     case 32:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
@@ -299,6 +298,7 @@ List<int>? _retainFramed(TableWireReader r, int kind, int depth) {
 
 List<int>? _retainContent(TableWireReader r, int kind, int depth) {
   switch (kind) {
+    case 31: // held by name, never written (R17): met only as damage
     case 17:
       return null;
     case 13:
@@ -404,7 +404,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
   }
   switch (kind) {
     case 12:
-    case 31:
     case 32:
       final start = c.at;
       var len = 0;
@@ -473,6 +472,7 @@ List<int>? _retainEmitFramed(WireState state, int kind, _RetainCursor c, int dep
 
 List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int end, int depth) {
   switch (kind) {
+    case 31: // held by name, never written (R17): met only as damage
     case 17:
       return null;
     case 13:
