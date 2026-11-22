@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_TABLEDEMO_PACKTABLE_H
-#define SCHEMA_TABLEDEMO_PACKTABLE_H
+#ifndef SCHEMA_TABLEDEMO_Pack_table_h
+#define SCHEMA_TABLEDEMO_Pack_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -366,7 +366,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==156) { w->overflow=1; return 0; }
+    if(v->count>=156) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; tabledemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -5351,7 +5351,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5359,7 +5359,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -6715,7 +6715,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
  }
  { /* hardpoints */
  schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
- if(value->hardpoints_count>0) {
+ if(value->hardpoints_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -6938,7 +6938,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
- if(!(value->hardpoints_count>0))goto damaged;
+ if(!(value->hardpoints_count > 0))goto damaged;
  }
  break;
  }
@@ -8250,7 +8250,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
  }
  { /* reserves */
  schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
- if(value->reserves_count>0) {
+ if(value->reserves_count > 0) {
   tabledemo_table_bit_put(w,31,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
   tabledemo_table_bit_put(w,(uint64_t)value->reserves_count-0,2);
@@ -9329,11 +9329,8 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_gunner_settings_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_gunner_settings_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -10439,11 +10436,8 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_global_settings_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_global_settings_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -13441,4 +13435,4 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_to_json( const tabledemo_pack
 }
 #endif
 
-#endif /* SCHEMA_TABLEDEMO_PACKTABLE_H */
+#endif /* SCHEMA_TABLEDEMO_Pack_table_h */

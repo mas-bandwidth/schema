@@ -655,6 +655,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 155;
     static const int32_t kBuckets = 512;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -698,7 +701,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -9452,7 +9455,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -9485,7 +9492,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
         {
             lost = true;
             return 0;
@@ -11043,7 +11050,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
 {
     value.grade = Grade::Silver;
     memset( value.grades, 0, sizeof( value.grades ) );
-    value.grades_count = 0;
+    value.grades_count = 0; // born at Min (docs/SPEC.md §4.2)
     memset( value.podium, 0, sizeof( value.podium ) );
     value.perks = 0;
     WeaponConfigReset( value.primary );
@@ -11055,7 +11062,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
     {
         AttachmentReset( value.attachments[i] );
     }
-    value.attachments_count = 0;
+    value.attachments_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void ProfileConfigReset( ProfileConfig & value )
@@ -11085,12 +11092,12 @@ inline void RootConfigReset( RootConfig & value )
     {
         WeaponConfigReset( value.weapons[i] );
     }
-    value.weapons_count = 0;
+    value.weapons_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 4; i++ )
     {
         ProfileConfigReset( value.profiles[i] );
     }
-    value.profiles_count = 0;
+    value.profiles_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void AttachmentReset( Attachment & value )
@@ -12459,7 +12466,8 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12511,7 +12519,8 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -12548,7 +12557,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12648,7 +12658,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -13327,7 +13338,8 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         bits += kTableMessageRefBitsHere;
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -13379,7 +13391,8 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -13411,7 +13424,8 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         w.put( 21, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.grades_count ) - 0, 3 );
@@ -13469,7 +13483,8 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         w.put( 26, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.attachments_count ) - 0, 4 );
@@ -16154,7 +16169,8 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16168,7 +16184,8 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16205,7 +16222,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16236,7 +16254,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16693,7 +16712,8 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         bits += (int64_t) value.version_note_length * 8;
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -16705,7 +16725,8 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -16735,7 +16756,8 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         w.put( 86, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.weapons_count ) - 0, 4 );
@@ -16745,7 +16767,8 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         w.put( 87, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.profiles_count ) - 0, 3 );
@@ -23359,7 +23382,8 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -23411,7 +23435,8 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -23439,7 +23464,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -23534,7 +23560,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -24869,7 +24896,8 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -24883,7 +24911,8 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -24911,7 +24940,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -24937,7 +24967,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;

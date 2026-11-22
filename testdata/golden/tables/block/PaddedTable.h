@@ -623,6 +623,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 88;
     static const int32_t kBuckets = 256;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -666,7 +669,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -7014,7 +7017,7 @@ inline void PaddedFrameReset( PaddedFrame & value )
     {
         PaddedRowReset( value.rows[i] );
     }
-    value.rows_count = 0;
+    value.rows_count = 0; // born at Min (docs/SPEC.md §4.2)
     memset( value.blob, 0, sizeof( value.blob ) );
     value.blob_length = 0;
 }
@@ -8722,7 +8725,8 @@ inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value
     if ( value.marker != 0 ) { bytes += TableLebBytes( ids.ref_at( 81, 0xeddcb72b15486e77ull ) ) + 1 + 1; } // marker
     if ( value.stamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 83, 0xee7ba9ad45c64144ull ) ) + 1 + 8; } // stamp
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
-    if ( value.rows_count > 0 )
+    bool rides_rows = value.rows_count > 0;
+    if ( rides_rows )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
         int64_t body_rows = 0;
@@ -8767,7 +8771,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         w.put64( uint64_t( value.stamp ) );
     }
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
-    if ( value.rows_count > 0 )
+    bool rides_rows = value.rows_count > 0;
+    if ( rides_rows )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
         int64_t body_rows = 0;
@@ -9241,7 +9246,8 @@ inline int64_t PaddedFrameMeasureMessageBody( int64_t at, const PaddedFrame & va
         bits += 64;
     }
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
-    if ( value.rows_count > 0 )
+    bool rides_rows = value.rows_count > 0;
+    if ( rides_rows )
     {
         bits += kTableMessageRefBitsHere;
         bits += 7;
@@ -9281,7 +9287,8 @@ inline bool PaddedFrameSaveMessageBody( TableBitWriter & w, const PaddedFrame & 
         w.put( (uint64_t) ( value.stamp ), 64 );
     }
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
-    if ( value.rows_count > 0 )
+    bool rides_rows = value.rows_count > 0;
+    if ( rides_rows )
     {
         w.put( 3, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.rows_count ) - 0, 7 );

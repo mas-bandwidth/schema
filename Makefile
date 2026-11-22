@@ -168,6 +168,20 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 	@mkdir -p build
 	go build -o $@ ./tools/mustrun
 
+# test-run: run ONE go test selection and refuse it when nothing ran.
+#
+#   make test-run PKG=./internal/foo RUN='^TestBar$$'
+#
+# A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
+# and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
+# fails when no test ran, or none passed (all skipped). PKG and RUN are both
+# required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
+# not bare go test -run, in every brief, recipe and by hand.
+.PHONY: test-run
+test-run:
+	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
+	go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
+
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
 # newer mtime on that file makes bin/schema out of date. `make -q` asks
@@ -7253,8 +7267,14 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push, active only in agent clones:
+# it refuses a push whose author or committer is not rowan-claude). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push guards agent clones)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:

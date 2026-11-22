@@ -723,6 +723,8 @@ public static class TableJson
         if (IsEnum(f))
         {
             ulong value = f.GetRaw(owner, index);
+            // A WRITE OF A DEPRECATED VARIANT IS REFUSED (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+            System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated enum variant is written");
             // a value no variant names has no text spelling, exactly as it has
             // no wire identity: the writer REFUSES rather than writing None
             // over it, the rule measure and save already apply (§5)
@@ -1050,7 +1052,7 @@ public static class TableJson
         // changed kind, an out-of-range value, a count or length past its
         // bound, or text that cannot be stored refuses the load. The rest of
         // the walk's failures are damage.
-        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+        if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero" || reason == "base64_not_canonical")
         {
             input.Report.Refused = true;
         }
@@ -1450,10 +1452,12 @@ public static class TableJson
         // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
         // §16.12), the objects this walk skips included
         System.Collections.Generic.HashSet<string> keys = null;
+        bool defining = false; // this object defines a label, open until it closes
+        ulong definition = 0;
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
@@ -1462,21 +1466,43 @@ public static class TableJson
                 input.Pos++;
                 keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                 if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
-                if (used > 0 && key[0] == '&' && input.Labels != null)
+                if (used > 0 && key[0] == '&')
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
-                    if (!input.Labels.ContainsKey(label)) { input.Labels.Add(label, new Label()); }
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+                    // must name a definition already closed; fields after one must
+                    // follow a label not yet defined, and the definition is open
+                    // until this object closes. What the reader does not place is
+                    // the value, never the label.
                     first = false; c = Peek(text, ref input);
-                    if (c == ',') { input.Pos++; continue; }
-                    if (c == close) { input.Pos++; return true; }
-                    input.Bad = true; return false;
+                    if (c != ',' && c != close) { input.Bad = true; return false; }
+                    if (input.Labels == null)
+                    {
+                        // a unit with no pointer has no label table: the prefix is still
+                        // held to its grammar, and the value is skipped whole
+                        input.Pos++;
+                        if (c == close) { return true; }
+                        continue;
+                    }
+                    bool known = input.Labels.TryGetValue(label, out Label held);
+                    if (c == ',') { input.Pos++; c = Peek(text, ref input); }
+                    bool bare = c == close;
+                    if (bare != known) { input.Bad = true; return false; }
+                    if (bare)
+                    {
+                        if (held.Open) { input.Bad = true; return false; }
+                        input.Pos++; return true;
+                    }
+                    input.Labels.Add(label, new Label { Open = true });
+                    defining = true; definition = label;
+                    continue;
                 }
             }
             first = false;
             if (!SkipValue(text, ref input, depth + 1)) { return false; }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; }   // a trailing comma is accepted
-            if (c == close) { input.Pos++; return true; }
+            if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
             input.Bad = true;
             return false;
         }
@@ -1622,6 +1648,11 @@ public static class TableJson
             {
                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
                 {
+                    // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT (the
+                    // ELEMENT default inside an array) and is never counted unknown
+                    // (docs/SPEC-TABLES.md §2.15)
+                    if (v != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)v))
+                    { f.SetRaw(owner, index, f.IsArray ? 0ul : f.DefaultRaw); return true; }
                     f.SetRaw(owner, index, (ulong)v);
                     return true;
                 }
@@ -2175,7 +2206,7 @@ public static class TableJson
         // a caller with no report is off the read path this section prices: it
         // gets one rather than a branch on every counter
         input.Report = report != null ? report : new TableReport();
-        input.Report.Reason = null; input.Report.Refused = false;
+        input.Report.Zero();
         input.Bad = false;
         if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
         info.Reset(value);

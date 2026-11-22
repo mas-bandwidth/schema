@@ -80,6 +80,13 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 			return nil, e.retainLost, err
 		}
 	}
+	// THE WRITER REFUSES WHAT ITS READERS REFUSE (docs/SPEC-TABLES.md §3,
+	// THE DISTINCTNESS CHECK): a value that needs more than the id table's
+	// maximum has no file, because every reader answers such a table
+	// wire_damaged. The retained ids are in e.ids already.
+	if len(e.ids.ids) > ir.TableWireIdTableBound {
+		return nil, e.retainLost, fmt.Errorf("id table needs %d entries, past the maximum of %d (docs/SPEC-TABLES.md §3)", len(e.ids.ids), ir.TableWireIdTableBound)
+	}
 	out := make([]byte, 0, 1+len(fields)+1+8*len(e.ids.ids)+8)
 	out = append(out, ir.TableWireForm)
 	out = append(out, fields...)

@@ -25,11 +25,9 @@ import (
 // (§5) beside its kind byte (§3).
 //
 // The modules are emitted STAND-ALONE. [cardVariableModules] carries the
-// boundary refusal (§11) on the card's own path, while
-// [scopedVariableModules] — GenerateLineage's entry point — leaves a variable
-// table whose constructs this leg does not carry ABSENT rather than refusing
-// the unit whole, so the fixed-form corpus (rusttable_test.go's `pointered`)
-// still emits its fixed form beside a variable table it does not encode.
+// boundary refusal (§11) on the card's own path, and GenerateLineage refuses
+// by name, before [scopedVariableModules] runs, any closure table this leg
+// does not carry (refuseUncarriedClosure): no table is left without its codec.
 const VariableRuntimeModule = "variable_runtime"
 
 // cardVariableModules returns the variable wire's modules for a unit whose
@@ -47,13 +45,12 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // scopedVariableModules is the GENERATE-path entry point: the same modules as
-// [cardVariableModules], but WITHOUT the whole-unit refusal. A variable table
-// whose constructs this leg does not carry is left ABSENT — its wire is not
-// emitted and nothing is mis-encoded — so a unit that mixes a fixed table with
-// a variable table carrying a union (rusttable_test.go's `pointered`) still
-// emits the fixed form. The by-name refusal lives on the card's own path, in
-// [cardVariableModules], where a unit that gains an excluded construct is
-// refused naming table, field and construct (docs/SPEC-TABLES.md §11).
+// [cardVariableModules], gated on the closure rather than the variable tables.
+// It used to leave a table this leg did not carry ABSENT, silently; that gate
+// was the incremental carry's (3e20307eaa, 6e59c4a0bb) and every construct it
+// named is now carried, escaped (escape.go) or refused by the checker, so
+// GenerateLineage refuses whatever remains by name first
+// (refuseUncarriedClosure, docs/SPEC-TABLES.md §11).
 //
 // A closure that holds only FIXED tables takes the modules too: a fixed table
 // rides the variable form as well as its own (docs/SPEC-TABLES.md §2.2, §3),
@@ -215,6 +212,16 @@ impl IdTable {
 
     pub fn rollback(&mut self, mark: usize) {
         self.entries.truncate(mark);
+    }
+
+    /// THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+    /// table of more than 4096 entries, so a save refuses by name a value that
+    /// needs more, whatever the build. Checked once at the end of the walk, so a
+    /// speculative intern that a rollback undoes never refuses.
+    pub fn check_bound(&mut self) {
+        if self.entries.len() > 4096 && self.refused.is_none() {
+            self.refused = Some(String::from("id_table_full: more than 4096 ids"));
+        }
     }
 
     pub fn id_ref(&mut self, id: u64) -> u64 {
@@ -1455,7 +1462,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
         ids.entries.push(id);
         return ids.entries.len() as u64;
     }
-    if retain.ids.len() >= retain.ids.capacity() {
+    if retain.ids.len() >= retain.ids.capacity() || ids.entries.len() >= 4096 {
         return 0;
     }
     retain.ids.push(id);
