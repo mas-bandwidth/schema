@@ -58,7 +58,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
-	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
+	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableAnnounceTooLarge=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement), b2i(len(ir.TableVocabulary(u)) > ir.TableVocabularyMaxEntries))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {
 		fmt.Fprintf(&b, "0x%02x,", v)
@@ -169,9 +169,9 @@ static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceTooLarge?-1:kTableAnnounceBytes;}
 static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
+{if(kTableAnnounceTooLarge || buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
 `
 
 const cMessageShape = `
@@ -433,3 +433,10 @@ static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 }
 
 `
+
+func b2i(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
