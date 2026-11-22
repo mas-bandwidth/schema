@@ -702,6 +702,10 @@ public sealed class TableReport
     internal int KindChanged;  // the fixed form's compile census only: a writer
     // field whose kind changed, counted once per endpoint while a lineage
     // plan is compiled — never a read counter on a returned load
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md
+    // §3.3): on Reason "build_version_mismatch", the peer's announced build
+    // version and this unit's own. Zero on every other path.
+    public ulong BuildVersionRemote, BuildVersionOwn;
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
     // a member at the end rather than a field inserted among the counters,
     // because the report is a type callers already hold. layout_newer reports

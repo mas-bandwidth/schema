@@ -100,7 +100,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	b.WriteString(bits)
 	b.WriteString(cMessageNumbers)
 	b.WriteString(cMessageShape)
-	b.WriteString(cMessageAnnounce)
+	b.WriteString(strings.ReplaceAll(cMessageAnnounce, "@BUILD_VERSION@", buildVersionName(u.Package)))
 	b.WriteString(cMessageRead)
 	b.WriteString("\n#endif\n")
 	return b.String()
@@ -191,10 +191,15 @@ typedef struct TableMessageShapeFacts {
 typedef struct TableVocabulary {
  TableMessageEntry * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
+ /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+ int strict;
 } TableVocabulary;
 #ifndef SCHEMA_TABLE_MESSAGE_REASONS
 #define SCHEMA_TABLE_MESSAGE_REASONS
-enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6,SCHEMA_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storage,int64_t capacity)
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
@@ -299,6 +304,13 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
   report->unknown++;if(!table_reader_skip_checked(&r,kind,0))goto damaged;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
+ /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+ if(v->strict && v->build_version!=@BUILD_VERSION@){
+  report->refused=1;report->reason=SCHEMA_TABLE_BUILD_VERSION_MISMATCH;
+  report->build_version_remote=v->build_version;report->build_version_own=@BUILD_VERSION@;return 0;
+ }
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
   if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
