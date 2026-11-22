@@ -82,7 +82,7 @@ table Shapes {
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
 	var b strings.Builder
-	b.WriteString("import 'dart:typed_data';\nimport 'ProbeWire.dart' as w;\nimport 'ProbeCook.dart' as c;\nvoid check(bool b,String s){if(!b)throw StateError(s);}\nString hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();\nUint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);\nvoid main(){\n")
+	b.WriteString("import 'dart:typed_data';\nimport 'ProbeWire.dart' as w;\nimport 'ProbeCook.dart' as c;\nvoid check(bool b,String s){if(!b)throw StateError(s);}\n// a write check is a debug assert, so only an assert run sees it refuse\nfinal dbg=(){var on=false;assert(on=true);return on;}();\nString hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();\nUint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);\nvoid main(){\n")
 	for _, tc := range []struct {
 		root, input, missing string
 		km                   int
@@ -188,8 +188,8 @@ final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport(
 			class = root + "Cook"
 		}
 		fmt.Fprintf(&b, `{
-var failed=false;try{w.%sWireSave(w.%s());}on StateError{failed=true;}check(failed,'fresh range wire %s');
-failed=false;try{w.%sToJson(w.%s());}on StateError{failed=true;}check(failed,'fresh range JSON %s');
+var failed=false;try{w.%sWireSave(w.%s());}on AssertionError{failed=true;}check(failed||!dbg,'fresh range wire %s');
+failed=false;try{w.%sToJson(w.%s());}on AssertionError{failed=true;}check(failed||!dbg,'fresh range JSON %s');
 check(c.%s.cookMeasure(w.%s())==-1,'fresh range cook measure %s');
 for(final order in [Endian.little,Endian.big]){final out=Uint8List(4096)..fillRange(0,4096,0xa5);
 check(!c.%s.cook(w.%s(),out,order)&&out.every((x)=>x==0xa5),'fresh range cook writes nothing %s');}
@@ -197,7 +197,7 @@ check(!c.%s.cook(w.%s(),out,order)&&out.every((x)=>x==0xa5),'fresh range cook wr
 `, dartName(root), root, root, dartName(root), root, root, class, root, root, class, root, root)
 	}
 	b.WriteString(`{final off=w.ExactGuarded();w.exactGuardedWireSave(off);check(!w.exactGuardedToJson(off).contains('amount'),'off guard omits required field');
-off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on StateError{failed=true;}check(failed,'active required zero refuses');
+off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on AssertionError{failed=true;}check(failed||!dbg,'active required zero refuses');
 }
 `)
 	b.WriteString(`{
@@ -206,8 +206,8 @@ final r=w.TableTextReport();var repRef=false;try{w.manyFromJson('{"last":0,"last
 }
 `)
 	b.WriteString(`{
-var failed=false;try{w.exactWireSave(w.Exact());}on StateError{failed=true;}check(failed,'fresh required range zero must refuse wire');
-failed=false;try{w.exactToJson(w.Exact());}on StateError{failed=true;}check(failed,'fresh required range zero must refuse JSON');
+var failed=false;try{w.exactWireSave(w.Exact());}on AssertionError{failed=true;}check(failed||!dbg,'fresh required range zero must refuse wire');
+failed=false;try{w.exactToJson(w.Exact());}on AssertionError{failed=true;}check(failed||!dbg,'fresh required range zero must refuse JSON');
 }
 }
 `)

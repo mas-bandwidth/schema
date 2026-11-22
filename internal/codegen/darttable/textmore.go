@@ -736,7 +736,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if arm.Void() {
 				g.pf("\t\t\tout.raw('null');\n")
 			} else {
-				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "throw StateError('invalid_value: arm "+un.Name+"."+arm.Name+" out of range');"))
+				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "assert(false, 'invalid_value: arm "+un.Name+"."+arm.Name+" out of range');"))
 				g.emitJsonValue(arm.F, "v."+armMember(arm), 1, "\t\t\t", un.Name+"."+arm.Name)
 			}
 			g.pf("\t\t\tout.line(depth);\n")

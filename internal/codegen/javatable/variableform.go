@@ -119,6 +119,14 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
+        // settleDamage names framing damage on the report, as Go does: a
+        // damaged read answers reason wire_damaged unless a refusal named one.
+        public void settleDamage() {
+            if (damaged && reason == null) {
+                reason = "wire_damaged";
+            }
+        }
+
         public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;
@@ -4612,14 +4620,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	// load
 	fmt.Fprintf(&b, "    public static Value load(byte[] data, TableVariable.Report report) {\n")
 	fmt.Fprintf(&b, "        if (report == null) { report = new TableVariable.Report(); }\n")
+	fmt.Fprintf(&b, "        report.reset();\n")
 	if st.Integrity != "" {
 		fmt.Fprintf(&b, "        byte[] wire = TableVariable.integrityOpen(data, report);\n")
-		fmt.Fprintf(&b, "        if (wire == null) { return null; }\n")
+		fmt.Fprintf(&b, "        if (wire == null) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(wire, report);\n")
 	} else {
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	}
-	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
+	fmt.Fprintf(&b, "        if (r == null) { report.settleDamage(); return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
 	if st.FixedDeclared {
 		if !hasFixedFile(u, st) {
@@ -4635,7 +4644,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 			fmt.Fprintf(&b, "        TableVariable.settleNonFinite(report);\n")
 			fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
 			fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-			fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
+			fmt.Fprintf(&b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 			fmt.Fprintf(&b, "        return v;\n")
 		}
 		fmt.Fprintf(&b, "    }\n\n")
@@ -4706,7 +4715,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-		fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
+		fmt.Fprintf(&b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
@@ -5183,7 +5192,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        if (in.bad || in.p != text.length) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
-		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
+		fmt.Fprintf(b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(b, "        return v;\n")
 		fmt.Fprintf(b, "    }\n\n")
 	}

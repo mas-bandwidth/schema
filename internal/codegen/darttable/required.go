@@ -126,7 +126,16 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 
 func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
 	if f.Type.Optional {
-		return ""
+		// A PRESENT optional is held to its range like any value; an absent one holds
+		// a stale payload no writer reads (docs/SPEC.md §5.1).
+		if expr != "v."+fieldMember(f) {
+			return ""
+		}
+		body := jsonWriteCheck(nonOptional(f), expr, ind+"\t", refusal)
+		if body == "" {
+			return ""
+		}
+		return fmt.Sprintf("%sif (v.%s) {\n%s%s}\n", ind, hasMember(f), body, ind)
 	}
 	var out string
 	if f.Array == ir.ArrayCounted {

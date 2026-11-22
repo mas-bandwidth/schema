@@ -500,9 +500,10 @@ func (g *cookGen) emitWrite() {
 	// (docs/SPEC-TABLES.md §3.3), and every other invalid value invalid_value
 	g.f("    public static MeasureReason cookMeasureReason(java.lang.Object value) {\n")
 	g.f("        boolean[] nonFinite = new boolean[1];\n")
-	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);\n")
+	g.f("        boolean[] cycle = new boolean[1];\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite, cycle);\n")
 	g.f("        long bytes = p == null ? -1 : p.total;\n")
-	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : \"invalid_value\");\n    }\n\n")
+	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : cycle[0] ? \"data_cycle\" : \"invalid_value\");\n    }\n\n")
 	g.f("    public static boolean cookFrom(java.lang.Object value, byte[] buffer, int order) {\n")
 	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
