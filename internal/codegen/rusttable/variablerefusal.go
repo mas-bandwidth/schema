@@ -227,7 +227,18 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 		if v.Body() {
 			continue
 		}
-		if why := variableFieldConstruct(v.F); why != "" {
+		arm := v.F
+		if arm.Array == ir.ArrayCounted && arm.ArrayMin > 0 {
+			// A COUNTED ARM [A..B]T IS CARRIED (ruling R10, docs/SPEC-TABLES.md
+			// §3.3): the arm read refuses a count below A on the wire and in
+			// text (mapsarms.go, variabletext.go), the fixed form's scatter
+			// holds it to OutOfRange, and the arm writer debug-asserts A. The
+			// minimum is checked here as a bounded [..B]T would be.
+			inner := *arm
+			inner.ArrayMin = 0
+			arm = &inner
+		}
+		if why := variableFieldConstruct(arm); why != "" {
 			if v.F.Array == ir.ArrayFixed && mapValueArrayCarried(v.F) {
 				continue
 			}

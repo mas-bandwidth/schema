@@ -1723,6 +1723,12 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// fewer than the declared minimum A is out of range, as more than
+			// B is, wherever the array stands, a union arm included (ruling
+			// R10, docs/SPEC-TABLES.md §3.3)
+			fmt.Fprintf(b, "%s    if %s.len() < %d { jr.damaged = true; }\n", in, field, f.ArrayMin)
+		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
 	}

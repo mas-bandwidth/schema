@@ -525,6 +525,11 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 		count = fmt.Sprintf("%d", f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+		// a writer never produces a count outside [A..B] (ruling R10,
+		// docs/SPEC.md §4.6): Rust write checks are debug asserts only
+		if f.ArrayMin > 0 {
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count below %d\");\n", ind, x, f.ArrayMin, f.Name, f.ArrayMin)
+		}
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
 	}
@@ -1103,6 +1108,12 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	bound := f.ArrayBound
 	if f.Type.Kind == ir.TBytes && f.Array == ir.ArrayNone {
 		bound = f.Type.Size
+	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count below the declared minimum A is out of range wherever the
+		// array stands, a union arm included (ruling R10, docs/SPEC-TABLES.md
+		// §3.3): damage, as a count past B is, so the load refuses
+		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i3, f.ArrayMin)
 	}
 	switch {
 	case f.Array == ir.ArrayList:

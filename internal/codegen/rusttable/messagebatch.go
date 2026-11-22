@@ -465,6 +465,12 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 					armExpr = local + ".value"
 				}
 				af := *v.F
+				if af.Array == ir.ArrayCounted && af.ArrayMin > 0 {
+					// a counted arm's floor is its declared Min as a field's
+					// is (ruling R10, docs/SPEC.md §5.1 row 3): the count
+					// below rides as Min-relative bits no reader accepts
+					m.storageCheck(&af, armExpr, ind+"        ")
+				}
 				m.writeValue(&af, arm, armExpr, "", ind+"        ")
 			}
 			m.pf("%s    }\n", ind)
