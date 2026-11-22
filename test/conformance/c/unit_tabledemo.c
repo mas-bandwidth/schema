@@ -17,6 +17,7 @@ SCHEMA_CONFORMANCE_CODEC_NOFORM( WideBlob, wide_blob ) /* past the ceiling: no f
 SCHEMA_CONFORMANCE_CODEC( ArchiveConfig, archive_config )
 SCHEMA_CONFORMANCE_CODEC( KeyedConfig, keyed_config )
 SCHEMA_CONFORMANCE_CODEC( PackConfig, pack_config )
+SCHEMA_CONFORMANCE_CODEC( MinArmFix, min_arm_fix )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),
@@ -25,6 +26,7 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, WideBlob ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, ArchiveConfig ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, KeyedConfig ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinArmFix ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig )
 };
 

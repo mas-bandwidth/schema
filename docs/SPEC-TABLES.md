@@ -5067,6 +5067,14 @@ one document rather than two.
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
   | NO PAYLOAD (§2.6) | `32` | `0` | nothing rides: the arm id, the kind byte and a zero `L` are the whole of it |
 
+  **An array arm's declared MINIMUM holds as it does on a field.** An arm
+  `[A..B]T` whose payload count is below A refuses on read, `count_over_bound`
+  (recommended name), in every form that reads it: this wire, the fixed form,
+  the message form and the text form. A writer never produces one (the write
+  side is SPEC §4.6's contract, split per language). A count of zero refuses for any A above zero,
+  exactly as it does on a plain field (conformance rows `arm-min-*` and
+  `armmin_*`).
+
   **An arm's payload never elides**: a union field holding `None` elides
   whole (below), and a SET arm always rides, whatever it holds (§2.6), so
   `L = 0` is an empty payload and not an absence. An empty `string` arm, a

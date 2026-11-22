@@ -1,4 +1,4 @@
-0x3684616af27a45c9
+0xbec59005a05254cb
 schema-build-version 6
 protocol 5c9bc5717146f630
 byteorder little
@@ -41,6 +41,8 @@ record LoadoutConfig sizeof=176 alignof=8
     field bf31137ff783e939 kind=13 offset=24 size=28 type=WeaponConfig
     field de28f0f5118acc24 kind=13 offset=52 size=56 type=WeaponConfig elem=28 array=fixed bound=2
     field f901aa0340249a41 kind=13 offset=108 size=68 type=Attachment elem=8 array=bounded bound=8 countmin=0
+record MinArmFix sizeof=24 alignof=4
+    field bf0bc40dc513bbd8 kind=15 offset=0 size=24 union=MinPick
 record PackConfig sizeof=740 alignof=4
     field bb62c62c9808ea37 kind=8 offset=0 size=4 default=1
     field 7fb43557b54149ce kind=13 offset=4 size=72 type=GlobalSettings
@@ -178,3 +180,6 @@ flags Perks
 union Effect
     arm 1 buff payload=Buff
     arm 2 debuff payload=Debuff
+union MinPick
+    arm 1 few kind=8 offset=4 size=20 elem=4 array=bounded bound=4 countmin=2
+    arm 2 other kind=4 offset=4 size=4

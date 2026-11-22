@@ -104,3 +104,19 @@ fixed table ProfileConfig
     has_loadout bool
     loadout     LoadoutConfig
 }
+
+// A counted array [A..B] inside a union arm (docs/SPEC.md section 4.2;
+// docs/SPEC-TABLES.md section 3.4). The minimum A holds wherever the
+// field sits: an arm payload with a count below A refuses on read in every
+// form, and a writer never produces one. Rows: the arm-min-* cases.
+
+union MinPick
+{
+    few   [2..4]uint32
+    other int32
+}
+
+fixed table MinArmFix
+{
+    pick MinPick
+}

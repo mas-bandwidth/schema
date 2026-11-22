@@ -3724,6 +3724,29 @@ static const tabledemo_table_field_info_t schema_tabledemo_root_config_fields_[]
 
 const tabledemo_table_type_info_t schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( tabledemo_root_config_t ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_few_[] = {
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.few.value[0] ), (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_other_[] = {
+    { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+static const tabledemo_table_variant_info_t schema_tabledemo_min_arm_fix_pick_variants_[] = {
+    { "None", 0 },
+    { "few", 0xdcc67d18feea8c19ull },
+    { "other", 0x0a24ad61c2562a55ull },
+};
+static const tabledemo_table_union_arm_info_t schema_tabledemo_min_arm_fix_pick_arms_[] = {
+    { 0, NULL, NULL, 0 },
+    { (uint32_t)offsetof( tabledemo_min_pick_t, as.few ), NULL, schema_tabledemo_min_pick_arm_field_few_, (uint32_t)sizeof( ((tabledemo_min_pick_t *)0)->as.few ) },
+    { (uint32_t)offsetof( tabledemo_min_pick_t, as.other ), NULL, schema_tabledemo_min_pick_arm_field_other_, (uint32_t)sizeof( ((tabledemo_min_pick_t *)0)->as.other ) },
+};
+static const tabledemo_table_union_info_t schema_tabledemo_min_arm_fix_pick_union_ = { (uint32_t) offsetof( tabledemo_min_pick_t, type ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->type ), schema_tabledemo_min_arm_fix_pick_arms_ };
+static const tabledemo_table_field_info_t schema_tabledemo_min_arm_fix_fields_[] = {
+    { "pick", "pick", "MinPick", 0xbf0bc40dc513bbd8ull, 15, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_arm_fix_t, pick ), (uint32_t) sizeof( ( (tabledemo_min_arm_fix_t *) 0 )->pick ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_tabledemo_min_arm_fix_pick_variants_, 1, NULL, NULL, -1, &schema_tabledemo_min_arm_fix_pick_union_, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+
+const tabledemo_table_type_info_t schema_tabledemo_min_arm_fix_info_ = { "MinArmFix", (uint32_t) sizeof( tabledemo_min_arm_fix_t ), 1, schema_tabledemo_min_arm_fix_fields_, schema_tabledemo_min_arm_fix_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+
 static const tabledemo_table_field_info_t schema_tabledemo_attachment_fields_[] = {
     { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, slot ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, power ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -3781,6 +3804,16 @@ int schema_tabledemo_root_config_from_json_( tabledemo_root_config_t * value, co
 int64_t schema_tabledemo_root_config_to_json_( const tabledemo_root_config_t * value, char * buffer, int64_t capacity )
 {
     return tabledemo_table_json_write( value, &schema_tabledemo_root_config_info_, buffer, capacity );
+}
+
+int schema_tabledemo_min_arm_fix_from_json_( tabledemo_min_arm_fix_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    return tabledemo_table_json_read( value, &schema_tabledemo_min_arm_fix_info_, text, bytes, report );
+}
+
+int64_t schema_tabledemo_min_arm_fix_to_json_( const tabledemo_min_arm_fix_t * value, char * buffer, int64_t capacity )
+{
+    return tabledemo_table_json_write( value, &schema_tabledemo_min_arm_fix_info_, buffer, capacity );
 }
 
 int schema_tabledemo_attachment_from_json_( tabledemo_attachment_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )

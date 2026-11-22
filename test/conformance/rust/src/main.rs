@@ -992,6 +992,13 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tabledemo, PackConfig, PackConfigRow, pack_config_cook_write, pack_config_fixed_save, pack_config_fixed_measure);
                 Some($body)
             }
+            ("tabledemo", "MinArmFix") => {
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{min_arm_fix_from_json_bytes as $from_json, min_arm_fix_load as $load, min_arm_fix_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, MinArmFix, MinArmFixRow, min_arm_fix_cook_write, min_arm_fix_fixed_save, min_arm_fix_fixed_measure);
+                Some($body)
+            }
             ("tabledemo", "LoadoutConfig") => {
                 #[allow(unused_imports, unused_variables)]
                 use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_to_json_checked as $to_json};
@@ -1341,6 +1348,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
         ("tabledemo", "PackConfig") => fixed_read!(tabledemo, pack_config_fixed_load, pack_config_fixed_save, pack_config_fixed_measure, PackConfigRow, data),
+        ("tabledemo", "MinArmFix") => fixed_read!(tabledemo, min_arm_fix_fixed_load, min_arm_fix_fixed_save, min_arm_fix_fixed_measure, MinArmFixRow, data),
         ("tabledemo", "ProfileConfig") => fixed_read!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, data),
         ("tabledemo", "RootConfig") => fixed_read!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, data),
         ("tabledemo", "WideBlob") => {
@@ -1463,6 +1471,12 @@ macro_rules! with_fixed_value_root {
                 use tabledemo as $k;
                 #[allow(unused_imports)]
                 use $k::{PackConfigRow as $row, PackConfig as $value, pack_config_fixed_load as $load, pack_config_fixed_save as $save, pack_config_fixed_measure as $measure, pack_config_to_json_checked as $to, pack_config_from_json_bytes as $from, pack_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "MinArmFix") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{MinArmFixRow as $row, MinArmFix as $value, min_arm_fix_fixed_load as $load, min_arm_fix_fixed_save as $save, min_arm_fix_fixed_measure as $measure, min_arm_fix_to_json_checked as $to, min_arm_fix_from_json_bytes as $from, min_arm_fix_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ProfileConfig") => {
@@ -2013,6 +2027,7 @@ macro_rules! with_cook_root {
             ("tabledemo", "LoadoutConfig") => { use tabledemo::{loadout_config_load as $load, loadout_config_cook_write as $cook, loadout_config_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "ArchiveConfig") => { use tabledemo::{archive_config_load as $load, archive_config_cook_write as $cook, archive_config_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "KeyedConfig") => { use tabledemo::{keyed_config_load as $load, keyed_config_cook_write as $cook, keyed_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "MinArmFix") => { use tabledemo::{min_arm_fix_load as $load, min_arm_fix_cook_write as $cook, min_arm_fix_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook, wide_blob_from_json_bytes as $from}; Some($body) }
             ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
             ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }

@@ -1562,6 +1562,23 @@ void _f2w_examples_PackConfig(tabledemo_fixed.PackConfig f, tabledemo.PackConfig
   for (var i = 0; i < f.thresholds.length; i++) w.thresholds[i] = f.thresholds[i];
   w.reserves = List<tabledemo.ShipEntry>.generate(f.reservesCount, (i) { final e = tabledemo.ShipEntry(); _f2w_examples_ShipEntry(f.reserves[i], e); return e; });
 }
+void _w2f_examples_MinArmFix(tabledemo.MinArmFix w, tabledemo_fixed.MinArmFix f) {
+  f.pick.type = w.pick.armTag;
+  if (w.pick.armTag == 1) {
+    f.pick.fewCount = w.pick.few.length;
+    for (var i = 0; i < w.pick.few.length; i++) f.pick.few[i] = w.pick.few[i];
+  } else if (w.pick.armTag == 2) {
+    f.pick.other = w.pick.other;
+  }
+}
+void _f2w_examples_MinArmFix(tabledemo_fixed.MinArmFix f, tabledemo.MinArmFix w) {
+  w.pick.armTag = f.pick.type;
+  if (f.pick.type == 1) {
+    w.pick.few = List<int>.generate(f.pick.fewCount, (i) => f.pick.few[i]);
+  } else if (f.pick.type == 2) {
+    w.pick.other = f.pick.other;
+  }
+}
 void _w2f_m1_Open(tblm1.Open w, tblm1_fixed.Open f) {
   _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
 }
@@ -2459,6 +2476,16 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
       }
       return _fixedResave(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
+    case 'tabledemo MinArmFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minArmFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.MinArmFix();
+        _w2f_examples_MinArmFix(w, f);
+        return _fixedSaveOne(f, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minArmFixFixedLoad, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -2891,6 +2918,13 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = tabledemo_fixed.PackConfig();
       _w2f_examples_PackConfig(w, f);
       return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
+    case 'tabledemo MinArmFix':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.minArmFixFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.MinArmFix();
+      _w2f_examples_MinArmFix(w, f);
+      return _fixedSaveOne(f, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
     case 'tabledemo ProfileConfig':
       final rep = tabledemo.TableTextReport();
       final w = tabledemo.profileConfigFromJson(text, rep);
@@ -3346,6 +3380,18 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = tabledemo.PackConfig();
       _f2w_examples_PackConfig(f, w);
       return tabledemo.packConfigToJson(w);
+    case 'tabledemo MinArmFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minArmFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.minArmFixToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minArmFixFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.MinArmFix();
+      _f2w_examples_MinArmFix(f, w);
+      return tabledemo.minArmFixToJson(w);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3692,6 +3738,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.loadoutConfigFixedLoad);
     case 'tabledemo PackConfig':
       return _fixedReportLine(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), pack_fixed.packConfigFixedLoad);
+    case 'tabledemo MinArmFix':
+      return _fixedReportLine(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.minArmFixFixedLoad);
     case 'tabledemo ProfileConfig':
       return _fixedReportLine(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.profileConfigFixedLoad);
     case 'tabledemo RootConfig':
@@ -4423,6 +4471,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = tabledemo.TableTextReport();
         final v = tabledemo.packConfigFromJson(text, r);
         encode = () => tabledemo.packConfigToJson(v);
+        break;
+      case 'tabledemo MinArmFix':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.minArmFixFromJson(text, r);
+        encode = () => tabledemo.minArmFixToJson(v);
         break;
       case 'blobdemo Catalog':
         r = blobdemo.TableTextReport();
@@ -5756,6 +5809,9 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tabledemo PackConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave));
+    case 'tabledemo MinArmFix':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.minArmFixFixedLoad, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave));
     case 'tabledemo ProfileConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.profileConfigFixedLoad, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave));

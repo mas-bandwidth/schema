@@ -2,6 +2,12 @@
    Schema: https://github.com/mas-bandwidth/schema — to change this file, edit the .schema source and run `schema generate`.
    SPDX-License-Identifier: NONE — this generated output is yours. */
 #include "TabledemoView.h"
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_few_[] = {
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.few.value[0] ), (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_other_[] = {
+    { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
 const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_(void)
 {
     static const tabledemo_view_variant_t Difficulty_view_variants[] = {
@@ -54,6 +60,11 @@ static const char * const Effect_view_tags[] = { "gameplay" };
         { 1, "buff", 0xffb5be9be2e469ccull, "Buff", &schema_tabledemo_buff_info_, NULL, "A multiplier that rides while the effect is live.", 1, Effect_view_variant0_tags },
         { 2, "debuff", 0x13cdc5ede73d2fd7ull, "Debuff", &schema_tabledemo_debuff_info_, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
+    static const tabledemo_view_variant_t MinPick_view_variants[] = {
+        { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 1, "few", 0xdcc67d18feea8c19ull, "[2..4]uint32", NULL, schema_tabledemo_min_pick_arm_field_few_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 2, "other", 0x0a24ad61c2562a55ull, "int32", NULL, schema_tabledemo_min_pick_arm_field_other_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+    };
     static const tabledemo_view_vocabulary_t enums[] = {
         { "Difficulty", "Pack.schema", 3, 8, 4, Difficulty_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Grade", "Tables.schema", 3, 8, 4, Grade_view_variants, "A profile's standing, ranked low to high.", 1, Grade_view_tags },
@@ -67,6 +78,7 @@ static const char * const Effect_view_tags[] = { "gameplay" };
     };
     static const tabledemo_view_vocabulary_t unions[] = {
         { "Effect", "Tables.schema", 2, 8, 3, Effect_view_variants, "What a weapon does to a target beyond its damage.", 1, Effect_view_tags },
+        { "MinPick", "Tables.schema", 2, 8, 3, MinPick_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const tabledemo_view_type_t types[] = {
         { "Attachment", "Tables.schema", 0, &schema_tabledemo_attachment_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -83,6 +95,7 @@ static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
         { "HullConfig", "Keyed.schema", 1, &schema_tabledemo_hull_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "KeyedConfig", "Keyed.schema", 1, &schema_tabledemo_keyed_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "LoadoutConfig", "Tables.schema", 1, &schema_tabledemo_loadout_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MinArmFix", "Tables.schema", 1, &schema_tabledemo_min_arm_fix_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "PackConfig", "Pack.schema", 1, &schema_tabledemo_pack_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Patrol", "Guarded.schema", 1, &schema_tabledemo_patrol_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "ProfileConfig", "Tables.schema", 1, &schema_tabledemo_profile_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -104,10 +117,10 @@ static const char * const MaxLoadoutSlots_view_tags[] = { "tuning" };
     };
     static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
-        19, tables,
+        20, tables,
         6, enums,
         1, flags_decls,
-        1, unions,
+        2, unions,
         3, constants };
     return &info;
 }

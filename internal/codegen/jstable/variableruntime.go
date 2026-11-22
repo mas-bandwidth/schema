@@ -1571,6 +1571,10 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       report.widened++;
     }
     let keep = count;
+    // a counted [A..B] below A is out of range wherever the array stands, a
+    // union arm included (docs/SPEC-TABLES.md section 3.3): counted, and the
+    // one read refuses the whole load as it does a count past B
+    if (fd.min && count < fd.min) { report.oor++; if (fd.tl && !report.oorField) { report.oorField = fd.field; } }
     if (fd.list) {
       if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
     } else if (count > fd.bound) {
@@ -2824,7 +2828,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   let placed = 0;
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; if (fd.min && placed < fd.min) { report.oor++; } return true; }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -2844,7 +2848,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; if (fd.min && placed < fd.min) { report.oor++; } return true; }
     inp.bad = true;
     return false;
   }

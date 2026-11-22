@@ -8185,6 +8185,15 @@ namespace Tabledemo
             TableReset(value.Buff);
             TableReset(value.Debuff);
         }
+
+        // TableReset(MinPick) restores None and every arm in place, reusing buffers.
+        public static void TableReset(MinPick value)
+        {
+            value.Type = MinPickType.None;
+            Array.Clear(value.Few, 0, value.Few.Length);
+            value.FewCount = 2;
+            value.Other = 0;
+        }
     }
 
 }
