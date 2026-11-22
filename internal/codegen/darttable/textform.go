@@ -1088,20 +1088,6 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-// jsonFloatRead is the JSON read of one float value (a field, a list element,
-// an arm or an optional's payload). A COMPRESSED float is then held to its
-// range at the field's own width, float32(min) and float32(max) for a float32
-// (SPEC.md §4.6), refusing out_of_range past an end, and a -0 lands as +0
-// (docs/SPEC-TABLES.md §3.3), as the variable and fixed reads hold it. fb is
-// the fallback argument, ", v.name" or "".
-func jsonFloatRead(f *ir.Field, val string, single bool, fb string) string {
-	read := fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, single, fb)
-	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		return fmt.Sprintf("_jsonCompressedFloat(%s, r, %s, %s%s)", read, lo, hi, fb)
-	}
-	return read
-}
-
 func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)

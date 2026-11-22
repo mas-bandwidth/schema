@@ -268,8 +268,9 @@ func TestCppCompressedFloatNegZeroAndFloat32Range(t *testing.T) {
 	if n := strings.Count(src, "-0 lands as +0"); n < 3 {
 		t.Fatalf("a compressed float's -0 is folded on %d read paths, want the variable, message and JSON reads", n)
 	}
-	// the variable writer (heading, gains) and the fixed writer
-	if n := strings.Count(src, "-0 is stored as +0"); n < 3 {
+	// the variable writer (heading, gains) and the fixed writer store through
+	// TableStoredFloatBits, which writes +0 for a compressed -0
+	if n := strings.Count(src, "TableStoredFloatBits( "); n < 3 {
 		t.Fatalf("a compressed float's -0 is stored as +0 by %d write sites, want the variable and fixed writers", n)
 	}
 	if !strings.Contains(src, "single ? (double) (float) f->range_min : f->range_min") {

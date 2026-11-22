@@ -3399,21 +3399,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	}
 }
 
-// emitCFloatElem reads ONE element of a compressed float array (its bounds
-// already checked) and holds it to the field's range as a scalar compressed
-// float is held (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): a value past an
-// end refuses out_of_range and ends the element walk, and a -0 lands as +0.
-// lo and hi are the float32 ends (fixedFloatClampEnds).
-func (g *wireGen) emitCFloatElem(f *ir.Field, src, dest, report, lo, hi, ind string) {
-	g.pf("%s{\n", ind)
-	g.pf("%s\tvar x = %s.readF32(%s.pos, '%s'); %s.pos += 4;\n", ind, src, src, g.floatOwner(f), src)
-	g.pf("%s\tif (%s.report.nonFiniteFloat.isNotEmpty) { break; }\n", ind, report)
-	g.pf("%s\tif (x < %s || x > %s) { %s.report.refuse('out_of_range'); break; }\n", ind, lo, hi, report)
-	g.pf("%s\tif (x == 0) { x = 0.0; }\n", ind)
-	g.pf("%s\t%s.add(x);\n", ind, dest)
-	g.pf("%s}\n", ind)
-}
-
 // emitLoadScalarListElem emits the tolerant read of ONE element of a `[]T`
 // of scalars, strings or enums, appending it to the destination list (dest is
 // `v.field`). A scalar reads at its kind's width, a bool one byte, a string

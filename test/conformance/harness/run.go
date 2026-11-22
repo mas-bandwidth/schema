@@ -487,6 +487,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: md.Name, want: want})
 		}
+		// THE BATCH'S REFUSAL CONTRACT (§3.3, §6.5): the count the loader
+		// reported, scored by scoreMessageBatch against the row's verdict.
+		for i := range m.Batches {
+			out = append(out, expectation{name: m.Batches[i].Name, batch: &m.Batches[i]})
+		}
 	case "message-prior":
 		// A PRIOR WRITER'S LAWFUL BATCH AT TODAY'S READER (FORMAT.md,
 		// `message-prior`): the row owes the batch re-saved, or a refusal,
@@ -504,11 +509,6 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: md.Name, want: want})
-		}
-		// THE BATCH'S REFUSAL CONTRACT (§3.3, §6.5): the count the loader
-		// reported, scored by scoreMessageBatch against the row's verdict.
-		for i := range m.Batches {
-			out = append(out, expectation{name: m.Batches[i].Name, batch: &m.Batches[i]})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how

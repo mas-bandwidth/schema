@@ -49,7 +49,7 @@ fixed table Fx
 		{"an over-long [N]T refuses", "if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)"},
 		{"a counted array's Min is held on write", "(n < Map.get(f, :min_count, 0) or n > f.array_bound)"},
 		{"a counted array's Min is held on read", "defp clamp_count(n, %{min_count: min}, _report) when n < min,"},
-		{"an enum name outside the set refuses", `if v not in [nil, "None"] and not Map.has_key?(f.by_name, v), do: throw(:invalid_value)`},
+		{"an enum name outside the set, or a retired one, refuses", `(not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),`},
 		{"a non-integer in an int field refuses", "if not is_integer(v), do: throw(:invalid_value)"},
 		{"the float32 range is held at float32", "x = float_at_width(v, width)"},
 		{"a [2..4] holds its Min", "min_count: 2,"},

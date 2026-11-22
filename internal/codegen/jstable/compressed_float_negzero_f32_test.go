@@ -79,13 +79,13 @@ func TestJsCompressedFloatNegZeroAndFloat32Ends(t *testing.T) {
 		t.Errorf("the variable descriptor of tenth must carry its float32 top 0.10000000149011612, not the double 0.1")
 	}
 	rt := string(vfiles[home])
-	if !strings.Contains(runtimeFunction(t, rt, "TableVariableWriteField"), "TableVariableSameFloatField(fd, val, fd.def)") {
+	if !strings.Contains(runtimeFunction(t, rt, "TableVariableWriteField"), "TableVariableSameFloat(fd.f32, TableVariableStoredFloat(fd, val), fd.def)") {
 		t.Errorf("the variable save must compare a compressed float to its default by value")
 	}
 	if !strings.Contains(runtimeFunction(t, rt, "TableVariableScalar"), "else if (v === 0) { v = 0; }") {
 		t.Errorf("the variable read must land a compressed -0 as +0")
 	}
-	if !strings.Contains(runtimeFunction(t, rt, "TableVariableWriteFloat"), "if (d.lo !== null && v === 0) { v = 0; }") {
+	if !strings.Contains(runtimeFunction(t, rt, "TableVariableWriteFloat"), "v = TableVariableStoredFloat(d, v);") {
 		t.Errorf("the variable write must store a compressed -0 as +0")
 	}
 

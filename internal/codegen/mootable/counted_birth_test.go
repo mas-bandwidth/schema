@@ -67,7 +67,7 @@ func TestMooCountedArrayBornAtItsMinimum(t *testing.T) {
 	inputs := map[string][]byte{}
 	var b strings.Builder
 	b.WriteString("--!strict\nlocal inputs = require(\"./inputs\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n")
-	b.WriteString(fmt.Sprintf("local T: any = require(\"./%sTable\")\n", u.DeclFile["VarI32"]))
+	fmt.Fprintf(&b, "local T: any = require(\"./%sTable\")\n", u.DeclFile["VarI32"])
 	b.WriteString(`local function hex(x: buffer?): string
 	if x == nil then return "REFUSED" end
 	local parts = table.create(buffer.len(x))
