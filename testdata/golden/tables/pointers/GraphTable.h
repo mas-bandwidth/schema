@@ -13803,9 +13803,27 @@ inline int64_t MetaFixedSave( const Meta * values, int64_t count, uint8_t * buff
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// MetaFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = MetaFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// MetaFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -14277,9 +14295,27 @@ inline int64_t SettingsFixedSave( const Settings * values, int64_t count, uint8_
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// SettingsFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = SettingsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// SettingsFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;

@@ -62,5 +62,22 @@ func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 				}
 			}
 		})
+		// THE REFUSAL IS REACHED, NOT ASSUMED (R4): none of the three vectors refuses on
+		// its own (the clamp lands), so a copy with record 0's per-record hash forged
+		// refuses no_layout, and every row handed in (4, all poisoned) must be back at
+		// its declared defaults. Old code left the poison in rows 0..k.
+		t.Run(vec.Name+"_refused", func(t *testing.T) {
+			t.Parallel()
+			data := append([]byte(nil), gooseCorpusFile(t, corpus, vec.File)...)
+			lb := int(uint32(data[16]) | uint32(data[17])<<8 | uint32(data[18])<<16 | uint32(data[19])<<24)
+			for i := range 8 {
+				data[20+lb+i] = ^data[20+lb+i]
+			}
+			older := evolutionLoad(t, "test/tables/VOLD_"+vec.Row+".schema")
+			newer := evolutionLoad(t, "test/tables/VNEW_"+vec.Row+".schema")
+			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: vec.Root,
+				capacity: 4, poison: true, fresh: true, data: data})
+			got.refuses(t, "no_layout", false, 0)
+		})
 	}
 }
