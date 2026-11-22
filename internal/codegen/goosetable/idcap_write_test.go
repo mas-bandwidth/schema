@@ -2,14 +2,10 @@ package goosetable_test
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -21,10 +17,7 @@ import (
 // trailer, and the saved file loads again. Then the 4096-id value has its
 // `y` set, which needs 4097: the save refuses id_table_over_bound and
 // writes nothing.
-const idCapMain = `import os;
-import .all;
-
-fn conformance_unit() -> schema_rt::LoadUnit { return UNITNS::UNITNAME; }
+const idCapMain = probePrelude + `import .wire_value;
 
 fn probe(file: const u8[:], set_y: bool) {
     let data = input(file);
@@ -32,7 +25,7 @@ fn probe(file: const u8[:], set_y: bool) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let v = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    if v < 0 { print(file, " load refused"); return; }
+    if v < 0 { write_stdout(str(file, " load refused", "\n")); return; }
     if set_y {
         let y = schema_rt::value_child(vals, v, 2);
         vals[y].state = schema_rt::ValPresent;
@@ -41,7 +34,7 @@ fn probe(file: const u8[:], set_y: bool) {
     var out: u8[>..<] = [];
     let refusal = schema_rt::save_table(conformance_unit(), "Root", data, vals, nodes, v, out);
     if refusal != 0 {
-        print(file, " y=", (if set_y { 1 } else { 0 }), " refused ", schema_rt::save_refusal_name(refusal), " ", out.len);
+        write_stdout(str(file, " y=", (if set_y { 1 } else { 0 }), " refused ", schema_rt::save_refusal_name(refusal), " ", out.len, "\n"));
         return;
     }
     var vals2: schema_rt::LoadVal[>..] = [];
@@ -49,7 +42,7 @@ fn probe(file: const u8[:], set_y: bool) {
     var report2 = schema_rt::LoadReport { .. };
     let again = schema_rt::load_table(conformance_unit(), "Root", out[0..out.len], vals2, nodes2, report2);
     let count = (out[out.len - 8] as! i64) + (out[out.len - 7] as! i64) * 256;
-    print(file, " y=", (if set_y { 1 } else { 0 }), " wrote ", count, " ", (if again >= 0 && !report2.body_damaged { "read" } else { "damaged" }));
+    write_stdout(str(file, " y=", (if set_y { 1 } else { 0 }), " wrote ", count, " ", (if again >= 0 && !report2.body_damaged { "read" } else { "damaged" }), "\n"));
 }
 
 fn main() {
@@ -61,11 +54,8 @@ fn main() {
 
 func TestGooseWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(t.TempDir(), "Probe.schema")
-	if err := os.WriteFile(path, []byte(tablewire.IdCapSchema()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	u, files := cookUnitFiles(t, []string{path}, nil)
+	u := probeUnit(t, tablewire.IdCapSchema())
+	files := probeFiles(t, u, nil)
 	m := tabletext.NewModel(u)
 	var keys []string
 	for i := 0; i < tablewire.IdCapVariants; i++ {
@@ -84,8 +74,7 @@ func TestGooseWriterRefusesMoreThan4096Ids(t *testing.T) {
 		}
 		files[file] = wire
 	}
-	main := strings.Replace(idCapMain, "UNITNS::UNITNAME", goose.Namespace(u)+"::"+goosetable.UnitName, 1)
-	files["main.goose"] = []byte(main)
+	files["main.goose"] = []byte(idCapMain)
 	got := strings.TrimSpace(string(gooserun.Run(t, t.TempDir(), "main.goose", files)))
 	want := "a.bin y=0 wrote 4095 read\nb.bin y=0 wrote 4096 read\nb.bin y=1 refused id_table_over_bound 0"
 	if got != want {
