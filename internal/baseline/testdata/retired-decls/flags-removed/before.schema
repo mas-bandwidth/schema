@@ -1,0 +1,9 @@
+package decls
+
+flags Caps { Jump, Swim }
+
+table Holder
+{
+    caps Caps
+    c    int32
+}
