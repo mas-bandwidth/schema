@@ -7,6 +7,7 @@
 // this port cannot answer is `<case>.absent`, never a guess.
 
 #import "SPJson.h"
+#import "SPFixed.h"
 
 static NSArray<NSString *> *kSurfaces;
 
@@ -40,12 +41,13 @@ static SPUnit *unitFor(NSString *key, NSString **err) {
 
 // the subject of a case: a unit, its root decl; nil + reason when this port
 // does not carry it (an absence)
+static NSString *gUnitKey;
 static SPDecl *rootFor(NSString *unitKey, NSString *root, SPUnit **unitOut, NSString **why) {
+    gUnitKey = unitKey;
     SPUnit *u = unitFor(unitKey, why);
     if (!u) return nil;
     SPDecl *d = [u declNamed:root];
     if (!d) { *why = [NSString stringWithFormat:@"no root %@", root]; return nil; }
-    if (d.fixed) { *why = @"a fixed-form root: the fixed form (form 3) is not carried yet"; return nil; }
     *unitOut = u;
     return d;
 }
@@ -56,10 +58,55 @@ static NSData *readFile(NSString *path) {
     return d;
 }
 
+// The lineage a fixed table's lock records (FIXED-FORM-ALGORITHM §5.2): the
+// `lineage wire=0x...` lines under `fixed table <Root>` in the unit's
+// schema.lock. Only the HASHES are read here, to tell an older writer's file
+// (an absence: the plan compiler is not carried) from a stranger's (refused).
+static NSMutableDictionary<NSString *, NSArray *> *gLocks;
+static NSArray<NSString *> *lockLines(NSString *unitKey) {
+    if (!gLocks) gLocks = [NSMutableDictionary dictionary];
+    NSArray *have = gLocks[unitKey];
+    if (have) return have;
+    NSMutableArray *lines = [NSMutableArray array];
+    for (NSString *path in gUnitPaths[unitKey]) {
+        BOOL dir = NO;
+        [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&dir];
+        NSString *lock = [(dir ? path : [path stringByDeletingLastPathComponent]) stringByAppendingPathComponent:@"schema.lock"];
+        NSString *text = [NSString stringWithContentsOfFile:lock encoding:NSUTF8StringEncoding error:nil];
+        if (text) [lines addObjectsFromArray:[text componentsSeparatedByString:@"\n"]];
+    }
+    gLocks[unitKey] = lines;
+    return lines;
+}
+static NSArray<NSNumber *> *lineageOf(NSString *unitKey, NSString *root) {
+    NSMutableArray *out = [NSMutableArray array];
+    BOOL in = NO;
+    for (NSString *l in lockLines(unitKey)) {
+        if (![l hasPrefix:@" "] && l.length) {
+            NSArray *w = [l componentsSeparatedByString:@" "];
+            in = w.count > 2 && [w[0] isEqualToString:@"fixed"] && [w[2] isEqualToString:root];
+            continue;
+        }
+        if (!in) continue;
+        NSRange r = [l rangeOfString:@"lineage wire=0x"];
+        if (r.location == NSNotFound) continue;
+        unsigned long long h = strtoull([l substringFromIndex:r.location + r.length].UTF8String, NULL, 16);
+        [out addObject:@(h)];
+    }
+    return out;
+}
+
+static SPTableVal *loadAny(NSData *wire, SPDecl *d, SPUnit *u) {
+    if (d.fixed) return SPLoadFixed(wire, d, [NSSet setWithArray:lineageOf(gUnitKey, d.name)]);
+    return SPLoadVariable(wire, d, u);
+}
+static NSData *saveAny(SPTableVal *v) { return v.decl.fixed ? SPSaveFixed(v) : SPSaveVariable(v); }
+
 static BOOL isRefusal(NSException *e) { return [e.name isEqualToString:SPRefusal]; }
 // an exception that is not a refusal is a defect in this port: the case gets
 // no answer (a failure the matrix shows), and the surface goes on
 static void bug(NSException *e) { fprintf(stderr, "BUG %s: %s\n", e.name.UTF8String, e.reason.UTF8String); }
+static BOOL isAbsent(NSException *e) { return [e.name isEqualToString:SPAbsent]; }
 
 // ---------------------------------------------------------------------------
 // The write-refusal patcher: set ONE field at a dotted path (FORMAT.md)
@@ -256,18 +303,20 @@ static void readAndWriteBack(NSString *name, NSData *(^read)(SPDecl *, SPUnit *)
     @try {
         v = (SPTableVal *)read(d, u);
     } @catch (NSException *e) {
+        if (isAbsent(e)) { absent(name, e.reason); return; }
         if (!isRefusal(e)) { bug(e); return; }
         putText(name, @"refused\n");
         return;
     }
     @try {
         NSData *text = SPToJson(v);
-        NSData *wire = SPSaveVariable(v);
+        NSData *wire = saveAny(v);
         NSMutableData *o = [[@"read\n" dataUsingEncoding:NSASCIIStringEncoding] mutableCopy];
         [o appendData:text];
         put(name, o);
         put([name stringByAppendingString:@".wire"], wire);
     } @catch (NSException *e) {
+        if (isAbsent(e)) { absent(name, e.reason); return; }
         if (!isRefusal(e)) { bug(e); return; }
         absent(name, [NSString stringWithFormat:@"accepted, but the write-back refused: %@", e.reason]);
     }
@@ -288,9 +337,10 @@ static int runSurface(NSString *surface) {
             @try {
                 SPTableVal *v;
                 if (jread) v = SPFromJson(readFile([NSString stringWithFormat:@"testdata/conformance/tables/json/%@.json", name]), d, u);
-                else v = SPLoadVariable(readFile(l[4]), d, u);
-                put(outName, jread || wire ? SPSaveVariable(v) : SPToJson(v));
+                else v = loadAny(readFile(l[4]), d, u);
+                put(outName, jread || wire ? saveAny(v) : SPToJson(v));
             } @catch (NSException *e) {
+                if (isAbsent(e)) { absent(outName, e.reason); continue; }
                 if (!isRefusal(e)) { bug(e); continue; }
                 if (!refusedLine) fprintf(stderr, "%s: refused: %s\n", name.UTF8String, e.reason.UTF8String);
                 // SPEC-GAP 3: README says a driver "may emit `refused` or the
@@ -308,7 +358,7 @@ static int runSurface(NSString *surface) {
                 SPDecl *d = rootFor(l[2], l[3], &u, &why);
                 if (!d) { absent(name, why); continue; }
                 @try {
-                    SPTableVal *v = SPLoadVariable(readFile(l[4]), d, u);
+                    SPTableVal *v = loadAny(readFile(l[4]), d, u);
                     NSString *damage = l[5];
                     if ([damage hasPrefix:@"narrow:"])
                         applyPatch(v, [damage substringFromIndex:7], @"bytes", @"61ff62");
@@ -316,6 +366,7 @@ static int runSurface(NSString *surface) {
                         applyPatch(v, [damage substringFromIndex:5], @"units", @"0061d8000062");
                     put(name, SPToJson(v));
                 } @catch (NSException *e) {
+                    if (isAbsent(e)) { absent(name, e.reason); continue; }
                     if (!isRefusal(e)) { bug(e); continue; }
                     putText(name, @"refused\n");
                 }
@@ -327,7 +378,7 @@ static int runSurface(NSString *surface) {
         for (NSArray *l in linesOf(surface)) {
             NSString *path = l[4];
             readAndWriteBack(l[1], ^NSData *(SPDecl *d, SPUnit *u) {
-                return (NSData *)SPLoadVariable(readFile(path), d, u);
+                return (NSData *)loadAny(readFile(path), d, u);
             }, l[2], l[3]);
         }
         return 0;
@@ -341,7 +392,7 @@ static int runSurface(NSString *surface) {
         }
         return 0;
     }
-    if ([surface isEqualToString:@"write-refusal"] || [surface isEqualToString:@"write-refusal-json"]) {
+    if ([surface isEqualToString:@"write-refusal"] || [surface isEqualToString:@"write-refusal-fixed"] || [surface isEqualToString:@"write-refusal-json"]) {
         BOOL json = [surface isEqualToString:@"write-refusal-json"];
         for (NSArray *l in linesOf(surface)) {
             NSString *name = l[1];
@@ -351,8 +402,9 @@ static int runSurface(NSString *surface) {
             if (!d) { absent(name, why); continue; }
             SPTableVal *v;
             @try {
-                v = SPLoadVariable(readFile(l[4]), d, u);
+                v = loadAny(readFile(l[4]), d, u);
             } @catch (NSException *e) {
+                if (isAbsent(e)) { absent(name, e.reason); continue; }
                 if (!isRefusal(e)) { bug(e); continue; }
                 absent(name, [NSString stringWithFormat:@"the row's wire did not load: %@", e.reason]);
                 continue;
@@ -360,9 +412,10 @@ static int runSurface(NSString *surface) {
             if (applyPatch(v, l[5], l[6], l[7]) == PatchUnrepresentable) { putText(name, @"unrepresentable\n"); continue; }
             @try {
                 if (json) SPToJson(v);
-                else SPSaveVariable(v);
+                else saveAny(v);
                 putText(name, @"wrote\n");
             } @catch (NSException *e) {
+                if (isAbsent(e)) { absent(name, e.reason); continue; }
                 if (!isRefusal(e)) { bug(e); continue; }
                 putText(name, @"refused\n");
             }
@@ -374,7 +427,7 @@ static int runSurface(NSString *surface) {
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
-        kSurfaces = @[ @"wire", @"json-read", @"json-write", @"report", @"framing", @"json-hostile", @"write-refusal", @"write-refusal-json" ];
+        kSurfaces = @[ @"wire", @"json-read", @"json-write", @"report", @"framing", @"json-hostile", @"write-refusal", @"write-refusal-fixed", @"write-refusal-json" ];
         if (argc < 3) { fprintf(stderr, "usage: driver <manifest> list | <surface> <outdir>\n"); return 64; }
         NSString *verb = @(argv[2]);
         if ([verb isEqualToString:@"list"]) {
@@ -407,8 +460,20 @@ int main(int argc, const char **argv) {
             // a diagnostic, outside the contract: load every unit, say how it went
             for (NSString *k in [gUnitPaths.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
                 @try {
-                    [SPUnit loadPaths:gUnitPaths[k]];
+                    SPUnit *u = [SPUnit loadPaths:gUnitPaths[k]];
                     printf("ok   %s\n", k.UTF8String);
+                    for (NSString *dn in [u.decls.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+                        SPDecl *d = u.decls[dn];
+                        if (!d.fixed) continue;
+                        NSArray *lin = lineageOf(k, dn);
+                        uint64_t h = 0;
+                        NSString *err = nil;
+                        @try { h = SPFixedHash(d); } @catch (NSException *e) { err = e.reason; }
+                        printf("     fixed %-24s mine=%016llx lock-last=%016llx %s%s\n", dn.UTF8String, h,
+                               lin.count ? [lin.lastObject unsignedLongLongValue] : 0ULL,
+                               err ? err.UTF8String : (lin.count && [lin.lastObject unsignedLongLongValue] == h ? "MATCH" : lin.count ? "DIFFER" : "no lock"),
+                               lin.count && [lin containsObject:@(h)] && [lin.lastObject unsignedLongLongValue] != h ? " (in lineage)" : "");
+                    }
                 } @catch (NSException *e) {
                     printf("FAIL %s: %s: %s\n", k.UTF8String, e.name.UTF8String, e.reason.UTF8String);
                     if (argc > 3) for (NSString *s in e.callStackSymbols) printf("    %s\n", s.UTF8String);

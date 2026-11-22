@@ -6,7 +6,7 @@ CC      ?= clang
 CFLAGS  ?= -O1 -g
 FLAGS    = -fobjc-arc -fobjc-arc-exceptions -Wall -Wno-unused-function -Isrc
 LIBS     = -framework Foundation
-SRC      = src/SPSchema.m src/SPValue.m src/SPWire.m src/SPJson.m
+SRC      = src/SPSchema.m src/SPValue.m src/SPWire.m src/SPJson.m src/SPFixed.m
 
 all: build/driver build/unittest
 
