@@ -36,11 +36,11 @@ fixed table Root { value int32 }
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := string(selected["surfaces/Core.py"])
+	code := string(selected["surfaces/Records.py"])
 	if !strings.Contains(code, "Root.block = None") || strings.Contains(code, "Root.block = BlockTable(") {
 		t.Fatal("wire selection did not remove block descriptor")
 	}
-	if !strings.Contains(string(original["surfaces/Core.py"]), "Root.block = BlockTable(") {
+	if !strings.Contains(string(original["surfaces/Records.py"]), "Root.block = BlockTable(") {
 		t.Fatal("default lost block descriptor")
 	}
 	if got := surfaceForms(wire, u.Tables["Root"]); !reflect.DeepEqual(got, []string{"wire"}) {
@@ -93,7 +93,7 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, init := string(plain["surfaces/Core.py"]), string(plain["surfaces/__init__.py"])
+	code, init := string(plain["surfaces/Records.py"]), string(plain["surfaces/__init__.py"])
 	for _, text := range []string{"def load_retain(", "def save_retain(", "def measure_retain(", "TableRetain"} {
 		if strings.Contains(code, text) || strings.Contains(init, text) {
 			t.Fatalf("wire-only emitted %s", text)
@@ -112,7 +112,7 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, init = string(retained["surfaces/Core.py"]), string(retained["surfaces/__init__.py"])
+	code, init = string(retained["surfaces/Records.py"]), string(retained["surfaces/__init__.py"])
 	for _, text := range []string{"def load_retain(", "def save_retain(", "def measure_retain(", "def load_retain_messages(", "def save_retain_messages("} {
 		if !strings.Contains(code, text) {
 			t.Fatalf("retain selection omitted %s", text)
@@ -159,7 +159,7 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(jsonOnly["surfaces/Core.py"]), "def from_json(") {
+	if !strings.Contains(string(jsonOnly["surfaces/Records.py"]), "def from_json(") {
 		t.Fatal("selected JSON method omitted")
 	}
 	if _, ok := jsonOnly["surfaces/_schema/json_table.py"]; !ok {

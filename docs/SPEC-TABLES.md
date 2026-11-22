@@ -14754,6 +14754,10 @@ in build version (§20.5).
   It is a file-name collision rather than a declaration collision, so it is
   refused naming the FILE, and it is stated here because the view is what
   introduces a generated name that is not derived from a schema file's own.
+  The match ignores case, because Lobster spells the view `<package>View`
+  (`tabledemoView.lobster`) and a case-insensitive file system holds one file
+  for two spellings; every other basename a target cannot spell is refused by
+  SPEC.md §4.6, File-name safety, in a unit with tables and in one without.
 - **A table named after a member of its generated builder** — a member
   function hides the type name it shares, so the header would not
   compile. The two accessors a real schema would plausibly hit were

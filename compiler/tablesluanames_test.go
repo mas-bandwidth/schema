@@ -264,10 +264,10 @@ func TestLuaRuntimeFileNamesAreClaimed(t *testing.T) {
 	for _, base := range homes {
 		t.Run(base, func(t *testing.T) {
 			t.Parallel()
-			if _, err := luaGenerate(unitFromNamedSource(t, base, withTable), nil); err == nil {
+			if _, err := luaGenerate(unitRebasedTo(t, base, withTable), nil); err == nil {
 				t.Fatalf("a schema file named %s beside a table was accepted: the unit would emit %s.lua twice", base, base)
 			}
-			if _, err := luaGenerate(unitFromNamedSource(t, base, tableFree), nil); err != nil {
+			if _, err := luaGenerate(unitRebasedTo(t, base, tableFree), nil); err != nil {
 				t.Fatalf("a schema file named %s in a table-free unit was refused (%v): a claim costs a schema nothing until it declares a table", base, err)
 			}
 		})

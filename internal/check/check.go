@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -164,6 +165,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkClaimedNames()
 	c.checkNativeMapping()
 	c.checkTargetNames()
+	c.checkPlatformNames()
 	c.assemble()
 	if len(c.errs) == 0 {
 		c.checkZeroBitPacketArrays()
@@ -173,6 +175,10 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		return nil, c.errs
 	}
 	c.checkRetiredNames()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
+	c.checkEmitterNames()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -201,6 +207,8 @@ func (c *checker) collectPackage() {
 	}
 	c.checkViewFileName()
 	c.checkCHeaderFileName()
+	c.checkFileNames()
+	c.checkDerivedFileNames()
 }
 
 // checkCHeaderFileName refuses a unit base name that spells a C standard
@@ -258,17 +266,20 @@ var cStandardHeaders = map[string]bool{
 // generated name that is not derived from a schema file's own — so a file
 // named TabledemoView.schema in package tabledemo would emit TabledemoView.h
 // from two sources at once. It is a file-name collision rather than a
-// declaration collision, so it is refused naming the FILE.
+// declaration collision, so it is refused naming the FILE. The match ignores
+// case: Lobster names the view <package>View (package probe, probeView), and
+// a case-insensitive file system holds one file for two spellings (SPEC §4.6,
+// File-name safety).
 func (c *checker) checkViewFileName() {
 	if c.unit.Package == "" {
 		return
 	}
 	view := strings.ToUpper(c.unit.Package[:1]) + c.unit.Package[1:] + "View"
 	for _, f := range c.files {
-		if f.Base == view {
+		if strings.EqualFold(f.Base, view) {
 			c.errf(f.AST.PkgPos, "schema file %s.schema generates the same name as the unit's view file %s.h "+
-				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5) — rename the file",
-				view, view)
+				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5; Lobster spells it %sView.lobster, and the match ignores case) — rename the file",
+				f.Base, view, c.unit.Package)
 		}
 	}
 }
@@ -5067,9 +5078,8 @@ func (c *checker) cReservedMacros() map[string]bool {
 		out["SCHEMA_"+pkg+per] = true
 	}
 	for _, f := range c.files {
-		base := strings.ToUpper(f.Base)
-		for _, suffix := range []string{"_H", "WIRE_H", "TABLE_H", "BLOCK_H"} {
-			out["SCHEMA_"+pkg+"_"+base+suffix] = true
+		for _, part := range []string{"", "wire", "table", "block"} {
+			out[ccommon.HeaderGuard(c.unit.Package, f.Base, part)] = true
 		}
 	}
 	return out

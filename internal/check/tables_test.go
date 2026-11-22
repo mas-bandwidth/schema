@@ -470,10 +470,10 @@ func TestTableRefusals(t *testing.T) {
 }
 
 // TestDartVerbClaimNeedsATable: the Dart member-verb claim is a table-wire
-// claim, and a table-free unit keeps `measure`, `save` and the rest for its
+// claim, and a table-free unit keeps `measure`, `to_json` and the rest for its
 // own fields.
 func TestDartVerbClaimNeedsATable(t *testing.T) {
-	buildUnit(t, "package t\ntype P { measure int32\n  save int32\n  to_json int32 }\n")
+	buildUnit(t, "package t\ntype P { measure int32\n  to_json int32 }\n")
 }
 
 // TestTableRuntimeClaimSplitsOnTheViewFile (schema#672, narrowing #363): the

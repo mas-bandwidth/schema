@@ -38,6 +38,7 @@ var boundedChildDirs = []string{
 	"internal/codegen/java", "internal/codegen/javatable",
 	"internal/codegen/rust", "internal/codegen/rusttable",
 	"compiler",
+	"tools/namebuild",
 }
 
 // helperDir reports whether dir is a run-helper package, whose every file

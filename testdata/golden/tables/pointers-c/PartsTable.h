@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_GRAPHDEMO_PARTSTABLE_H
-#define SCHEMA_GRAPHDEMO_PARTSTABLE_H
+#ifndef SCHEMA_GRAPHDEMO_Parts_table_h
+#define SCHEMA_GRAPHDEMO_Parts_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -7545,4 +7545,4 @@ static SCHEMA_UNUSED int64_t graphdemo_colour_to_json( const graphdemo_colour_t 
 }
 #endif
 
-#endif /* SCHEMA_GRAPHDEMO_PARTSTABLE_H */
+#endif /* SCHEMA_GRAPHDEMO_Parts_table_h */

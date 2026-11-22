@@ -532,7 +532,7 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
         long max = 0;
         foreach (object v in System.Enum.GetValuesAsUnderlyingType(typeof(E)))
         {
-            max = Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
+            max = global::System.Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
         }
         return (int)max;
     }

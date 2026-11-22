@@ -19,11 +19,11 @@ enum Slot { head, body }
 union Choice { items [Slot]int32 }
 fixed table Root { choice Choice }
 `
-	ast, perrs := parser.Parse("Core.schema", []byte(illegal))
+	ast, perrs := parser.Parse("Records.schema", []byte(illegal))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs)
 	}
-	_, errs := check.Unit([]check.SourceFile{{Path: "Core.schema", Name: "Core.schema", Base: "Core", Bytes: []byte(illegal), AST: ast}})
+	_, errs := check.Unit([]check.SourceFile{{Path: "Records.schema", Name: "Records.schema", Base: "Records", Bytes: []byte(illegal), AST: ast}})
 	found := false
 	for _, err := range errs {
 		if strings.Contains(err.Error(), "an enum-keyed array is not an arm") {

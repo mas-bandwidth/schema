@@ -34,9 +34,17 @@ func withDecl(d ir.Decl) *ir.Unit {
 	return u
 }
 
-func withTable(st *ir.Struct) *ir.Unit {
+func withDecls(ds ...ir.Decl) *ir.Unit {
+	u := emptyUnit("game", "Game")
+	u.Files[0].Decls = ds
+	return u
+}
+
+// withTable is a unit with the table st, and ds beside it.
+func withTable(st *ir.Struct, ds ...ir.Decl) *ir.Unit {
 	u := emptyUnit("game", "Game")
 	u.Files[0].Tables = []*ir.Struct{st}
+	u.Files[0].Decls = ds
 	return u
 }
 
@@ -353,9 +361,16 @@ func TestRubySkeleton(t *testing.T) {
 		{"file named for the runtime", ruleFileReserved, emptyUnit("game", "_schema"), "which folds to the runtime's _schema.rb"},
 		{"file named for serialize.rb, folded", ruleFileReserved, emptyUnit("game", "Serialize"), "which folds to the runtime's serialize.rb"},
 		{"files differ only in case", ruleFileCaseFold, emptyUnit("game", "Wire", "wire"), "differ only in case"},
-		{"type lowercase", ruleConstantSpelling, withDecl(&ir.Struct{Name: "player"}), "type player is not a Ruby constant"},
-		{"const lowercase", ruleConstantSpelling, withDecl(&ir.Const{Name: "max_players"}), "const max_players is not a Ruby constant"},
-		{"enum leading underscore", ruleConstantSpelling, withDecl(&ir.Enum{Name: "_Weapon"}), "enum _Weapon is not a Ruby constant"},
+		// A lowercase declaration is carried as the constant it maps to
+		// (ClassName, ConstName); refused are only the names the mapping
+		// cannot rescue: no constant at all, a constant the interpreter or
+		// runtime defines, or one another declaration spells too.
+		{"type that maps to no constant", ruleConstantSpelling, withDecl(&ir.Struct{Name: "_1"}), "type _1, spelled 1 in Ruby, is not a Ruby constant"},
+		{"type mapped onto a core constant", ruleCoreConstant, withDecl(&ir.Struct{Name: "integer"}), "type integer, spelled Integer in Ruby, is a constant the Ruby interpreter or the generated runtime defines"},
+		{"const mapped onto PROTOCOL_ID", ruleCoreConstant, withDecl(&ir.Const{Name: "protocol_id"}), "const protocol_id, spelled PROTOCOL_ID in Ruby, is a constant the Ruby interpreter or the generated runtime defines"},
+		{"two types map to one constant", ruleConstantMapping, withDecls(&ir.Struct{Name: "foo_bar"}, &ir.Struct{Name: "FooBar"}), "type FooBar spells the Ruby constant FooBar, which Game.schema's type foo_bar spells too"},
+		{"enum and table map to one constant", ruleConstantMapping, withTable(&ir.Struct{Name: "kind", IsTable: true}, &ir.Enum{Name: "Kind"}), "table kind spells the Ruby constant Kind, which Game.schema's enum Kind spells too"},
+		{"type spells a union's tag module", ruleConstantMapping, withDecls(&ir.Union{Name: "event"}, &ir.Struct{Name: "EventType"}), "type EventType spells the Ruby constant EventType, which Game.schema's union event's tag module spells too"},
 		{"variant leading underscore", ruleConstantSpelling, withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"_laser"}}), "Weapon's variant _laser is not a Ruby constant"},
 		{"variant constant collision", ruleConstantSpelling, withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"laser", "Laser"}}), "Weapon's variant Laser spells constant Laser, colliding with laser"},
 		{"flag leading underscore", ruleConstantSpelling, withDecl(&ir.Flags{Name: "Caps", Variants: []string{"_fly"}}), "Caps's flag _fly is not a Ruby constant"},
@@ -403,6 +418,13 @@ func TestRubySkeleton(t *testing.T) {
 			{"field named like a builtin method", withDecl(&ir.Struct{Name: "Player", Fields: fields("list", "range", "string", "type", "to_s")})},
 			{"field with one leading underscore", withDecl(&ir.Struct{Name: "Player", Fields: fields("_hp")})},
 			{"type with a digit and an underscore", withDecl(&ir.Struct{Name: "Player_2"})},
+			{"type lowercase", withDecl(&ir.Struct{Name: "player"})},
+			{"const lowercase", withDecl(&ir.Const{Name: "max_players"})},
+			{"enum leading underscore", withDecl(&ir.Enum{Name: "_Weapon"})},
+			{"flags lowercase", withDecl(&ir.Flags{Name: "caps"})},
+			{"union lowercase", withDecl(&ir.Union{Name: "event"})},
+			{"table lowercase", withTable(&ir.Struct{Name: "fleet", IsTable: true})},
+			{"const and type differ once mapped", withDecls(&ir.Const{Name: "kind"}, &ir.Struct{Name: "Kind"})},
 			{"enum variant in capitals", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"LASER", "Rail"}})},
 			{"enum variant lowercase exported", withDecl(&ir.Enum{Name: "Tier", Variants: []string{"flash", "pro"}})},
 			{"type fields named for table members", withDecl(&ir.Struct{Name: "Player", Fields: fields("measure", "cook", "to_json", "save_text")})},
@@ -431,7 +453,7 @@ func TestRubySkeleton(t *testing.T) {
 				t.Errorf("%s: with %s off, still refused: %v", c.name, c.rule, err)
 			}
 		}
-		for _, rule := range []string{rulePackageSpelling, rulePackageConstant, ruleFileIdentifier, ruleFileReserved, ruleFileCaseFold, ruleConstantSpelling, ruleCoreConstant, ruleDoubleUnderscore, ruleHelperPrefix, ruleGeneratedMember} {
+		for _, rule := range []string{rulePackageSpelling, rulePackageConstant, ruleFileIdentifier, ruleFileReserved, ruleFileCaseFold, ruleConstantSpelling, ruleCoreConstant, ruleDoubleUnderscore, ruleHelperPrefix, ruleGeneratedMember, ruleConstantMapping} {
 			if !ruled[rule] {
 				t.Errorf("rule %s has no refused case, so nothing shows it holds", rule)
 			}

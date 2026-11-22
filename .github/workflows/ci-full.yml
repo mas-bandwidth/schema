@@ -526,7 +526,18 @@ jobs:
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
+        run: go test -timeout 0 -skip '^TestNameCorpusBuilds' $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
+
+      # THE NAME CORPUS (testdata/name-buildability-emit), in a step of its own
+      # under SCHEMA_REQUIRE_CORPUS: each leg skips without its runtime sibling or
+      # toolchain (serialize.h, serialize.c, serialize.cs, dotnet, Elixir), and a
+      # skip under SCHEMA_SLOW alone would pass a missing toolchain silently.
+      - name: go test the name corpus, every emitter leg
+        if: matrix.group == 'unit-codegen'
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+        run: go test -timeout 0 -v ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run '^TestNameCorpusBuilds'
 
       - name: go test the Lobster emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-lobster-1'

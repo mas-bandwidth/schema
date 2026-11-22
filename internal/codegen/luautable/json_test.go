@@ -336,7 +336,7 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 // kind_mismatch and unknown counts, then the text ToJson writes from the read value, then
 // the text ToJson writes after Save and Load of that value
 // (docs/SPEC-TABLES.md §16.5, both directions in one process).
-const jsonElemProbe = `require("./BoxTable")
+const jsonElemProbe = `require("./CartonTable")
 local json = require("./schema_json")
 local load = require("./schema_load")
 local save = require("./schema_save")
@@ -368,7 +368,7 @@ print(buffer.tostring(json.ToJson("Box", back)))
 func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 	t.Parallel()
 	const schema = "package p\nenum E { A, B }\ntable Box\n{\n\tm map[string]E\n\tl []E\n\tb []bool\n\tz map[string]*bytes\n}\n"
-	g := generateFiles(t, map[string]string{"Box.schema": schema})
+	g := generateFiles(t, map[string]string{"Carton.schema": schema})
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonElemProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}

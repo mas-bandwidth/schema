@@ -59,7 +59,7 @@ fixed table Fixture
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	source := `#include "CoreTable.h"
+	source := `#include "RecordsTable.h"
 #include <cstdio>
 #include <cstring>
 #include <vector>

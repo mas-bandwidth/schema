@@ -157,7 +157,7 @@ func TestLuauMessageAnnounceMinAboveMax(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the generated Go oracle")
 	dir := t.TempDir()
-	schemaPath := filepath.Join(dir, "Box.schema")
+	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(minMaxSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}

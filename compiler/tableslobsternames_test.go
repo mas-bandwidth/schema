@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -176,10 +178,10 @@ func TestLobsterRuntimeFileNamesAreClaimed(t *testing.T) {
 	for _, base := range homes {
 		t.Run(base, func(t *testing.T) {
 			t.Parallel()
-			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, withTable), Options{}); err == nil {
+			if _, err := (lobsterTarget{}).Generate(unitRebasedTo(t, base, withTable), Options{}); err == nil {
 				t.Fatalf("a schema file named %s beside a table was accepted: the unit would emit %s.lobster twice", base, base)
 			}
-			_, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, tableFree), Options{})
+			_, err := (lobsterTarget{}).Generate(unitRebasedTo(t, base, tableFree), Options{})
 			if viewFiles[base+".lobster"] != nil {
 				if err == nil {
 					t.Fatalf("a schema file named %s collides with the table-free unit registry runtime", base)
@@ -195,7 +197,14 @@ func TestLobsterUnitViewFileNameIsClaimed(t *testing.T) {
 	t.Parallel()
 	for _, source := range []string{"package probe\ntype Gadget { n int32 }\n", "package probe\ntable Gadget { n int32 }\n"} {
 		for _, base := range []string{"probeView", "PROBEVIEW", "Probeview"} {
-			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
+			// the checker refuses the view file's name ignoring case, for
+			// every target (SPEC §4.6, File-name safety rule 7)
+			f, _ := parser.Parse(base+".schema", []byte(source))
+			if _, errs := check.Unit([]check.SourceFile{{Path: base + ".schema", Name: base + ".schema", Base: base, Bytes: []byte(source), AST: f}}); len(errs) == 0 || !strings.Contains(errs[0].Error(), "view file") {
+				t.Fatalf("registry file collision %s: want the checker's view-file refusal, got %v", base, errs)
+			}
+			// the Lobster target's own guard, behind the checker's
+			if _, err := (lobsterTarget{}).Generate(unitRebasedTo(t, base, source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
 				t.Fatalf("registry file collision %s: %v", base, err)
 			}
 		}

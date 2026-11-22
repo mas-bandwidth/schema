@@ -1277,9 +1277,9 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.3), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
+  (serialize v2.1.6), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
   JavaScript (serialize.js v2.1.2), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.1.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  (serialize.cs v2.2.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
@@ -1601,8 +1601,8 @@ All compile errors with positions:
   (`type`, `match`, `impl`, `func`, `class`, `end`, `after`, ...), or that
   collides with another name after Go export-casing (`atRest` → `AtRest`), is
   rejected, with one diagnostic per name listing every language it collides
-  with; every collision in the unit is reported in the same run. Outside the Go escape below there is no escaping
-  machinery; rename at the source.
+  with; every collision in the unit is reported in the same run. Outside the Go escape and the platform
+  names below there is no escaping machinery; rename at the source.
 
   **The reserved-word table.** The rule is an EXACT, CASE-SENSITIVE match of
   the schema name against the union of the rows below (`Self` and `self` are
@@ -1637,6 +1637,35 @@ All compile errors with positions:
   change, before its target registers (the compiler refuses to register a
   target whose language has no row); from that change on, its words are
   refused for every target.
+- **Platform names are the emitter's to carry.** A name no language reserves
+  can still be one a target's platform defines, and where the target can
+  say the name, its emitter does and the checker accepts it. A platform name
+  some target's emitter still spells unqualified is refused for every target
+  instead (platform-name safety, below). In C and C++ a
+  declared type or table may spell a libc type, function or macro
+  (`table uint8_t`, `table memcpy`, `type NULL`): the emitters write the
+  declared types under a
+  marker the pass after them maps back (`internal/codegen/cqualify`), so the
+  emitter's own `uint8_t`, `memcpy(` and `NULL` stay the platform's. C++
+  then names the platform's from the global root where a declared type hides
+  it (`::uint8_t`, `::memcpy(`), and a type spelled like a macro the
+  headers define takes its C++ spelling with one trailing underscore
+  (`type NULL` is `struct NULL_`); C prefixes every declaration with the
+  package already. A C header's include guard keeps the file base's case and
+  spells every other byte in hex (`my_file.schema` guards with
+  `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one.
+  C# names `global::System.Math`, and a unit with a declaration named in
+  lowercase letters only disables CS8981 in its generated files. Elixir
+  lowers a declaration to the module `<Ns>.<Name>` with its first letter
+  raised (`enum kind` is `Probe.Kind`). Ruby spells a declaration whose
+  name is no Ruby constant as the constant it maps to: a const in
+  SCREAMING_SNAKE_CASE (`const max_items` is `MAX_ITEMS`), every other
+  declaration in UpperCamelCase (`enum kind` is `Kind`, `table max_items`
+  is `MaxItems`, and a union's tag module is that name and `Type`); a name
+  that is already a constant is spelled as written. Every one of these is the target's
+  spelling and nothing else: the wire name, every id, every projection, the
+  descriptors and every diagnostic keep the schema name. The cases are
+  `testdata/name-buildability-emit`, built by each target's toolchain.
 - **The Go escape.** Go is the one target that carries a reserved word
   instead of refusing it. In every command, a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go
@@ -1712,6 +1741,67 @@ All compile errors with positions:
   the build naming the schema. The C++ headers' bare spellings are out of
   scope, because every generated name carries an extension and `<cmath>` has
   none.
+  **Every target can spell every basename the checker accepts** (Rowan's
+  ruling, 2026-11-21: a unit `schema check` accepts generates code that builds
+  and loads in all 18 targets; strict wins, the same in every language). A
+  basename names a module (Rust, Python, Ruby, Elixir, Lua, Luau, moo), an
+  import (Goose, Lobster), a class file (Java, C#) or an include guard (C,
+  C++), so whatever target is generated it is refused, naming the file and the
+  targets that cannot express it, when it is:
+  (1) not an identifier (`[A-Za-z_][A-Za-z0-9_]*`: `1x`, `my-file`);
+  (2) a reserved word of any of the seventeen languages (the one table
+  above), matched as written, and lowercased for Rust, which lowercases the
+  basename into its module (`Enum.schema` is `mod enum`); Goose and Lobster
+  import the basename as written, so `Def.schema` stays legal;
+  (3) started with `_`, which the go tool reads as leaving the file out of
+  the package and the Python package reserves;
+  (4) the name of a standard module or of the runtime some target emits
+  beside the generated modules: Lua's standard libraries (`coroutine`,
+  `debug`, `io`, `os`, `package`, `string`, `table`, `utf8`, `math`), which
+  `require` answers first; Rust's `core`, `std`, `main` and `lib`, lowercased;
+  Goose's `std`, `main` and scalar types (`bool`, `i8` ... `u64`, `f32`,
+  `f64`); `init`, which Luau and moo resolve to the directory's own module;
+  `serialize`, and any basename starting with `serialize_` or `schema_`
+  (the runtimes' module families); the support files `SchemaRuntime` (C),
+  `PacketRuntime` (Elixir), `Schema` (Dart), `Int128` and `UInt128` (Dart,
+  Java) and `descriptors` (Lobster), ignoring case; and `InvalidValue`,
+  `PROTOCOL_ID` and `Refused`, which the Python package's `__init__.py`
+  exports;
+  (5) a Go build constraint in the file the Go target writes (`<base>.go`): a
+  `_test` suffix, or a `_<goos>`, `_<goarch>` or `_<goos>_<goarch>` suffix;
+  (6) equal, ignoring case, to another basename of the unit, because a
+  case-insensitive file system (macOS, Windows) holds one file for the pair;
+  or (7) equal, ignoring case, to the unit's view file name (SPEC-TABLES.md
+  §8.5), which Lobster spells `<package>View`.
+  The corpus that proves each rule is testdata/name-buildability: the checker
+  holds every row's verdict in the fast lane, and the nightly
+  (tools/namebuild) generates every accepted row in all 18 targets and builds
+  and loads it.
+- **Platform-name safety:** a declaration is a top-level symbol beside the
+  names a target's generated code spells unqualified and cannot qualify, so a
+  declaration named like one is refused for every target, naming the target:
+  Rust's primitive types and crates (`u8` ... `u128`, `usize`, `i8` ...
+  `i128`, `isize`, `f32`, `f64`, `str`, `std`, `core`), the same scalar names
+  in Goose's namespace, the `dart:typed_data` list classes the Dart output
+  imports unprefixed (`Uint8List` and the rest), the packages the Go output
+  imports (`atomic`, `base64`, `binary`, `errors`, `fmt`, `goruntime`,
+  `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
+  `buffer` library, C#'s `Debug` and `InlineBuffer<N>` (`InlineBuffer4`,
+  any length N), the 128-bit support classes `Int128` and
+  `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
+  reserved word or a claimed name above takes its own diagnostic instead.
+- **Emitter name rules:** the checker also runs the rules a target's
+  emitter holds itself (for Ruby and Python, the emitter's whole name check
+  under every surface a generate can select: a Ruby declaration's constant,
+  as mapped above, is none the interpreter or the generated runtime defines
+  and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
+  Python package is no standard-library module and no declaration a
+  builtin; in both, no field or arm starts with `__` or the helper prefix
+  `_s_` or spells a member the generated class defines; a Goose namespace is
+  no reserved one) and the C and C++ wire-header name
+  (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  refuses for every target, naming the target, a unit one of them refuses,
+  so those names are refused at check rather than at generate.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 

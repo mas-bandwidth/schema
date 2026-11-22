@@ -27,7 +27,7 @@ table Box {
 // nullElemProbe reads one text, writes the report and the text ToJson gives
 // back, then saves, loads and writes that again (docs/SPEC-TABLES.md §16.2,
 // §16.5). Every call's result is checked in Luau before it is printed.
-const nullElemProbe = `require("./BoxTable")
+const nullElemProbe = `require("./CartonTable")
 local json = require("./schema_json")
 local load = require("./schema_load")
 local save = require("./schema_save")
@@ -61,7 +61,7 @@ print(hex(again))
 
 // nullElemReadOnlyProbe is the reversed witness's probe: it never saves, so a
 // planted reader defect is the only thing that can move its answer.
-const nullElemReadOnlyProbe = `require("./BoxTable")
+const nullElemReadOnlyProbe = `require("./CartonTable")
 local json = require("./schema_json")
 local inputs = require("./inputs")
 local function hex(b)
@@ -84,7 +84,7 @@ print(hex(text))
 func nullElemUnit(t *testing.T) *tabletext.Model {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "Box.schema")
+	path := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(path, []byte(nullElemSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestLuauJsonNullElemsArrayRefusal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			path := filepath.Join(dir, "Box.schema")
+			path := filepath.Join(dir, "Carton.schema")
 			src := "package p\n\ntable Box {\n\t" + tc.field + "\n}\n"
 			if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 				t.Fatal(err)
@@ -214,7 +214,7 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			m := nullElemUnit(t)
-			g := generateFiles(t, map[string]string{"Box.schema": nullElemSchema})
+			g := generateFiles(t, map[string]string{"Carton.schema": nullElemSchema})
 			if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(nullElemProbe), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -255,7 +255,7 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 	// its nulls as kind_mismatch and nothing else, so a crash or a refusal of the planted runtime
 	// cannot pass for red. The genuine runtime is the subtests' run.
 	m := nullElemUnit(t)
-	wg := generateFiles(t, map[string]string{"Box.schema": nullElemSchema})
+	wg := generateFiles(t, map[string]string{"Carton.schema": nullElemSchema})
 	src, err := os.ReadFile(filepath.Join("runtime", "schema_json.luau"))
 	if err != nil {
 		t.Fatal(err)

@@ -46,12 +46,12 @@ table Root
 // loadUnit parses and checks one schema file.
 func loadUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()
-	ast, perrs := parser.Parse("Core.schema", []byte(src))
+	ast, perrs := parser.Parse("Records.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
-		Path: "Core.schema", Name: "Core.schema", Base: "Core",
+		Path: "Records.schema", Name: "Records.schema", Base: "Records",
 		Bytes: []byte(src), AST: ast,
 	}})
 	if len(cerrs) > 0 {
@@ -496,7 +496,7 @@ func TestPythonTableCoreCarriesPacketThroughUnion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate refused a packet type reached through a union arm: %v", err)
 	}
-	if _, ok := files["packetunion/Core.py"]; !ok {
+	if _, ok := files["packetunion/Records.py"]; !ok {
 		t.Fatalf("the generated module is missing: %v", sortedFileNames(files))
 	}
 }

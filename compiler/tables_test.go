@@ -15,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -1183,6 +1184,19 @@ func unitFromNamedSource(t *testing.T, base, src string) *ir.Unit {
 	}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
+
+// unitRebasedTo checks src as Probe.schema and renames the file to base after
+// the check. A backend's own file-name guard sits behind the checker's
+// (SPEC §4.6, File-name safety), so a test of that guard reaches it this way
+// whether or not the checker refuses base first.
+func unitRebasedTo(t *testing.T, base, src string) *ir.Unit {
+	t.Helper()
+	u := unitFromNamedSource(t, "Probe", src)
+	if base != "Probe" {
+		irtest.Rebase(t, u, "Probe", base)
 	}
 	return u
 }

@@ -74,6 +74,7 @@ const (
 	ruleDoubleUnderscore = "double-underscore"
 	ruleHelperPrefix     = "helper-prefix"
 	ruleGeneratedMember  = "generated-member"
+	ruleConstantMapping  = "constant-mapping"
 )
 
 // CheckNames holds every name the generated namespace spells to
@@ -85,20 +86,32 @@ const (
 // leaves out, are carried as written. The rest are the rules only the Ruby
 // target has: the package and its module constant, the file names, constant
 // spellings, core constants and runtime names, double-underscore and helper
-// prefixes, and the generated members.
+// prefixes, and the generated members. A declaration is held as the Ruby
+// constant it is spelled as (ClassName, ConstName), so a lowercase name is
+// carried, and refused only when its constant is one the interpreter or
+// runtime defines or one another declaration spells too. schema check runs
+// it for every target (SPEC §4.6), through rubytable.CheckNamesAtCheck.
 func CheckNames(u *ir.Unit) error {
 	return checkNames(u, "")
 }
 
 // checker is CheckNames with one rule, off, turned off: the negative control's
 // handle on each rule. CheckNames turns none off.
-type checker struct{ off string }
+type checker struct {
+	off string
+}
 
 func (c checker) on(rule string) bool { return rule != c.off }
 
 func checkNames(u *ir.Unit, off string) error {
-	c := checker{off: off}
+	return checker{off: off}.check(u)
+}
+
+func (c checker) check(u *ir.Unit) error {
 	if err := c.checkPackage(u.Package); err != nil {
+		return err
+	}
+	if err := c.checkModuleScope(u); err != nil {
 		return err
 	}
 	folded := map[string]string{}
@@ -227,7 +240,7 @@ func (c checker) checkUnion(file string, un *ir.Union) error {
 		what := "union " + un.Name + "'s arm " + a.Name
 		ac := ir.GoExportName(a.Name)
 		if prev, dup := seen[ac]; dup && c.on(ruleConstantSpelling) {
-			return fmt.Errorf("ruby: %s.schema: %s spells the constant %sType::%s, colliding with %s; rename the arm", file, what, un.Name, ac, prev)
+			return fmt.Errorf("ruby: %s.schema: %s spells the constant %sType::%s, colliding with %s; rename the arm", file, what, ClassName(un.Name), ac, prev)
 		}
 		seen[ac] = a.Name
 		if err := c.checkMethod(file, what, a.Name); err != nil {
@@ -241,13 +254,86 @@ func (c checker) checkUnion(file string, un *ir.Union) error {
 }
 
 // checkConstant holds a module-level name: a type, table, union, enum, flags
-// set or const is a constant of the unit module.
+// set or const is a constant of the unit module, spelled as declConstant maps
+// it. what starts with the declaration's kind ("const ", "type ", ...).
 func (c checker) checkConstant(file, what, name string) error {
-	if err := c.checkVariant(file, what, name); err != nil {
+	rb := declConstant(strings.HasPrefix(what, "const "), name)
+	spelled := what
+	if rb != name {
+		spelled = what + ", spelled " + rb + " in Ruby,"
+	}
+	if err := c.checkVariant(file, spelled, rb); err != nil {
 		return err
 	}
-	if (rubyCoreConstants[name] || runtimeNames[name]) && c.on(ruleCoreConstant) {
-		return fmt.Errorf("ruby: %s.schema: %s is a constant the Ruby interpreter or the generated runtime defines, and the generated unit module names those unqualified; rename it", file, what)
+	if (rubyCoreConstants[rb] || runtimeNames[rb]) && c.on(ruleCoreConstant) {
+		return fmt.Errorf("ruby: %s.schema: %s is a constant the Ruby interpreter or the generated runtime defines, and the generated unit module names those unqualified; rename it", file, spelled)
+	}
+	return nil
+}
+
+// declConstant is the unit-module constant a declaration is spelled as: a
+// const by ConstName, everything else by ClassName.
+func declConstant(isConst bool, name string) string {
+	if isConst {
+		return ConstName(name)
+	}
+	return ClassName(name)
+}
+
+// checkModuleScope refuses two declarations whose Ruby constants are one
+// constant of the unit module (every file of a unit opens the same module):
+// foo_bar and FooBar both spell FooBar, and a union's tag module is its class
+// name and Type, so union Event and type EventType collide too. The mapping
+// keeps a name that is already a constant, so only a mapped name can collide.
+func (c checker) checkModuleScope(u *ir.Unit) error {
+	if !c.on(ruleConstantMapping) {
+		return nil
+	}
+	type owner struct{ file, what, name string }
+	seen := map[string]owner{}
+	claim := func(file, what, name, rb string) error {
+		if prev, ok := seen[rb]; ok && prev.name != name {
+			return fmt.Errorf("ruby: %s.schema: %s spells the Ruby constant %s, which %s.schema's %s spells too; rename one", file, what, rb, prev.file, prev.what)
+		}
+		seen[rb] = owner{file, what, name}
+		return nil
+	}
+	union := func(file, name string) error {
+		what := "union " + name
+		if err := claim(file, what, name, ClassName(name)); err != nil {
+			return err
+		}
+		return claim(file, what+"'s tag module", name+"Type", ClassName(name)+"Type")
+	}
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			var err error
+			switch d := d.(type) {
+			case *ir.Const:
+				err = claim(f.Base, "const "+d.Name, d.Name, ConstName(d.Name))
+			case *ir.Enum:
+				err = claim(f.Base, "enum "+d.Name, d.Name, ClassName(d.Name))
+			case *ir.Flags:
+				err = claim(f.Base, "flags "+d.Name, d.Name, ClassName(d.Name))
+			case *ir.Struct:
+				err = claim(f.Base, "type "+d.Name, d.Name, ClassName(d.Name))
+			case *ir.Union:
+				err = union(f.Base, d.Name)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		for _, t := range f.Tables {
+			if err := claim(f.Base, "table "+t.Name, t.Name, ClassName(t.Name)); err != nil {
+				return err
+			}
+		}
+		for _, un := range f.TableUnions {
+			if err := union(f.Base, un.Name); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -347,4 +433,27 @@ func wordSet(words string) map[string]bool {
 		out[w] = true
 	}
 	return out
+}
+
+// ClassName is the Ruby constant a type, table, enum, flags or union is
+// spelled as (Glenn's ruling, 2026-11-22: what is native for Ruby): its
+// schema name when that already starts with an uppercase ASCII letter, so a
+// unit that was legal before generates byte for byte as it did, and
+// otherwise its UpperCamelCase (kind -> Kind, max_items -> MaxItems). The
+// wire, the descriptors, every id and every diagnostic keep the schema name.
+func ClassName(name string) string {
+	if name != "" && name[0] >= 'A' && name[0] <= 'Z' {
+		return name
+	}
+	return ir.GoExportName(name)
+}
+
+// ConstName is the Ruby constant a const is spelled as: its schema name when
+// that already starts with an uppercase ASCII letter, and otherwise its
+// SCREAMING_SNAKE_CASE (max_items -> MAX_ITEMS).
+func ConstName(name string) string {
+	if name != "" && name[0] >= 'A' && name[0] <= 'Z' {
+		return name
+	}
+	return ir.RustConstName(name)
 }

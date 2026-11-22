@@ -68,8 +68,8 @@ var bitsTopTargets = []struct {
 
 // bitsTopSave builds the lawful record with every sentinel and saves it with
 // the port's own save.
-const bitsTopSave = `local T = require("./BoxTable")
-local Bx = require("./Box")
+const bitsTopSave = `local T = require("./CartonTable")
+local Bx = require("./Carton")
 local S = require("./schema_save")
 local v = T.NewBox()
 v.B40 = 0x3C3C3C28i
@@ -155,7 +155,7 @@ func TestBitsTopOracle(t *testing.T) {
 // A raised error is printed as its own verdict, never swallowed.
 const bitsTopLoad = `local inputs = require("./inputs")
 local load = require("./schema_load")
-require("./BoxTable")
+require("./CartonTable")
 local cases = require("./cases")
 for _, c in ipairs(cases) do
 	local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
@@ -188,7 +188,7 @@ func TestLuauLoadBitsTopEveryWidth(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	dir := t.TempDir()
-	schemaPath := filepath.Join(dir, "Box.schema")
+	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(bitsTopSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}

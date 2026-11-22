@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_GRAPHDEMO_MARKSTABLE_H
-#define SCHEMA_GRAPHDEMO_MARKSTABLE_H
+#ifndef SCHEMA_GRAPHDEMO_Marks_table_h
+#define SCHEMA_GRAPHDEMO_Marks_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -8036,4 +8036,4 @@ static SCHEMA_UNUSED int64_t graphdemo_marker_to_json_measure_with_allocator(con
 }
 #endif
 
-#endif /* SCHEMA_GRAPHDEMO_MARKSTABLE_H */
+#endif /* SCHEMA_GRAPHDEMO_Marks_table_h */

@@ -69,7 +69,7 @@ func TestPythonFormsBlockMetadataNegativeControl(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		path := "formsprobe/Core.py"
+		path := "formsprobe/Records.py"
 		if strings.Count(string(files[path]), tc.anchor) != 1 {
 			t.Fatalf("control anchor missing or repeated: %s", tc.anchor)
 		}
