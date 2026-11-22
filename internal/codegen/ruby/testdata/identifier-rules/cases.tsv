@@ -1,0 +1,41 @@
+# The Ruby identifier-rules corpus (docs/PORT-RUBY.md, IDENTIFIERS): one schema
+# beside this file per case, each loaded as the file Game.schema through the
+# parser and the shared checker, then held to the Ruby name check
+# (CheckNames). TestRubyIdentifierCorpus reads every row.
+# case	verdict	says
+#
+# verdict:
+#   ruby: the shared checker passes it and the Ruby check refuses it, naming
+#     the member the field or arm would replace;
+#   checker: the shared checker already refuses it for every target (a table
+#     field whose Dart spelling is a Dart table verb, docs/SPEC-TABLES.md §11),
+#     so no Ruby unit ever holds it;
+#   accepted: the lawful control beside the refusals.
+# says: what the refusal names ("-" for an accepted case).
+#
+# A field spelled like a member every generated class defines or relies on.
+type_field_to_h	ruby	Player's field to_h is the name of a member the generated class defines
+type_field_public_send	ruby	Player's field public_send is the name of a member the generated class defines
+# A union arm spelled like a member of the union class, or whose tag constant
+# spells the tag module's NAMES.
+union_arm_public_send	ruby	union Event's arm public_send is the name of a member the generated union class defines
+union_arm_NAMES	ruby	union Event's arm NAMES spells the constant EventType::NAMES
+# A table field spelled like a member only a table class defines.
+table_field_save_text	ruby	Fleet's field save_text is the name of a member the generated table class defines
+table_field_cook	ruby	Fleet's field cook is the name of a member the generated table class defines
+table_field_cook_measure	ruby	Fleet's field cook_measure is the name of a member the generated table class defines
+fixed_table_field_save_text	ruby	Fleet's field save_text is the name of a member the generated table class defines
+fixed_table_field_cook_measure	ruby	Fleet's field cook_measure is the name of a member the generated table class defines
+# The table-class members whose Dart spellings (measure, measureRetain,
+# saveRetain, toJson) are Dart table verbs: refused before any backend.
+table_field_measure	checker	field measure collides with the generated Dart table verb `measure`
+table_field_measure_retain	checker	field measure_retain collides with the generated Dart table verb `measureRetain`
+table_field_save_retain	checker	field save_retain collides with the generated Dart table verb `saveRetain`
+table_field_to_json	checker	field to_json collides with the generated Dart table verb `toJson`
+# The controls: a packet type in a unit without tables defines no table
+# member, so its fields may spell them; names beside the members, and an arm
+# whose constant is Names, pass.
+type_fields_named_for_table_members	accepted	-
+type_fields_beside_the_members	accepted	-
+table_fields_beside_the_members	accepted	-
+union_arm_names_lowercase	accepted	-

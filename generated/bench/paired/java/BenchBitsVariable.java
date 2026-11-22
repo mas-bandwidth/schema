@@ -9,8 +9,6 @@
 
 package bench;
 
-import java.nio.charset.StandardCharsets;
-
 public final class BenchBitsVariable {
     private BenchBitsVariable() {}
 
@@ -38,7 +36,7 @@ public final class BenchBitsVariable {
     public static final long F_b19 = 0xff956b1912ad8f3fL;
     public static final long F_b48 = 0xff8b681912a535a1L;
 
-    static Object createNode(long typeId) {
+    static java.lang.Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -73,7 +71,10 @@ public final class BenchBitsVariable {
     }
 
     static void decodeNodeBody(
-            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+            TableVariable.Reader r,
+            java.lang.Object val,
+            long typeId,
+            TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
             return;
@@ -118,7 +119,10 @@ public final class BenchBitsVariable {
     }
 
     static void writeNodeBody(
-            TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
+            TableVariable.Writer w,
+            TableVariable.NodeGraph graph,
+            java.lang.Object val,
+            long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val);
             return;
@@ -162,10 +166,10 @@ public final class BenchBitsVariable {
     }
 
     static void resolveNodePointers(
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
@@ -224,11 +228,11 @@ public final class BenchBitsVariable {
         g.push(v, GRAPH_KIND, -2, 0, null);
         while (g.workCount() > 0) {
             int at = g.workCount() - 1;
-            Object value = g.workValue(at);
+            java.lang.Object value = g.workValue(at);
             int kind = g.workKind(at);
             int field = g.workField(at);
             int index = g.workIndex(at);
-            Object close = g.workClose(at);
+            java.lang.Object close = g.workClose(at);
             g.pop();
             if (field == -1) {
                 g.setOpen(value, false);
@@ -304,7 +308,7 @@ public final class BenchBitsVariable {
         }
     }
 
-    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+    static boolean graphEnter(TableVariable.NodeGraph g, java.lang.Object v, int kind) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
@@ -333,7 +337,8 @@ public final class BenchBitsVariable {
         }
     }
 
-    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+    static boolean graphStep(
+            TableVariable.NodeGraph g, java.lang.Object v, int kind, int field, int index) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
@@ -613,7 +618,7 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && Long.compareUnsigned(v.b48, 0xffffffffffffL) > 0) {
+                    if (!r.fail && java.lang.Long.compareUnsigned(v.b48, 0xffffffffffffL) > 0) {
                         v.b48 = 0xffffffffffffL;
                         report.refuse("out_of_range");
                     }
@@ -649,7 +654,7 @@ public final class BenchBitsVariable {
     public static void resolveNodes(
             Value v,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (nt.bad) {
@@ -720,7 +725,7 @@ public final class BenchBitsVariable {
     static boolean checkWrite(Value v) {
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
-        for (Object o = walk.next(); o != null; o = walk.next()) {
+        for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
             if (o instanceof BenchBitsVariable.Value) {
                 assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
             }
@@ -766,7 +771,7 @@ public final class BenchBitsVariable {
         assert (v.b3 & 0xffffffffL) <= 0x7L : "BenchBits.b3";
         assert (v.b11 & 0xffffffffL) <= 0x7ffL : "BenchBits.b11";
         assert (v.b19 & 0xffffffffL) <= 0x7ffffL : "BenchBits.b19";
-        assert Long.compareUnsigned(v.b48, 0xffffffffffffL) <= 0 : "BenchBits.b48";
+        assert java.lang.Long.compareUnsigned(v.b48, 0xffffffffffffL) <= 0 : "BenchBits.b48";
         return true;
     }
 
@@ -793,12 +798,12 @@ public final class BenchBitsVariable {
             int table = w.off;
             w.putLeb(nodes);
             for (int i = 0; i < nodes; i++) {
-                Object value = graph.nodeValue(i);
+                java.lang.Object value = graph.nodeValue(i);
                 long typeId = graph.nodeType(i);
                 w.putLeb(w.ref(typeId));
                 if (graph.nodeBlob(i)) {
-                    if (value instanceof String) {
-                        w.putUtf8((String) value);
+                    if (value instanceof java.lang.String) {
+                        w.putUtf8((java.lang.String) value);
                     } else {
                         byte[] bytes = (byte[]) value;
                         w.putLeb(bytes.length);
@@ -839,7 +844,9 @@ public final class BenchBitsVariable {
                         report.damaged = true;
                         rec.typeId = 0;
                     } else {
-                        rec.value = new String(rec.body, StandardCharsets.UTF_8);
+                        rec.value =
+                                new java.lang.String(
+                                        rec.body, java.nio.charset.StandardCharsets.UTF_8);
                         // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
                         report.unknown++;
                     }
@@ -1013,14 +1020,14 @@ public final class BenchBitsVariable {
             return null;
         }
         graph.setOpen(v, false);
-        StringBuilder b = new StringBuilder();
+        java.lang.StringBuilder b = new java.lang.StringBuilder();
         try {
             jsonFields(b, graph, v, 0);
         } catch (TableJson.Refused e) {
             return null;
         }
         b.append('\n');
-        return b.toString().getBytes(StandardCharsets.UTF_8);
+        return b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
@@ -1044,7 +1051,8 @@ public final class BenchBitsVariable {
         return v;
     }
 
-    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+    static void jsonFields(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -1052,7 +1060,11 @@ public final class BenchBitsVariable {
     }
 
     static boolean jsonFieldsBody(
-            StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
+            java.lang.StringBuilder b,
+            TableVariable.NodeGraph graph,
+            Value v,
+            int depth,
+            boolean first) {
         if (!first) {
             b.append(',');
         }
@@ -1060,10 +1072,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b7");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b7, 1L << 7) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b7, 1L << 7) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b7));
+        b.append(java.lang.Integer.toUnsignedString(v.b7));
         if (!first) {
             b.append(',');
         }
@@ -1071,10 +1083,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b13");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b13, 1L << 13) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b13, 1L << 13) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b13));
+        b.append(java.lang.Integer.toUnsignedString(v.b13));
         if (!first) {
             b.append(',');
         }
@@ -1082,10 +1094,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b23");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b23, 1L << 23) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b23, 1L << 23) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b23));
+        b.append(java.lang.Integer.toUnsignedString(v.b23));
         if (!first) {
             b.append(',');
         }
@@ -1093,10 +1105,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b3");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b3, 1L << 3) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b3, 1L << 3) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b3));
+        b.append(java.lang.Integer.toUnsignedString(v.b3));
         if (!first) {
             b.append(',');
         }
@@ -1104,10 +1116,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b32");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b32, 1L << 32) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b32, 1L << 32) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b32));
+        b.append(java.lang.Integer.toUnsignedString(v.b32));
         if (!first) {
             b.append(',');
         }
@@ -1115,10 +1127,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b11");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b11, 1L << 11) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b11, 1L << 11) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b11));
+        b.append(java.lang.Integer.toUnsignedString(v.b11));
         if (!first) {
             b.append(',');
         }
@@ -1126,10 +1138,10 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b19");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.b19, 1L << 19) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.b19, 1L << 19) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.b19));
+        b.append(java.lang.Integer.toUnsignedString(v.b19));
         if (!first) {
             b.append(',');
         }
@@ -1137,17 +1149,17 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b48");
         b.append(": ");
-        if (Long.compareUnsigned(v.b48, 1L << 48) >= 0) {
+        if (java.lang.Long.compareUnsigned(v.b48, 1L << 48) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
         b.append('"');
-        b.append(Long.toUnsignedString(v.b48));
+        b.append(java.lang.Long.toUnsignedString(v.b48));
         b.append('"');
         return first;
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1160,7 +1172,7 @@ public final class BenchBitsVariable {
             jsonFields(b, graph, child, depth);
             return;
         }
-        Long label = graph.labels.get(child);
+        java.lang.Long label = graph.labels.get(child);
         if (label == null) {
             label = (long) (graph.labels.size() + 1);
             graph.labels.put(child, label);
@@ -1202,7 +1214,7 @@ public final class BenchBitsVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanName();
+        java.lang.String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -1271,7 +1283,7 @@ public final class BenchBitsVariable {
 
     static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {
         boolean[] seenField = new boolean[8];
-        java.util.Set<String> seenKey = new java.util.HashSet<>();
+        java.util.Set<java.lang.String> seenKey = new java.util.HashSet<>();
         while (true) {
             int c = in.peek();
             if (c == 0) {
@@ -1282,7 +1294,7 @@ public final class BenchBitsVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanName();
+            java.lang.String key = in.scanName();
             if (in.bad) {
                 return;
             }

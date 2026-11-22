@@ -3,12 +3,13 @@ package tabledemo_test
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // runSabotagedChained is slowtest.RunSabotaged for a rule one generated file
@@ -51,7 +52,7 @@ func runSabotagedChained(t *testing.T, root, pkg, run string, sabotages ...slowt
 	if err := os.WriteFile(overlayPath, overlay, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-overlay", overlayPath, "-run", run, pkg)
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-overlay", overlayPath, "-run", run, pkg)
 	cmd.Dir = abs
 	data, err := cmd.CombinedOutput()
 	return string(data), err != nil

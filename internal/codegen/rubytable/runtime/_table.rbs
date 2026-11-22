@@ -149,6 +149,7 @@
     def self.block_rows_of: (untyped) -> untyped
     def self.block_stride_align: (untyped) -> untyped
     def self.body_end_offset: (untyped) -> untyped
+    def self.born_element: (untyped, untyped) -> untyped
     def self.by_id: (untyped) -> untyped
     def self.by_name: (untyped) -> untyped
     def self.capture_retain_file: (untyped, untyped, untyped, ?untyped) -> untyped
@@ -206,6 +207,7 @@
     def self.float32_bits_eq?: (untyped, untyped) -> untyped
     def self.float32_from_bits: (untyped) -> untyped
     def self.float32_round: (untyped) -> untyped
+    def self.float_in_range?: (untyped, untyped) -> bool
     def self.float64_bits: (untyped) -> untyped
     def self.float64_bits_eq?: (untyped, untyped) -> untyped
     def self.float64_from_bits: (untyped) -> untyped

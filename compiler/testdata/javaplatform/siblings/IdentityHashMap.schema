@@ -1,0 +1,11 @@
+// IdentityHashMap.schema beside bench/corpus/Bench.schema and FixedTable.schema: the
+// outer class bench.IdentityHashMap, which every other file of package bench sees by
+// its simple name (compiler/javaplatform_test.go).
+package bench
+
+type IdentityHashMapProbe
+{
+    wide  uint128
+    ratio float64
+    scale float32
+}

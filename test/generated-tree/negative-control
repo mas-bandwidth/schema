@@ -82,6 +82,19 @@ ignored)
 	: > "$tree/go/.stamp"
 	expect_red=no
 	expected='generated/ tree is current' ;;
+ignored-tracked)
+	# An ignore rule that matches a file git TRACKS takes that file out of
+	# the comparison for good: the tree carries it and nothing judges it.
+	: > "$tree/go/.stamp"
+	printf 'go/.stamp\n' > "$out/tracked"
+	GENERATED_TREE_TRACKED=$out/tracked
+	export GENERATED_TREE_TRACKED
+	expected='UNJUDGED — 1 tracked file(s) that .gitignore excludes' ;;
+empty)
+	# Two directories with no file in common compare equal in every file
+	# they share, which is none.
+	rm "$emitted/go/ATable.go" "$tree/go/ATable.go"
+	expected='EMPTY — the emission and the tree share no file' ;;
 clean)
 	expect_red=no
 	expected='generated/ tree is current' ;;

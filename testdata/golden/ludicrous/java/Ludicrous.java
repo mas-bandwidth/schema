@@ -29,11 +29,6 @@
 
 package ludicrous;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 // Ludicrous carries every generated declaration of Ludicrous.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -42,8 +37,9 @@ public final class Ludicrous {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -122,7 +118,7 @@ public final class Ludicrous {
 
     // enumNameDriveMode: debug/log/tooling name for any DriveMode storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameDriveMode(long value) {
+    public static java.lang.String enumNameDriveMode(long value) {
         if (value == DriveMode.NONE) {
             return "None";
         }
@@ -164,7 +160,7 @@ public final class Ludicrous {
         value.position = 0;
         value.reach = Int128.zero;
         value.ticks = 0;
-        Arrays.fill(value.samples, 0);
+        java.util.Arrays.fill(value.samples, 0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
@@ -173,7 +169,7 @@ public final class Ludicrous {
         value.position = 0;
         value.reach = Int128.zero;
         value.ticks = 0;
-        Arrays.fill(value.samples, 0);
+        java.util.Arrays.fill(value.samples, 0);
     }
 
     // checkWriteFixedProbe is the contract walk of writeFixedProbeBits, called once
@@ -256,7 +252,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -353,7 +349,7 @@ public final class Ludicrous {
         value.span = 0;
         value.reach = UInt128.zero;
         value.ticks = 0;
-        Arrays.fill(value.samples, 0L);
+        java.util.Arrays.fill(value.samples, 0L);
         value.locked = 0;
         value.tail = 0;
     }
@@ -364,7 +360,7 @@ public final class Ludicrous {
         value.span = 0;
         value.reach = UInt128.zero;
         value.ticks = 0;
-        Arrays.fill(value.samples, 0L);
+        java.util.Arrays.fill(value.samples, 0L);
         value.locked = 196608;
         value.tail = 0;
     }
@@ -380,7 +376,7 @@ public final class Ludicrous {
         assert (long) data.length * 8 >= (long) bitOffset + UNSIGNED_PROBE_MAX_BITS;
         assert value.angle >= 0;
         assert value.angle <= 23592960;
-        assert Long.compareUnsigned(value.span, 0xffffffffffff0000L) <= 0;
+        assert java.lang.Long.compareUnsigned(value.span, 0xffffffffffff0000L) <= 0;
         {
             final UInt128 max = new UInt128(0, 131072000000L);
             assert value.reach.compareUnsigned(max) <= 0;
@@ -448,7 +444,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -468,7 +464,7 @@ public final class Ludicrous {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
-        if (Long.compareUnsigned(lo, 0xffffffffffff0000L) > 0) {
+        if (java.lang.Long.compareUnsigned(lo, 0xffffffffffff0000L) > 0) {
             return -1; // a smuggled offset is refused
         }
         value.span = lo;
@@ -665,7 +661,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -775,7 +771,7 @@ public final class Ludicrous {
         // pre-allocated element instances — the storage principle (SPEC §6.1):
         // every buffer exists at construction
         public LudicrousState() {
-            Arrays.fill(keys, UInt128.zero);
+            java.util.Arrays.fill(keys, UInt128.zero);
         }
     }
 
@@ -790,7 +786,7 @@ public final class Ludicrous {
         value.mode = 0;
         zeroFixedProbe(value.probe);
         zeroWideProbe(value.wide);
-        Arrays.fill(value.keys, UInt128.zero);
+        java.util.Arrays.fill(value.keys, UInt128.zero);
         value.keysCount = 0;
         value.hasTarget = false;
         value.targetId = UInt128.zero;
@@ -801,7 +797,7 @@ public final class Ludicrous {
         value.mode = 0;
         initFixedProbe(value.probe);
         initWideProbe(value.wide);
-        Arrays.fill(value.keys, UInt128.zero);
+        java.util.Arrays.fill(value.keys, UInt128.zero);
         value.keysCount = 0;
         value.hasTarget = false;
         value.targetId = UInt128.zero;
@@ -886,7 +882,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1066,7 +1062,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1200,7 +1196,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1352,7 +1348,7 @@ public final class Ludicrous {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;

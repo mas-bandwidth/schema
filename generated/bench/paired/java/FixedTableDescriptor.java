@@ -22,7 +22,7 @@ public final class FixedTableDescriptor {
             t.name = "FixedTable";
             t.table = true;
             t.doc = "";
-            t.tags = new String[0];
+            t.tags = new java.lang.String[0];
             TableFieldInfo[] fields = new TableFieldInfo[1];
             TableFieldInfo f0 = TableFieldInfo.of("value", 13, "value", 0L);
             f0.view(
@@ -32,7 +32,7 @@ public final class FixedTableDescriptor {
                     false,
                     "BenchMixed",
                     "",
-                    new String[0]);
+                    new java.lang.String[0]);
             f0.at(false, false, 0, 1376, -1, -1);
             f0.nested(BenchMixedDescriptor::tableType);
             f0.objects(FixedTableDescriptor::get_0, FixedTableDescriptor::set_0);
@@ -44,17 +44,17 @@ public final class FixedTableDescriptor {
         }
     }
 
-    private static Object get_0(Object h, int i) {
+    private static java.lang.Object get_0(java.lang.Object h, int i) {
         FixedTableVariable.Value v = (FixedTableVariable.Value) h;
         return v.value;
     }
 
-    private static void set_0(Object h, int i, Object x) {
+    private static void set_0(java.lang.Object h, int i, java.lang.Object x) {
         FixedTableVariable.Value v = (FixedTableVariable.Value) h;
         v.value = (BenchMixedVariable.Value) x;
     }
 
-    private static void reset(Object h) {
+    private static void reset(java.lang.Object h) {
         FixedTableVariable.Value v = (FixedTableVariable.Value) h;
         BenchMixedDescriptor.tableType().reset.accept(v.value);
     }

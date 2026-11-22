@@ -23,11 +23,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t03Flat is the smallest declared fixed table with a lineage: two adjacent
@@ -753,7 +754,7 @@ func t03R21(t *testing.T) {
 	if widen == "" {
 		t.Fatal("R21: the runtime has no opWidenF arm")
 	}
-	if !strings.Contains(widen, "Double.doubleToRawLongBits(Float.intBitsToFloat(bits))") {
+	if !strings.Contains(widen, "java.lang.Double.doubleToRawLongBits(java.lang.Float.intBitsToFloat(bits))") {
 		t.Errorf("R21: the widenf arm is not the ordinary conversion:\n%s", widen)
 	}
 	for _, retired := range []string{"<< 29", "0x7FF0000000000000L"} {
@@ -1007,6 +1008,6 @@ func runJava(t *testing.T, javaBin, classes, class string, args ...string) (stri
 
 	t.Helper()
 	cmdArgs := append([]string{"-ea", "-cp", classes, class}, args...)
-	out, err := exec.Command(javaBin, cmdArgs...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, cmdArgs...).CombinedOutput()
 	return string(out), err
 }

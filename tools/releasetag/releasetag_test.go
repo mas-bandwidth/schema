@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
 )
 
 const (
@@ -135,6 +137,7 @@ func TestPromoteAndReleaseDriveOnlyTheirOneTag(t *testing.T) {
 			"rev-parse --verify " + otherSHA + "^{commit}": otherSHA + "\n",
 			"show v2.5.0:" + FormSource:                    formSrc(4),
 			"show " + mergeSHA + ":" + FormSource:          formSrc(4),
+			"show " + mergeSHA + ":go.mod":                 goModSrc("2"),
 		}}
 	}
 
@@ -276,6 +279,7 @@ func TestReleaseFormGate(t *testing.T) {
 			"rev-list origin/main":                mergeSHA + "\n",
 			"show v2.5.0:" + FormSource:           formSrc(3),
 			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc("2"),
 		}}
 		err := Release(g, c.version, "HEAD", "origin/main", true, io.Discard)
 		if got := errors.Is(err, ErrFormMoved); got != c.wantRefuse {
@@ -285,6 +289,57 @@ func TestReleaseFormGate(t *testing.T) {
 			t.Errorf("refused release %s wrote %q", c.version, g.writes())
 		}
 		if !c.wantRefuse && len(g.writes()) != 2 {
+			t.Errorf("release %s wrote %q; want its tag and its push", c.version, g.writes())
+		}
+	}
+}
+
+// goModSrc is a go.mod naming this module at major suffix /v<major> ("" for
+// none), assembled from parts so the module-path move program leaves it alone.
+func goModSrc(major string) string {
+	path := "github.com/mas-bandwidth/" + "schema"
+	if major != "" {
+		path += "/v" + major
+	}
+	return "module " + path + "\n\ngo 1.26\n"
+}
+
+// TestReleaseModuleGate drives internal/modulemove's release gate through
+// Release and a fake git: go.mod is read at the commit being tagged, and a
+// tag whose go.mod does not carry its major, which pin's boundary does not
+// cover, refuses and writes nothing, naming the version. The pure rule is
+// tested in internal/modulemove; this pins that the tagger runs it.
+func TestReleaseModuleGate(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		version, goModMajor string
+		wantRefuse          bool
+	}{
+		{"v2.6.0", "2", false},
+		{"v2.6.0", "4", true},
+		{"v2.6.0", "", true},
+		{"v4.0.0", "2", true},
+	} {
+		g := &fakeGit{answers: map[string]string{
+			"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+			"tag --list v*":                       "v2.4.0\nv2.5.0\n",
+			"rev-list origin/main":                mergeSHA + "\n",
+			"show v2.5.0:" + FormSource:           formSrc(4),
+			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc(c.goModMajor),
+		}}
+		err := Release(g, c.version, "HEAD", "origin/main", true, io.Discard)
+		if got := errors.Is(err, modulemove.ErrModuleMismatch); got != c.wantRefuse {
+			t.Errorf("Release(%s) on a go.mod at /v%s: err = %v; want refusal %v", c.version, c.goModMajor, err, c.wantRefuse)
+		}
+		if c.wantRefuse {
+			if len(g.writes()) != 0 {
+				t.Errorf("refused release %s wrote %q", c.version, g.writes())
+			}
+			if err != nil && !strings.Contains(err.Error(), c.version) {
+				t.Errorf("refusal does not name %s: %v", c.version, err)
+			}
+		} else if len(g.writes()) != 2 {
 			t.Errorf("release %s wrote %q; want its tag and its push", c.version, g.writes())
 		}
 	}
