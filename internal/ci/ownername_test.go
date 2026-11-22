@@ -19,20 +19,27 @@ func TestOwnerName(t *testing.T) {
 	citationKey := regexp.MustCompile("docs/rulings\\.json`?[,;: ]+`?([a-z][a-z0-9-]+)")
 
 	files := []string{filepath.Join(root, "AGENTS.md"), filepath.Join(root, "docs", "SPEC.md")}
+	gateSources := 0
 	err := filepath.WalkDir(filepath.Join(root, "internal", "ci"), func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(path, ".go") {
 			files = append(files, path)
+			gateSources++
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if gateSources == 0 {
+		t.Fatal("the walk of internal/ci found no .go source; this gate would pass having read two documents")
+	}
 
-	scanned, cited := 0, 0
+	scanned := 0
+	linesScanned := 0
+	citations := 0
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -47,11 +54,12 @@ func TestOwnerName(t *testing.T) {
 			continue
 		}
 		for i, line := range strings.Split(string(data), "\n") {
+			linesScanned++
 			if owner.MatchString(line) {
 				t.Errorf("%s:%d: ruling citation names the maintainer; cite the date and docs/rulings.json key", rel, i+1)
 			}
 			for _, m := range citationKey.FindAllStringSubmatch(line, -1) {
-				cited++
+				citations++
 				if !keys[m[1]] {
 					t.Errorf("%s:%d: docs/rulings.json has no ruling %q", rel, i+1, m[1])
 				}
@@ -61,9 +69,12 @@ func TestOwnerName(t *testing.T) {
 	if scanned == 0 {
 		t.Fatal("no file scanned; this gate would pass over an empty set")
 	}
+	if linesScanned == 0 {
+		t.Fatal("the scanned files hold no lines; the maintainer-name check read nothing")
+	}
 	// the fixed pages are always in the set, so scanned alone cannot fall to
 	// zero; what can is the count of citations the pattern still reads
-	if cited == 0 {
+	if citations == 0 {
 		t.Fatalf("%d files scanned and no docs/rulings.json citation read; the citation pattern no longer matches how the tree cites a ruling", scanned)
 	}
 	if !citationKey.MatchString("docs/rulings.json, `strict-only-read`") || !citationKey.MatchString("(docs/rulings.json strict-only-read)") {

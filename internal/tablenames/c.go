@@ -345,6 +345,8 @@ func init() {
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},
 		Name{Name: "table_bits_to_double", What: "u64 bits -> double"},
 		Name{Name: "table_double_to_bits", What: "double -> u64 bits"},
+		Name{Name: "table_stored_float_bits", What: "a compressed float32's stored bits: -0 as +0 (§3.3, fixed-compressed-negzero)"},
+		Name{Name: "table_stored_double_bits", What: "a compressed float64's stored bits: -0 as +0 (§3.3, fixed-compressed-negzero)"},
 		Name{Name: "table_bits_finite32", What: "true when a float32's raw bits are finite: the read's non_finite_float test (§3.3)"},
 		Name{Name: "table_bits_finite64", What: "true when a float64's raw bits are finite: the read's non_finite_float test (§3.3)"},
 		Name{Name: "table_float_finite", What: "the writer's finite rule on a float (§3.3)"},

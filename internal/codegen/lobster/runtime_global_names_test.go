@@ -34,6 +34,9 @@ func TestLobsterRuntimeGlobalNamesAreRefused(t *testing.T) {
 		func(n string) string { return "type " + n + "\n{\n    x uint8\n}\n" },
 		func(n string) string { return "type ProbeArm\n{\n    x uint8\n}\n\nunion " + n + " { a ProbeArm }\n" },
 	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for i, n := range names {
 		dir := t.TempDir()
 		writeFile(t, dir, "Probe.schema", "package probe\n\n"+shapes[i%len(shapes)](n))

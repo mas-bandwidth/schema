@@ -97,7 +97,11 @@ func TestMooCyclicWireIsDamage(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	want := cycleWant(0, true)
-	for name, got := range runCycleVectors(t, nil) {
+	allRunCycleVectors := runCycleVectors(t, nil)
+	if len(allRunCycleVectors) == 0 {
+		t.Fatal("runCycleVectors(t, nil) is empty: the loop below would check nothing")
+	}
+	for name, got := range allRunCycleVectors {
 		if got != want {
 			t.Errorf("%s: got\n%s\nwant\n%s", name, got, want)
 		}
@@ -126,6 +130,9 @@ func TestMooCyclicWireNegativeControl(t *testing.T) {
 		}
 	})
 	want := cycleWant(1, false)
+	if len(got) == 0 {
+		t.Fatal("got is empty: the loop below would check nothing")
+	}
 	for name, out := range got {
 		if out != want {
 			t.Errorf("%s: removing the cycle check did not let the cyclic wire load:\n%s", name, out)

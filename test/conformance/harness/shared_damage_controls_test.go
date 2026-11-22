@@ -110,23 +110,28 @@ func TestDamageAwareBoundaries(t *testing.T) {
 func TestDamageAwareIDTableControls(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name string
-		ids  []string
-		body []byte
-		want bool
+		name    string
+		ids     []string
+		body    []byte
+		want    bool
+		damaged bool // the body's framing is damaged
 	}{
-		{"first use", []string{"a", "b"}, b(2, 6, 1, 1, 6, 1, 0), true},
-		{"unused", []string{"a", "b"}, b(1, 6, 1, 0), true},
-		{"duplicate entries", []string{"a", "a"}, b(1, 6, 1, 0), true},
-		{"canonical", []string{"b", "a"}, b(1, 6, 1, 2, 6, 1, 0), false},
-		{"damaged suffix may use remaining ID", []string{"a", "b"}, b(1, 6, 1, 128), false},
+		{"first use", []string{"a", "b"}, b(2, 6, 1, 1, 6, 1, 0), true, false},
+		{"unused", []string{"a", "b"}, b(1, 6, 1, 0), true, false},
+		{"duplicate entries", []string{"a", "a"}, b(1, 6, 1, 0), true, false},
+		{"canonical", []string{"b", "a"}, b(1, 6, 1, 2, 6, 1, 0), false, false},
+		{"damaged suffix may use remaining ID", []string{"a", "b"}, b(1, 6, 1, 128), false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wire, err := (framingVector{ids: tc.ids, body: tc.body}).scriptBytes(nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			fault, _ := damageAwareIDTableFault(wire)
+			fault, err := damageAwareIDTableFault(wire)
+			_, damaged := errors.AsType[*fixtureDamage](err)
+			if damaged != tc.damaged || (err != nil && !damaged) {
+				t.Fatalf("framing error %v, want damage=%v", err, tc.damaged)
+			}
 			if (fault != "") != tc.want {
 				t.Fatalf("fault %q want=%v", fault, tc.want)
 			}

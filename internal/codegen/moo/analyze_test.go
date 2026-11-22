@@ -59,6 +59,9 @@ func TestMooGeneratedCodeIsAnalyzerClean(t *testing.T) {
 					units = append(units, []string{p})
 				}
 			}
+			if len(units) == 0 {
+				t.Fatal("units is empty: the loop below would check nothing")
+			}
 			for _, unit := range units {
 				dir, files := generateInto(t, unitFromFiles(t, unit))
 				for name, data := range files {

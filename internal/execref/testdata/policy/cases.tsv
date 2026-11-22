@@ -1,0 +1,21 @@
+# The child-process policy corpus (the reviewer's F-230). Every reader of the
+# policy runs every row: execref's TestPolicyCorpus, internal/ci's
+# TestEveryTestChildIsBoundedPolicyCorpus and goosetable's
+# TestGooseTestsStartProcessesThroughGooserunPolicyCorpus.
+# fixture	starts	form
+#
+# fixture: Go source beside this file, kept as .go.txt so no Go tool takes it
+#          for part of the module. Each is judged as a _test.go file.
+# starts:  how many references to os/exec's Command or CommandContext a
+#          reader must refuse in it.
+#
+# the three forms the spelling-based readers got wrong
+dot_import.go.txt	2	os/exec dot-imported, then bare Command and CommandContext
+local_shadow.go.txt	0	a local value named exec whose method is called Command
+constructor_value.go.txt	2	exec.Command and exec.CommandContext taken as function values
+# controls
+direct_call.go.txt	2	exec.Command and exec.CommandContext called directly
+renamed_import.go.txt	1	os/exec imported under another name
+type_only.go.txt	0	os/exec imported for its types only
+bounded.go.txt	0	the child started through testproc.Command
+dot_import_shadow.go.txt	0	os/exec dot-imported for its types, and a local func named Command

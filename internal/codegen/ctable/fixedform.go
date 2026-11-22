@@ -398,20 +398,19 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		g.pf("%stable_fixed_put8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
-			// §3.3, the FIXED row; ruling fixed-compressed-negzero): the sum
-			// rule of fixedClampNegZero, -0 + +0 is +0 and every other value
-			// is itself
-			g.pf("%stable_fixed_putf32( %s + %d, ( %s ) + 0.0f );\n", ind, buf, off, expr)
-		} else {
-			g.pf("%stable_fixed_putf32( %s + %d, %s );\n", ind, buf, off, expr)
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3; docs/rulings.json fixed-compressed-negzero), the +0 bits
+			// the read lands it as; a plain float's -0 rides bit-exact
+			g.pf("%stable_fixed_put32( %s + %d, table_stored_float_bits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%stable_fixed_putf32( %s + %d, %s );\n", ind, buf, off, expr)
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			g.pf("%stable_fixed_putf64( %s + %d, ( %s ) + 0.0 );\n", ind, buf, off, expr)
-		} else {
-			g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
+			g.pf("%stable_fixed_put64( %s + %d, table_stored_double_bits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
 		if w == 16 {
 			if f.Type.Signed {
@@ -929,17 +928,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if finite {
 		g.pf("    read_widened = report->widened;\n")
 	}
+	g.pf("    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,\n")
+	g.pf("       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]\n")
+	g.pf("       as untouched as values[k]. */\n")
+	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
+	g.pf("        if ( table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n    }\n")
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	if fixedClampNeeded(st) {
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
-	// REFUSE IS TOTAL (§5.8): a later record's hash refuses after records
-	// 0..k-1 have landed, so they go back to their defaults and no counter
-	// they moved survives, as at every other refusal in this loop.
-	g.pf("        if ( table_fixed_get64( at ) != hash )\n        {\n")
-	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
-	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT;\n")
-	g.pf("            return -1;\n        }\n")
 	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
 	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
@@ -1413,9 +1410,19 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
-		// §5.1): a quantized float past its range is the message form's to
-		// clamp, and the writers hold row 10 where the table says they do.
+		// ROW 10 IS THE WRITE CHECK'S (docs/SPEC.md §5.1): a compressed
+		// float off its range is refused by the writer, and in this assert
+		// leg that is the debug assert FixedSave and SaveMessages hold over
+		// this body. THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
+		// §3.3): the ends are the float32 literals nearest the declared
+		// bounds, so the 0.1f a reader landed under max = 0.1 saves again.
+		// A plain float has no range and nothing to count. A NaN or an
+		// infinity is row 7's, refused in every build after this assert,
+		// so the range is tested on a finite value only.
+		if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+			g.pf("%s(*out_of_range) += (int) ( table_float_finite( %s ) && ( %s < %s || %s > %s ) );\n",
+				ind, expr, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		}
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)

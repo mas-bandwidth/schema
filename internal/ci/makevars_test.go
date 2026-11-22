@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // makeOffence records one redefinition of a Makefile variable by an included
@@ -135,7 +137,7 @@ func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 		if !info.IsDir() {
 			continue
 		}
-		files, err := filepath.Glob(filepath.Join(path, "*.mk"))
+		files, err := provesran.Glob(filepath.Join(path, "*.mk"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +145,7 @@ func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 			collectMK(f)
 		}
 	}
-	checks, err := filepath.Glob(filepath.Join(root, "make", "checks", "*.mk"))
+	checks, err := provesran.Glob(filepath.Join(root, "make", "checks", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

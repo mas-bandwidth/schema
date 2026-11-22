@@ -100,6 +100,31 @@ return function(ctx: any): { [string]: Surface }
 			return n
 		end
 
+	-- A ROW'S REAL IS SPELLED AT FULL PRECISION: moo has no float, and a
+	-- number from tonumber holds a decimal fraction only to 1/65536, so
+	-- tonumber(text) through buffer.writef32 turned 0.1 into 0x3dccd000 and
+	-- 2.5000002384185791 into 2.5, and the rows that pin a compressed float's
+	-- float32 ends (docs/SPEC-TABLES.md §3.3) answered the wrong verdict.
+	-- The unit's own JSON parser rounds the token once, to the nearest
+	-- binary32 or binary64 pattern, exactly as the Go reader does; a unit
+	-- that carries no json.moo has no text form for a real to come from.
+	local function floatParser(unitKey: string): any
+		local J: any = ctx.module(unitKey, "json")
+		if J == nil then
+			error("driver: unit " .. unitKey .. " carries no json.moo to spell a real exactly", 0)
+		end
+		return J
+	end
+
+	local function floatBits32(unitKey: string, text: string): number
+		return floatParser(unitKey).parseFloat32(text)
+	end
+
+	local function floatBits64(unitKey: string, text: string): (number, number)
+		local hi, lo = floatParser(unitKey).parseFloat64(text)
+		return lo, hi
+	end
+
 	local function wrefSet(unitKey: string, St: any, root: string, v: any, path: string, what: string, text: string)
 		local owner, fd, idx = wrefWalk(St, root, v, path)
 		local holder: any = owner
@@ -134,10 +159,7 @@ return function(ctx: any): { [string]: Surface }
 				elseif text == "inf" then holder[key] = 0x7f800000
 				elseif text == "-inf" then holder[key] = 0xff800000
 				else
-					local n = tonumber(text) :: number
-					local b = buffer.create(4)
-					buffer.writef32(b, 0, n)
-					holder[key] = buffer.readu32(b, 0)
+					holder[key] = floatBits32(unitKey, text)
 				end
 			else
 				local ser: any = ctx.module(unitKey, "serialize")
@@ -145,10 +167,8 @@ return function(ctx: any): { [string]: Surface }
 				elseif text == "inf" then holder[key] = ser.Uint64.new(0, 0x7ff00000)
 				elseif text == "-inf" then holder[key] = ser.Uint64.new(0, 0xfff00000)
 				else
-					local n = tonumber(text) :: number
-					local b = buffer.create(8)
-					buffer.writef64(b, 0, n)
-					holder[key] = ser.Uint64.new(buffer.readu32(b, 0), buffer.readu32(b, 4))
+					local lo, hi = floatBits64(unitKey, text)
+					holder[key] = ser.Uint64.new(lo, hi)
 				end
 			end
 		elseif what == "count" then

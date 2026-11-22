@@ -328,7 +328,7 @@ const batchRefusalsBody = `
   final fresh = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
   final freshRep = h.TableReport();
   final freshCount = r.rootLoadMessages(<h.Root>[h.Root()], buf, fresh, freshRep);
-  check(freshCount == -1 && freshRep.refused && freshRep.reason == 'no_vocabulary',
+  check(freshCount == 0 && freshRep.refused && freshRep.reason == 'no_vocabulary',
       'no_vocabulary: count=$freshCount refused=${freshRep.refused} reason=${freshRep.reason}');
   // "'M' ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... 'MeasureMessages'
   // and 'SaveMessages' both refuse and return '-1'."
@@ -391,7 +391,7 @@ const batchDamageBody = `
   for (final form in [1, 6]) {
     final formRep = h.TableReport();
     final formCount = r.rootLoadMessages(<h.Root>[h.Root()], Uint8List.fromList([form]), vocab, formRep);
-    check(formCount == -1 && formRep.refused && formRep.reason == 'newer_form',
+    check(formCount == 0 && formRep.refused && formRep.reason == 'newer_form',
         'form $form: count=$formCount reason=${formRep.reason}');
   }
   // "a reader handed a form-'2' wire where a file was expected refuses by name."

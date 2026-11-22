@@ -95,7 +95,11 @@ func TestMooMessageRangedHeldToTheAnnouncedKind(t *testing.T) {
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Ints.schema": announcedKindSchema})
 	got := announcedKindRun(t, g)
-	for _, c := range announcedCases() {
+	allAnnouncedCases := announcedCases()
+	if len(allAnnouncedCases) == 0 {
+		t.Fatal("announcedCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allAnnouncedCases {
 		if got[c.name] != c.want {
 			t.Errorf("%s: moo %q, want %q", c.name, got[c.name], c.want)
 		}

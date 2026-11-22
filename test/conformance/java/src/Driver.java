@@ -2404,6 +2404,25 @@ public final class Driver {
                 return failInt(f[1] + ": message codec failed: " + failure);
             }
         }
+        // message-batch <case> <connection> <root> <wire>: load with room for
+        // every body and answer the count loadMessages returned
+        // (docs/SPEC-TABLES.md §3.3; FORMAT.md, `message-batch`).
+        for (String[] f : kind("message-batch")) {
+            String[] conn = connectionNamed(f[2]);
+            if (conn == null) { return failInt("missing connection " + f[2]); }
+            try {
+                MessageCodec codec = messageCodec(conn[2], f[3]);
+                if (codec == null) { return failInt(f[1] + ": no message codec for " + conn[2] + "." + f[3]); }
+                Object vocab = codec.vocab();
+                if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), codec.report())) {
+                    return failInt(f[1] + ": announceRead refused " + conn[4]);
+                }
+                int count = codec.load(codec.newValues(256), 256, vocab, Files.readAllBytes(Paths.get(f[4])), codec.report());
+                spill(out, f[1], "count " + count + "\n");
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": message codec failed: " + failure);
+            }
+        }
         return 0;
     }
 

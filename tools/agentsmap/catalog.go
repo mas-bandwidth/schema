@@ -32,6 +32,7 @@ func page(path, purpose, guard, command string) Entry {
 // catalog is the map. Top-level directories must all appear; a Page directory's
 // immediate child directories must all appear.
 var catalog = []Entry{
+	e(".claude-plugin", "plugin marketplace entry for skills/", "none", "none"),
 	e(".github", "CI workflows", "go test ./internal/ci", "make test"),
 	page("bench", "cross-language serialize bench", "go test ./bench/corpus", "bench/run.sh"),
 	e("cmd", "schema CLI", "go test ./cmd/schema", "go test ./cmd/schema"),
@@ -88,6 +89,7 @@ var catalog = []Entry{
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
 	page("internal/codegen", "per-language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
+	e("internal/execref", "os/exec references resolved by binding, for the child-process policies", "go test ./internal/execref", "go test ./internal/execref"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
@@ -104,7 +106,10 @@ var catalog = []Entry{
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/pathid", "where a path lands, by the file system's identity", "go test ./internal/pathid", "go test ./internal/pathid"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/recipescan", "recipe and script failure-swallowing scan", "go test ./internal/recipescan", "go run ./tools/recipescan"),
+	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
+	e("internal/runmatch", "go test -run selection, as Go matches it", "go test ./internal/runmatch", "go test ./internal/runmatch"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
 	e("internal/skipledger", "skip ledger: every reason a test may skip for", "go test ./internal/skipledger", "go test ./internal/ci -run Skip"),
@@ -114,6 +119,7 @@ var catalog = []Entry{
 	e("internal/tabletext", "table JSON text", "go test ./internal/tabletext", "go test ./internal/tabletext"),
 	e("internal/testproc", "bounded child processes for tests", "go test ./internal/testproc", "go test ./internal/testproc"),
 	e("internal/tablewire", "table wire codecs", "go test ./internal/tablewire", "go test ./internal/tablewire"),
+	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
 	e("internal/viewlisting", "view listing vs IR", "go test ./internal/viewlisting", "go test ./internal/viewlisting"),
 
@@ -200,8 +206,10 @@ var catalog = []Entry{
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
+	e("tools/mustrun", "harness wrapper: exit status plus a registered ran N count", "go test ./tools/mustrun", "build/mustrun -name X -count N -- cmd"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
+	e("tools/recipescan", "CLI for internal/recipescan", "go test ./internal/recipescan", "go run ./tools/recipescan"),
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
@@ -211,6 +219,7 @@ var catalog = []Entry{
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
+	e("tools/vacuoustests", "vacuous-test analyzer command", "go test ./internal/vacuous", "go run ./tools/vacuoustests -all"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
 
 	// test/

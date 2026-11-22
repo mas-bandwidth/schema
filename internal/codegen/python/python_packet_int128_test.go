@@ -407,6 +407,9 @@ func runInt128Oracle(t *testing.T, u *ir.Unit) ([]int128Case, []int128Forge) {
 			forged = append(forged, int128Forge{Name: fields[1], Root: fields[2], Hex: fields[3], Verdict: fields[4]})
 		}
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		if _, err := hex.DecodeString(c.Hex); err != nil || len(c.Reads) == 0 {
 			t.Fatalf("the Go reference gave case %s no packet or no reads:\n%s", c.Name, out)
@@ -598,7 +601,11 @@ func int128Spec(t *testing.T, cases []int128Case, forged []int128Forge) []byte {
 func TestPythonPacketInt128(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	for _, pin := range packetPins() {
+	allPacketPins := packetPins()
+	if len(allPacketPins) == 0 {
+		t.Fatal("packetPins() is empty: the loop below would check nothing")
+	}
+	for _, pin := range allPacketPins {
 		if pin.note != "" {
 			continue
 		}

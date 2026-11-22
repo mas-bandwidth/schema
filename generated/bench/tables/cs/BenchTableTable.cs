@@ -5247,7 +5247,9 @@ namespace Benchtable
                 int total = MessageCount(bytes, vocabulary, report);
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
-                if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+                // the capacity refusal included, and nothing is decoded.
+                if (total > values.Length) { return Refuse(report, "batch_too_large"); }
                 bool damagedBefore = report.Damaged;
                 report.Damaged = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
@@ -9856,6 +9858,7 @@ namespace Benchtable
             if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
+            if (value.ServerTime < 0.0f || value.ServerTime > 65535.0f) { clamped++; }
             if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
@@ -9895,7 +9898,11 @@ namespace Benchtable
                 }
             }
             if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
             if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) { clamped++; }
+            if (value.Ping < 0.0f || value.Ping > 250.0f) { clamped++; }
             // bits(24) width clamp
             if (value.CrcHint > 16777215) { clamped++; }
             if (value.Extra < 0 || value.Extra > 255) { clamped++; }

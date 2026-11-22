@@ -36,7 +36,11 @@ for operation in (lambda: cook.open_cook(Inner, b""), lambda: cook.check_cook(In
     else: raise AssertionError("excluded cook reader was accepted")
 print("ok")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if strings.TrimSpace(got) != "ok" {
 			t.Errorf("%s: %s", name, got)
@@ -116,7 +120,11 @@ data = cook.cook(r); assert cook.cook_measure(r) == len(data)
 cook.check_cook(Root, data)
 print("ok")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if strings.TrimSpace(got) != "ok" {
 			t.Errorf("%s: %s", name, got)

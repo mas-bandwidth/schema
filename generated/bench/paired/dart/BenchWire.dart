@@ -1844,6 +1844,11 @@ int readU32(Uint8List d, int off) {
   return v;
 }
 
+// _rangeF32 is the one reusable cell a write check narrows a compressed
+// float32 through before its range test (docs/SPEC-TABLES.md §3.3): store the
+// value, read [0], no allocation per check.
+final Float32List _rangeF32 = Float32List(1);
+
 // _f32Bits/_f64Bits render a Dart double as its IEEE 754 bit pattern
 // (docs/SPEC-TABLES.md §3, kinds 10 and 11): the value rides as its raw bits,
 // little-endian, exactly as the other backends write it.
@@ -2515,54 +2520,20 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
-int _intCompare(int a, int b) => a.compareTo(b);
-
-// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
-int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
-
-// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
-// built ONCE, and a bottom-up merge sort over the entries' indices makes at
-// most n log2 n compares whatever order the entries arrive in: the JSON read
-// sorts a map in the order the document sent it, so the cost must not depend
-// on that order (§2.8's cost row: the sort is O(n log n) once per map).
-List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
-  final n = l.length;
-  if (n < 2) {
-    return List<T>.from(l);
-  }
-  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
-  var from = List<int>.generate(n, (i) => i, growable: false);
-  var to = List<int>.filled(n, 0);
-  for (var width = 1; width < n; width *= 2) {
-    for (var lo = 0; lo < n; lo += 2 * width) {
-      final mid = lo + width < n ? lo + width : n;
-      final hi = lo + 2 * width < n ? lo + 2 * width : n;
-      var i = lo;
-      var j = mid;
-      var k = lo;
-      while (i < mid && j < hi) {
-        // the right run's entry goes first only when it is strictly below:
-        // an equal key keeps its stored order
-        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
-          to[k++] = from[j++];
-        } else {
-          to[k++] = from[i++];
-        }
-      }
-      while (i < mid) {
-        to[k++] = from[i++];
-      }
-      while (j < hi) {
-        to[k++] = from[j++];
-      }
+// _stableSorted is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8).
+List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
+  final out = List<T>.from(l);
+  for (var i = 1; i < out.length; i++) {
+    final x = out[i];
+    var j = i - 1;
+    while (j >= 0 && cmp(out[j], x) > 0) {
+      out[j + 1] = out[j];
+      j--;
     }
-    final swap = from;
-    from = to;
-    to = swap;
+    out[j + 1] = x;
   }
-  return List<T>.generate(n, (i) => l[from[i]]);
+  return out;
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
@@ -2674,7 +2645,7 @@ final class BenchMixed {
   int worldTime = 0;
   int frameTick = 0;
   BigInt serverTime = BigInt.zero;
-  List<MixedEntity> entities = List<MixedEntity>.generate(1, (_) => MixedEntity());
+  List<MixedEntity> entities = <MixedEntity>[];
   List<MixedStat> stats = <MixedStat>[];
   MixedEvent gameEvent = MixedEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3097,18 +3068,7 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     _putWide(w, v.serverTime, 4);
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
-  var birthEntities = v.entities.length == 1;
-  if (birthEntities) {
-    for (var bi = 0; bi < 1; bi++) {
-      final mark = w.state.mark();
-      final b = w.sub();
-      b.path = [...w.path, 9, bi];
-      mixedEntityWireSaveBody(b, v.entities[bi]);
-      w.state.rollback(mark);
-      if (b.buf.length > 1) { birthEntities = false; break; }
-    }
-  }
-  if (v.entities.isNotEmpty && !birthEntities) {
+  if (v.entities.isNotEmpty) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3186,19 +3146,19 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
+  assert(!v.aimX.isFinite || ((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0));
   if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'BenchMixed.aim_x'));
   }
-  assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
+  assert(!v.aimY.isFinite || ((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0));
   if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'BenchMixed.aim_y'));
   }
-  assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
+  assert(!v.aimZ.isFinite || ((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0));
   if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
@@ -4481,7 +4441,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <MixedEntity>[];
           var keep = count;
-          if (keep < 1 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -5323,10 +5283,7 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  // every &node label the text has defined so far, in document order, placed
-  // or in a skipped value alike (§16.7): true while its definition is open,
-  // false once it has closed.
-  final Map<int, bool> textLabels = <int, bool>{};
+  final Set<int> textLabels = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -5729,6 +5686,7 @@ final class _Share {
   final Map<Object, int> count = <Object, int>{};
   final Map<Object, int> label = <Object, int>{};
   final Map<int, Object> defined = <int, Object>{};
+  final Set<int> pending = <int>{};
   int next = 0;
 
   void see(Object obj) {
@@ -5795,21 +5753,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
-    // a label alone REFERS: the text must have defined it before this point
-    // and closed that definition; one a skipped value defined reads null
     if (entries.length == 1) {
-      if (r.textLabels[raw] != false) throw const FormatException('undefined node label');
       final have = sh.defined[raw];
-      if (have == null) return null;
+      if (have == null) {
+        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
+        throw const FormatException('undefined node label');
+      }
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
-    // a label with fields DEFINES, and only once in the whole text
-    if (r.textLabels.containsKey(raw)) throw const FormatException('node label defined twice');
+    final have = sh.defined[raw];
+    if (have != null) throw const FormatException('node label defined twice');
     final made = make();
-    r.textLabels[raw] = true;
+    sh.pending.add(raw);
     fill(made, entries);
-    r.textLabels[raw] = false;
+    sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
   }
@@ -5921,21 +5879,18 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   return def;
 }
 
-// _jsonCompressedFloat holds a compressed float's text value to its range,
-// evaluated at the field's width (a float32 range's ends are float32(min) and
-// float32(max)), and folds -0 to +0 (ruling fixed-compressed-negzero), as the
-// binary reads do.
-double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [double def = 0.0]) {
-  if (!(d >= lo && d <= hi)) {
-    r.refuse('out_of_range');
-    return def;
-  }
-  return d == 0 ? 0.0 : d;
+// _jsonRangedFloat holds a compressed float's read to its range (§3.3): the
+// value as placed (a float32 already narrowed), inside the ends given, which
+// for a float32 are the float32 nearest each declared end (THE RANGE IS HELD
+// AT FLOAT32); one past an end refuses out_of_range, and a -0 lands as +0.
+double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
+  if (x < lo || x > hi) r.refuse('out_of_range');
+  return x == 0 ? 0.0 : x;
 }
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
-String _jsonPrepare(String text) {
+String _jsonPrepare(String text, TableTextReport r) {
   final source = text.codeUnits;
   final stripped = <int>[];
   var quoted = false;
@@ -6013,7 +5968,39 @@ String _jsonPrepare(String text) {
     }
     clean.add(c);
   }
-  return String.fromCharCodes(clean);
+  final result = String.fromCharCodes(clean);
+  final stack = <Set<String>?>[];
+  final firstLabels = <int>{};
+  for (var i = 0; i < clean.length; i++) {
+    final c = clean[i];
+    if (c == 0x7b) { stack.add(<String>{}); continue; }
+    if (c == 0x5b) { stack.add(null); continue; }
+    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
+    if (c != 0x22) continue;
+    final begin = i;
+    i++;
+    for (; i < clean.length; i++) {
+      if (clean[i] == 0x5c) { i++; continue; }
+      if (clean[i] == 0x22) break;
+    }
+    if (i >= clean.length) throw const FormatException('unclosed JSON string');
+    var j = i + 1;
+    while (j < clean.length && clean[j] <= 0x20) j++;
+    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
+    final key = jsonDecode(result.substring(begin, i + 1)) as String;
+    if (key == '&node') {
+      var at = j + 1;
+      while (at < clean.length && clean[at] <= 0x20) at++;
+      final start = at;
+      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
+      final label = int.tryParse(result.substring(start, at));
+      while (at < clean.length && clean[at] <= 0x20) at++;
+      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
+        r.textLabels.add(label);
+      }
+    }
+  }
+  return result;
 }
 
 // _JNum is a JSON number the int type cannot hold exactly, kept as its
@@ -6077,37 +6064,18 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-// _jsonSkipObject walks one skipped object's entries in text order. In a
-// pointered root the label rules apply here as everywhere (§16.7): an &node key
-// is first or it is the reserved prefix out of place; a label alone REFERS, and
-// the text must have defined it and closed that definition; a label with fields
-// DEFINES, must be new to the text, and stays open until this object closes, so
-// a later reference reads null and a second definition refuses.
-void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
-  int? opened;
-  for (var idx = 0; idx < entries.length; idx++) {
-    final key = entries[idx].key;
-    if (key is! String) throw const FormatException('kind_mismatch');
-    final val = entries[idx].value;
-    _jsonText(key);
-    _jsonName(key, r);
-    if (r.variableRoot && key.startsWith('&')) {
-      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-      if (label == null) {
-        throw const FormatException('reserved ampersand prefix');
-      }
-      if (entries.length == 1) {
-        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
-        return;
-      }
-      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
-      r.textLabels[label] = true;
-      opened = label;
-    } else {
-      _jsonSkipValue(val, r);
+void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
+  _jsonText(key);
+  _jsonName(key, r);
+  if (r.variableRoot && key.startsWith('&')) {
+    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+    if (label == null) {
+      throw const FormatException('reserved ampersand prefix');
     }
+    r.textLabels.add(label);
+  } else {
+    _jsonSkipValue(val, r);
   }
-  if (opened != null) r.textLabels[opened] = false;
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -6116,7 +6084,10 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    _jsonSkipObject(val.entries, r);
+    for (var idx = 0; idx < val.entries.length; idx++) {
+      final entry = val.entries[idx];
+      _jsonSkipEntry(idx, entry.key, entry.value, r);
+    }
     return;
   }
   if (val is List) {
@@ -6126,7 +6097,13 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    _jsonSkipObject(val.entries.toList(), r);
+    var idx = 0;
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonSkipEntry(idx, key, entry.value, r);
+      idx++;
+    }
   }
 }
 
@@ -6516,14 +6493,6 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
-// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
-// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
-// row 3).
-List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
-  if (out.length < min) r.refuse('count_over_bound');
-  return out;
-}
-
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -6570,11 +6539,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-// _jsonMap reads a map's object in the order the document sent it and lands
-// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
-// key once and _stableSortedBy sorts in O(n log n), so keys sent in
-// descending order cost what any order costs.
-List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -6595,16 +6560,13 @@ List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf,
       out.add(item);
     }
   }
-  return _stableSortedBy<T, K>(out, sortKey, cmp);
+  return _stableSorted(out, cmp);
 }
 
-// A MAP KEY is held to its declared string(N) bound and nothing else: the
-// 255-byte schema-name cap (_jsonName) never reaches a map key (§16.2), so a
-// string(300) key of 280 bytes is a key.
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && len > bound) {
+  if (bound >= 0 && (len > bound || len > 255)) {
     r.refuse('length_over_bound');
     return null;
   }
@@ -6906,70 +6868,70 @@ void mixedEntityToJsonBody(_JOut out, MixedEntity v, int depth, _Share sh, [int?
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.entityId & ~4095) == 0)) { throw StateError('invalid_value: field entity_id out of range'); }
+  assert((v.entityId & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("entity_id"));
   out.raw(': ');
   out.raw(v.entityId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posX >= -16383 && v.posX <= 16383)) { throw StateError('invalid_value: field pos_x out of range'); }
+  assert(v.posX >= -16383 && v.posX <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_x"));
   out.raw(': ');
   out.raw(v.posX.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posY >= -16383 && v.posY <= 16383)) { throw StateError('invalid_value: field pos_y out of range'); }
+  assert(v.posY >= -16383 && v.posY <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_y"));
   out.raw(': ');
   out.raw(v.posY.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.posZ >= -16383 && v.posZ <= 16383)) { throw StateError('invalid_value: field pos_z out of range'); }
+  assert(v.posZ >= -16383 && v.posZ <= 16383);
   out.line(depth + 1);
   out.raw(_jsonString("pos_z"));
   out.raw(': ');
   out.raw(v.posZ.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.yaw & ~511) == 0)) { throw StateError('invalid_value: field yaw out of range'); }
+  assert((v.yaw & ~511) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("yaw"));
   out.raw(': ');
   out.raw(v.yaw.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.pitch & ~511) == 0)) { throw StateError('invalid_value: field pitch out of range'); }
+  assert((v.pitch & ~511) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("pitch"));
   out.raw(': ');
   out.raw(v.pitch.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velX >= -2048 && v.velX <= 2047)) { throw StateError('invalid_value: field vel_x out of range'); }
+  assert(v.velX >= -2048 && v.velX <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_x"));
   out.raw(': ');
   out.raw(v.velX.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velY >= -2048 && v.velY <= 2047)) { throw StateError('invalid_value: field vel_y out of range'); }
+  assert(v.velY >= -2048 && v.velY <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_y"));
   out.raw(': ');
   out.raw(v.velY.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.velZ >= -2048 && v.velZ <= 2047)) { throw StateError('invalid_value: field vel_z out of range'); }
+  assert(v.velZ >= -2048 && v.velZ <= 2047);
   out.line(depth + 1);
   out.raw(_jsonString("vel_z"));
   out.raw(': ');
   out.raw(v.velZ.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.health >= 0 && v.health <= 1000)) { throw StateError('invalid_value: field health out of range'); }
+  assert(v.health >= 0 && v.health <= 1000);
   out.line(depth + 1);
   out.raw(_jsonString("health"));
   out.raw(': ');
@@ -7097,14 +7059,14 @@ void mixedStatToJsonBody(_JOut out, MixedStat v, int depth, _Share sh, [int? lab
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.statId & ~255) == 0)) { throw StateError('invalid_value: field stat_id out of range'); }
+  assert((v.statId & ~255) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("stat_id"));
   out.raw(': ');
   out.raw(v.statId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.delta >= -512 && v.delta <= 511)) { throw StateError('invalid_value: field delta out of range'); }
+  assert(v.delta >= -512 && v.delta <= 511);
   out.line(depth + 1);
   out.raw(_jsonString("delta"));
   out.raw(': ');
@@ -7160,21 +7122,21 @@ void mixedHitEventToJsonBody(_JOut out, MixedHitEvent v, int depth, _Share sh, [
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.targetId & ~4095) == 0)) { throw StateError('invalid_value: field target_id out of range'); }
+  assert((v.targetId & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("target_id"));
   out.raw(': ');
   out.raw(v.targetId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.damage >= 0 && v.damage <= 4095)) { throw StateError('invalid_value: field damage out of range'); }
+  assert(v.damage >= 0 && v.damage <= 4095);
   out.line(depth + 1);
   out.raw(_jsonString("damage"));
   out.raw(': ');
   out.raw(v.damage.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.hitKind >= 0 && v.hitKind <= 7)) { throw StateError('invalid_value: field hit_kind out of range'); }
+  assert(v.hitKind >= 0 && v.hitKind <= 7);
   out.line(depth + 1);
   out.raw(_jsonString("hit_kind"));
   out.raw(': ');
@@ -7244,14 +7206,14 @@ void mixedChatEventToJsonBody(_JOut out, MixedChatEvent v, int depth, _Share sh,
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.channel >= 0 && v.channel <= 3)) { throw StateError('invalid_value: field channel out of range'); }
+  assert(v.channel >= 0 && v.channel <= 3);
   out.line(depth + 1);
   out.raw(_jsonString("channel"));
   out.raw(': ');
   out.raw(v.channel.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.speaker & ~4095) == 0)) { throw StateError('invalid_value: field speaker out of range'); }
+  assert((v.speaker & ~4095) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("speaker"));
   out.raw(': ');
@@ -7307,14 +7269,14 @@ void mixedPickupEventToJsonBody(_JOut out, MixedPickupEvent v, int depth, _Share
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.itemId & ~1023) == 0)) { throw StateError('invalid_value: field item_id out of range'); }
+  assert((v.itemId & ~1023) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("item_id"));
   out.raw(': ');
   out.raw(v.itemId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.amount >= 0 && v.amount <= 255)) { throw StateError('invalid_value: field amount out of range'); }
+  assert(v.amount >= 0 && v.amount <= 255);
   out.line(depth + 1);
   out.raw(_jsonString("amount"));
   out.raw(': ');
@@ -7373,21 +7335,21 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   }
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.sequence & ~65535) == 0)) { throw StateError('invalid_value: field sequence out of range'); }
+  assert((v.sequence & ~65535) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("sequence"));
   out.raw(': ');
   out.raw(v.sequence.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ackSequence >= 0 && v.ackSequence <= 65535)) { throw StateError('invalid_value: field ack_sequence out of range'); }
+  assert(v.ackSequence >= 0 && v.ackSequence <= 65535);
   out.line(depth + 1);
   out.raw(_jsonString("ack_sequence"));
   out.raw(': ');
   out.raw(v.ackSequence.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.ackBits & ~4294967295) == 0)) { throw StateError('invalid_value: field ack_bits out of range'); }
+  assert((v.ackBits & ~4294967295) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("ack_bits"));
   out.raw(': ');
@@ -7406,35 +7368,35 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(v.clientId.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(BigInt.from(v.nonce).toUnsigned(64) >= BigInt.zero && BigInt.from(v.nonce).toUnsigned(64) <= BigInt.parse('18446744073709551615'))) { throw StateError('invalid_value: field nonce out of range'); }
+  assert(BigInt.from(v.nonce).toUnsigned(64) >= BigInt.zero && BigInt.from(v.nonce).toUnsigned(64) <= BigInt.parse('18446744073709551615'));
   out.line(depth + 1);
   out.raw(_jsonString("nonce"));
   out.raw(': ');
   out.raw(_jsonString(BigInt.from(v.nonce).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.worldTime >= -1000000000000 && v.worldTime <= 1000000000000)) { throw StateError('invalid_value: field world_time out of range'); }
+  assert(v.worldTime >= -1000000000000 && v.worldTime <= 1000000000000);
   out.line(depth + 1);
   out.raw(_jsonString("world_time"));
   out.raw(': ');
   out.raw(_jsonString(v.worldTime.toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.frameTick & ~281474976710655) == 0)) { throw StateError('invalid_value: field frame_tick out of range'); }
+  assert((v.frameTick & ~281474976710655) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("frame_tick"));
   out.raw(': ');
   out.raw(_jsonString(BigInt.from(v.frameTick).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.serverTime >= BigInt.zero && v.serverTime <= BigInt.parse('16776960'))) { throw StateError('invalid_value: field server_time out of range'); }
+  assert(v.serverTime >= BigInt.zero && v.serverTime <= BigInt.parse('16776960'));
   out.line(depth + 1);
   out.raw(_jsonString("server_time"));
   out.raw(': ');
   out.raw(_jsonWide(v.serverTime, 8, false));
   if (comma) out.raw(',');
   comma = true;
-  if (v.entities.length < 1 || v.entities.length > 8) { throw StateError('invalid_value: field entities out of range'); }
+  assert(v.entities.length >= 1 && v.entities.length <= 8);
   out.line(depth + 1);
   out.raw(_jsonString("entities"));
   out.raw(': ');
@@ -7454,7 +7416,7 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   }
   if (comma) out.raw(',');
   comma = true;
-  if (v.stats.length < 0 || v.stats.length > 80) { throw StateError('invalid_value: field stats out of range'); }
+  assert(v.stats.length >= 0 && v.stats.length <= 80);
   out.line(depth + 1);
   out.raw(_jsonString("stats"));
   out.raw(': ');
@@ -7499,35 +7461,35 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   }
   if (comma) out.raw(',');
   comma = true;
-  if (utf8.encode(v.playerName).length > 15) { throw StateError('invalid_value: field player_name out of range'); }
+  assert(utf8.encode(v.playerName).length <= 15);
   out.line(depth + 1);
   out.raw(_jsonString("player_name"));
   out.raw(': ');
   out.raw(_jsonString(v.playerName));
   if (comma) out.raw(',');
   comma = true;
-  if (v.payload.length > 16) { throw StateError('invalid_value: field payload out of range'); }
+  assert(v.payload.length <= 16);
   out.line(depth + 1);
   out.raw(_jsonString("payload"));
   out.raw(': ');
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
+  assert((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
   out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
+  assert((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
   out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
+  assert((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0);
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
@@ -7552,21 +7514,21 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(_jsonWide(v.wideKey, 0, true)));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.flux >= BigInt.parse('-1267650600228229401496703205376') && v.flux <= BigInt.parse('1267650600228229401496703205376'))) { throw StateError('invalid_value: field flux out of range'); }
+  assert(v.flux >= BigInt.parse('-1267650600228229401496703205376') && v.flux <= BigInt.parse('1267650600228229401496703205376'));
   out.line(depth + 1);
   out.raw(_jsonString("flux"));
   out.raw(': ');
   out.raw(_jsonString(_jsonWide(v.flux, 0, true)));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ping >= BigInt.zero && v.ping <= BigInt.parse('64000'))) { throw StateError('invalid_value: field ping out of range'); }
+  assert(v.ping >= BigInt.zero && v.ping <= BigInt.parse('64000'));
   out.line(depth + 1);
   out.raw(_jsonString("ping"));
   out.raw(': ');
   out.raw(_jsonWide(v.ping, 8, false));
   if (comma) out.raw(',');
   comma = true;
-  if (!((v.crcHint & ~16777215) == 0)) { throw StateError('invalid_value: field crc_hint out of range'); }
+  assert((v.crcHint & ~16777215) == 0);
   out.line(depth + 1);
   out.raw(_jsonString("crc_hint"));
   out.raw(': ');
@@ -7579,14 +7541,14 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(v.hasExtra ? 'true' : 'false');
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.extra >= 0 && v.extra <= 255)) { throw StateError('invalid_value: field extra out of range'); }
+  assert(v.extra >= 0 && v.extra <= 255);
   out.line(depth + 1);
   out.raw(_jsonString("extra"));
   out.raw(': ');
   out.raw(v.extra.toString());
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.idleTicks >= 0 && v.idleTicks <= 15)) { throw StateError('invalid_value: field idle_ticks out of range'); }
+  assert(v.idleTicks >= 0 && v.idleTicks <= 15);
   out.line(depth + 1);
   out.raw(_jsonString("idle_ticks"));
   out.raw(': ');
@@ -7659,7 +7621,6 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
-        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7695,15 +7656,15 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "aim_x":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimX = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimX), r, -1.0, 1.0, v.aimX);
+        v.aimX = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimX), -1.0, 1.0, r);
         break;
       case "aim_y":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimY = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimY), r, -1.0, 1.0, v.aimY);
+        v.aimY = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimY), -1.0, 1.0, r);
         break;
       case "aim_z":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimZ = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimZ), r, -1.0, 1.0, v.aimZ);
+        v.aimZ = _jsonRangedFloat(_jsonFloatField(val, r, true, v.aimZ), -1.0, 1.0, r);
         break;
       case "recoil":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7819,10 +7780,9 @@ String fixedTableToJson(FixedTable v) {
 FixedTable fixedTableFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
-  r.textLabels.clear();
   r.variableRoot = false;
   final v = FixedTable();
-  final root = _jsonDecodeExact(_jsonPrepare(text));
+  final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: FixedTable');
   if (_jsonEntries(root) != null) {
     fixedTableFromJsonFields(v, root, r, _Share());

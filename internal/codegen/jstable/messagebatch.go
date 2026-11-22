@@ -769,7 +769,10 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // messageDiffers is the elision compare of one value against its default. A
 // float compares its BIT PATTERN (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
 // Object.is is the bit compare for two finite values, so a -0 under a +0
-// default rides, and a NaN never elides and reaches the writer's refusal.
+// default rides, and a NaN never elides and reaches the writer's refusal. A
+// COMPRESSED float's -0 is stored as +0 (§3.3, docs/rulings.json
+// fixed-compressed-negzero), so it compares by value: a -0 under a +0 default
+// elides exactly as +0 does.
 func messageDiffers(f *ir.Field, lhs, def string) string {
 	if f.Type.Kind == ir.TFloat32 {
 		// a float32 compares at float32, as its default is spelled and as the
@@ -1058,7 +1061,10 @@ func messageStoredDefaultCond(f *ir.Field, mem string) string {
 		return ""
 	}
 	def := fixedZeroFor(f)
-	if fixedIsFloat(f.Type) && !f.HasFloatRange {
+	if fixedIsFloat(f.Type) && f.HasFloatRange {
+		return mem + " === " + def // a compressed -0 is +0 (§3.3)
+	}
+	if fixedIsFloat(f.Type) {
 		return "globalThis.Object.is(" + mem + ", " + def + ")"
 	}
 	// a compressed float's -0 IS +0 (§3.3): it compares by value
@@ -1472,11 +1478,14 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  TableMessageResetReport(report);\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
-		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return 0; }\n")
 		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
-	g.pf("  if (count < 0) { return -1; }\n")
+	// "A refused batch returns a count of `0`, as every refused batch does"
+	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0, the report
+	// names the reason, and a delivered batch is never empty (M is at least 1).
+	g.pf("  if (count < 0) { return 0; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return 0; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
@@ -1485,7 +1494,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
-	g.pf("        return -1;\n")
+	g.pf("        return 0;\n")
 	g.pf("      }\n")
 	g.pf("      // A REFUSAL IN ANY BODY (a length or count past a bound, §3.3) refuses\n")
 	g.pf("      // the batch with its reason; no body of it is delivered.\n")
@@ -1497,6 +1506,15 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")
 	g.pf("      // declared defaults.\n")
 	g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      return 0;\n")
+	g.pf("    }\n")
+	g.pf("    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE\n")
+	g.pf("    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go\n")
+	g.pf("    // reference and the Rust port do: the count is 0 and\n")
+	g.pf("    // every body of the batch goes back to its declared defaults.\n")
+	g.pf("    if (report.Oor > 0) {\n")
+	g.pf("      for (let j = 0; j < count; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      TableMessageRefuse(report, \"out_of_range\");\n")
 	g.pf("      return 0;\n")
 	g.pf("    }\n")
 	g.pf("  }\n")

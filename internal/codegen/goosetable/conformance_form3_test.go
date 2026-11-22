@@ -512,6 +512,7 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	}
 	glue.WriteString("    return -1;\n}\n")
 	glue.WriteString("fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 { return -1; }\n")
+	glue.WriteString("fn conformance_message_count(root: const u8[:], announce: const u8[:], wire: const u8[:]) -> i64 { return -1; }\n")
 	if needFixedHelpers {
 		glue.WriteString(formThreeFixedHelpers)
 	}

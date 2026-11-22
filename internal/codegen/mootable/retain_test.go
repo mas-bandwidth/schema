@@ -52,6 +52,9 @@ func retainRows(t *testing.T) []retainRow {
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
+	if len(rows) == 0 {
+		t.Fatal("the manifest names no retain row")
+	}
 	return rows
 }
 
@@ -324,10 +327,13 @@ func evolvedRetainDifferential(t *testing.T, plant func(*generatedUnit), onlyRet
 			inst := m.New(g.unit.Tables[row.root])
 			keep := &tablewire.Retain{Capacity: retainFull, IdCapacity: retainFull}
 			var rep tabletext.Report
-			if _, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep); err == nil {
-				if _, err := tablewire.EncodeRetain(m, inst, keep, &rep); err == nil && len(keep.Ids()) > 0 {
-					probes = append(probes, probe{retainFull, len(keep.Ids()) - 1})
-				}
+			if _, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep); err != nil {
+				// goRetain just read these bytes at this capacity and retained
+				// from them: a refusal here is the engine disagreeing with itself
+				bad = append(bad, fmt.Sprintf("%s (%s/%s): the Go engine retained %d records from this wire and then refused the same read: %v",
+					row.caseName, row.unit, row.root, full.retained, err))
+			} else if _, err := tablewire.EncodeRetain(m, inst, keep, &rep); err == nil && len(keep.Ids()) > 0 {
+				probes = append(probes, probe{retainFull, len(keep.Ids()) - 1})
 			}
 		} else if onlyRetaining {
 			continue
@@ -569,11 +575,15 @@ end
 			t.Fatalf("no line for ids %q in %q", want, got)
 		}
 	}
+	// "1000\t" also holds "0\t", so the Contains checks above cannot pin the
+	// ids=0 line: count the lines checked, by their first field, as well
+	seen := map[string]int{}
 	for line := range strings.SplitSeq(got, "\n") {
 		f := strings.Fields(line)
 		if len(f) != 6 {
 			t.Fatalf("moo printed %q", got)
 		}
+		seen[f[0]]++
 		if f[2] != "true" {
 			t.Errorf("ids %s: the second save is not the first: %q", f[0], line)
 		}
@@ -590,6 +600,9 @@ end
 			// load has nothing to lose
 			t.Errorf("ids %s: the second save lost records: %q", f[0], line)
 		}
+	}
+	if len(seen) != 3 || seen["1000"] != 1 || seen["2"] != 1 || seen["0"] != 1 {
+		t.Fatalf("want exactly one line for each of ids 1000, 2 and 0, got %v in %q", seen, got)
 	}
 }
 

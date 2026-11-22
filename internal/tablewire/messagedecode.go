@@ -59,9 +59,9 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //
 //   - `M` ABOVE THE CALLER'S STORAGE IS A REFUSAL BY NAME, `batch_too_large`,
 //     found from the count before any body is decoded: no counter moves and
-//     nothing is decoded. The returned count is the WIRE's `M`, so the
-//     caller holds the number it was short by and calls again with storage at
-//     or above it.
+//     nothing is decoded. "A refused batch returns a count of `0`, as every
+//     refused batch does; a caller that needs room reads the wire's `M`
+//     itself", which is MessageCount.
 //   - DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md
 //     §4): the returned count is zero, the read refuses, and every
 //     body's storage holds its declared defaults.
@@ -76,15 +76,15 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 		// THE BATCH IS ACCEPTED WHOLE OR REFUSED (docs/SPEC-TABLES.md §6.5):
 		// no body is delivered, so the count is zero and every body the walk
 		// touched returns to its declared defaults.
-		for _, inst := range insts {
-			m.Clear(inst)
+		// M ABOVE THE CALLER'S STORAGE refuses "before it decodes anything"
+		// (§3.3), so the storage is exactly what the caller handed in.
+		var batch *MessageRefusal
+		if !errors.As(err, &batch) || batch.Reason != ReasonBatchTooLarge {
+			for _, inst := range insts {
+				m.Clear(inst)
+			}
 		}
 		refuseReport(report, err)
-		var batch *MessageRefusal
-		if errors.As(err, &batch) && batch.Reason == ReasonBatchTooLarge {
-			// the count the caller was short by, so it can call again
-			return n, false, err
-		}
 		return 0, false, err
 	}
 	report.Refused = false

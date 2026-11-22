@@ -189,6 +189,9 @@ func TestDartTextNumberTokensLandAsTheEngine(t *testing.T) {
 	t.Parallel()
 	got, want := textNumberRun(t, nil), textNumberOracle(t)
 	texts := textNumberTexts()
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("%s: Dart lands %s, the Go engine %s", texts[i], got[i], want[i])

@@ -56,11 +56,16 @@ $(DART_HOSTILE_BUILD)/dispatch.dart: $(DART_HOSTILE_BUILD)/generated/.stamp $(DA
 		test/dart-hostile/dispatch_gen.dart $(DART_HOSTILE_CORPUS)/manifest.tsv
 	$(DART) run test/dart-hostile/dispatch_gen.dart "$(DART_HOSTILE_CORPUS)" $(DART_HOSTILE_BUILD)
 
+# The registered count: the cases of the committed corpus manifest. The
+# runner prints "ran N, failed M" and tools/mustrun holds N to this number,
+# so a manifest that loses cases is red. A commit that adds a hostile case
+# changes it.
+DART_HOSTILE_CASES ?= 192
 .PHONY: schema-dart-runs-hostile-corpus
-schema-dart-runs-hostile-corpus: $(DART_HOSTILE_BUILD)/dispatch.dart
+schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/reasons_test.dart
 	$(DART) run test/dart-hostile/runner.dart --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)"
+	$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)"
 
 test-dart: schema-dart-runs-hostile-corpus
 

@@ -36,7 +36,11 @@ func TestLuaCookWrite(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
-	for _, r := range manifestRows(t, manifest, "instance") {
+	instances := manifestRows(t, manifest, "instance")
+	if len(instances) == 0 {
+		t.Fatal("the manifest names no instance row: no cook was written")
+	}
+	for _, r := range instances {
 		t.Run(r.caseName, func(t *testing.T) {
 			t.Parallel()
 			var paths []string

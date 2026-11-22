@@ -242,9 +242,9 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  // a float compares its bit pattern (§3): a -0 under a +0 default rides,
-  // except a compressed float's, whose -0 is +0 (§3.3)
-  if (e.s === "float") { return TableVariableSameFloatField(e, x, e.def); }
+  // a float compares its bit pattern (§3): a plain -0 under a +0 default
+  // rides; a compressed -0 is stored as +0 and so compares as +0 (§3.3)
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, TableVariableStoredFloat(e, x), e.def); }
   return x === e.def;
 }
 

@@ -55,4 +55,28 @@ def self.run(manifest, outdir)
     end
     RubyConformance.write_bytes(outdir, case_name, pkg.save_messages(cls, values))
   end
+  # message-batch <case> <connection> <root> <wire>: load with room for every
+  # body and answer the count load_messages returned (docs/SPEC-TABLES.md
+  # §3.3; FORMAT.md, `message-batch`). The Ruby read raises Refused rather
+  # than returning a count, so a refused batch counts 0.
+  RubyConformance.entries(manifest, 'message-batch').each do |row|
+    case_name, connection, root, wire = row[1, 4]
+    conn = connections[connection]
+    pkg = RubyConformance.unit_package(conn[2])
+    cls = RubyConformance.root_class(conn[2], root)
+    has_msg = !pkg.nil? && pkg.respond_to?(:load_messages) && pkg.const_defined?(:MessageVocabulary, false)
+    if pkg.nil? || cls.nil? || !has_msg
+      RubyConformance.absent(outdir, case_name, 'message form is not emitted for this root')
+      next
+    end
+    vocab = pkg::MessageVocabulary.new
+    pkg.announce_read(vocab, RubyConformance.read_bytes(conn[4]))
+    count =
+      begin
+        pkg.load_messages(cls, vocab, RubyConformance.read_bytes(wire), 256).length
+      rescue pkg::Refused
+        0
+      end
+    RubyConformance.write_bytes(outdir, case_name, "count #{count}\n".b)
+  end
 end

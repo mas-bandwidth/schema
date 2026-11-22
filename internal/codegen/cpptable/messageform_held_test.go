@@ -319,9 +319,12 @@ const cppHeldStrictChecks = `
 
 // "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `MeasureMessages`
 // and `SaveMessages` both refuse and return `-1`" and "`M` ABOVE THE CALLER'S
-// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
-// returned count to the wire's `M` before it returns the refusal."
-// (docs/SPEC-TABLES.md §3.3).
+// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... `LoadMessages` compares it
+// to the storage it was handed and refuses before it decodes anything ... A
+// refused batch returns a count of `0`" (docs/SPEC-TABLES.md §3.3). The read
+// side loads the committed capacity fixture, testdata/batch_capacity_two.bin
+// (two LoginRequest bodies, client_build 40, written by the Go engine), into
+// storage for one holding the sentinel 17, then into storage for two.
 const cppHeldBatchTooLarge = `
     LoginRequest huge[kTableMessageBatchMax + 1];
     for ( int64_t i = 0; i < kTableMessageBatchMax + 1; ++i ) LoginRequestReset( huge[i] );
@@ -332,23 +335,27 @@ const cppHeldBatchTooLarge = `
     TableReport save; memset( &save, 0, sizeof( save ) );
     if ( LoginRequestSaveMessages( huge, kTableMessageBatchMax + 1, out, (int64_t) sizeof( out ), &save ) != -1 || !save.refused || save.reason != TableMessageReason::batch_too_large )
         { printf( "TableMessageReason::batch_too_large write save: no refusal by name: refused=%d reason=%d\n", (int) save.refused, (int) save.reason ); return 1; }
-    // the read side: two bodies into storage for one
+    // the read side: the Go-written two-body fixture into storage for one
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     uint8_t ann[1 << 16];
     Announce( ann, (int64_t) sizeof( ann ) );
     TableReport announced; memset( &announced, 0, sizeof( announced ) );
     if ( !AnnounceRead( vocabulary, ann, AnnounceMeasure(), &announced ) ) { printf( "TableMessageReason::batch_too_large: the announcement failed\n" ); return 1; }
-    LoginRequest pair[2]; LoginRequestReset( pair[0] ); LoginRequestReset( pair[1] );
-    uint8_t buf[512];
-    TableReport wrote; memset( &wrote, 0, sizeof( wrote ) );
-    int64_t n = LoginRequestSaveMessages( pair, 2, buf, (int64_t) sizeof( buf ), &wrote );
-    if ( n < 1 ) { printf( "TableMessageReason::batch_too_large: the two-body save failed\n" ); return 1; }
-    LoginRequest storage[1];
+    std::vector<uint8_t> fixture;
+    if ( !slurp( @CAPACITY_FIXTURE@, fixture ) ) { printf( "TableMessageReason::batch_too_large: cannot read the capacity fixture\n" ); return 1; }
+    LoginRequest storage[1]; LoginRequestReset( storage[0] ); storage[0].client_build = 17;
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n, &r ) || count != 2 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.damaged )
-        { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.damaged ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, fixture.data(), (int64_t) fixture.size(), &r ) || count != 0 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.damaged )
+        { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d (a refused batch returns a count of 0)\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.damaged ); return 1; }
+    if ( storage[0].client_build != 17 )
+        { printf( "TableMessageReason::batch_too_large read: client_build reads %u, not the sentinel 17: the refusal decoded a body\n", (unsigned) storage[0].client_build ); return 1; }
+    LoginRequest room[2]; LoginRequestReset( room[0] ); LoginRequestReset( room[1] );
+    int64_t got = 2;
+    TableReport loaded; memset( &loaded, 0, sizeof( loaded ) );
+    if ( !LoginRequestLoadMessages( room, &got, vocabulary, fixture.data(), (int64_t) fixture.size(), &loaded ) || got != 2 || room[0].client_build != 40 || room[1].client_build != 40 )
+        { printf( "the capacity fixture into storage for two: count=%lld client_build %u %u\n", (long long) got, (unsigned) room[0].client_build, (unsigned) room[1].client_build ); return 1; }
 `
 
 // "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
@@ -618,10 +625,15 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		{"bytes_after_pad", cppHeldBytesAfterPad},
 		{"form_byte", cppHeldFormByte},
 	}
+	fixture, err := filepath.Abs(filepath.Join("testdata", "batch_capacity_two.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, clause := range clauses {
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
-			out, err := cppHeldProbe(t, unitPath, clause.body)
+			body := strings.ReplaceAll(clause.body, "@CAPACITY_FIXTURE@", fmt.Sprintf("%q", fixture))
+			out, err := cppHeldProbe(t, unitPath, body)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", clause.name, err, out)
 			}
@@ -650,6 +662,9 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		loaded[conn.unit] = loadHeldUnitPaths(t, root, paths)
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()

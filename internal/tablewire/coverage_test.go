@@ -823,14 +823,22 @@ func TestDamagedWiresDoNotPanic(t *testing.T) {
 	}
 	mutate(fileWire, func(data []byte) {
 		var report tabletext.Report
-		Decode(file, file.New(fileRoot), data, &report)
+		// Decode's contract on any bytes: (true, nil), or (false, err) with
+		// the report saying Refused
+		if ok, err := Decode(file, file.New(fileRoot), data, &report); ok != (err == nil) || ok == report.Refused {
+			t.Fatalf("Decode of a damaged file answered ok=%v err=%v refused=%v: %x", ok, err, report.Refused, data)
+		}
 		NodeRecordTypes(data)
 		FileNodeRecords(data)
 		FileRegionMeasure(file.Unit, fileRoot, data)
 	})
 	mutate(batch, func(data []byte) {
 		var report tabletext.Report
-		DecodeMessage(message, message.New(messageRoot), data, &vocabulary, &report)
+		// a batch is delivered, damaged (false, nil) or refused (false, err):
+		// delivered with an error is no verdict
+		if ok, err := DecodeMessage(message, message.New(messageRoot), data, &vocabulary, &report); ok && err != nil {
+			t.Fatalf("DecodeMessage of a damaged batch answered ok with an error %v: %x", err, data)
+		}
 		MessageSpots(message, messageRoot, data, &vocabulary)
 	})
 }

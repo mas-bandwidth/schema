@@ -461,6 +461,24 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 	return guards
 }
 
+// storedFloatBits names the function whose bits a float store writes: a
+// COMPRESSED float's (a declared range) is table_stored_float_bits or
+// table_stored_double_bits, which write +0 for its -0 (docs/SPEC-TABLES.md
+// §3.3; docs/rulings.json fixed-compressed-negzero), and a plain float's is
+// the bits as held, so its -0 rides bit-exact. Every writer — variable, fixed,
+// message, cook — spells its float store through here.
+func storedFloatBits(f *ir.Field, wide bool) string {
+	switch {
+	case f.HasFloatRange && wide:
+		return "table_stored_double_bits"
+	case f.HasFloatRange:
+		return "table_stored_float_bits"
+	case wide:
+		return "table_double_to_bits"
+	}
+	return "table_float_to_bits"
+}
+
 // Fixed scalars share the current wire writer; enum identities and nested
 // frames are handled by wireScalarWrite and wirePayload before this helper.
 func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string) {
@@ -474,17 +492,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		} else if f.HasFloatRange {
-			// row 10 of the write contract (docs/SPEC.md §5.1), debug only
-			g.pf("%sschema_assert( %s >= %s && %s <= %s ); /* a compressed float inside its range (§5.1 row 10) */\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+			// ROW 10, A COMPRESSED FLOAT OFF ITS RANGE (docs/SPEC.md §5.1): in
+			// this assert leg the write check is a debug assert, against the
+			// float32 ends (docs/SPEC-TABLES.md §3.3)
+			g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */\n",
+				ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		}
-		if f.HasFloatRange {
-			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0, the same bits
-			// it stores for +0 (docs/SPEC-TABLES.md §3.3, "-0 IS +0"), so a -0
-			// under a non-zero default never rides as 0x80000000
-			g.pf("%stable_writer_put32( w, table_float_to_bits( ( %s ) + 0.0f ) );\n", ind, expr)
-		} else {
-			g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
-		}
+		g.pf("%stable_writer_put32( w, %s( %s ) );\n", ind, storedFloatBits(f, false), expr)
 	case tkF64:
 		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
@@ -497,6 +511,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		} else {
 			g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
 		}
+		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
 		if f.Required {
@@ -922,7 +937,12 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
 	} else if f.HasFloatRange {
 		hasRange = "1"
-		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+		// THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a compressed
+		// float's ends are float32(min) and float32(max), spelled exactly as
+		// doubles, so a read that narrows its value first and a write that
+		// casts the end back to float hold the one test every port holds, and
+		// the 0.1f a writer saved under max = 0.1 reads back.
+		rangeMin, rangeMax = formatFloat(float64(float32(f.FMin)), false), formatFloat(float64(float32(f.FMax)), false)
 	}
 
 	enumMax := "-1"

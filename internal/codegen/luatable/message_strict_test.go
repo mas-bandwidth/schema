@@ -183,6 +183,14 @@ print("NAN=" .. hex(table.concat(chars)))
 			kv[k] = unhexTestBytes(t, v)
 		}
 	}
+	// every wire the probe below is held to came from the two encoders: one
+	// that printed nothing would hand the probe an empty input, which every
+	// refusal row refuses for the wrong reason
+	for _, k := range []string{"ANNOUNCE", "ANN2", "CLEAN", "OOB", "LONG", "MANY", "KIND", "NAN"} {
+		if len(kv[k]) == 0 {
+			t.Fatalf("the encoders printed no %s wire:\nv1: %q\nv2: %q", k, out1, out2)
+		}
+	}
 
 	inputs := map[string][]byte{
 		"announce": kv["ANNOUNCE"],

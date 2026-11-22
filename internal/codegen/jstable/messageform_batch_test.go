@@ -39,6 +39,9 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 	t.Run("round_trip", func(t *testing.T) {
 		t.Parallel()
 		node := jsNode(t)
+		if len(rows) == 0 {
+			t.Fatal("rows is empty: the loop below would check nothing")
+		}
 		for _, row := range rows {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
@@ -351,7 +354,7 @@ const unannounced = new TableVocabulary();
 unannounced.Init(new Array(%[2]d));
 const noReport = {};
 const noCount = %[1]sLoadMessages(shortStorage, unannounced, threeBatch, noReport);
-if (noCount !== -1 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabulary") {
+if (noCount !== 0 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabulary") {
   fail("LoadMessages with no vocabulary: " + JSON.stringify(noReport));
 }
 `, st.Name, len(tablewire.MessageVocabulary(u)))
@@ -384,7 +387,7 @@ if (pCount !== 0) { fail("bytes after the pad delivered a body: count=" + pCount
 const newer = new Uint8Array([3, 0, 0]);
 const nReport = {};
 const nCount = %[1]sLoadMessages(storage, v, newer, nReport);
-if (nCount !== -1 || nReport.Verdict !== 1 || nReport.Reason !== "newer_form" || nReport.Damaged) {
+if (nCount !== 0 || nReport.Verdict !== 1 || nReport.Reason !== "newer_form" || nReport.Damaged) {
   fail("newer form: " + JSON.stringify(nReport));
 }
 // "message_form_as_file" is the FILE reader's answer to a batch handed where a

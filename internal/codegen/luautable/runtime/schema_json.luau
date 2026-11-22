@@ -309,7 +309,9 @@ local function scan_number(inp: Input): string?
   return inp.t:sub(start, inp.p - 1)
 end
 
-local function scan_label(inp: Input): number?
+-- a label is its DIGITS, kept as the string they are: a double sums digits
+-- inexactly past 2^53, where two labels would collide, and Go reads a uint64
+local function scan_label(inp: Input): string?
   space(inp)
   local c = inp.t:byte(inp.p)
   if c == nil or c < 49 or c > 57 then inp.bad = true; return nil end
@@ -324,9 +326,7 @@ local function scan_label(inp: Input): number?
     inp.bad = true
     return nil
   end
-  local v = 0
-  for i = 1, #digits do v = v * 10 + (digits:byte(i) - 48) end
-  return v
+  return digits
 end
 
 local skip_value: (Input, number, any, boolean?) -> boolean
@@ -1708,7 +1708,23 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       return true
     end
     for _, v in ipairs(d.variants) do
-      if v[1] == name then holder[key] = name; return true end
+      if v[1] == name then
+        if v[3] == true then
+          -- A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, an
+          -- element as the element's (None), and is never counted unknown
+          -- (§2.15, §16.2 enum row)
+          if elem then
+            holder[key] = false
+          else
+            local def = d.raw ~= nil and d.raw.def or 0
+            local dn = walk_enum_name(d, def)
+            holder[key] = if dn == "None" then nil else dn
+          end
+        else
+          holder[key] = name
+        end
+        return true
+      end
     end
     if elem then holder[key] = false else holder[key] = nil end
     report.unknown = report.unknown + 1
@@ -2670,7 +2686,12 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   elseif s == "enum" then
     if val == nil or val == false then write_string(w, "None"); return true end
     for _, v in ipairs(d.variants) do
-      if v[1] == val then write_string(w, val); return true end
+      if v[1] == val then
+        -- a writer refuses a value that holds a deprecated variant (§2.15)
+        if v[3] == true then refuse_reason = "invalid_value"; return false end
+        write_string(w, val)
+        return true
+      end
     end
     return false
   elseif s == "flags" then

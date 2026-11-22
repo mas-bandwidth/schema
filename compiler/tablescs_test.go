@@ -33,6 +33,9 @@ func TestCsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
+		if len(without) == 0 {
+			t.Fatal("without is empty: the loop below would check nothing")
+		}
 		for name := range without {
 			if strings.HasSuffix(name, "Table.cs") {
 				t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
@@ -333,16 +336,26 @@ func TestCsDescriptorsAreSafelyPublished(t *testing.T) {
 		if holders == 0 {
 			t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
+		instances := 0
 		for name, data := range files {
 			text := string(data)
 			for line := range strings.SplitSeq(text, "\n") {
 				if strings.Contains(line, "TableInfo") && strings.Contains(line, "class") && !strings.Contains(line, "private static class") {
 					t.Errorf("%s: a descriptor holder is not a private static class: %q", name, strings.TrimSpace(line))
 				}
-				if strings.Contains(line, "Instance =") && !strings.Contains(line, "internal static readonly TableTypeInfo Instance = Build();") {
-					t.Errorf("%s: a holder's Instance is not internal static readonly: %q", name, strings.TrimSpace(line))
+				if strings.Contains(line, "Instance =") {
+					instances++
+					if !strings.Contains(line, "internal static readonly TableTypeInfo Instance = Build();") {
+						t.Errorf("%s: a holder's Instance is not internal static readonly: %q", name, strings.TrimSpace(line))
+					}
 				}
 			}
+		}
+		if instances != holders {
+			t.Errorf("found %d holder Instance fields for %d descriptor accessors; each accessor owns exactly one holder", instances, holders)
 		}
 	}
 }

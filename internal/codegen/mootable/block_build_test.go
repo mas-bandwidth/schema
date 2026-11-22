@@ -245,7 +245,11 @@ func TestMooBlockOpenHoldsTheBaseAlignment(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	byUnit := map[string]*generatedUnit{}
-	for _, row := range manifestLines(t, "block") {
+	rows := manifestLines(t, "block")
+	if len(rows) == 0 {
+		t.Fatal("the manifest names no block: no image was opened at any lead")
+	}
+	for _, row := range rows {
 		g, ok := byUnit[row[2]]
 		if !ok {
 			g = blockUnitNamed(t, row[2])

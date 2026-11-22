@@ -40,6 +40,9 @@ func textUnits(t *testing.T) []string {
 			units = append(units, dir)
 		}
 	}
+	if len(units) == 2 {
+		t.Fatal("no unit under tables/ holds a schema file: the table units moved, and every test over textUnits would read the two packet corpora alone")
+	}
 	return units
 }
 
@@ -89,13 +92,18 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 		machine = append(machine, regexp.MustCompile(`(?im)(^|[^A-Za-z0-9_])`+regexp.QuoteMeta(w)+`($|[^A-Za-z0-9_])`))
 	}
 	units := textUnits(t)
-	for _, target := range schema.Targets() {
+	allTargets := schema.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("schema.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		// each target is its own subtest, run side by side: the work is
 		// generating every unit and scanning its text, and no target's
 		// output depends on another's
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
 			emitted := 0
+			scanned := 0
 			for _, dir := range units {
 				paths, err := compiler.GatherPaths([]string{dir})
 				if err != nil {
@@ -115,6 +123,7 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 					names = append(names, name)
 				}
 				sort.Strings(names)
+				scanned += len(names)
 				for _, name := range names {
 					text := files[name]
 					where := target + " " + dir + " " + name
@@ -138,6 +147,9 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 			}
 			if emitted == 0 {
 				t.Errorf("target %s emitted no unit, so nothing of its output was checked", target)
+			}
+			if scanned == 0 {
+				t.Errorf("target %s emitted no file across every unit, so nothing of its output was scanned", target)
 			}
 		})
 	}

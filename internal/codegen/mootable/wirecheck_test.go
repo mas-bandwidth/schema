@@ -99,6 +99,9 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 			t.Errorf("%s: without the walk moo answers %q (the row pins %q); the control wants it read", name, got[name], want[name])
 		}
 	}
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for name, w := range want {
 		if !strings.Contains(strings.Join(walkOnly, " "), name) && got[name] != w {
 			t.Errorf("%s: removing the walk moved a row it does not own: %q, the row pins %q", name, got[name], w)

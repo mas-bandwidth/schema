@@ -245,6 +245,11 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	for _, mb := range m.Batches {
+		if err := add("message", mb.Name, mb.Unit, mb.Root); err != nil {
+			return nil, err
+		}
+	}
 	for _, r := range m.Reports {
 		if err := add("report", r.Name, r.Unit, r.Root); err != nil {
 			return nil, err

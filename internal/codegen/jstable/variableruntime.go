@@ -59,13 +59,13 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? globalThis.Object.is(globalThis.Math.fround(a), globalThis.Math.fround(b)) : globalThis.Object.is(a, b);
 }
 
-// TableVariableSameFloatField is the compare for one float descriptor: a
-// COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero), so it
-// compares by value and a -0 under a +0 default elides; a plain float keeps
-// the bit compare above.
-function TableVariableSameFloatField(d, a, b) {
-  if (d.lo === null) { return TableVariableSameFloat(d.f32, a, b); }
-  return d.f32 ? globalThis.Math.fround(a) === globalThis.Math.fround(b) : a === b;
+// TableVariableStoredFloat is the value every writer stores for a float: the
+// value itself, except that a COMPRESSED float's -0 (its descriptor carries the
+// range, lo) is stored as +0, the bits +0 stores (docs/SPEC-TABLES.md §3.3;
+// docs/rulings.json fixed-compressed-negzero). A plain float's -0 is a value
+// and rides bit-exact. Elision, the wire store and the text writer all take it.
+function TableVariableStoredFloat(d, v) {
+  return d.lo !== null && v === 0 ? 0 : v;
 }
 
 // the write that meets a non-finite float refuses the save, and names the
@@ -81,8 +81,7 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
-  // a compressed float's -0 is stored as +0, the bits +0 stores (§3.3)
-  if (d.lo !== null && v === 0) { v = 0; }
+  v = TableVariableStoredFloat(d, v);
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -420,7 +419,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloatField(fd, val, fd.def)) {
+      if (!TableVariableSameFloat(fd.f32, TableVariableStoredFloat(fd, val), fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -451,7 +450,8 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "enum":
-      if (val !== fd.def) {
+      // None is null or the string "None": one value, so one compare
+      if ((val === "None" ? null : val) !== fd.def) {
         const ref = ids.ref(fd.id);
         const vref = TableVariableEnumRef(fd, ids, val);
         if (vref < 0) { return false; }
@@ -721,6 +721,9 @@ function TableVariableFirstUseOk(table, st) {
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
+  // EVERY READ STARTS FROM A ZEROED REPORT: no counter, flag or reason a
+  // previous read left behind can refuse or colour this one.
+  report.reset();
   if (c.integrity && bytes.length > 0 && bytes[0] === 1) {
     if (!c.integrity.holds(bytes, 1)) {
       report.damaged = true; report.reason = "integrity_mismatch";
@@ -1356,9 +1359,10 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
 // Refuse a writer until the caller supplies a value in the declared range.
 function TableVariableRequiredValue(d, value) {
   if (!d.req || (d.s !== "int" && d.s !== "float")) { return true; }
-  // a float32 is held at float32, as the writer holds it
+  if (d.lo === null) { return true; }
+  // a float32 is narrowed first: THE RANGE IS HELD AT FLOAT32 (§3.3)
   const x = d.s === "float" && d.f32 ? globalThis.Math.fround(value) : value;
-  return d.lo === null || (x >= d.lo && x <= d.hi);
+  return x >= d.lo && x <= d.hi;
 }
 
 // Presence is checked per body, after guards have their final values. A wire
@@ -2267,6 +2271,8 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
+      // the save's own test: a BigInt mask inside the unsigned width, never a Number
+      if (!TableVariableIntegerValid(d, val)) { return false; }
       const bits = globalThis.BigInt(val);
       if (bits === 0n) { out.push("[]"); return true; }
       out.push("[");
@@ -2285,8 +2291,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      // a compressed float's -0 is written as +0 (§3.3)
-      const t = TableVariableFloatText(d.lo !== null && val === 0 ? 0 : val, d.f32);
+      const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;
@@ -2351,7 +2356,21 @@ function TableVariableTimestampText(nanos) {
 // ---- the READ half (tabletext read.go) --------------------------------------
 
 class TableVariableTextIn {
-  constructor(text) { this.t = text; this.p = 0; this.bad = false; }
+  constructor(text) { this.t = text; this.p = 0; this.bad = false; this.badUtf8 = false; }
+  // a lone surrogate half inside a comment is ill-formed text (§16.3); a
+  // high half followed by a low half is one well-formed pair
+  loneSurrogateAt(k) {
+    const c = this.t.charCodeAt(k);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const d = this.t.charCodeAt(k + 1);
+      return !(d >= 0xdc00 && d <= 0xdfff);
+    }
+    if (c >= 0xdc00 && c <= 0xdfff) {
+      const b = k > 0 ? this.t.charCodeAt(k - 1) : 0;
+      return !(b >= 0xd800 && b <= 0xdbff);
+    }
+    return false;
+  }
   // whitespace, and comments: accepted on read, never written (§16.2)
   space() {
     const t = this.t;
@@ -2362,6 +2381,7 @@ class TableVariableTextIn {
         this.p += 2;
         while (this.p < t.length && t.charCodeAt(this.p) !== 10) {
           if (t.charCodeAt(this.p) === 0) { this.bad = true; this.p = t.length; return; }
+          if (this.loneSurrogateAt(this.p)) { this.bad = true; this.badUtf8 = true; this.p = t.length; return; }
           this.p++;
         }
         continue;
@@ -2371,6 +2391,7 @@ class TableVariableTextIn {
         if (end < 0) { this.bad = true; this.p = t.length; return; }
         for (let k = this.p + 2; k < end; k++) {
           if (t.charCodeAt(k) === 0) { this.bad = true; this.p = t.length; return; }
+          if (this.loneSurrogateAt(k)) { this.bad = true; this.badUtf8 = true; this.p = t.length; return; }
         }
         this.p = end + 2;
         continue;
@@ -2597,6 +2618,7 @@ function TableVariableFromJsonBytes(c, bytes, report) {
   if (!(bytes instanceof globalThis.Uint8Array)) {
     throw new globalThis.TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
   }
+  report.reset();
   const decoded = TableVariableUtf8Decode(bytes);
   if (!decoded.ok) {
     report.damaged = true;
@@ -2610,9 +2632,9 @@ function TableVariableFromJsonBytes(c, bytes, report) {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is damaged.
 function TableVariableFromJson(c, text, report) {
+  report.reset();
   const missingBefore = report.missingRequired;
   const strictBefore = TableVariableStrictMark(report);
-  report.reason = ""; report.refused = 0;
   const carried = report.damaged;
   report.damaged = false;
   const inp = new TableVariableTextIn(text);
@@ -2630,6 +2652,7 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
+  if (inp.badUtf8 && report.reason === "") { report.reason = "string_not_utf8"; }
   if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
@@ -2997,8 +3020,17 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // a float32 rounding midpoint — the band between FLT_MAX and the
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
-        x = TableVariableF32OfToken(n.tok, x);
-        if (!globalThis.Number.isFinite(x)) { report.mismatch++; return true; }
+        const y = TableVariableF32OfToken(n.tok, x);
+        if (globalThis.Number.isFinite(y)) { x = y; }
+        // past FLT_MAX is past either end of a compressed float, which the
+        // range below clamps and counts; an unranged float32 cannot hold it
+        else if (d.lo === null) { report.mismatch++; return true; }
+      }
+      // THE RANGE IS HELD AT FLOAT32 (§3.3): the value is narrowed first, and
+      // a float32's ends are the float32 nearest each declared end
+      if (d.lo !== null) {
+        if (x < d.lo) { x = d.lo; report.oor++; }
+        else if (x > d.hi) { x = d.hi; report.oor++; }
       }
       // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS (SPEC §4.6) after the
       // one rounding, so the text "0.1" every writer emits for 0.1f reads

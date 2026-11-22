@@ -427,19 +427,19 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		g.pf("%sTableFixedPut8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
-			// §3.3's FIXED row; ruling fixed-compressed-negzero), the +0 image
-			// the read lands it as
-			g.pf("%sTableFixedPutF32( %s + %d, ( !( %s < 0.0f ) && !( %s > 0.0f ) ) ? 0.0f : %s ); // -0 is stored as +0\n", ind, buf, off, expr, expr, expr)
-		} else {
-			g.pf("%sTableFixedPutF32( %s + %d, %s );\n", ind, buf, off, expr)
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3; docs/rulings.json fixed-compressed-negzero), the +0 bits
+			// the read lands it as; a plain float's -0 rides bit-exact
+			g.pf("%sTableFixedPut32( %s + %d, TableStoredFloatBits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%sTableFixedPutF32( %s + %d, %s );\n", ind, buf, off, expr)
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			g.pf("%sTableFixedPutF64( %s + %d, ( !( %s < 0.0 ) && !( %s > 0.0 ) ) ? 0.0 : %s ); // -0 is stored as +0\n", ind, buf, off, expr, expr, expr)
-		} else {
-			g.pf("%sTableFixedPutF64( %s + %d, %s );\n", ind, buf, off, expr)
+			g.pf("%sTableFixedPut64( %s + %d, TableStoredFloatBits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%sTableFixedPutF64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
 		if w == 16 {
 			g.pf("%sTableFixedPut128( %s + %d, %s );\n", ind, buf, off, expr)
@@ -1556,9 +1556,19 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
-		// §5.1): a quantized float past its range is the message form's to
-		// clamp, and the writers hold row 10 where the table says they do.
+		// ROW 10 IS THE WRITE CHECK'S (docs/SPEC.md §5.1): a compressed
+		// float off its range is refused by the writer, and in this assert
+		// leg that is the debug assert FixedSave and SaveMessages hold over
+		// this body. THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
+		// §3.3): the ends are the float32 literals nearest the declared
+		// bounds, so the 0.1f a reader landed under max = 0.1 saves again.
+		// A plain float has no range and nothing to count. A NaN or an
+		// infinity is row 7's, refused in every build after this assert,
+		// so the range is tested on a finite value only.
+		if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+			g.pf("%sbad |= (int) ( TableFloatFinite( %s ) && ( %s < %s || %s > %s ) );\n",
+				ind, expr, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		}
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 		g.fixedNegZero(expr, true, ind)

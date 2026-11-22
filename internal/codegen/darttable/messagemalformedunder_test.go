@@ -69,7 +69,12 @@ func goDecodeMalformed(t *testing.T, u *ir.Unit, root string, wire []byte) (tabl
 	}
 	inst := m.New(m.Lookup(root))
 	report := tabletext.Report{}
-	count, _, _ := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, vocab, &report)
+	// The report is the verdict the Dart load is compared against; the error
+	// and the report must tell the same story, or the oracle is not one.
+	count, ok, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, vocab, &report)
+	if ok != (derr == nil) || report.Refused != (derr != nil) {
+		t.Fatalf("%s: the Go reference disagrees with itself: ok=%v err=%v report=%+v", root, ok, derr, report)
+	}
 	return report, count
 }
 
