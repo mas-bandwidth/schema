@@ -43,7 +43,7 @@ public final class TableCookInfo {
      */
     public static final long maxAlign = 64L;
 
-    public String name;
+    public java.lang.String name;
     public long typeId; // attribution entry's table id (§7.6)
 
     /**
@@ -60,7 +60,7 @@ public final class TableCookInfo {
      * slot past the live count and a fixed array's slot past the value's elements hold (§7.2); null
      * for a union.
      */
-    public java.util.function.Supplier<Object> defaults;
+    public java.util.function.Supplier<java.lang.Object> defaults;
 
     /**
      * the record holds a list or a map BY VALUE, at any depth: its node is its storage rounded to

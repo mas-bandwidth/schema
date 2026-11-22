@@ -285,7 +285,7 @@ fixed table T
 		}
 	}
 	for _, want := range []string{
-		"final int n = Math.min(theirN, myN);",
+		"final int n = java.lang.Math.min(theirN, myN);",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
 		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")

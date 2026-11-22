@@ -30,7 +30,7 @@ public final class Enums {
 
     // enumNameTeam: debug/log/tooling name for any Team storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameTeam(long value) {
+    public static java.lang.String enumNameTeam(long value) {
         if (value == Team.NONE) {
             return "None";
         }
@@ -62,7 +62,7 @@ public final class Enums {
 
     // enumNameShipType: debug/log/tooling name for any ShipType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameShipType(long value) {
+    public static java.lang.String enumNameShipType(long value) {
         if (value == ShipType.NONE) {
             return "None";
         }
@@ -101,7 +101,7 @@ public final class Enums {
 
     // enumNameMissileType: debug/log/tooling name for any MissileType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameMissileType(long value) {
+    public static java.lang.String enumNameMissileType(long value) {
         if (value == MissileType.NONE) {
             return "None";
         }
@@ -137,7 +137,7 @@ public final class Enums {
 
     // enumNamePropType: debug/log/tooling name for any PropType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNamePropType(long value) {
+    public static java.lang.String enumNamePropType(long value) {
         if (value == PropType.NONE) {
             return "None";
         }
@@ -176,7 +176,7 @@ public final class Enums {
 
     // enumNamePending: debug/log/tooling name for any Pending storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNamePending(long value) {
+    public static java.lang.String enumNamePending(long value) {
         if (value == Pending.NONE) {
             return "None";
         }
@@ -195,7 +195,7 @@ public final class Enums {
 
     // flagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
     // out-of-range bits name as "???"
-    public static String flagNameShipFlags(int bit) {
+    public static java.lang.String flagNameShipFlags(int bit) {
         switch (bit) {
             case 0:
                 return "FiringLaser";
@@ -212,8 +212,8 @@ public final class Enums {
 
     // flagNamesShipFlags renders the set bits of value as "A|B" — "0" for the
     // empty set, bits past the declared variants as hex
-    public static String flagNamesShipFlags(long value) {
-        StringBuilder names = new StringBuilder();
+    public static java.lang.String flagNamesShipFlags(long value) {
+        java.lang.StringBuilder names = new java.lang.StringBuilder();
         if ((value & (1L << 0)) != 0) {
             if (names.length() > 0) {
                 names.append('|');
@@ -243,7 +243,7 @@ public final class Enums {
                 names.append('|');
             }
             // Long.toHexString renders the bit pattern, not a sign
-            names.append("0x").append(Long.toHexString((value >>> 4) << 4));
+            names.append("0x").append(java.lang.Long.toHexString((value >>> 4) << 4));
         }
         return names.length() == 0 ? "0" : names.toString();
     }
