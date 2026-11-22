@@ -2,19 +2,17 @@ package ci
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestHostileCountsAreDerivedFromTheCorpus holds that no hostile-corpus recipe
 // hand-types the registered case count: each derives it from the corpus
 // manifest, so adding a case can never leave a target red on a stale number.
 func TestHostileCountsAreDerivedFromTheCorpus(t *testing.T) {
-	files, err := filepath.Glob("../../make/schema-*-runs-hostile-corpus.mk")
-	if err != nil || len(files) == 0 {
-		t.Fatalf("no hostile-corpus make fragments found (err %v)", err)
-	}
+	files := provesran.MustGlob(t, "../../make/schema-*-runs-hostile-corpus.mk")
 	typed := regexp.MustCompile(`(?m)^[A-Z]+_HOSTILE_(CASES|ROWS)\s*[?:]?=\s*[0-9]+\s*$`)
 	derived := 0
 	for _, f := range files {
