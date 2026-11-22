@@ -2637,9 +2637,10 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
-          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/**', 'make/**', 'Makefile', 'go.mod') }}
 
       - name: stand cached C# fuzz inputs newer than this checkout
         if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
@@ -2660,6 +2661,7 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
           key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}

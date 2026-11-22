@@ -5348,7 +5348,9 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 # the maps, lists and widelist tables.
 CONFORMANCE_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-objs/%.o,$(CONFORMANCE_SOURCES))
 
-build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp
+# the serialize runtime is a sibling checkout read through -I: a header edited
+# there must rebuild the objects that include it
+build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 

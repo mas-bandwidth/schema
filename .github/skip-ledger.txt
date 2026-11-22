@@ -79,7 +79,9 @@ skip sibling ^the C# runtime checkout is not at
 # corpus: the C++ reference's fixed-form corpus (build/fixedform-corpus) is
 # not built. Provided by every lane that builds it first (make
 # tables-fixedform-corpus; SCHEMA_REQUIRE_CORPUS=1 turns the skip into a
-# failure there).
+# failure there). It is also a failure wherever CI is set and the slow half was
+# asked for (SCHEMA_SLOW=1; slowtest.CorpusRequired), so the skip survives only
+# on a developer's machine and in a default run.
 skip corpus (byte oracle|corpus|oracle) is (not built|absent)
 skip corpus ^no fixed-form corpus at
 skip corpus ^fixedform[- ]corpus (not built|unavailable)
