@@ -372,6 +372,12 @@ func fieldDefault(f *ir.Field) string {
 	if f.Array == ir.ArrayFixed {
 		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
+	if f.BornCount() > 0 {
+		// a [Min..N]T is BORN with Min elements at their zero (SPEC §4.6,
+		// ir.Field.BornCount): a range that starts above zero has no
+		// wire-legal count at zero
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.BornCount(), fieldDefault(scalarOnly(f)))
+	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
 	}
@@ -654,7 +660,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	kind := scalarWireKind(f)
 	switch f.Type.Kind {
 	case ir.TBool:
-		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
+		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, unparen(x))
 	case ir.TFloat32, ir.TFloat64:
 		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, rustFloatStored(f, x))
 	}
@@ -810,14 +816,35 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
-		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
+		born := f.BornCount()
+		// A [Min..N]T AT ITS BIRTH ELIDES (internal/tablewire encodeArray,
+		// allBirth): Min elements, each at its zero, are what an absent field
+		// reads. A REQUIRED (or optional) field keeps its presence and never
+		// elides at birth, exactly as the engine's allBirth excludes it.
+		birthElides := born > 0 && !f.Required && !f.Type.Optional
+		live := "!" + x + ".is_empty()"
+		if birthElides && classOf(f) != vTable {
+			live = fmt.Sprintf("%s.len() != %d || %s.iter().take(%d).any(|e| %s)", x, born, x, born, elemNonDefaultExpr(f, "e"))
+		}
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, live))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
-			// a count past the declared maximum is a debug assert (docs/SPEC.md
-			// §5.1, row 3; Rust write checks are debug asserts only); the
-			// writer's storage is held by the clamp to Max above in every build
+			// a count past the declared maximum, or under the declared
+			// minimum, is a debug assert (docs/SPEC.md §5.1, row 3; Rust write
+			// checks are debug asserts only); the writer's storage is held by
+			// the clamp to Max above in every build
 			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", inner, lenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
+			}
+		}
+		if birthElides && classOf(f) == vTable {
+			// a table element's body is at its zero when it writes no field
+			// (the terminating reference alone): the elided array rolls the
+			// id table back to before its own header
+			fmt.Fprintf(b, "%slet birth_mark = ids.mark();\n", inner)
+			fmt.Fprintf(b, "%slet mut at_birth = %s.len() == %d;\n", inner, x, born)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
@@ -834,6 +861,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			}
 			fmt.Fprintf(b, "%slet mut eb = Vec::new();\n", ein)
 			emitTableBodyInto(b, f, "e", "eb", fmt.Sprintf("path.step(%d, j as u32)", ordinal), ein)
+			if birthElides {
+				fmt.Fprintf(b, "%sif eb.as_slice() != [0u8] { at_birth = false; }\n", ein)
+			}
 			fmt.Fprintf(b, "%sleb_write(&mut body, eb.len() as u64);\n", ein)
 			fmt.Fprintf(b, "%sbody.extend_from_slice(&eb);\n", ein)
 		case vPointer:
@@ -851,10 +881,16 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
+		if birthElides && classOf(f) == vTable {
+			fmt.Fprintf(b, "%sif at_birth { ids.rollback(birth_mark); } else {\n", inner)
+		}
 		fmt.Fprintf(b, "%sleb_write(out, r);\n", inner)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, body.len() as u64);\n", inner)
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
+		if birthElides && classOf(f) == vTable {
+			fmt.Fprintf(b, "%s}\n", inner)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1402,6 +1438,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)
 	case ir.ArrayCounted, ir.ArrayFixed:
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count under the declared minimum refuses, as one past the
+			// maximum does (internal/tablewire decode.go, count_over_bound)
+			fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i4, f.ArrayMin)
+		}
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
@@ -2524,4 +2565,21 @@ func rustFloatStored(f *ir.Field, x string) string {
 		return x
 	}
 	return fmt.Sprintf("(if %s == 0.0 { 0.0 } else { %s })", x, x)
+}
+
+// lenUnder is the Rust test that x holds fewer than n elements, and
+// lenAtLeast its negation; a minimum of one is spelled with is_empty, which
+// is what clippy's len_zero asks for.
+func lenUnder(x string, n int64) string {
+	if n == 1 {
+		return x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() < %d", x, n)
+}
+
+func lenAtLeast(x string, n int64) string {
+	if n == 1 {
+		return "!" + x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() >= %d", x, n)
 }

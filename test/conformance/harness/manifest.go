@@ -867,6 +867,10 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
 		}
 	}
+	// one name on one surface is one unit's case (optin.go)
+	if _, err := caseOwners(m); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return m, nil
 }
 
