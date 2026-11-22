@@ -146,9 +146,13 @@ def surface_framing(text:string):
     for(rows(text, "framing")) f:
         let d = schema_rt.table_of(f[3])
         let was_fixed = d.fixed
-        d.fixed = false
+        let data = fixture(f[4])
+        // only a form-1 file is read through the variable declaration; a
+        // form-3 file at a fixed root is the fixed form's own read
+        if length(data) >= 1 and data[0] == 1:
+            d.fixed = false
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        let rec = schema_rt.load(f[3], data, rep)
         d.fixed = was_fixed
         if rec:
             read_answer(f[1], rec)
