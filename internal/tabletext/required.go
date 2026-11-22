@@ -66,7 +66,7 @@ func ValidateRequiredValue(fv *Field) error {
 				return fmt.Errorf("invalid_value: %s is outside its required range", f.Name)
 			}
 		}
-		if f.HasFloatRange && (c.F < f.FMin || c.F > f.FMax) {
+		if f.HasFloatRange && !ir.CompressedFloatInRange(f.FMin, f.FMax, c.F) {
 			return fmt.Errorf("invalid_value: %s is outside its required range", f.Name)
 		}
 	}

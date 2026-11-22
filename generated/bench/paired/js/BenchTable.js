@@ -2769,11 +2769,11 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.payloadLength !== "number" || !globalThis.Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { return false; }
   if (value.payload.length < value.payloadLength) { return false; }
   if (typeof value.aimX !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.aimX))) { return false; }
-  if (value.aimX < -1 || value.aimX > 1) { return false; }
+  if (globalThis.Math.fround(value.aimX) < -1 || globalThis.Math.fround(value.aimX) > 1) { return false; }
   if (typeof value.aimY !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.aimY))) { return false; }
-  if (value.aimY < -1 || value.aimY > 1) { return false; }
+  if (globalThis.Math.fround(value.aimY) < -1 || globalThis.Math.fround(value.aimY) > 1) { return false; }
   if (typeof value.aimZ !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.aimZ))) { return false; }
-  if (value.aimZ < -1 || value.aimZ > 1) { return false; }
+  if (globalThis.Math.fround(value.aimZ) < -1 || globalThis.Math.fround(value.aimZ) > 1) { return false; }
   if (typeof value.recoil !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.recoil))) { return false; }
   if (typeof value.drift !== "number" || !globalThis.Number.isFinite(value.drift)) { return false; }
   if (typeof value.wideKey !== "bigint") { return false; }

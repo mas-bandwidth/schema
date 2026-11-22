@@ -532,7 +532,10 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n",
 			ind, expr, expr)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+			// THE RANGE IS HELD AT FLOAT32 (§3.3): the value the store
+			// narrows is the value the range holds, against the float32
+			// nearest each end
+			g.pf("%sif (globalThis.Math.fround(%s) < %s || globalThis.Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
 		return
 	case ir.TFloat64:

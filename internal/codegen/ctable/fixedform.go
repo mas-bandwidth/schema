@@ -1397,9 +1397,19 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
-		// §5.1): a quantized float past its range is the message form's to
-		// clamp, and the writers hold row 10 where the table says they do.
+		// ROW 10 IS THE WRITE CHECK'S (docs/SPEC.md §5.1): a compressed
+		// float off its range is refused by the writer, and in this assert
+		// leg that is the debug assert FixedSave and SaveMessages hold over
+		// this body. THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
+		// §3.3): the ends are the float32 literals nearest the declared
+		// bounds, so the 0.1f a reader landed under max = 0.1 saves again.
+		// A plain float has no range and nothing to count. A NaN or an
+		// infinity is row 7's, refused in every build after this assert,
+		// so the range is tested on a finite value only.
+		if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+			g.pf("%s(*out_of_range) += (int) ( table_float_finite( %s ) && ( %s < %s || %s > %s ) );\n",
+				ind, expr, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		}
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)
