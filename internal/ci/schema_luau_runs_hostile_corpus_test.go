@@ -862,8 +862,11 @@ end
 		name, rest, _ := strings.Cut(line, "\t")
 		got[name] = rest
 	}
+	// the verdict only: the reason after it is the reader's own diagnostic
+	// (docs/rulings.json refusal-verdict-only)
+	verdict := func(answer string) string { v, _, _ := strings.Cut(answer, "\t"); return v }
 	for name, w := range want {
-		if got[name] != w {
+		if verdict(got[name]) != verdict(w) {
 			t.Errorf("FIX-CARD: luau-hostile-corpus: %s got %q want %q (the engine's verdict)", name, got[name], w)
 		}
 	}
