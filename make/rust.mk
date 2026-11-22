@@ -2023,3 +2023,49 @@ packet-write-text-rust-negative-control: packet-write-text-rust
 	@echo 'Rust packet Write negative control: removing the UTF-8 debug assert fails invalid-byte'
 
 test-rust: packet-write-text-rust packet-write-text-rust-negative-control
+
+# THE PACKET WRITE-REFUSAL SURFACE (docs/SPEC.md §5.1, write-refusal-packet):
+# the shared RefusalPacket schema carries one field per contract row, and
+# each case in test/packet-write-refusal/cases.txt changes ONE field. A Rust
+# debug build refuses by debug_assert! (a caught panic naming the field); the
+# lawful twin at the same boundary is written and read back. A union tag past
+# its arms cannot be built (a native enum), so that case is named not
+# representable by the driver, which fails on any case neither run nor named.
+PACKET_WRITE_REFUSAL_RUST := build/packet-write-refusal/rust
+
+$(PACKET_WRITE_REFUSAL_RUST)/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema test/packet-write-refusal/rust/src/main.rs make/rust.mk
+	@rm -rf $(PACKET_WRITE_REFUSAL_RUST)/src
+	./bin/schema generate --lang rust --out $(PACKET_WRITE_REFUSAL_RUST)/src test/packet-write-refusal/RefusalPacket.schema
+	cp test/packet-write-refusal/rust/src/main.rs $(PACKET_WRITE_REFUSAL_RUST)/src/main.rs
+	@printf $(PACKET_WRITE_REFUSAL_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)/Cargo.toml
+	@touch $@
+
+PACKET_WRITE_REFUSAL_RUST_TOML = '[package]\nname = "packetwriterefusal"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n'
+
+.PHONY: packet-write-refusal-rust packet-write-refusal-rust-negative-control
+packet-write-refusal-rust: $(PACKET_WRITE_REFUSAL_RUST)/.stamp
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_REFUSAL_RUST)/Cargo.toml
+	./$(PACKET_WRITE_REFUSAL_RUST)/target/debug/packetwriterefusal test/packet-write-refusal/cases.txt
+
+# The control moves the emitter's upper-bound comparison, so the lawful value
+# at the boundary is refused: scalar_at_max must go red, by name.
+packet-write-refusal-rust-negative-control: packet-write-refusal-rust
+	@rm -rf $(PACKET_WRITE_REFUSAL_RUST)-negative/src
+	@mkdir -p $(PACKET_WRITE_REFUSAL_RUST)-negative
+	go run ./tools/sabotage -name packet-write-refusal-rust-upper-bound \
+		-out $(PACKET_WRITE_REFUSAL_RUST)-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_WRITE_REFUSAL_RUST)-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)-negative/overlay.json
+	go build -overlay=$(PACKET_WRITE_REFUSAL_RUST)-negative/overlay.json -o $(PACKET_WRITE_REFUSAL_RUST)-negative/schema ./cmd/schema
+	./$(PACKET_WRITE_REFUSAL_RUST)-negative/schema generate --lang rust --out $(PACKET_WRITE_REFUSAL_RUST)-negative/src test/packet-write-refusal/RefusalPacket.schema
+	cp test/packet-write-refusal/rust/src/main.rs $(PACKET_WRITE_REFUSAL_RUST)-negative/src/main.rs
+	@printf $(PACKET_WRITE_REFUSAL_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_REFUSAL_RUST)-negative/Cargo.toml
+	@if ./$(PACKET_WRITE_REFUSAL_RUST)-negative/target/debug/packetwriterefusal test/packet-write-refusal/cases.txt > $(PACKET_WRITE_REFUSAL_RUST)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Rust packet Write with the upper bound moved stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-refusal scalar_at_max:' $(PACKET_WRITE_REFUSAL_RUST)-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust packet Write did not fail on scalar_at_max'; cat $(PACKET_WRITE_REFUSAL_RUST)-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-refusal scalar_at_max:' $(PACKET_WRITE_REFUSAL_RUST)-negative/log
+	@echo 'Rust packet write-refusal negative control: moving the upper-bound assert fails scalar_at_max'
+
+test-rust: packet-write-refusal-rust packet-write-refusal-rust-negative-control
