@@ -238,6 +238,11 @@ func (g *gen) flatFieldPiece(item *ir.FieldItem, writing bool) (flatPiece, bool)
 	case ir.TBits:
 		w := int64(f.Type.Width)
 		p.bits = w
+		if w < 32 || (w > 32 && w < 64) {
+			p.guard = func(ind string) {
+				g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1UL << %d", name, w), fmt.Sprintf("%s is wider than its %d bits", name, w))
+			}
+		}
 		p.expr = masked("(ulong)"+name, w)
 		p.read = func(ind, src string) {
 			if w <= 32 {

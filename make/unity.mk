@@ -110,6 +110,42 @@ packet-utf8-unity-negative-control: build/packet-text/unity/.stamp build/packet-
 	@grep -Fq 'FAILED: packet-text verdict on ' $(UNITY_TEXT_NC)/log || { cat $(UNITY_TEXT_NC)/log; exit 1; }
 	@echo 'packet UTF-8 Unity negative control: removed read validation fails bit-flip agreement'
 
+# ---- packet write refusal: the write-refusal-packet surface (SPEC §5.1) ----
+
+# The packet Write on a generated type with one field per row. Unity C# is an
+# assert leg, so the driver runs a Debug build where each check is a
+# Debug.Assert, answered through a throwing TraceListener; a refused value
+# must trap and its lawful twin at the same boundary must be written.
+build/packet-write-refusal/unity/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema make/unity.mk
+	@rm -rf build/packet-write-refusal/unity && mkdir -p build/packet-write-refusal/unity
+	./bin/schema generate --lang unity --out build/packet-write-refusal/unity test/packet-write-refusal/RefusalPacket.schema
+	@touch $@
+
+.PHONY: packet-write-refusal-unity packet-write-refusal-unity-negative-control
+packet-write-refusal-unity: build/packet-write-refusal/unity/.stamp
+	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o build/packet-write-refusal/unity-debug --nologo -v quiet
+	$(DOTNET) build/packet-write-refusal/unity-debug/packet-write-refusal-unity.dll test/packet-write-refusal/cases.txt
+
+# One upper bound moved in a copy of the generated code must turn the boundary
+# case red, by name, while every other case stays green.
+UNITY_WRITE_REFUSAL_NC := build/packet-write-refusal/unity-negative
+packet-write-refusal-unity-negative-control: build/packet-write-refusal/unity/.stamp
+	@rm -rf $(UNITY_WRITE_REFUSAL_NC) && mkdir -p $(UNITY_WRITE_REFUSAL_NC)/generated
+	@cp build/packet-write-refusal/unity/*.cs $(UNITY_WRITE_REFUSAL_NC)/generated/
+	@sed -i.orig 's/value\.Scalar >= 0 \&\& value\.Scalar <= 10/value.Scalar >= 0 \&\& value.Scalar < 10/' $(UNITY_WRITE_REFUSAL_NC)/generated/RefusalPacket.cs
+	@cmp -s build/packet-write-refusal/unity/RefusalPacket.cs $(UNITY_WRITE_REFUSAL_NC)/generated/RefusalPacket.cs && { echo 'NEGATIVE CONTROL: the planted bound patched nothing'; exit 1; } || true
+	@rm -f $(UNITY_WRITE_REFUSAL_NC)/generated/*.orig
+	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o $(UNITY_WRITE_REFUSAL_NC)/bin --nologo -v quiet \
+		-p:RefusalDir="$(CURDIR)/$(UNITY_WRITE_REFUSAL_NC)/generated"
+	@if $(DOTNET) $(UNITY_WRITE_REFUSAL_NC)/bin/packet-write-refusal-unity.dll test/packet-write-refusal/cases.txt > $(UNITY_WRITE_REFUSAL_NC)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a moved upper bound passed the Unity packet write-refusal driver'; exit 1; fi
+	@grep -Fq 'FAILED: scalar_at_max lawful value at the boundary was refused' $(UNITY_WRITE_REFUSAL_NC)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the boundary case scalar_at_max was not the failure'; cat $(UNITY_WRITE_REFUSAL_NC)/log; exit 1; }
+	@test "$$(grep -c '^FAILED: ' $(UNITY_WRITE_REFUSAL_NC)/log)" = 1 || \
+		{ echo 'NEGATIVE CONTROL FAILED: a case other than the boundary went red'; cat $(UNITY_WRITE_REFUSAL_NC)/log; exit 1; }
+	@grep -m1 '^FAILED: ' $(UNITY_WRITE_REFUSAL_NC)/log
+	@echo 'packet write-refusal Unity negative control: a moved upper bound turns the boundary case red and nothing else'
+
 # ---- the leg ----
 
 .PHONY: test-unity
@@ -120,6 +156,8 @@ test-unity: toolchain-unity
 	$(MAKE) packet-defaults-unity-negative-control
 	$(MAKE) packet-utf8-unity
 	$(MAKE) packet-utf8-unity-negative-control
+	$(MAKE) packet-write-refusal-unity
+	$(MAKE) packet-write-refusal-unity-negative-control
 
 TEST_LEGS          += test-unity
 TOOLCHAIN_LEGS     += unity
