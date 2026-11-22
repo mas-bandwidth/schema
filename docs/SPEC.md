@@ -1128,6 +1128,7 @@ type Vector3 | vec3, cpp_native = Vector3, cpp_include = "core_vector.h"
 { ... }
 ```
 
+<!-- example: fragment -->
 ```cpp
 // core_vector.h, hand-written:
 struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };

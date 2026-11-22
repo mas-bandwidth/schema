@@ -113,7 +113,7 @@ port's decoder and the same manifest.
 
 The generated Go gate is `make schema-go-runs-hostile-corpus`, included in
 `test-go` and therefore in the full nightly build. It generates each distinct
-unit once and reads each manifest row once through generated tolerant text,
+unit once and reads each manifest row once through generated text,
 file, message and announcement APIs. Variable wire reads use the generated
 region measure and load pair; text reads use generated builders. It compares
 named refusals and canonical JSON digests without calling the reference
@@ -150,9 +150,10 @@ FIX-CARD whose case has gone green.
 
 ## Reasons
 
-`damaged` is a read that reports a malformed/kind-mismatch event without naming
-a refusal. Every other reason is the Go engine's own name, read off its
-constants:
+`damaged` is every other refusal of the one read (damage, a kind mismatch, a
+value past its bound, a text that is not this dialect's JSON): the verdict is
+compared and the reason is per-language detail (SPEC-TABLES §6.5). Every other
+reason is the Go engine's own name, read off its constants:
 
 `newer_form`, `no_vocabulary`, `second_announcement`, `vocabulary_too_large`,
 `message_form_as_file`, `batch_too_large`, and `count_refusal` (the builder-path
