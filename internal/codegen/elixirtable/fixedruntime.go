@@ -492,6 +492,22 @@ const fixedRuntimeBody = `  @moduledoc """
           "non_finite_float: a float32 writes a finite float, got: #{inspect(value)}"
   end
 
+  # A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3):
+  # the value narrowed to float32 is held to the float32 nearest each declared
+  # end, which is what the bounds already are, and the writer raises past
+  # either, as it does for a ranged integer (ranged/2).
+  def f32_ranged(value, {lo, hi}) do
+    bits = f32_bits(value)
+    <<n::float-32-little>> = <<bits::little-32>>
+
+    if n < lo or n > hi do
+      raise ArgumentError,
+            "out_of_range: #{inspect(value)} is outside #{lo}..#{hi} held at float32"
+    end
+
+    bits
+  end
+
   def f64_value(bits) when (bits >>> 52 &&& 0x7FF) == 0x7FF,
     do: throw({:refuse, :non_finite_float})
 
