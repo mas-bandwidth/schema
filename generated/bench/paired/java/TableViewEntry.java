@@ -9,20 +9,20 @@
 package bench;
 
 public final class TableViewEntry {
-    public String name;
-    public String file;
+    public java.lang.String name;
+    public java.lang.String file;
     public boolean table;
     public TableTypeInfo type;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
     static TableViewEntry of(
-            String name,
-            String file,
+            java.lang.String name,
+            java.lang.String file,
             boolean table,
             TableTypeInfo type,
-            String doc,
-            String[] tags) {
+            java.lang.String doc,
+            java.lang.String[] tags) {
         TableViewEntry e = new TableViewEntry();
         e.name = name;
         e.file = file;

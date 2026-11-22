@@ -63,13 +63,13 @@ func testJavaString(s string) string {
 
 func testJavaTags(tags []string) string {
 	if len(tags) == 0 {
-		return "new String[0]"
+		return "new java.lang.String[0]"
 	}
 	parts := make([]string, len(tags))
 	for i, t := range tags {
 		parts[i] = testJavaString(t)
 	}
-	return "new String[] {" + strings.Join(parts, ", ") + "}"
+	return "new java.lang.String[] {" + strings.Join(parts, ", ") + "}"
 }
 
 // testCookedPlace is the expectation this test holds the emitter to: a field's
