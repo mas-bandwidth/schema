@@ -375,10 +375,12 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "pointer" then
     -- null is elided (§3.1); false is null where nil cannot be held (a map
     -- entry's value, as a sequence's element)
-    if x ~= nil and x ~= false then
+    -- a REQUIRED pointer rides even at null, as index 0 (§3.1; gotable's
+    -- encodeField writes it), or the read refuses missing_required
+    if (x ~= nil and x ~= false) or fd.required then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 17)
-      w_leb(w, nodes.index[x])
+      w_leb(w, nodes.index[x] or 0)
     end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the

@@ -206,7 +206,11 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 func TestJavaTransportIDFirstUse(t *testing.T) {
 	slowtest.Gate(t, "generated Java transport ID order")
 	got := javaIdOrderAnswers(t, false)
-	for _, row := range idOrderCases(t) {
+	allIdOrderCases := idOrderCases(t)
+	if len(allIdOrderCases) == 0 {
+		t.Fatal("idOrderCases(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allIdOrderCases {
 		for _, mode := range []string{"plain", "retain"} {
 			want := "damaged"
 			if row.read {
@@ -222,7 +226,11 @@ func TestJavaTransportIDFirstUse(t *testing.T) {
 func TestJavaTransportIDNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "generated Java transport ID negative control")
 	got := javaIdOrderAnswers(t, true)
-	for _, row := range idOrderCases(t) {
+	allIdOrderCases := idOrderCases(t)
+	if len(allIdOrderCases) == 0 {
+		t.Fatal("idOrderCases(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allIdOrderCases {
 		for _, mode := range []string{"plain", "retain"} {
 			want := "read"
 			key := row.name + " " + mode

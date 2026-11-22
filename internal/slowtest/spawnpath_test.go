@@ -92,12 +92,22 @@ func TestSpawnPathsNegativeControl(t *testing.T) {
 		{"package x\nfunc F(t T) {\n\ttestproc.Command(t, \"lua\")\n\tslowtest.Gate(t, \"lua\")\n}\n", spawnPath{fn: "F"}, false},
 		{"package x\nfunc F(t T) {\n\ttestproc.CommandContext(t, ctx, \"lua\")\n}\n", spawnPath{fn: "F"}, false},
 	}
+	refused := 0
 	for i, c := range cases {
 		c.p.file = "x.go"
 		why := gatesBeforeSpawn([]byte(c.src), c.p)
 		if (why == "") != c.pass {
 			t.Errorf("case %d: verdict %q, want pass=%v", i, why, c.pass)
 		}
+		if !c.pass {
+			if why == "" {
+				t.Errorf("case %d: the planted ungated spawn was accepted", i)
+			}
+			refused++
+		}
+	}
+	if refused != 6 {
+		t.Fatalf("the control planted %d failing cases, want 6: it would pass having refused nothing", refused)
 	}
 }
 

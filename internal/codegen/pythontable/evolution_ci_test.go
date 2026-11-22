@@ -196,6 +196,9 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 			coverage++
 		}
 	}
+	if len(registered) == 0 {
+		t.Fatal("registered is empty: the loop below would check nothing")
+	}
 	for _, target := range registered {
 		if targets[target] != 1 {
 			t.Fatalf("actual support target %s occurs %d times", target, targets[target])

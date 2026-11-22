@@ -184,7 +184,11 @@ func TestLuaRetainMessage(t *testing.T) {
 	slowtest.Gate(t, "go and the pinned lua")
 	newerFiles, olderFiles, probe, inputs := retainMessageSetup(t)
 	normal := runRetainProbe(t, newerFiles, olderFiles, probe, inputs)
-	for _, c := range retainMessageCases() {
+	allRetainMessageCases := retainMessageCases()
+	if len(allRetainMessageCases) == 0 {
+		t.Fatal("retainMessageCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allRetainMessageCases {
 		line := normal[c.name]
 		if !strings.HasPrefix(line, c.name+":true:") {
 			t.Errorf("%s: retain round trip %q, want %s:true", c.name, line, c.name)
