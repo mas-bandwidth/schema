@@ -2525,3 +2525,13 @@ func rustFloatStored(f *ir.Field, x string) string {
 	}
 	return fmt.Sprintf("(if %s == 0.0 { 0.0 } else { %s })", x, x)
 }
+
+// rustFloatStoredArg is rustFloatStored for a bare call argument, where the
+// normalising if-expression needs no parentheses (clippy unused_parens).
+func rustFloatStoredArg(f *ir.Field, x string) string {
+	s := rustFloatStored(f, x)
+	if s != x {
+		return s[1 : len(s)-1]
+	}
+	return unparen(s)
+}

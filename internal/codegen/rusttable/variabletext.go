@@ -1394,7 +1394,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 				lo, hi := rustFloatBounds(f)
 				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, lo, x, hi)
 			}
-			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, unparen(rustFloatStored(f, x)))
+			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, rustFloatStoredArg(f, x))
 		case ir.TFixed:
 			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// WHOLE UNITS, exact, from the raw integer (§16.2); a storage

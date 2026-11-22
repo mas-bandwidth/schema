@@ -459,9 +459,9 @@ func (g *gen) emitCookElement(b *strings.Builder, f *ir.Field, x, at, ind string
 		// NaN or an infinity refuses the cook. A compressed float's -0 is
 		// stored as +0 in every build (docs/rulings.json
 		// fixed-compressed-negzero); a plain float keeps its -0.
-		fmt.Fprintf(b, "%sw.put_f32(%s, %s);\n", ind, at, rustFloatStored(f, cookVal(x)))
+		fmt.Fprintf(b, "%sw.put_f32(%s, %s);\n", ind, at, rustFloatStoredArg(f, cookVal(x)))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "%sw.put_f64(%s, %s);\n", ind, at, rustFloatStored(f, cookVal(x)))
+		fmt.Fprintf(b, "%sw.put_f64(%s, %s);\n", ind, at, rustFloatStoredArg(f, cookVal(x)))
 	case ir.TInt, ir.TFixed:
 		// a fixed-point value is its raw storage integer at the I+F width
 		// (§4.3, §7.2), which is region.go's one case for both kinds
