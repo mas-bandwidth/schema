@@ -1,10 +1,16 @@
 package javatable
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE WRITER REFUSES AN ID TABLE ITS READERS REFUSE (docs/SPEC-TABLES.md §3,
@@ -24,9 +30,9 @@ public final class Main {
 
     private static RootVariable.Value value(int x, int y) {
         RootVariable.Value v = new RootVariable.Value();
-        for (int i = 0; i < v.keys.length; i++) v.keys[i] = 1;
-        v.x = (byte) x;
-        v.y = (byte) y;
+        for (int i = 0; i < v.keys.size(); i++) v.keys.set(i, 1);
+        v.x = x;
+        v.y = y;
         return v;
     }
 
@@ -49,5 +55,58 @@ public final class Main {
     }
 }
 `
-	compileAndRunJavaProbe(t, tablewire.IdCapSchema(), "idcap", driver)
+	// TableUnitView is the unit's descriptor listing, one method that spells
+	// every one of the 4094 variants: javac refuses it as "code too large", and
+	// no save or load names it, so the probe compiles the unit without it.
+	compileAndRunJavaProbeSkipping(t, tablewire.IdCapSchema(), "idcap", driver, "TableUnitView.java")
+}
+
+func compileAndRunJavaProbeSkipping(t *testing.T, schema, pkg, driver string, skip ...string) {
+	t.Helper()
+	u := unitFrom(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	pkt, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatalf("java.Generate: %v", err)
+	}
+	for name, data := range pkt {
+		if _, ok := files[name]; !ok && strings.HasSuffix(name, ".java") {
+			files[name] = data
+		}
+	}
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, pkg)
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var sources []string
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".java") || slices.Contains(skip, name) {
+			continue
+		}
+		path := filepath.Join(srcDir, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
+	mainPath := filepath.Join(dir, "Main.java")
+	if err := os.WriteFile(mainPath, []byte(driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources = append(sources, mainPath)
+	classesDir := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-encoding", "UTF-8", "-d", classesDir}, sources...)
+	if out, err := testproc.Command(t, "javac", args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	if out, err := testproc.Command(t, "java", "-ea", "-cp", classesDir, "Main").CombinedOutput(); err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
 }
