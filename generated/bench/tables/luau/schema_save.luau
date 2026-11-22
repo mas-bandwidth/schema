@@ -168,6 +168,20 @@ local function same_float(a: any, b: any, f32: boolean): boolean
 	return alo == blo and ahi == bhi
 end
 
+-- the value a float field holds once written: a float32 field's double
+-- narrowed as Go's float32(v) narrows it, so a compressed float's declared
+-- range is compared at float32 (docs/SPEC.md §4.6), and a ranged float's -0
+-- as +0 (docs/SPEC-TABLES.md §3.3, the special values)
+local function held_float(e: any, v: any): any
+	if typeof(v) ~= "number" then return v end
+	if e.f32 and v == v then
+		buffer.writef32(scratch, 0, v)
+		v = buffer.readf32(scratch, 0)
+	end
+	if e.lo ~= nil and v == 0 then v = 0 end
+	return v
+end
+
 -- ---- VALUES (docs/PORT-LUAU.md, THE TYPE MAPPING) -------------------------
 
 -- a number or an integer as the other domain, so a default spelled in one
@@ -349,7 +363,9 @@ end
 
 local function valid_scalar(e: any, v: any): boolean
  if e.s == "float" then
-  return typeof(v) == "number" and (v ~= v or v == math.huge or v == -math.huge or e.lo == nil or (v >= e.lo and v <= e.hi))
+  if typeof(v) ~= "number" then return false end
+  v = held_float(e, v)
+  return v ~= v or v == math.huge or v == -math.huge or e.lo == nil or (v >= e.lo and v <= e.hi)
  end
  if e.s ~= "int" then return true end
  local ty = typeof(v)
@@ -627,6 +643,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	elseif s == "int" then
 		write_int(w, e, val)
 	elseif s == "float" then
+		if e.lo ~= nil and val == 0 then val = 0 end
 		if e.f32 then
 			local bits = narrow_f32(val)
 			if bit32.band(bits, 0x7F800000) == 0x7F800000 then return refuse_non_finite(c, e) end
@@ -687,7 +704,7 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 	local s = e.s
 	if s == "bool" then return val == false or val == nil end
 	if s == "int" then return same_int(val, 0) end
-	if s == "float" then return same_float(val, 0, e.f32) end
+	if s == "float" then return same_float(held_float(e, val), 0, e.f32) end
 	if s == "enum" then return as_number(val) == 0 end
 	if s == "ptr" or s == "sblob" or s == "bblob" then return not val end
 	if s == "union" then return val == nil or val.Type == 0 end
@@ -861,7 +878,7 @@ end
 local function at_default(fd: any, val: any): boolean
 	local s = fd.s
 	if s == "bool" then return (val == true) == (fd.def == true) end
-	if s == "float" then return same_float(val, fd.def, fd.f32) end
+	if s == "float" then return same_float(held_float(fd, val), fd.def, fd.f32) end
 	if s == "int" then return same_int(val, fd.def) end
 	return as_number(val) == as_number(fd.def)
 end

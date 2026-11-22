@@ -8,7 +8,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // rustNameUnits are table units whose names collide on purpose: a packet type
@@ -91,7 +92,7 @@ func TestRustEverySchemaNameIsReachable(t *testing.T) {
 	ws := fmt.Sprintf("[workspace]\nresolver = \"3\"\nmembers = [%s]\n\n[profile.dev]\ndebug = 0\n", strings.Join(members, ", "))
 	writeFile(t, filepath.Join(root, "Cargo.toml"), []byte(ws))
 
-	cmd := exec.Command("cargo", "test", "--workspace", "--test", "names", "--quiet")
+	cmd := testproc.Command(t, "cargo", "test", "--workspace", "--test", "names", "--quiet")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-names-target"))
 	if out, err := cmd.CombinedOutput(); err != nil {

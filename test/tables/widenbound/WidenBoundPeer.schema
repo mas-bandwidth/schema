@@ -1,0 +1,141 @@
+// WidenBoundPeer.schema — the OLDER PEER of the grown-bound message rows
+// (docs/SPEC-TABLES.md §21.1, "a grown bound"; §3.3, the message form).
+//
+// This is tables/messages/Messages.schema with exactly five fixed bounds
+// narrowed from 2 to 1 and nothing else changed but the package name:
+// Transaction.pending (an array of unions), Transaction.checkpoints (an
+// optional array of scalars), Transaction.snapshots (an optional array of
+// records), the ToolBody arm spans (an array of scalars that is itself an arm)
+// and ToolMessage.marks (an optional array of enums). Its announcement is the
+// connection widenbound_conn, and messagedemo, unchanged, reads its batch:
+// each grown slot must land ONE DEFAULT ELEMENT, never the field's whole
+// default and never nothing. test/conformance/harness/widenbound_vectors_test.go
+// holds this file to messagedemo with those bounds narrowed, so the pair cannot
+// drift apart by anything but the rows above.
+package widenboundpeer
+
+const MaxPath = 64
+
+enum Mode { Read, Write }
+
+flags Capabilities { Trace, Verbose }
+
+// a type beside the tables: a type arm and a table arm are one framing
+type Cursor
+{
+    line   uint32
+    column uint32
+}
+
+type Ping
+{
+    nonce uint32
+}
+
+// depth three: the origin of an insert
+fixed table User
+{
+    name string(16)
+}
+
+fixed table Script
+{
+    path string(MaxPath)
+    line uint32
+}
+
+union Origin
+{
+    user   User
+    script Script
+    pid    uint32     | min = 0, max = 1000
+    note   string(24)
+}
+
+// depth two: an edit's body
+fixed table Selection
+{
+    start Cursor
+    stop  Cursor | was = "end"
+}
+
+fixed table InsertText
+{
+    at      Cursor
+    text    string(32)
+    origin  Origin
+    origins [..2]Origin
+    modes   ?[..2]Mode
+}
+
+fixed table RemoveText
+{
+    span Selection
+}
+
+union EditBody
+{
+    insert InsertText
+    remove RemoveText
+    tally  int32       | min = 0, max = 100, was = "count"
+    marks  [..3]uint16
+    blob   bytes(4)
+    mode   Mode
+}
+
+fixed table Edit
+{
+    revision uint32
+    body     EditBody
+}
+
+// depth one: the message set
+fixed table OpenDocument
+{
+    path   string(MaxPath)
+    mode   Mode = Read
+    cursor Cursor
+}
+
+fixed table SaveDocument
+{
+    path  string(MaxPath)
+    force bool
+}
+
+fixed table Transaction
+{
+    reason      string(16)
+    edits       [..3]Edit
+    pending     [1]EditBody
+    checkpoints ?[1]uint32
+    snapshots   ?[1]Selection
+}
+
+union ToolBody
+{
+    open     OpenDocument
+    save     SaveDocument
+    transact Transaction
+    ping     Ping
+    caps     Capabilities
+    spans    [1]int32
+    origin   Origin
+    ack
+}
+
+fixed table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+    history  [..2]ToolBody
+    trace    ?[..3]Script
+    marks    ?[1]Mode
+}
+
+// Variable-form twin for the nested union envelope boundary probes.
+table ToolEnvelope
+{
+    sequence uint32
+    body     ToolBody
+}

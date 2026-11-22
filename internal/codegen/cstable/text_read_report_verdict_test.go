@@ -9,13 +9,14 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const (
@@ -157,7 +158,7 @@ func csTextVerdictRun(t *testing.T, files map[string][]byte) []csTextVerdictLine
 	for _, r := range refs {
 		args = append(args, "-r:"+r)
 	}
-	compile := exec.Command(csDotnet(), args...)
+	compile := testproc.Command(t, csDotnet(), args...)
 	compile.Env = csDotnetEnv(dir, dir)
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
@@ -166,7 +167,7 @@ func csTextVerdictRun(t *testing.T, files map[string][]byte) []csTextVerdictLine
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(csDotnet(), "exec", filepath.Join(dir, "probe.dll"))
+	run := testproc.Command(t, csDotnet(), "exec", filepath.Join(dir, "probe.dll"))
 	run.Env = csDotnetEnv(dir, dir)
 	out, err := run.CombinedOutput()
 	if err != nil {

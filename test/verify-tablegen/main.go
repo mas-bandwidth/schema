@@ -365,7 +365,7 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	cases, packed, err := BuildCorpus(pairs, seed, corpusDir)
+	cases, _, err := BuildCorpus(pairs, seed, corpusDir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -374,7 +374,7 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		return nil, nil, nil, err
 	}
 	cases = append(cases, pinnedCases...)
-	packed = PackCases(cases)
+	packed := PackCases(cases)
 	if err := os.WriteFile(packPath, packed, 0o644); err != nil {
 		return nil, nil, nil, err
 	}

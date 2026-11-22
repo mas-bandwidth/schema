@@ -17,6 +17,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unionNoneFixedBytesSchema = `package t
@@ -143,10 +145,10 @@ func runCppUnionNoneFixedBytes(t *testing.T, files map[string][]byte) ([]byte, e
 	}
 	exe := filepath.Join(dir, "probe")
 	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", dir, probe, "-o", exe}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the C++ probe did not compile: %w", err)
 	}
-	return exec.Command(exe).CombinedOutput()
+	return testproc.Command(t, exe).CombinedOutput()
 }
 
 func TestCppUnionNoneFixedBytesLayout(t *testing.T) {
