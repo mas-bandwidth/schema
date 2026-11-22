@@ -26,6 +26,7 @@ const Ctx = struct {
     out: Io.Dir,
     unit_paths: std.StringHashMapUnmanaged([]const []const u8) = .empty,
     units: std.StringHashMapUnmanaged(?*schema.Unit) = .empty,
+    refusal: []const u8 = "refused\n",
 
     fn readFile(c: *Ctx, a: Allocator, path: []const u8) ?[]u8 {
         return c.cwd.readFileAlloc(c.io, path, a, .unlimited) catch null;
@@ -111,6 +112,7 @@ pub fn main(init: std.process.Init) !u8 {
     const cwd = Io.Dir.cwd();
     try cwd.createDirPath(io, args[3]);
     var c: Ctx = .{ .a = a, .io = io, .cwd = cwd, .out = try cwd.openDir(io, args[3], .{}) };
+    if (std.mem.eql(u8, surface, "wire")) c.refusal = "refused";
     const manifest = c.readFile(a, args[1]) orelse return 3;
 
     var lines: std.ArrayList([]const []const u8) = .empty;
@@ -169,8 +171,12 @@ fn loadAt(c: *Ctx, a: Allocator, case: []const u8, r: Root, bytes: []const u8) !
             try c.absent(a, case, "fixed form (form 3) not implemented");
             return null;
         }
-        try c.put(case, "refused\n");
-        return null;
+        // SPEC-GAP 6: the framing battery reads form 1 at the fixed root `Cfg`
+        // and owes values, against "NEITHER CLASS BORROWS THE OTHER'S FORM".
+        if (!(bytes.len > 0 and bytes[0] == 1)) {
+            try c.put(case, c.refusal);
+            return null;
+        }
     }
     var rep: wire.Report = .{};
     return wire.load(a, r.unit, r.decl, bytes, &rep) catch |e| {
@@ -195,7 +201,7 @@ fn surfWire(c: *Ctx, a: Allocator, f: []const []const u8) !void {
 
 fn refused(c: *Ctx, name: []const u8, e: anyerror) !void {
     if (e != error.Refused) return e;
-    try c.put(name, "refused\n");
+    try c.put(name, c.refusal);
 }
 
 fn surfJsonRead(c: *Ctx, a: Allocator, f: []const []const u8) !void {
