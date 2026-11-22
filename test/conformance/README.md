@@ -102,9 +102,11 @@ language" below, where both shapes are stated.
 
 An expected semantic refusal scores PASS. **A refusal is spelled `refused` and
 a newline, in the file named by the case, on every read surface, the `wire`
-surface's `wire-refused` rows included.** A historical `.absent` file may
-still transport that refusal; the feature-absence rules below apply only when
-the case requires an accepted value.
+surface's `wire-refused` rows included, and a `message` row whose message
+wire is `-`.** **An absent answer is never credited** (ruling R13): a
+`<case>.absent` on a row that owes a refusal is an ABSENCE, counted and
+printed as one, and fails `make conformance-port` like any other absence; it
+never scores the refusal.
 
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
@@ -832,7 +834,7 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, or the historical `<case>.absent` file; the
-`.absent` file's diagnostic text is ignored, and a `<case>` file holding anything but `refused` and a newline is value bytes and fails. This expected semantic refusal scores PASS.
+compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, and only that scores PASS; a
+`<case>` file holding anything else is value bytes and fails, and a `<case>.absent` file is an absence, never the refusal (ruling R13).
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.

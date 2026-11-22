@@ -176,7 +176,7 @@ Haskell and `Li` Common Lisp, each with its gap number.
 | 4 | An `if` with no `else` ends at its `}`; `else` may open the next line (SPEC.md §4.2, If) | grammar `accept/IfBlocks` | Sw14 |
 | 5 | A table's qualification takes `integrity` and `json` too (SPEC.md §4.2) | grammar `accept/QualifiedBrace` | Hs5 |
 | 6 | The checker's refusals are `schema check`'s; a runtime port takes its input as checked (SPEC.md §4.2) | every corpus unit checks clean (`make check`) | Sw2, Zig4 |
-| 7 | A wire-surface refusal is `refused\n`, and the historical `.absent` still scores (test/conformance/README.md) | `TestWireRefusedSpelledRefusedScoresPass`; `blob_shared`, `blob_shared_string` | Sw4, OC6, ObjC3, Zig8, Hs12 |
+| 7 | A refusal is `refused\n` on every surface, a wire-refused row and a message row with no message wire included; a `.absent` there is an absence and never the refusal (ruling R13; test/conformance/README.md) | `TestWireRefusedSpelledRefusedScoresPass`; `blob_shared`, `blob_shared_string` | Sw4, OC6, ObjC3, Zig8, Hs12 |
 | 8 | The json-write absence marker is `<case>.json.absent` (README) | `TestJsonWriteAbsentMarkerIsTheAnswerNamePlusAbsent` | Sw12, Hs13 |
 | 9 | `make conformance-port` fails on any absence (§5); a port declares its gated keys by answering absent (README) | `TestCompleteRunRefusesEveryAbsence` | Zig3, OC14 |
 | 10 | First use counts every reference, skipped bytes included (SPEC-TABLES §3) | `framing skipped_ids_first_use`, `skipped_ids_out_of_order` | Sw5 |

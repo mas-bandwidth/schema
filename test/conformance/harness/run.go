@@ -984,6 +984,20 @@ func reportComplete(w io.Writer, langs []string, results map[string]map[string]*
 	return ok
 }
 
+// scoreRefusalAbsent scores a must-refuse row the leg wrote no `refused\n`
+// for: a `<case>.absent` is an ABSENCE, counted as one and never as the
+// refusal (ruling R13, docs/SPEC-CONFORMANCE.md §8), and nothing at all is a
+// failure.
+func scoreRefusalAbsent(answer, name, want string, r *result) {
+	if _, err := os.Stat(answer + ".absent"); err == nil {
+		r.missing++
+		r.mark(name, outcomeAbsent)
+		return
+	}
+	r.failures = append(r.failures, fmt.Sprintf("%s: %s, driver wrote nothing", name, want))
+	r.mark(name, outcomeFail)
+}
+
 // scoreAnswer scores one case written by a leg. The blob-shared marker
 // changes that one wire expectation from bytes to a named writer refusal, for
 // Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
@@ -995,25 +1009,28 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		return
 	}
 	if surface == "message" && e.want == nil {
-		if _, err := os.Stat(answer); err == nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
+		// A ROW WHOSE MESSAGE WIRE IS `-` OWES THE REFUSAL, spelled `refused`
+		// and a newline as on every read surface; a `<case>.absent` is an
+		// absence and never the refusal (ruling R13).
+		if got, err := os.ReadFile(answer); err == nil {
+			if string(got) == "refused\n" {
+				r.pass++
+				r.mark(e.name, outcomePass)
+				return
+			}
+			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote %d bytes, not the refusal", e.name, len(got)))
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		r.pass++
-		r.mark(e.name, outcomePass)
+		scoreRefusalAbsent(answer, e.name, "expected refusal", r)
 		return
 	}
 	if surface == "wire" && inst.WireRefused {
 		// THE REFUSAL IS SPELLED `refused` AND A NEWLINE, as on every read
-		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §8 gap
-		// 4); the historical `<case>.absent` file still carries it. Any other
-		// bytes are a value the row forbids.
+		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §8 row
+		// 7). Any other bytes are a value the row forbids, and a `<case>.absent`
+		// is an ABSENCE, never the refusal (ruling R13: an absent answer is
+		// never credited).
 		if got, err := os.ReadFile(answer); err == nil {
 			if string(got) == "refused\n" {
 				r.pass++
@@ -1028,13 +1045,7 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected wire refusal, driver wrote nothing", e.name))
-			r.mark(e.name, outcomeFail)
-			return
-		}
-		r.pass++
-		r.mark(e.name, outcomePass)
+		scoreRefusalAbsent(answer, e.name, "expected wire refusal", r)
 		return
 	}
 
