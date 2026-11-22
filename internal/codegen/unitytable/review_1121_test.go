@@ -48,6 +48,7 @@ func TestUnityReview1121Reads(t *testing.T) {
 		"fixed_count_below_min_refused",
 		"json_count_below_min_refused",
 		"born_at_min",
+		"message_bytes_adds_announced_min",
 	} {
 		if !strings.Contains(out, "ROW "+row+": ok") {
 			t.Errorf("row %s is not held:\n%s", row, out)
@@ -63,6 +64,7 @@ const unityReview1121Rcv = `package rcv
 fixed table Root
 {
     born [2..4]int32
+    b bytes(8)
     v uint16
     f float32 = 0 | min = 0, max = 0.1, resolution = 0.01
 }
@@ -86,6 +88,7 @@ union U
 fixed table Root
 {
     born [0..4]int32
+    b [2..8]uint8
     v uint8 = 250 | min = 250, max = 255
     u U
 }
@@ -267,6 +270,15 @@ static class ProbeMain
         {
             bool ok = Rcv.Schema.NewVar().BornCount == 2 && Rcv.Schema.NewRoot().BornCount == 2;
             bad += P.Row("born_at_min", ok, "var=" + Rcv.Schema.NewVar().BornCount + " root=" + Rcv.Schema.NewRoot().BornCount);
+        }
+        {
+            // bytes(N) and [..N]uint8 are one kind: the count rides as
+            // count - announced min, so the reader adds the min back
+            var s = Snd.Schema.NewRoot(); s.B[0] = 7; s.B[1] = 8; s.B[2] = 9; s.BCount = 3;
+            var rep = new Rcv.Schema.TableReport();
+            bool ok = P.Receive(P.Send(s), P.FromSnd(), out Rcv.Root r, ref rep);
+            bad += P.Row("message_bytes_adds_announced_min", ok && r.BLength == 3 && r.B[0] == 7 && r.B[1] == 8 && r.B[2] == 9,
+                "ok=" + ok + " reason=" + P.Reason(rep) + " length=" + r.BLength);
         }
         Console.WriteLine(bad == 0 ? "PROBE OK" : "FAILED " + bad);
         return bad == 0 ? 0 : 1;

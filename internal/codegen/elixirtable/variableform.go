@@ -1360,7 +1360,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {idx_map, ids, order, acc}
 
       elements ->
-        elements = pad_fixed(f, elements)
+        elements = stored_floats(f, pad_fixed(f, elements))
 
         if list_elides?(f, elements) do
           {idx_map, ids, order, acc}
@@ -1532,7 +1532,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
-    v = cfloat_zero(Map.get(value, f.name, f.default), f)
+    v = stored_float(f, Map.get(value, f.name, f.default))
 
     if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
@@ -1664,6 +1664,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp keyed_elem(item, v, idx_map, ids, order) do
+    v = stored_float(item, v)
+
     if same_field?(item, v, item.default),
       do: :elide,
       else: emit_element(item, v, idx_map, ids, order)
@@ -1701,7 +1703,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {int_bytes(v, a.width, a.signed), ids, order}
 
   defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),
-    do: {float_bytes(cfloat_zero(v, a), a.width), ids, order}
+    do: {float_bytes(stored_float(a, v), a.width), ids, order}
 
   defp arm_content(%{t: :bool}, v, _idx_map, ids, order),
     do: {if(v, do: <<1>>, else: <<0>>), ids, order}
@@ -1786,7 +1788,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
-    {float_bytes(cfloat_zero(e, f), kind_width(kind)), ids, order}
+    {float_bytes(stored_float(f, e), kind_width(kind)), ids, order}
   end
 
   defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
@@ -4004,6 +4006,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # refuses it. The bound is float32's largest finite value plus half its last
   # place, the least magnitude that rounds to infinity, so the test is a
   # comparison and builds nothing.
+  # A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3, ruled
+  # 2026-11-10 fixed-compressed-negzero): a writer stores the bits +0 stores, in
+  # every build and every writer (the variable save and its retaining twin, the
+  # cook and the text). A compressed float is the one a range rides on: :min on
+  # a leaf, a keyed slot's item or an arm, :elem_min on an array. A plain
+  # float's -0 is carried bit-exact. v == 0.0 holds for both zeros (== is
+  # arithmetic equality; only === and matching tell them apart).
+  defp stored_float(%{min: _}, v) when is_float(v) and v == 0.0, do: 0.0
+  defp stored_float(%{elem_min: _}, v) when is_float(v) and v == 0.0, do: 0.0
+  defp stored_float(_f, v), do: v
+
+  defp stored_floats(%{elem_kind: kind, elem_min: _} = f, elements)
+       when kind in [10, 11] and is_list(elements),
+       do: Enum.map(elements, &stored_float(f, &1))
+
+  defp stored_floats(_f, elements), do: elements
+
   defp float_bytes(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
     do: throw(:non_finite_float)
 
@@ -4697,7 +4716,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
 
-  defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
+  defp json_field(%{t: :float} = f, v, _depth), do: json_float(stored_float(f, v), f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
   # json_list_elem writes one unbounded array's element by its element kind
@@ -4742,8 +4761,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
     do: fixed_text(e, frac)
 
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
-    do: json_float(e, kind_width(kind))
+  defp json_list_elem(%{elem_kind: kind} = f, e, _depth) when kind in [10, 11],
+    do: json_float(stored_float(f, e), kind_width(kind))
 
   defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
   defp json_list_elem(_f, _e, _depth), do: "null"
@@ -7363,6 +7382,8 @@ const variableRetainSource = `
   end
 
   defp keyed_elem_retain(item, v, {idx_map, ids, order, retain, report} = s, _path) do
+    v = stored_float(item, v)
+
     if same_field?(item, v, item.default) do
       {:elide, s}
     else

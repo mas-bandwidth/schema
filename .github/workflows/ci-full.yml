@@ -1815,6 +1815,14 @@ jobs:
       - name: install the Luau and Squirrel pins
         if: github.event_name == 'schedule' && matrix.group != 'goose'
         run: make dist-luau dist-squirrel
+      # The full moo-compiler row runs the whole compiler package with
+      # SCHEMA_SLOW=1, so it runs the compiler's Python and Ruby tests too,
+      # which fail, never skip, without the pins (go-test's unit-compiler-18
+      # installs the same two).
+      - uses: ./.github/actions/python
+        if: github.event_name == 'schedule' && matrix.group == 'moo-compiler'
+      - uses: ./.github/actions/ruby
+        if: github.event_name == 'schedule' && matrix.group == 'moo-compiler'
       - uses: ./.github/actions/moo
         if: matrix.group != 'goose'
 
