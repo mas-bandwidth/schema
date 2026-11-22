@@ -112,3 +112,12 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## 7. Shared rows a new port is held to
+
+Each row names a rule a port has got wrong, the spec sentence that states it,
+and the shared corpus entry or gate that holds every port to it.
+
+| row | rule | spec | held by |
+|---|---|---|---|
+| `unsigned-64-top-bit-is-in-width` | a `bits(64)` or `uint64` value at 2^63 and up is inside its width: a reader carrying it in a wider slot extends it with zeros, and the save writes it back byte for byte, never refusing it as wider than its bits (Goose sign-extended it and refused `invalid_value`) | SPEC.md §5.1, ROWS 2 AND 11 READ AN UNSIGNED VALUE UNSIGNED | verify-tablegen pinned case `pin:fwrec:first` (`verify-<lang>-tablegen` for every leg) |

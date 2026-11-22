@@ -2397,6 +2397,13 @@ a caller can hold that the declaration does not admit:
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 | 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
 
+**Rows 2 and 11 read an unsigned value unsigned.** A `bits(64)` or `uint64`
+value with its top bit set (2^63 and up) is inside its width: it is written,
+never refused. A reader that carries an integer wider than its kind (a
+128-bit value slot) extends an unsigned kind with zeros, never by its top bit,
+so a file it read saves back byte for byte (held by verify-tablegen
+`pin:fwrec:first`, a `[2]` array of a type holding a `bits(64)` at 2^63).
+
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its

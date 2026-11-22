@@ -684,7 +684,7 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         let max = ((1 as u64) << (d.bits as! u64)) - 1;
         if (value as! u64) > max { value = max as! i64; rep.oor += 1; }
     }
-    out.bits = i128_of(value);
+    out.bits = if signed { i128_of(value) } else { Int128 { lo: value as! u64, hi: 0 } };
     return true;
 }
 
