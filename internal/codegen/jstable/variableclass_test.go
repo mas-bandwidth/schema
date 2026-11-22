@@ -508,7 +508,7 @@ func variableClassEscapeWire(t *testing.T, u *ir.Unit) []byte {
 		t.Fatal("the probe declares no tail or small")
 	}
 	ids := []uint64{ir.TableWireId("from_a_later_major"), ir.TableFieldWireId(tail), ir.TableFieldWireId(small)}
-	esc, arr := byte(ir.TableKindEscape), byte(ir.TableKindArray)
+	esc, arr := byte(ir.TableKindHeldEscape), byte(ir.TableKindArray)
 	w := []byte{byte(ir.TableWireForm)}
 	w = append(w, 1, esc, 2, 0xAA, 0xBB) // unnameable: skipped by L, unknown
 	w = append(w, 2, esc, 1, 0x00)       // named: kind_mismatch

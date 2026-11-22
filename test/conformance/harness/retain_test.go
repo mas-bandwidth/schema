@@ -30,6 +30,17 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 				t.Fatalf("%s declares no root %s", rc.Unit, rc.Root)
 			}
 			wire := wireBytes(t, rc.Wire)
+			if rc.Refused {
+				// A ROW THAT OWES A REFUSAL (kind 31 is held by name and never
+				// written, R17): the retaining load refuses it as the plain one does
+				var report tabletext.Report
+				store := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1 << 17}
+				ok, err := tablewire.DecodeRetain(model, model.New(def), wire, store, &report)
+				if ok || err == nil || !report.Refused {
+					t.Fatalf("the row owes a refusal, and the retaining load read it: ok=%v err=%v %+v", ok, err, report)
+				}
+				return
+			}
 
 			load := func(capacity, ids int) (*tabletext.Instance, *tablewire.Retain, tabletext.Report) {
 				t.Helper()

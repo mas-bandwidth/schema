@@ -177,8 +177,6 @@ func (s *fixtureWalker) payload(k, off, end int, nodes bool) (int, bool) {
 		return a, ok && valid
 	case ir.TableKindUnion:
 		return s.arm(off, end)
-	case ir.TableKindEscape:
-		return s.envelope(off, end, false, false, nil)
 	case ir.TableKindNoPayload:
 		valid := true
 		a, ok := s.envelope(off, end, false, false, func(a, b int) {
@@ -229,7 +227,6 @@ func (s *fixtureWalker) raw(k, a, b int) {
 		s.collection(a, b, k == ir.TableKindKeyed)
 	case ir.TableKindString:
 		s.text(a, b)
-	case ir.TableKindEscape:
 	case ir.TableKindNoPayload:
 		if a != b {
 			s.damage(a, "payload-free kind has bytes")
@@ -281,7 +278,7 @@ func (s *fixtureWalker) collection(off, end int, keyed bool) bool {
 		return false
 	}
 	// Nested positional arrays have no legal element framing in this major.
-	if k == ir.TableKindArray || k == ir.TableKindKeyed || k == ir.TableKindEscape || k == ir.TableKindNoPayload || k < 1 || k > ir.TableKindEnum || (keyed && (k == ir.TableKindString || k == ir.TableKindUnion || k == ir.TableKindPointer)) {
+	if k == ir.TableKindArray || k == ir.TableKindKeyed || k == ir.TableKindHeldEscape || k == ir.TableKindNoPayload || k < 1 || k > ir.TableKindEnum || (keyed && (k == ir.TableKindString || k == ir.TableKindUnion || k == ir.TableKindPointer)) {
 		s.damage(off, "element kind outside closed set")
 		return false
 	}

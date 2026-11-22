@@ -169,7 +169,7 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	hueID := ir.TableWireId("hue")
 	greenID := ir.TableWireId("Green")
 	inputs["unknown_escape.wire"] = idtableWire(
-		append(idtableHeader(1, ir.TableKindEscape, idtableL([]byte{1, 2, 3})), 0), unknownID)
+		append(idtableHeader(1, ir.TableKindHeldEscape, idtableL([]byte{1, 2, 3})), 0), unknownID)
 	inputs["unknown_nopayload.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL(nil)), 0), unknownID)
 	// an unknown array whose element kind is ENUM (30): skipped and counted
@@ -197,7 +197,7 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	inputs["nopayload_nonzero.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL([]byte{0xaa})), 0), unknownID)
 	inputs["known_escape.wire"] = idtableWire(
-		append(idtableHeader(1, ir.TableKindEscape, idtableL(nil)), 0), hueID)
+		append(idtableHeader(1, ir.TableKindHeldEscape, idtableL(nil)), 0), hueID)
 	inputs["enum_ref_past.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindEnum, idtableVarint(2)), 0), unknownID)
 	inputs["known_enum_ref_past.wire"] = idtableWire(

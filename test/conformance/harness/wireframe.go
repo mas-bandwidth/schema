@@ -280,7 +280,7 @@ func (s *frameScanner) payload(off, end int, kind uint8, nodeTable bool) int {
 		return s.framed(off, end, s.array)
 	case ir.TableKindKeyed:
 		return s.framed(off, end, s.keyed)
-	case ir.TableKindEscape, ir.TableKindNoPayload:
+	case ir.TableKindNoPayload:
 		return s.framed(off, end, nil)
 	case ir.TableKindUnion:
 		return s.arm(off, end)

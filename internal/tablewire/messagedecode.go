@@ -1309,17 +1309,6 @@ func (d *bitDecoder) skipAt(entry ir.TableVocabularyEntry, depth int, field bool
 			return false
 		}
 		return true
-	case ir.TableKindEscape:
-		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
-		// the one path a later-major writer has on this form (§3.3)
-		if !d.r.align() {
-			return false
-		}
-		n, ok := d.r.get(32)
-		if !ok {
-			return false
-		}
-		return d.r.skip(int(n) * 8)
 	case ir.TableKindArray, ir.TableKindKeyed:
 		n := uint64(shape.Min)
 		width := ir.TableMessageCountBits(shape)
