@@ -601,3 +601,12 @@ func variableFormRefusal(f *ir.Field) string {
 // javaReserved is Java's reserved words, read from the one table (check.ReservedIn,
 // SPEC §4.6) and never copied here.
 var javaReserved = schemacheck.ReservedIn("Java")
+
+// CheckNames is the Java table backend's name check for a unit with tables,
+// run by schema check for every target (SPEC §4.6) as well as at generate.
+func CheckNames(u *ir.Unit) error {
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	return checkNames(u)
+}

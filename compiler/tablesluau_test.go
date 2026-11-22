@@ -195,8 +195,8 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		// form a DAG by reference)
 		{"luau.RequireCycle", "type modules that require each other",
 			map[string]string{
-				"A.schema": "package p\n\ntype A\n{\n    x uint8\n}\n\ntype C\n{\n    b B\n}\n",
-				"B.schema": "package p\n\ntype B\n{\n    a A\n}\n",
+				"A.schema": "package p\n\ntype AA\n{\n    x uint8\n}\n\ntype C\n{\n    b BB\n}\n",
+				"B.schema": "package p\n\ntype BB\n{\n    a AA\n}\n",
 			}, "A -> B -> A", [2]string{}},
 		{"luautable.Refuse", "a file and its own table module",
 			map[string]string{"Game.schema": table, "GameTable.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable", [2]string{}},

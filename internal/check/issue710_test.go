@@ -26,7 +26,7 @@ func TestIssue710DefaultsAndFloatDerivation(t *testing.T) {
 		"x float32 | min = 0, max = 1, resolution = 2",
 		"x float32 | min = 0, max = 16777217, resolution = 1",
 	} {
-		if errs := runUnit(t, map[string]string{"T.schema": "package p\ntype T { " + field + " }\n"}); len(errs) != 0 {
+		if errs := runUnit(t, map[string]string{"Unit.schema": "package p\ntype T { " + field + " }\n"}); len(errs) != 0 {
 			t.Fatalf("valid %s: %v", field, errs)
 		}
 	}

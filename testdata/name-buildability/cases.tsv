@@ -14,12 +14,12 @@ b_Endian	refuse-at-check	Dart	rule 1: basename is a reserved word
 b_Enum_case1	refuse-at-check	Rust	rule 1: basename folds to a Rust reserved word
 b_Error_case1	builds	-	-
 b_Float	refuse-at-check	C	refused on main (survey control)
-b_Holder	builds	-	-
-b_Inner	builds	-	-
+b_Holder	refuse-at-check	Java	a declaration named like its file outer class (one public class per file)
+b_Inner	refuse-at-check	Java	a declaration named like its file outer class (one public class per file)
 b_Int128	refuse-at-check	Dart	rule 2: basename hides a standard module, the runtime or a Go build constraint
 b_Integer	builds	-	-
 b_Kernel	builds	-	-
-b_Kind	builds	-	-
+b_Kind	refuse-at-check	Java	a declaration named like its file outer class (one public class per file)
 b_List	refuse-at-check	Dart	rule 1: basename is a reserved word
 b_Map	builds	-	-
 b_Math_case1	refuse-at-check	C	refused on main (survey control)
@@ -223,10 +223,10 @@ t_Number	builds	-	-
 t_Object	refuse-at-check	Dart	refused on main (survey control)
 t_Ok	refuse-at-check	Rust	refused on main (survey control)
 t_Option	builds	-	-
-t_Other	builds	-	-
+t_Other	refuse-at-check	Java	a declaration named like its file outer class (one public class per file)
 t_PacketRuntime	refuse-at-check	Elixir	rule 4: type name shadows a platform name
 t_PartialEq	builds	-	-
-t_Probe	builds	-	-
+t_Probe	refuse-at-check	Java	a declaration named like its file outer class (one public class per file)
 t_ReadOnlySpan	builds	-	-
 t_ReadStream	refuse-at-check	Rust	refused on main (survey control)
 t_Reader	builds	-	-
@@ -311,3 +311,10 @@ t_Core_case1	builds	-	-
 t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
+j_type_outer_class	refuse-at-check	Java	a type named like its file outer class
+j_field_Boolean	refuse-at-check	Java	field Boolean maps to a reserved Java word
+j_base_TableBytes	refuse-at-check	Java	basename claims the table runtime class TableBytes
+j_base_TableRetain	refuse-at-check	Java	basename claims the table runtime class TableRetain
+j_base_java	refuse-at-check	Java	basename java obscures the java package
+j_field_java	refuse-at-check	Java	field java obscures the java package
+j_type_java	refuse-at-check	Java	type java obscures the java package

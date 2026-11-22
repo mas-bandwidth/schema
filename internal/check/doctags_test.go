@@ -13,11 +13,11 @@ import (
 
 func checkUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()
-	f, perrs := parser.Parse("T.schema", []byte(src))
+	f, perrs := parser.Parse("Unit.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatal(perrs)
 	}
-	u, errs := Unit([]SourceFile{{Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f}})
+	u, errs := Unit([]SourceFile{{Path: "Unit.schema", Name: "Unit.schema", Base: "Unit", Bytes: []byte(src), AST: f}})
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}

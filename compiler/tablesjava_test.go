@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
@@ -291,17 +292,30 @@ func TestJavaRuntimeNamesAreRefusedByTheChecker(t *testing.T) {
 // called TableBytes.schema would have two TableBytes.java to write, so the
 // backend refuses by name rather than letting one clobber the other.
 func TestJavaRefusesAFileNamedForARuntimeType(t *testing.T) {
+	// schema check refuses the basename, naming Java (SPEC §4.6)
 	f, perrs := parser.Parse("TableBytes.schema", []byte(tableSrc))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
-	u, cerrs := check.Unit([]check.SourceFile{{
+	_, cerrs := check.Unit([]check.SourceFile{{
 		Path: "TableBytes.schema", Name: "TableBytes.schema", Base: "TableBytes",
 		Bytes: []byte(tableSrc), AST: f,
+	}})
+	if len(cerrs) == 0 || !strings.Contains(cerrs[0].Error(), "Java") || !strings.Contains(cerrs[0].Error(), "TableBytes") {
+		t.Fatalf("check did not refuse the file TableBytes.schema naming Java: %v", cerrs)
+	}
+	// the emitter's own guard, reached by renaming after the check
+	g0, perrs := parser.Parse("Probe.schema", []byte(tableSrc))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(tableSrc), AST: g0,
 	}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
+	irtest.Rebase(t, u, "Probe", "TableBytes")
 	_, err := New().Generate(u, "java", Options{})
 	if err == nil {
 		t.Fatal("--lang java accepted a unit whose file basename is a runtime type's — one of the two would clobber the other")

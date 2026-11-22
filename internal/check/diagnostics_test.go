@@ -839,7 +839,7 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sources := tc.srcs
 			if sources == nil {
-				sources = map[string]string{"T.schema": tc.src}
+				sources = map[string]string{"Unit.schema": tc.src}
 			}
 			if errs := runUnit(t, sources); len(errs) > 0 {
 				t.Fatalf("legal schema rejected: %v", errs)
