@@ -776,6 +776,21 @@ FloatExpr   = float expression over float literals, int literals and const names
   declared defaults; the count determines which elements are used. The §5 zero form does not carry the birth
   value, for the same reason it does not carry a specified default: it is the
   all-zero form by rule.
+  **The birth value is the array's default on the table wire.** A plain
+  `[A..B]T` (neither `?` nor `| required`) holding exactly A elements, each at
+  its default, is elided by every table writer (SPEC-TABLES.md §22.2); an
+  element is at its default when a plain float's BIT PATTERN equals the
+  default's, a compressed float's value `==` the default, and a `type` or
+  `table` element's body is its terminator alone. An absent field reads as
+  that birth value on every read, a text read whose object omits the key
+  (`FromJson("{}")`) included. A message batch that stores it explicitly is a
+  field stored at its declared default and is refused under the same
+  announced shape and build (SPEC-TABLES.md §3.3(a)), except an array of
+  compressed floats, whose held values the batch does not carry. A present `?[A..B]T`
+  rides whatever it holds: presence is its presence bit, never its count. A
+  `| required` counted array rides whatever it holds, and lives only in a
+  variable table, because a fixed table refuses `required` (SPEC-TABLES.md
+  §2.3), so the message form never meets one.
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
@@ -2390,7 +2405,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Luau | none | every build | `nil, { name = "invalid_value", field = "<Owner>.<field>" }` |
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
-| Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
+| Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name`; a packet `Write` returns a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8, embedded NUL) |
 | Lobster | none (tables); `assert` today in the packet `Write`, which `--runtime-no-asserts` removes | every build tables; the packet `Write` OWES every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason. Lobster is not on the assert list, so the rule for its packet `Write` is a refusal in every build; today's packet writer asserts instead, which is a defect of that writer, not a licence |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
@@ -2574,7 +2589,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build; 11 unrepresentable (the storage is `iN`/`uN`)
+  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
 
 - **Lobster**
 
@@ -2582,7 +2597,15 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps. The rule for Lobster is every build: the debug-only rows are owed as refusals
+  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps. The rule for Lobster is every build: the debug-only rows are owed as refusals
+
+- **Python**
+
+  - packet `Write`: 1–6 and 8 every build, raising `InvalidValue`; held by `write-refusal-packet`
+
+- **Ruby**
+
+  - packet `Write`: 1–6 and 8 every build, raising `Packetrefusal::InvalidValue` (the generated module's `InvalidValue`); held by `write-refusal-packet`
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in
@@ -2600,7 +2623,9 @@ through the text writer. The fifth, `write-refusal-packet`, holds the packet
 `bits(7)` past its width, an enum ordinal, a union tag, a counted array's
 count, a `string`'s length and content, and a constant or reserved-range
 field's only lawful value. It starts
-with the Go leg; `TestWriteRefusalPacket` in test/conformance/harness runs the
+with the Go leg, and the every-build scripting legs answer the same rows from
+test/conformance/write-refusal-packet (see test/conformance/README.md);
+`TestWriteRefusalPacket` in test/conformance/harness runs the
 battery and a negative control that changes the emitter's upper-bound
 comparison, requiring the boundary row to go red. The four table-form batteries
 cover a ranged integer above and below its range, a `bits(6)` past its width, a
