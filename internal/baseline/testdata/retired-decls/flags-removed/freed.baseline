@@ -1,0 +1,18 @@
+schema-tables-baseline 10
+package decls
+
+table Holder
+    field c id=0xaf63de4c8601eff2 kind=4
+
+## retired
+    flags Caps id=0xdfe86c9ce9e5cbd8 date=2026-11-21
+    field Holder.caps id=0xb55a6b90e87557f8 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- flags Caps: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- retired flags Caps id=0xdfe86c9ce9e5cbd8 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Holder.caps id=0xb55a6b90e87557f8 — a re-added name or id is refused until this entry is acknowledged (issue #441)

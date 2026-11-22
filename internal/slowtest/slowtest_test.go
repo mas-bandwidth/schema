@@ -122,6 +122,7 @@ var toolchainMarkers = []string{
 	"exec.Command(",
 	"exec.CommandContext(",
 	"exec.LookPath(",
+	"slowtest.Tool(",
 	"testproc.Command(",
 	"testproc.CommandContext(",
 	"findDotnet",

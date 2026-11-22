@@ -580,11 +580,11 @@ const messageRows = [
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
+  ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
 ];
 
 const messageFuzzRows = [
   ...messageRows,
-  ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
   ["tblvarevo2", "EvoMsg", "varevo2/Tblvarevo2Table.js", "varevo2/VarEvo2Table.js"],
   ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoTable.js", "fixedevo/FixedEvoTable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoTable.js", "examples/TablesTable.js"],

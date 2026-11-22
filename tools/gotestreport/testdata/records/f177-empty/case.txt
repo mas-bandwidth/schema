@@ -1,0 +1,5 @@
+# F-177: the lane's record is an empty .jsonl. The recorder started and
+# recorded no run: not "no failures, no skips".
+args: -require-record -provides tool:rust
+exit: 1
+want: NO RECORD       1 of 1 record file(s) hold no go test event

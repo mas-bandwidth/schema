@@ -1,0 +1,11 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:16:13.918936837+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:16:13.923362512+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestEarlierLog"}
+{"Time":"2026-11-21T21:16:13.923388972+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"=== RUN   TestEarlierLog\n"}
+{"Time":"2026-11-21T21:16:13.923434527+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:38: probing for cargo\n"}
+{"Time":"2026-11-21T21:16:13.923440679+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"    ledger_test.go:39: SCHEMA_SLOW: this test shells out to cargo; set SCHEMA_SLOW=1 to run it\n"}
+{"Time":"2026-11-21T21:16:13.923452771+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestEarlierLog","Output":"--- SKIP: TestEarlierLog (0.00s)\n"}
+{"Time":"2026-11-21T21:16:13.923456428+01:00","Action":"skip","Package":"example.org/ledgertest","Test":"TestEarlierLog","Elapsed":0}
+{"Time":"2026-11-21T21:16:13.923463191+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:16:13.923871206+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.004s\n"}
+{"Time":"2026-11-21T21:16:13.923909658+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.005}
