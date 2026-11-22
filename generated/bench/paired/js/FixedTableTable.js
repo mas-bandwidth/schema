@@ -596,6 +596,15 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
       return 0;
     }
+    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
+    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
+    // reference and the Rust port do: the count is 0 and
+    // every body of the batch goes back to its declared defaults.
+    if (report.Oor > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "out_of_range");
+      return 0;
+    }
   }
   // damage after the last body discards the batch too (§4)
   if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { InitFixedTable(values[j]); } return 0; }

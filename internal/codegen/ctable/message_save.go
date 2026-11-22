@@ -59,7 +59,10 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		}
 	case tkF64:
 		g.pf("%sif(!table_double_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
-		g.pf("%stable_bit_put(w,table_double_to_bits(%s),64);\n", ind, expr)
+		// a ranged float64 rides whole, and its -0 as +0 (§3.3,
+		// fixed-compressed-negzero); a compressed float32 is quantized above,
+		// where -0 is the index of 0
+		g.pf("%stable_bit_put(w,%s(%s),64);\n", ind, storedFloatBits(f, true), expr)
 	default:
 		var lo, hi uint64
 		if shape.Base != nil {

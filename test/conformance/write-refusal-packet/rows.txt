@@ -1,0 +1,44 @@
+# write-refusal-packet rows (docs/SPEC.md §5.1; test/conformance/README.md).
+# One row per line: <name> <verdict> <op> <arg>. The packet type is
+# PacketWriteRefusal (PacketWriteRefusal.schema): the probe makes a fresh,
+# otherwise lawful value, applies ONE op, runs the generated packet Write into a
+# 256-byte buffer, and prints "<name> refused" or "<name> wrote" per row.
+# "refused" is the leg's own refusal mechanism (an error, a nil/false, a raise,
+# a failed assert). Every refused row has a lawful twin ("wrote") at the same
+# boundary, so a writer that refuses everything fails half the battery.
+#
+# ops:
+#   scalar <n>          the ranged int32 field `scalar` (min 0, max 10)
+#   narrow <n>          the bits(7) field `narrow`
+#   grade <n>           the enum field `grade`, by ordinal (Bronze 1, Silver 2, Gold 3)
+#   shot_tag <n>        the union `shot`'s tag (None 0, Laser 1, Missile 2); the arm
+#                       payload is left at its fresh value
+#   window_count <n>    the count of the counted array `window` ([2..8]uint32)
+#   text_length <n>     the string(8) `text`'s length, content fresh
+#   text_bytes <hex>    the string's content is these bytes and its length their count
+#   text_fill <n>       the string holds n bytes of 'a' and length n
+#   fixed_constant <n>  the field `fixed_constant` (only 5 is lawful)
+#   reserved_zero <n>   the field `reserved_zero` (only 0 is lawful)
+scalar_high            refused scalar 11
+scalar_low             refused scalar -1
+scalar_at_max          wrote   scalar 10
+scalar_at_min          wrote   scalar 0
+bits_wide              refused narrow 200
+bits_just_wide         refused narrow 128
+bits_at_max            wrote   narrow 127
+enum_high              refused grade 4
+enum_at_max            wrote   grade 3
+union_tag_high         refused shot_tag 3
+union_tag_at_max       wrote   shot_tag 2
+count_high             refused window_count 9
+count_low              refused window_count 1
+count_at_max           wrote   window_count 8
+count_at_min           wrote   window_count 2
+text_long              refused text_length 9
+text_illformed         refused text_bytes ff
+text_zero              refused text_bytes 00
+text_at_max            wrote   text_fill 8
+const_wrong            refused fixed_constant 6
+const_at               wrote   fixed_constant 5
+reserved_wrong         refused reserved_zero 1
+reserved_at            wrote   reserved_zero 0

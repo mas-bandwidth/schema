@@ -480,6 +480,28 @@ defmodule Benchtable.FixedRuntime do
   def cf64_bits(value) when is_float(value) and value == 0.0, do: 0
   def cf64_bits(value), do: f64_bits(value)
 
+  # A COMPRESSED FLOAT'S DECLARED RANGE IS THE FIXED SAVE'S CONTRACT
+  # (docs/SPEC-TABLES.md §3.3, §3.4), held in every build like a ranged
+  # integer's (ranged/2): a finite value outside lo..hi raises, and the save
+  # writes nothing. A value that is not a finite float answers non_finite_float.
+  def cf32_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,
+    do: cf32_bits(value)
+
+  def cf32_bits(value, {lo, hi}) when is_float(value) do
+    raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+  end
+
+  def cf32_bits(value, _range), do: f32_bits(value)
+
+  def cf64_bits(value, {lo, hi}) when is_float(value) and value >= lo and value <= hi,
+    do: cf64_bits(value)
+
+  def cf64_bits(value, {lo, hi}) when is_float(value) do
+    raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
+  end
+
+  def cf64_bits(value, _range), do: f64_bits(value)
+
   @doc """
   A `string(N)`'s used bytes: well-formed UTF-8 with no zero among them, or
   a REFUSAL BY NAME. An ABSENT optional does not run the rule — the payload is

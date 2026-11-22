@@ -984,15 +984,24 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
         case 10:
         {
             float v = 0.0f;
+            uint32_t bits = 0;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return 0; }
+            /* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+               §3.3; docs/rulings.json fixed-compressed-negzero), tested on the
+               bits so a NaN still reaches the writer's refusal */
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x80000000u ) { v = 0.0f; }
             return tabledemo_table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
+            uint64_t bits = 0;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return 0; }
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x8000000000000000ull ) { v = 0.0; } /* a compressed float's -0 is written as +0 (§3.3) */
             return tabledemo_table_json_write_float( out, v, 0 );
         }
         case 36:

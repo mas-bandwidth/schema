@@ -568,7 +568,10 @@ jobs:
 
           # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
           #   c      — tables-c-zero-cost + tables-c-clean
-          #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
+          #   elixir — tables-elixir-offsets (row elixir-offsets) and the agreement gate
+          #            in four shards (rows elixir-agreement-1..4, make/elixir.mk
+          #            ELIXIR_AGREEMENT_SHARDS): the strict compile of the whole
+          #            corpus alone passes the two-minute cap on a loaded runner
           #   js     — tables-js-clean
           #   rust   — tables-rust-clippy
           schema_corpus=no
@@ -580,7 +583,7 @@ jobs:
             clean_legs="$clean_legs c"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || grep -qE '^test/elixir-tables/' <<<"$files"; then
-            clean_legs="$clean_legs elixir"
+            clean_legs="$clean_legs elixir-offsets elixir-agreement-1 elixir-agreement-2 elixir-agreement-3 elixir-agreement-4"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" js "*) true ;; *) false ;; esac || grep -qE '^eslint\.config\.mjs$' <<<"$files"; then
             clean_legs="$clean_legs js"
@@ -967,7 +970,9 @@ jobs:
   # Covers the fast emitted-code checks that previously ran only in Certify or
   # dispatch-only leg-gate:
   #   c      — tables-c-zero-cost + tables-c-clean
-  #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
+  #   elixir — tables-elixir-offsets (row elixir-offsets) +
+  #            tables-elixir-accessor-descriptor-agreement-shard-K
+  #            (rows elixir-agreement-1..4; the shards together walk every unit)
   #   js     — tables-js-clean
   #   rust   — tables-rust-clippy
   lang-clean:
@@ -1006,7 +1011,7 @@ jobs:
           components: clippy, rustfmt
         if: matrix.lang == 'rust' && runner.environment == 'github-hosted'
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.lang == 'elixir' && runner.environment == 'github-hosted'
+        if: startsWith(matrix.lang, 'elixir-') && runner.environment == 'github-hosted'
         with:
           otp-version: '29'
           elixir-version: '1.20'
@@ -1056,9 +1061,13 @@ jobs:
             rust)
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
               ;;
-            elixir)
+            elixir-offsets|elixir-agreement-[0-9]*)
+              case "$LANG_ROW" in
+                elixir-offsets) target=tables-elixir-offsets ;;
+                *) target="tables-elixir-accessor-descriptor-agreement-shard-${LANG_ROW#elixir-agreement-}" ;;
+              esac
               MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
-                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement tables-elixir-offsets \
+                make -j"$(nproc)" "$target" \
                 BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
                 ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
                 ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
