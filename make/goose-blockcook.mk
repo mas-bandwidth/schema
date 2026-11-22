@@ -163,7 +163,7 @@ tables-goose-accessor-negative-control:
 		internal/codegen/goosetable/accel.go > $(GOOSE_AGREE_DIR)/accel.go.txt
 	@grep -q SABOTAGED $(GOOSE_AGREE_DIR)/accel.go.txt || { echo "NEGATIVE CONTROL FAILED: the accessor sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/accel.go":"%s/$(GOOSE_AGREE_DIR)/accel.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_AGREE_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
 			./internal/codegen/goosetable/ > $(GOOSE_AGREE_DIR)/log 2>&1; then \
 		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: a moved pointer accessor left the agreement green"; exit 1; fi
 	@grep -q 'DISAGREE ListNode.next' $(GOOSE_AGREE_DIR)/log || { \

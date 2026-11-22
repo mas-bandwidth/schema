@@ -47,7 +47,7 @@ tables-goose-versioning-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to fixedevolve.go"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/fixedevolve.go":"%s/$(GOOSE_VERSIONING_NC)/fixedevolve.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_VERSIONING_NC)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -v -timeout 600s -overlay $(GOOSE_VERSIONING_NC)/overlay.json \
+	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -v -timeout 600s -overlay $(GOOSE_VERSIONING_NC)/overlay.json \
 			-run '^TestGooseFixedVersioning' ./internal/codegen/goosetable/ > $(GOOSE_VERSIONING_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the Goose versioning gate green"; \
 		cat $(GOOSE_VERSIONING_NC)/log; exit 1; \

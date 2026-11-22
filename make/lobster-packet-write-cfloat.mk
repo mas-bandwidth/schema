@@ -16,7 +16,7 @@ packet-write-cfloat-lobster-negative-control: packet-write-cfloat-lobster
 	@mkdir -p $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)
 	go run ./tools/sabotage -name packet-write-cfloat-lobster-range -out $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/write.gotext internal/codegen/lobster/write.go
 	@printf '{"Replace":{"%s/internal/codegen/lobster/write.go":"%s/%s/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_CFLOAT_LOBSTER_NEG)" > $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/overlay.json
-	@if SCHEMA_SLOW=1 LOBSTER=$(LOBSTER) $(GOTESTRUN) -count=1 -timeout 600s -overlay=$(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/overlay.json ./internal/codegen/lobster/ -run '^TestLobsterPacketWriteCFloatRange$$' > $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/log 2>&1; then \
+	@if SCHEMA_SLOW=1 LOBSTER=$(LOBSTER) $(GOTESTRUN) -control -count=1 -timeout 600s -overlay=$(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/overlay.json ./internal/codegen/lobster/ -run '^TestLobsterPacketWriteCFloatRange$$' > $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the compressed float range assert was removed and the gate stayed green'; exit 1; fi
 	@sed -n 's|.*: FAILED: \([^:]*\):.*|\1|p' $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/log | LC_ALL=C sort > $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/failed
 	@printf 'above-max\nbelow-min\nlargest-finite-float32\n' | LC_ALL=C sort > $(PACKET_WRITE_CFLOAT_LOBSTER_NEG)/want

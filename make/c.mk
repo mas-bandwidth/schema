@@ -1073,7 +1073,7 @@ tables-c-json-label-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
@@ -1100,7 +1100,7 @@ tables-c-map-sort-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireMaps$$' > build/c-map-sort-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-map-sort-nc/log || ! grep -q -- '--- PASS' build/c-map-sort-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps did not run (skipped), so this control is watching nothing"; \
@@ -1217,7 +1217,7 @@ tables-c-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/build/c-ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-ref-ordinal-nc/log || \
 				! grep -q -- '--- PASS' build/c-ref-ordinal-nc/log; then \
@@ -1249,7 +1249,7 @@ tables-c-strict-load-negative-control:
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/cook.go":"%s/build/c-strict-load-nc/cook.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-strict-load-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTablePlainLoadIsStrict$$' > build/c-strict-load-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-strict-load-nc/log || \
 				! grep -q -- '--- PASS' build/c-strict-load-nc/log; then \
@@ -1858,7 +1858,7 @@ tables-c-message-negative-control:
 	@mkdir -p build/c-message-negative
 	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-message-negative/log || \
 				! grep -q -- '--- PASS' build/c-message-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the wire comparison did not run (skipped), so this control is watching nothing'; \
@@ -1884,7 +1884,7 @@ tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
 	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/c-retain-negative/log || \
 				! grep -q -- '--- PASS' build/c-retain-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the public round-trip report did not run (skipped), so this control is watching nothing'; \
@@ -2194,7 +2194,7 @@ tables-c-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: both C cycle verdicts are gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
@@ -2212,7 +2212,7 @@ tables-c-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the C linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_LINEAR_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_LINEAR_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
 			./internal/codegen/ctable > $(C_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
 		cat $(C_CYCLE_LINEAR_NC)/log; exit 1; \

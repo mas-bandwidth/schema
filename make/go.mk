@@ -638,7 +638,7 @@ define go_fuzz_sabotage
 	     test/go-tables/go.mod > build/go-fuzz-$(1)/go.mod.txt
 	@printf '{"Replace":{"%s/test/go-tables/go.mod":"%s/build/go-fuzz-$(1)/go.mod.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/modoverlay.json
-	@if ( cd test/go-tables && SEED=$(SEED) N=$(N) $(GOTESTRUN_ELSEWHERE) -overlay ../../build/go-fuzz-$(1)/modoverlay.json \
+	@if ( cd test/go-tables && SEED=$(SEED) N=$(N) $(GOTESTRUN_ELSEWHERE) -control -overlay ../../build/go-fuzz-$(1)/modoverlay.json \
 			-run BlockForgeryFuzz -count 1 . ) > build/go-fuzz-$(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Go fuzzer stayed green with the $(1) check removed from the emitter"; \
 		cat build/go-fuzz-$(1)/log; exit 1; \
@@ -1378,7 +1378,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
 			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
@@ -1392,7 +1392,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
 			./internal/codegen/gotable > $(GO_DISCARD_NC)/region.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/region.log; exit 1; \

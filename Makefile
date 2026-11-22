@@ -843,7 +843,7 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo -DVIEW_UNFLATTENED \
 		test/tables/view_main.cpp build/tables-generated/examples/TabledemoView.cpp -o build/view-negative/prog-unflattened
 	./build/view-negative/prog-unflattened > build/view-negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an unflattened multi-line doc did not take the corpus gate down"; exit 1; \
 	fi
 	@echo "unit registry negative control 1: a multi-line doc printed unflattened takes the corpus gate down"
@@ -856,7 +856,7 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/view_main.cpp build/view-dropped/examples/TabledemoView.cpp -o build/view-dropped/prog
 	./build/view-dropped/prog > build/view-negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a declaration dropped from the registry did not take the corpus gate down"; exit 1; \
 	fi
 	@echo "unit registry negative control 2: one declaration dropped from the registry takes the corpus gate down"
@@ -869,7 +869,7 @@ tables-view-negative-controls: build/tables-generated/.stamp test/tables/view_ma
 		-DVIEW_HEADER='"ArmdemoView.h"' -DVIEW_NAMESPACE=armdemo \
 		test/tables/view_main.cpp build/view-armoffset/arms/ArmdemoView.cpp -o build/view-armoffset/prog
 	./build/view-armoffset/prog > build/view-negative/armdemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=armdemo $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-negative SCHEMA_VIEW_LISTING_UNITS=armdemo $(GOTESTRUN) -control ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a general arm's moved offset did not take the corpus gate down"; exit 1; \
 	fi
 	@echo "unit registry negative control 3: a general arm's moved offset takes the corpus gate down"
@@ -1269,7 +1269,7 @@ tables-cook-fuzz-negative-control:
 		{ echo "NEGATIVE CONTROL: the cook-check sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/cook-fuzz-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cook-fuzz-control/overlay.json
-	@if SCHEMA_SLOW=1 SEED=$(SEED) N=$(N) $(GOTESTRUN) -count=1 -overlay=build/cook-fuzz-control/overlay.json \
+	@if SCHEMA_SLOW=1 SEED=$(SEED) N=$(N) $(GOTESTRUN) -control -count=1 -overlay=build/cook-fuzz-control/overlay.json \
 			-run 'TestCookCheck' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook battery stayed green with the directory scan removed"; \
 		exit 1; \
@@ -2895,7 +2895,7 @@ check-wstring-refusal-negative-control:
 	@sed 's|c.errf(f.Type.Pos, wstringRefusalMsg, fix)|_, _ = wstringRefusalMsg, fix // SABOTAGED: the wstring refusal is removed|' \
 		internal/check/check.go > build/wstring-refusal-negative/check.gotext
 	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/wstring-refusal-negative/check.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: TestWstringKind33Retired stayed green with the wstring refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
 	fi
 	@grep -q 'wstring' build/wstring-refusal-negative/log || \
@@ -2922,7 +2922,7 @@ projection-variant-order-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove both variant lists"; exit 1; }
 	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-variants.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/projection-no-variants-overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay=build/projection-no-variants-overlay.json \
+	@if $(GOTESTRUN) -control -count=1 -overlay=build/projection-no-variants-overlay.json \
 		./internal/check -run TestIdMovesUnderVariantOrder > build/projection-no-variants.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the reorder gate passed with the variant lists gone"; \
 		cat build/projection-no-variants.log; exit 1; \
@@ -2954,7 +2954,7 @@ projection-wire-law-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the codec law line"; exit 1; }
 	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-wire-law.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/projection-no-wire-law-overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay=build/projection-no-wire-law-overlay.json \
+	@if $(GOTESTRUN) -control -count=1 -overlay=build/projection-no-wire-law-overlay.json \
 		./internal/check -run TestWireLawLineMovesTheId > build/projection-no-wire-law.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the law gate passed with the line gone"; \
 		cat build/projection-no-wire-law.log; exit 1; \
@@ -2962,7 +2962,7 @@ projection-wire-law-negative-control:
 	@grep -q "the projection must open with its rendering version and then its codec law" build/projection-no-wire-law.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing law line"; \
 		  cat build/projection-no-wire-law.log; exit 1; }
-	@if $(GOTESTRUN) -count=1 -overlay=build/projection-no-wire-law-overlay.json \
+	@if $(GOTESTRUN) -control -count=1 -overlay=build/projection-no-wire-law-overlay.json \
 		./internal/goldens -run TestWireLawBumpMovesEveryId > build/projection-no-wire-law-corpus.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: every corpus id survived the line's removal in silence"; \
 		cat build/projection-no-wire-law-corpus.log; exit 1; \
@@ -2992,7 +2992,7 @@ projection-union-arm-order-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the arm names"; exit 1; }
 	@printf '{"Replace":{"%s/ir/projection.go":"%s/build/projection-no-arm-names.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/projection-no-arm-names-overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay=build/projection-no-arm-names-overlay.json \
+	@if $(GOTESTRUN) -control -count=1 -overlay=build/projection-no-arm-names-overlay.json \
 		./internal/check -run 'TestUnionId' > build/projection-no-arm-names.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the union gates passed with the arm names gone"; \
 		cat build/projection-no-arm-names.log; exit 1; \
@@ -3891,7 +3891,7 @@ define map_walk_gating_control
 	@rm -rf build/map-walk-$(1)-tree && mkdir -p build/map-walk-$(1)-tree
 	@./build/schema-map-walk-$(1) generate --lang cpp --out build/map-walk-$(1)-tree/$(3) tables/$(3)
 	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-$(1)-tree SCHEMA_MAP_WALK_UNITS=$(3) \
-			$(GOTESTRUN) -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			$(GOTESTRUN) -control -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
 			> build/map-walk-$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
 	fi
@@ -3907,7 +3907,7 @@ tables-json-map-walk-negative-controls: bin/schema build/tables-generated/.stamp
 	@printf '// ---- json map walk: begin ----\n// PLANTED\n// ---- json map walk: end ----\n' \
 		>> build/map-walk-planted/examples/TablesTable.cpp
 	@if SCHEMA_MAP_WALK_DIR=$$PWD/build/map-walk-planted SCHEMA_MAP_WALK_UNITS=examples \
-			$(GOTESTRUN) -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
+			$(GOTESTRUN) -control -count=1 ./internal/mapwalk -run TestMapWalkHalfRidesTheMapBearingUnits \
 			> build/map-walk-planted.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the map half planted in a map-free unit left the gate GREEN"; exit 1; \
 	fi
@@ -3960,7 +3960,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	@grep -Fq '!report.damaged' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
 	@grep -Fq 'must refuse count_over_extent_cap' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
@@ -4426,7 +4426,7 @@ define list_walk_gating_control
 	@rm -rf build/list-walk-$(1)-tree && mkdir -p build/list-walk-$(1)-tree
 	@./build/schema-list-walk-$(1) generate --lang cpp --out build/list-walk-$(1)-tree/$(3) tables/$(3)
 	@if SCHEMA_LIST_WALK_DIR=$$PWD/build/list-walk-$(1)-tree SCHEMA_LIST_WALK_UNITS=$(3) \
-			$(GOTESTRUN) -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
+			$(GOTESTRUN) -control -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
 			> build/list-walk-$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
 	fi
@@ -4442,7 +4442,7 @@ tables-json-list-walk-negative-controls: bin/schema build/tables-generated/.stam
 	@printf '// ---- json list walk: begin ----\n// PLANTED\n// ---- json list walk: end ----\n' \
 		>> build/list-walk-planted/examples/TablesTable.cpp
 	@if SCHEMA_LIST_WALK_DIR=$$PWD/build/list-walk-planted SCHEMA_LIST_WALK_UNITS=examples \
-			$(GOTESTRUN) -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
+			$(GOTESTRUN) -control -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
 			> build/list-walk-planted.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the list half planted in a list-free unit left the gate GREEN"; exit 1; \
 	fi
@@ -4609,7 +4609,7 @@ tables-lists-cook-check-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the cook-check list sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/list-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-cook-check-control/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckListSlot' ./internal/tablecook/ > build/list-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping cook-check's element-array clause left its test GREEN"; exit 1; \
 	fi
@@ -4626,7 +4626,7 @@ tables-lists-cook-check-negative-control:
 .PHONY: tables-maps-cook-check-negative-control
 tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-control
 	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the shared containment clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4639,7 +4639,7 @@ tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-contro
 		{ echo "NEGATIVE CONTROL FAILED: the ascending sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/map-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-cook-check-control/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/map-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/map-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the keys' ascending clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4688,7 +4688,7 @@ tables-lists-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/list-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-tool-cook-control/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/list-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/list-tool-cook-control/overlay.json \
 			-run 'TestAListRidesInItsHolderNodeExtent' ./internal/tablecook/ > build/list-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an unaligned element array left the tool's cook GREEN"; exit 1; \
 	fi
@@ -4717,7 +4717,7 @@ tables-maps-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the descending sabotage did not apply once"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/map-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-tool-cook-control/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/map-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/map-tool-cook-control/overlay.json \
 			-run 'TestTheToolCooksAndUncooksAMap' ./internal/tablecook/ > build/map-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: descending entries left the tool's map cook GREEN"; exit 1; \
 	fi
@@ -4788,7 +4788,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half sabotage did not apply once"; exit 1; }; \
 		printf '{"Replace":{"%s/ir/tablelist.go":"%s/build/node-align-control/%s.go.txt"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$half" > build/node-align-control/$$half.json; \
-		if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/node-align-control/$$half.json \
+		if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/node-align-control/$$half.json \
 				-run 'TestCookWriteFixturesAreTheToolsBytes' ./test/conformance/harness/ > build/node-align-control/$$half.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half half taken away left the tool's cook of widelist_wide GREEN"; exit 1; \
 		fi; \
@@ -5543,7 +5543,7 @@ tables-ref-ordinal-negative-control:
 		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/ref-ordinal-nc/log || \
 				! grep -q -- '--- PASS' build/ref-ordinal-nc/log; then \
@@ -5578,7 +5578,7 @@ tables-ref-ordinal-shared-negative-control:
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -v -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
 			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
 		if grep -q -- '--- SKIP' build/ref-ordinal-shared-nc/log || \
 				! grep -q -- '--- PASS' build/ref-ordinal-shared-nc/log; then \
@@ -5610,7 +5610,7 @@ tables-cpp-names-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppTableRuntimeNamesAreClaimed \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppTableRuntimeNamesAreClaimed \
 			./compiler > build/cpp-names-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
 		cat build/cpp-names-nc/log; exit 1; \
@@ -5743,7 +5743,7 @@ tables-wire-fuzz-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
@@ -5771,7 +5771,7 @@ tables-cpp-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/$(CPP_DISCARD_NC)/codecs.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
 			./internal/codegen/cpptable > $(CPP_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
 		cat $(CPP_DISCARD_NC)/log; exit 1; \
@@ -5798,7 +5798,7 @@ tables-cpp-region-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_REGION_DISCARD_NC)/pointers.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_REGION_DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
 			./internal/codegen/cpptable > $(CPP_REGION_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
 		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
@@ -5826,7 +5826,7 @@ tables-cpp-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_NC)/arena.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
 			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ cycle verdict is gone and the gate stayed green"; \
 		cat $(CPP_CYCLE_NC)/log; exit 1; \
@@ -5850,7 +5850,7 @@ tables-cpp-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_LINEAR_NC)/arena.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_LINEAR_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
 			./internal/codegen/cpptable > $(CPP_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
 		cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -5874,7 +5874,7 @@ tables-engine-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
 	@sed '/case markOpen:/{n;s/return false/continue/;}' test/conformance/harness/strictcheck.go > $(ENGINE_CYCLE_NC)/strictcheck.go.txt && printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(ENGINE_CYCLE_NC)/strictcheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
 		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
@@ -5899,7 +5899,7 @@ tables-engine-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
 		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -5925,7 +5925,7 @@ tables-cpp-builder-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
 			./internal/codegen/cpptable > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestDamageDiscardsTheWholeLoadCPP stayed green"; \
 		cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; \
@@ -5950,7 +5950,7 @@ tables-cpp-retain-refusal-negative-control:
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestRefusedLoadsHandBackNothingCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestRefusedLoadsHandBackNothingCPP$$' \
 			./internal/codegen/cpptable > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestRefusedLoadsHandBackNothingCPP stayed green"; \
 		cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
@@ -5974,7 +5974,7 @@ tables-cpp-fixed-refusal-negative-control:
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedform.go":"%s/$(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestFixedRefusalHandsBackNothingCPP$$' \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestFixedRefusalHandsBackNothingCPP$$' \
 			./internal/codegen/cpptable > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestFixedRefusalHandsBackNothingCPP stayed green"; \
 		cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
@@ -6145,7 +6145,7 @@ define message_form_control
 	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/message-nc/$(1)-overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/message-nc/$(1)-overlay.json \
 			./test/conformance/harness -run '^$(3)$$' > build/message-nc/$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and $(3) stayed green"; \
 		cat build/message-nc/$(1).log; exit 1; \
@@ -7749,7 +7749,7 @@ release-form-gate-negative-control:
 	@rm -rf $(RELEASE_FORM_CONTROL) && mkdir -p $(RELEASE_FORM_CONTROL)
 	go run ./tools/sabotage -name release-form-gate -out $(RELEASE_FORM_CONTROL)/releasetag.gotext tools/releasetag/releasetag.go
 	@printf '{"Replace":{"%s/tools/releasetag/releasetag.go":"%s/$(RELEASE_FORM_CONTROL)/releasetag.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_FORM_CONTROL)/overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay $(RELEASE_FORM_CONTROL)/overlay.json -run 'TestReleaseFormGate$$' ./tools/releasetag > $(RELEASE_FORM_CONTROL)/red.out 2>&1; then \
+	@if $(GOTESTRUN) -control -count=1 -overlay $(RELEASE_FORM_CONTROL)/overlay.json -run 'TestReleaseFormGate$$' ./tools/releasetag > $(RELEASE_FORM_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a Release that never compares the commit's form left TestReleaseFormGate green"; cat $(RELEASE_FORM_CONTROL)/red.out; exit 1; \
 	fi
 	@grep -q 'Release(v2.5.1) with the form moved 3 -> 4' $(RELEASE_FORM_CONTROL)/red.out || \
@@ -7772,7 +7772,7 @@ build-version-elemkind-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the elemkind token"; exit 1; }
 	@printf '{"Replace":{"%s/ir/buildversion.go":"%s/build/buildversion-no-elemkind.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/buildversion-no-elemkind-overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
 		./ir -run TestTheBuildVersionMovesWhenTheListElementIsRetyped > build/buildversion-no-elemkind.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the retype gate passed with elemkind gone"; \
 		cat build/buildversion-no-elemkind.log; exit 1; \
@@ -7780,7 +7780,7 @@ build-version-elemkind-negative-control:
 	@grep -q "scores     \[\]int32 -> scores     \[\]float32 does not move the build version" build/buildversion-no-elemkind.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the same-size retype"; \
 		  cat build/buildversion-no-elemkind.log; exit 1; }
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
 		./internal/baseline -run 'TestEvolutionTableFrames' > build/buildversion-no-elemkind-frames.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the §4.1 frames golden passed with elemkind gone"; \
 		cat build/buildversion-no-elemkind-frames.log; exit 1; \
@@ -7802,7 +7802,7 @@ tables-wire-text-total-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch the total refusal"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/tablewire-no-total.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/tablewire-no-total-overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -timeout=0 -count=1 -overlay=build/tablewire-no-total-overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -timeout=0 -count=1 -overlay=build/tablewire-no-total-overlay.json \
 		./internal/tablewire -run '^TestTextTotalRefusesPastTheTotal$$' > build/tablewire-no-total.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the total test passed with the refusal gone"; \
 		cat build/tablewire-no-total.log; exit 1; \

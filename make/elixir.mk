@@ -603,7 +603,7 @@ ELIXIR_OFFSETS_SED := -e 's|B.u64halves(data, a.offset_of_offset)|B.u64(data, a.
 tables-elixir-offsets-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS),internal/codegen/elixirtable/block.go,ELIXIR_OFFSETS_SED)
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			$(GOTESTRUN) -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
+			$(GOTESTRUN) -control -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_OFFSETS)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a whole-word offset_of read left the forged-offset assertion green"; \
@@ -629,7 +629,7 @@ ELIXIR_COOK_SED := \
 tables-elixir-cook-negative-control:
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_COOK),internal/codegen/elixirtable/cook.go,ELIXIR_COOK_SED)
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			$(GOTESTRUN) -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
+			$(GOTESTRUN) -control -overlay $(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestOffsetsComposeFromHalvesElixir$$' \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_COOK)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a whole-word cook delta read left the forged-delta assertion green"; \
@@ -1517,7 +1517,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedruntime.go":"%s/build/elixir-versioning-nc/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			$(GOTESTRUN) -overlay build/elixir-versioning-nc/overlay.json \
+			$(GOTESTRUN) -control -overlay build/elixir-versioning-nc/overlay.json \
 			./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew' \
 			> build/elixir-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
@@ -1885,7 +1885,7 @@ tables-elixir-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_DISCARD_NC)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ELIXIR_DISCARD_NC)/overlay.json
-	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) $(GOTESTRUN) -control -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadElixir$$' ./internal/codegen/elixirtable > $(ELIXIR_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Elixir discard is gone and the gate stayed green"; \
 		cat $(ELIXIR_DISCARD_NC)/log; exit 1; \
@@ -2144,7 +2144,7 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view $(GOTESTRUN) ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/elixir-view/negative
 	@cp build/elixir-view/unflattened.listing build/elixir-view/negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR > build/elixir-view/negative.log 2>&1; then echo "Elixir UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR > build/elixir-view/negative.log 2>&1; then echo "Elixir UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/elixir-view/negative.log
 	@echo "Elixir UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
@@ -2221,7 +2221,7 @@ define ELIXIR_COOK_MAP_CONTROL
 	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-map-nc-$(1)/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-map-nc-$(1)/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
-			$(GOTESTRUN) -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+			$(GOTESTRUN) -control -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 			-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$' \
 			> build/elixir-cook-map-nc-$(1)/log 2>&1; then \
 		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) left the map and list cook gate green"; exit 1; \

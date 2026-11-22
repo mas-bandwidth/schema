@@ -169,7 +169,7 @@ tables-luau-fixed-form-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-fixed-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-fixed-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
+	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedFormAgreesWithTheByteOracle$$' > build/luau-fixed-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a text length one off left the fixed form green"; \
 		cat build/luau-fixed-nc/log; exit 1; \
@@ -188,7 +188,7 @@ tables-luau-versioning-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-versioning-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-versioning-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
+	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedVersioningOldRefusesNew$$' > build/luau-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/luau-versioning-nc/log; exit 1; \

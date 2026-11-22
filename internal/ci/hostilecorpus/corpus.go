@@ -292,10 +292,7 @@ func Verify(root, tmp, corpusDir, manifest string) error {
 	if want == manifest {
 		return nil
 	}
-	for _, d := range Diff(manifest, want) {
-		fmt.Fprintln(os.Stderr, d)
-	}
-	return errors.New("hostile corpus drift: the committed manifest differs from the engine's verdicts (regenerate with make schema-shared-hostile-corpus-generate)")
+	return fmt.Errorf("hostile corpus drift: the committed manifest differs from the engine's verdicts (regenerate with make schema-shared-hostile-corpus-generate)\n%s", strings.Join(Diff(manifest, want), "\n"))
 }
 
 // Diff reports the differing manifest lines.

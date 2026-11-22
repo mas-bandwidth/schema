@@ -577,7 +577,7 @@ tables-cs-view: bin/schema
 	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/view-cs/negative
 	@cp build/view-cs/unflattened.listing build/view-cs/negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-cs/negative.log 2>&1; then echo "C# UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-cs/negative.log 2>&1; then echo "C# UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 

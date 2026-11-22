@@ -33,7 +33,7 @@ python-vt-optional-carries-negative-control:
 	grep -v 'carryPython(carryOptionalVariableClosure)' compiler/carries_python_optional.go > $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/carries.gotext
 	@printf '{"Replace":{"%s/compiler/carries_python_optional.go":"%s/$(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/carries.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -overlay $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/overlay.json -tags schema_leg_python \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -overlay $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/overlay.json -tags schema_leg_python \
 		-run '^TestPythonCarriesOptionalVariableClosure$$' ./compiler -count=1 > $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: removing the optional-variable-closure registration left the carry gate green"; \
 		cat $(PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE)/log; exit 1; fi

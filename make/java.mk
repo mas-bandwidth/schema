@@ -987,7 +987,7 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-			$(GOTESTRUN) -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
+			$(GOTESTRUN) -control -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
 			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
 			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
@@ -1050,7 +1050,7 @@ tables-java-keyed-negative-control:
 		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
 		if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-				$(GOTESTRUN) -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
+				$(GOTESTRUN) -control -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
 				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
 		fi; \
@@ -2399,7 +2399,7 @@ tables-java-view: bin/schema test/java-view/View.java
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
 	@if cmp -s build/java-view/tabledemo.listing build/java-view/negative/tabledemo.listing; then echo "tables-java-view negative control damaged nothing"; exit 1; fi
-	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) -control -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/java-view/negative.log
 	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
 

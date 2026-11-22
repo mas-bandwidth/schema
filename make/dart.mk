@@ -240,7 +240,7 @@ tables-dart-names-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/darttable/blockruntime.go":"%s/build/dart-names-nc/runtime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-names-nc/overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay build/dart-names-nc/overlay.json -run TestDartTableRuntimeNamesAreClaimed \
+	@if $(GOTESTRUN) -control -count=1 -overlay build/dart-names-nc/overlay.json -run TestDartTableRuntimeNamesAreClaimed \
 			./compiler > build/dart-names-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime class planted"; \
 		cat build/dart-names-nc/log; exit 1; \
@@ -904,7 +904,7 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedmodule.go":"%s/build/dart-versioning-nc/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-versioning-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -overlay build/dart-versioning-nc/overlay.json \
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -control -overlay build/dart-versioning-nc/overlay.json \
 			./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
 			> build/dart-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
@@ -931,7 +931,7 @@ tables-dart-keyed-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-keyed-nc/fixeddart.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-keyed-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -control -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
 			./internal/codegen/dart/ > build/dart-keyed-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an extra keyed slot left the extent test green"; \
 		cat build/dart-keyed-nc/log; exit 1; \
@@ -1828,7 +1828,7 @@ tables-dart-discard-negative-control:
 			internal/codegen/darttable/$$file > $$d/$$file.txt; \
 		if cmp -s internal/codegen/darttable/$$file $$d/$$file.txt; then echo "NEGATIVE CONTROL: the $$file sabotage patched nothing"; exit 1; fi; \
 		printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/%s.txt"}}\n' "$(CURDIR)" "$$file" "$(CURDIR)" "$$d" "$$file" > $$d/overlay.json; \
-		if SCHEMA_SLOW=1 DART=$(DART) $(GOTESTRUN) -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
+		if SCHEMA_SLOW=1 DART=$(DART) $(GOTESTRUN) -control -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
 				./internal/codegen/darttable > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$file discard is gone and the gate stayed green"; cat $$d/log; exit 1; \
 		fi; \
@@ -1873,7 +1873,7 @@ tables-dart-forged-ordinal-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL: the Dart forged-ordinal sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedruntime.go":"%s/$(DART_ORDINAL_NC)/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DART_ORDINAL_NC)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -count=1 -overlay $(DART_ORDINAL_NC)/overlay.json \
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) $(GOTESTRUN) -control -count=1 -overlay $(DART_ORDINAL_NC)/overlay.json \
 			-run '^TestFixedVersioningForgedOrdinalBothPlans$$' ./internal/codegen/darttable > $(DART_ORDINAL_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the forged-ordinal refusal is gone and the gate stayed green"; \
 		cat $(DART_ORDINAL_NC)/log; exit 1; \

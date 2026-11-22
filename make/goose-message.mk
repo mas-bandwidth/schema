@@ -38,7 +38,7 @@ tables-goose-message-form-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to messageform.go"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/messageform.go":"%s/$(GOOSE_MESSAGE_NC)/messageform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_MESSAGE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_NC)/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_NC)/overlay.json \
 			-run '^TestGooseMessageForm(MatchesTheGoldens|CarriesEveryShape|TextAligns)$$' ./internal/codegen/goosetable/ > $(GOOSE_MESSAGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the dropped text align left the Goose message-form gate green"; \
 		cat $(GOOSE_MESSAGE_NC)/log; exit 1; \
@@ -76,7 +76,7 @@ tables-goose-message-peer-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to runtime/message.goose"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/runtime/message.goose":"%s/$(GOOSE_MESSAGE_PEER_NC)/message.goose"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_MESSAGE_PEER_NC)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_PEER_NC)/overlay.json \
+	@if SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_PEER_NC)/overlay.json \
 			-run '^TestGooseMessageFormVersioning$$' ./internal/codegen/goosetable/ > $(GOOSE_MESSAGE_PEER_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the dropped widening rule left the Goose message versioning gate green"; \
 		cat $(GOOSE_MESSAGE_PEER_NC)/log; exit 1; \

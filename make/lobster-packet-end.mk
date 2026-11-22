@@ -16,7 +16,7 @@ packet-end-lobster-negative-control: packet-end-lobster
 	@rm -rf build/packet-end/lobster-negative && mkdir -p build/packet-end/lobster-negative
 	go run ./tools/sabotage -name packet-end-lobster -out build/packet-end/lobster-negative/read.gotext internal/codegen/lobster/read.go
 	@printf '{"Replace":{"%s/internal/codegen/lobster/read.go":"%s/build/packet-end/lobster-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/lobster-negative/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=build/packet-end/lobster-negative/overlay.json -run '^TestLobsterPacketEnd$$' ./internal/codegen/lobster/ > build/packet-end/lobster-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=build/packet-end/lobster-negative/overlay.json -run '^TestLobsterPacketEnd$$' ./internal/codegen/lobster/ > build/packet-end/lobster-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the end check was removed and the Lobster packet-end driver stayed green'; exit 1; fi
 	@grep -Fq 'FAILED: trailing' build/packet-end/lobster-negative/log || { cat build/packet-end/lobster-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding' build/packet-end/lobster-negative/log || { cat build/packet-end/lobster-negative/log; exit 1; }

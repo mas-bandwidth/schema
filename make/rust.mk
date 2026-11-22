@@ -247,7 +247,7 @@ tables-rust-names-negative-control:
 		{ echo "NEGATIVE CONTROL: the name-claim sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/rust-names-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-names-control/overlay.json
-	@if $(GOTESTRUN) -count=1 -overlay=build/rust-names-control/overlay.json \
+	@if $(GOTESTRUN) -control -count=1 -overlay=build/rust-names-control/overlay.json \
 			-run 'TestRustConstantSpaceIsClaimedForEveryRuntimeConstant|TestTableRefusals' \
 			./internal/check/ > build/rust-names-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the Rust constant-space claim removed"; \
@@ -768,7 +768,7 @@ tables-rust-number-walk-negative-control:
 		{ echo "NEGATIVE CONTROL: the grouped-walk sabotage did not apply exactly once"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-number-walk-control/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-number-walk-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 900s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 900s \
 			-overlay=build/rust-number-walk-control/overlay.json \
 			-run 'TestMapsAndUnionArmsOnTheTableWireRust$$' ./internal/codegen/rusttable/ > build/rust-number-walk-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the variable wire stayed green under the grouped numbering walk"; \
@@ -828,7 +828,7 @@ tables-rust-cook-write-negative-control:
 		{ echo "NEGATIVE CONTROL: the finite-float sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/cookwrite.go":"%s/build/rust-cook-write-control/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-cook-write-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 600s \
 			-overlay=build/rust-cook-write-control/overlay.json \
 			-run 'TestCookWriteRust$$' ./internal/codegen/rusttable/ > build/rust-cook-write-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook write stayed green with its finite-float refusal turned off"; \
@@ -1084,7 +1084,7 @@ tables-rust-usage-negative-control:
 		if cmp -s docs/USAGE.md build/rust-usage-control/$$c.md; then \
 			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
 		if SCHEMA_USAGE_DOC=$(CURDIR)/build/rust-usage-control/$$c.md PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
-				$(GOTESTRUN) ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$' > build/rust-usage-control/$$c.log 2>&1; then \
+				$(GOTESTRUN) -control ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$' > build/rust-usage-control/$$c.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Rust usage gate"; exit 1; fi; \
 		grep -q "docs/USAGE.md's Rust example did not\|did not build\|error" build/rust-usage-control/$$c.log || \
 			{ echo "NEGATIVE CONTROL FAILED: the $$c copy went red, but not on the example"; cat build/rust-usage-control/$$c.log; exit 1; }; \
@@ -1235,7 +1235,7 @@ tables-rust-retain-negative-control:
 		{ echo "NEGATIVE CONTROL: the retention sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-retain-control/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-retain-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 600s \
 			-overlay=build/rust-retain-control/overlay.json \
 			-run TestRetainsAndWidensOnEveryRootRust ./internal/codegen/rusttable/ > build/rust-retain-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with Rust retention turned off"; \
@@ -1268,7 +1268,7 @@ tables-rust-json-hostile-negative-control:
 		{ echo "NEGATIVE CONTROL: the json-hostile sabotage did not apply twice"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/build/rust-json-hostile-control/variabletext.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-json-hostile-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 300s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 300s \
 			-overlay=build/rust-json-hostile-control/overlay.json \
 			-run TestJsonHostileTextRefusalsRust ./internal/codegen/rusttable/ > build/rust-json-hostile-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
@@ -1300,7 +1300,7 @@ tables-rust-guard-negative-control:
 		{ echo "NEGATIVE CONTROL: the guard sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variableguard.go":"%s/build/rust-guard-control/variableguard.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-guard-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 600s \
 			-overlay=build/rust-guard-control/overlay.json \
 			-run TestGuardAndOptionalEdgesRust ./internal/codegen/rusttable/ > build/rust-guard-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the G1 suite stayed green with the Rust guard gate turned off"; \
@@ -1749,7 +1749,7 @@ tables-rust-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Rust discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/$(RUST_DISCARD_NC)/variable/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/variable/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/variable/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Rust discard is gone and the gate stayed green"; \
 		cat $(RUST_DISCARD_NC)/variable/log; exit 1; \
@@ -1768,7 +1768,7 @@ tables-rust-fixed-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_DISCARD_NC)/fixed/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/fixed/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/fixed/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Rust fixed discard is gone and the gate stayed green"; \
 		cat $(RUST_DISCARD_NC)/fixed/log; exit 1; \
@@ -1810,7 +1810,7 @@ tables-rust-range-widen-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL: the Rust writer's-range sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_RANGE_NC)/fixedform.go.txt"}}\n' \
 		"$$PWD" "$$PWD" > $(RUST_RANGE_NC)/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -overlay $(RUST_RANGE_NC)/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -overlay $(RUST_RANGE_NC)/overlay.json \
 			-run '^TestFixedVersioningRangeWidenHostile$$' ./internal/codegen/rusttable > $(RUST_RANGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the writer's-range refusal is gone and the gate stayed green"; \
 		cat $(RUST_RANGE_NC)/log; exit 1; \
@@ -1833,7 +1833,7 @@ tables-rust-bool-byte-negative-control:
 		{ echo "NEGATIVE CONTROL: the Rust bool-byte sabotage did not patch exactly the two checks"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_BOOL_NC)/fixedform.go.txt"}}\n' \
 		"$$PWD" "$$PWD" > $(RUST_BOOL_NC)/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -overlay $(RUST_BOOL_NC)/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -overlay $(RUST_BOOL_NC)/overlay.json \
 			-run '^TestFixedBoolByteIsDamageRust$$' ./internal/codegen/rusttable > $(RUST_BOOL_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the bool-byte check is gone and the gate stayed green"; \
 		cat $(RUST_BOOL_NC)/log; exit 1; \
@@ -1865,7 +1865,7 @@ tables-rust-message-storage-assert-negative-control:
 		{ echo "NEGATIVE CONTROL: the storage-assert sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/messagebatch.go":"%s/build/rust-message-storage-assert-control/messagebatch.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-message-storage-assert-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -control -count=1 -timeout 600s \
 			-overlay=build/rust-message-storage-assert-control/overlay.json \
 			-run '^TestMessageStorageDebugAssertRust$$' ./internal/codegen/rusttable/ > build/rust-message-storage-assert-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the message storage assert stayed green with its debug_assert! turned off"; \

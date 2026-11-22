@@ -16,7 +16,7 @@ packet-write-bareint-lobster-negative-control: packet-write-bareint-lobster
 		-out $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/write.gotext internal/codegen/lobster/write.go
 	@printf '{"Replace":{"%s/internal/codegen/lobster/write.go":"%s/$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/write.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json
-	@if SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -overlay=$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json \
+	@if SCHEMA_SLOW=1 $(GOTESTRUN) -control -count=1 -overlay=$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json \
 		-run '^TestLobsterPacketWriteBareInt$$' ./test/packet-write-bareint/lobster \
 		> $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: removing the signed narrow width assert left the packet write gate green'; exit 1; fi

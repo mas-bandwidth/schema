@@ -1294,8 +1294,11 @@ func readLines(path string) ([]string, error) {
 // it is: the wrapper adds a verdict and changes no gate, so every check this
 // scan makes of a go test recipe line still holds for the wrapped one.
 var goTestWrapper = strings.NewReplacer(
+	"$(GOTESTRUN_ELSEWHERE) -control", "go test",
 	"$(GOTESTRUN_ELSEWHERE)", "go test",
+	"$(GOTESTRUN) -control -each", "go test",
 	"$(GOTESTRUN) -each", "go test",
+	"$(GOTESTRUN) -control", "go test",
 	"$(GOTESTRUN)", "go test",
 )
 
