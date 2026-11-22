@@ -1,0 +1,13 @@
+package fixture
+
+import (
+	"context"
+	. "os/exec"
+	"testing"
+)
+
+// Both children are started through the dot import: no "exec." is spelled.
+func TestDotImport(t *testing.T) {
+	_ = Command("luau", "-v").Run()
+	_ = CommandContext(context.Background(), "luau", "-v").Run()
+}
