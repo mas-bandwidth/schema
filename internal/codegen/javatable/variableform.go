@@ -5595,7 +5595,7 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 
 func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
-	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
+	fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 	b.WriteString("                    in.p++;\n")
 	b.WriteString("                    int idx = 0;\n")
 	if f.Array != ir.ArrayList {
@@ -5971,7 +5971,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		b.WriteString("                if (in.peek() == '[') {\n")
+		fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 		b.WriteString("                    in.p++;\n")
 		b.WriteString("                    while (true) {\n")
 		b.WriteString("                        int ec = in.peek();\n")
@@ -5989,7 +5989,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		valueF := ir.TextListValue(f)
 		optional := ir.TextListOptional(f)
-		b.WriteString("                if (in.peek() == '[') {\n")
+		fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 		b.WriteString("                    in.p++;\n")
 		b.WriteString("                    int placed = 0;\n")
 		if f.Array != ir.ArrayList {
@@ -6067,7 +6067,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		b.WriteString("                if (in.peek() == '[') {\n")
+		fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 		b.WriteString("                    in.p++;\n")
 		b.WriteString("                    int idx = 0;\n")
 		if f.Array != ir.ArrayList {

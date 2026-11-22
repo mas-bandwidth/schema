@@ -1812,7 +1812,10 @@ public final class BenchPacketVariable {
                     if (repeated && in.peek() != 'n') {
                         v.blob = new java.util.ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+                        in.bad = true;
+                        in.skipValue();
+                    } else if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 17;

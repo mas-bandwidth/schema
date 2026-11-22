@@ -2703,7 +2703,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "entities" => {
                 if seen[9] { jr.damaged = true; }
                 seen[9] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.entities.clear();
@@ -2730,7 +2730,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "stats" => {
                 if seen[10] { jr.damaged = true; }
                 seen[10] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.stats.clear();
@@ -2761,7 +2761,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "loadout" => {
                 if seen[12] { jr.damaged = true; }
                 seen[12] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.loadout.clear();
@@ -3249,7 +3249,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "damage" => {
                 if seen[11] { jr.damaged = true; }
                 seen[11] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     let mut bits: u64 = 0;

@@ -1714,7 +1714,9 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		// an array (§16.2): `[]` is empty and `null` is kind_mismatch; a
 		// bounded [..N]T drops what is past N and counts it; a repeated key
 		// replaces the array outright
-		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
+		// THE CAP COUNTS THE ARRAY ITSELF, even an empty one: a container that would
+		// be the 130th refuses (docs/SPEC-TABLES.md §16.2)
+		fmt.Fprintf(b, "%sif jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 		// A PLACED ARRAY IS ONE LEVEL (the Go reference reads its elements one
 		// level down, docs/SPEC-TABLES.md §16.2), counted against the depth cap
@@ -1914,7 +1916,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			// unknown, an element that is not a string counts kind_mismatch,
 			// and a KNOWN variant named twice refuses the read as a repeated
 			// key does
-			fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
+			fmt.Fprintf(b, "%sif jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {\n", in)
 			fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 			// the names array is one level, as the Go reference counts it
 			fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
