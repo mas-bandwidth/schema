@@ -319,7 +319,8 @@ fn widens(kind: u8, declared: u8) -> bool {
     };
 }
 
-// skip steps past a field this reader cannot name, by its kind alone (§3).
+// skip steps past a field this reader cannot name, by its kind alone (§3). Kind 31
+// is held by name and never written (R17): like 33 and 34 it is damage, not skipped.
 fn skip(c: LoadCtx&, r: Rd&, kind: u8) -> bool {
     if (kind >= 1 && kind <= 11) || (kind >= 18 && kind <= 29) || kind == 36 {
         let w = kind_width(kind);
@@ -331,7 +332,7 @@ fn skip(c: LoadCtx&, r: Rd&, kind: u8) -> bool {
         let v, ok = leb(c, r);
         return ok;
     }
-    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 {
+    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 32 {
         let n, ok = leb(c, r);
         if !ok || !fits(r, n) { return false; }
         r.off += n as! i64;
@@ -2045,7 +2046,7 @@ recursive fn wc_payload(w: WireCheck&, at: i64, end: i64, kind: u8) -> i64 {
         return next;
     }
     if kind == 15 { return wc_union(w, at, end); }
-    if kind == KindString || kind == 31 || kind == KindNoPayload
+    if kind == KindString || kind == KindNoPayload
         || kind == KindTable || kind == KindArray || kind == 16 {
         let n, next, ok = leb_at(w.data, at, end);
         if !ok || n > (end - next) as! u64 { wc_damage(w); return -1; }
@@ -2068,7 +2069,6 @@ recursive fn wc_content(w: WireCheck&, at: i64, end: i64, kind: u8) -> bool {
         if !text_valid(w.data, at, end - at) { return wc_damage(w); }
         return true;
     }
-    if kind == 31 { return true; } // opaque: the one kind whose meaning a reader may not know (§3)
     if kind == KindNoPayload {
         if end != at { return wc_damage(w); }
         return true;
