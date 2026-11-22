@@ -2844,7 +2844,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
                 }
                 if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
-                if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !bench_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( !bench_table_json_element_shape_accepts( f, bench_table_json_value_shape( in ) ) && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
             {
@@ -2873,6 +2873,9 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
+        /* the array is a container one level below the table holding it, counted toward
+           the cap whether or not it holds an element (FL-12) */
+        if ( depth + 1 > BENCH_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         if ( bench_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
