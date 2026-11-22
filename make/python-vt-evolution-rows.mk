@@ -7,7 +7,7 @@
 .PHONY: python-vt-evolution-rows python-vt-evolution-rows-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-vt-evolution-rows python-vt-evolution-rows-negative-control
 python-vt-evolution-rows: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtEvolutionRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtEvolutionRows$$' ./internal/codegen/pythontable/
 python-vt-evolution-rows-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtEvolutionRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtEvolutionRowsNegativeControl$$' ./internal/codegen/pythontable/
 test-python: python-vt-evolution-rows python-vt-evolution-rows-negative-control

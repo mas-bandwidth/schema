@@ -50,7 +50,7 @@ func goReleaseSoak(t *testing.T, root string) time.Duration {
 
 // releaseSoakBudget is the -timeout the tables-go-release recipe names for
 // its soak's go test.
-var releaseSoakBudget = regexp.MustCompile(`go test [^\n]*-timeout (\S+) -soak-iterations \$\(TABLES_GO_RELEASE_SOAK_ITERATIONS\)`)
+var releaseSoakBudget = regexp.MustCompile(`(?:go test|GOTESTRUN)[^\n]*-timeout (\S+) -soak-iterations \$\(TABLES_GO_RELEASE_SOAK_ITERATIONS\)`)
 
 // TestGoReleaseSoakFitsItsBudget keeps the soak the Go release gate runs
 // inside the budget its go test names, so a soak that has grown reads red.

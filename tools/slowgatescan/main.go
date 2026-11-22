@@ -1284,10 +1284,20 @@ func readLines(path string) ([]string, error) {
 	}
 	lines := strings.Split(string(b), "\n")
 	for i := range lines {
-		lines[i] = strings.TrimSuffix(lines[i], "\r")
+		lines[i] = goTestWrapper.Replace(strings.TrimSuffix(lines[i], "\r"))
 	}
 	return lines, nil
 }
+
+// goTestWrapper reads a recipe that runs go test through tools/gotestrun
+// ($(GOTESTRUN), $(GOTESTRUN) -each, $(GOTESTRUN_ELSEWHERE)) as the `go test`
+// it is: the wrapper adds a verdict and changes no gate, so every check this
+// scan makes of a go test recipe line still holds for the wrapped one.
+var goTestWrapper = strings.NewReplacer(
+	"$(GOTESTRUN_ELSEWHERE)", "go test",
+	"$(GOTESTRUN) -each", "go test",
+	"$(GOTESTRUN)", "go test",
+)
 
 // defineName is the NAME of a `define NAME` line, or "".
 func defineName(line string) string {

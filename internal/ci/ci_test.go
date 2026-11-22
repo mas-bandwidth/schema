@@ -276,7 +276,9 @@ var goPackageArg = regexp.MustCompile(`(?:^|\s)(\./[A-Za-z0-9_./-]+)`)
 
 // goInvocation matches one go subcommand invocation, after line continuations
 // have been joined.
-var goInvocation = regexp.MustCompile(`\bgo\s+(?:run|build|test|vet)\b[^\n]*`)
+// A recipe that runs go test through the tools/gotestrun wrapper
+// ($(GOTESTRUN), $(GOTESTRUN_ELSEWHERE)) is a go test invocation too.
+var goInvocation = regexp.MustCompile(`(?:\bgo\s+(?:run|build|test|vet)\b|\$\(GOTESTRUN(?:_ELSEWHERE)?\))[^\n]*`)
 
 // TestEveryPackageTheBuildRunsIsCommitted requires every repo-relative Go
 // package the Makefile invokes to be TRACKED BY GIT, not merely present on the

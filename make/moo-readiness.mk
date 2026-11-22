@@ -25,14 +25,14 @@ build/conformance-harness-moo: $(wildcard test/conformance/harness/*.go) $(GO_SO
 # (internal/codegen/mootable/message_test.go, message_batch_test.go).
 .PHONY: tables-moo-message-form
 tables-moo-message-form: moo-toolchain-ready build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestMooMessage' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 -run '^TestMooMessage' ./internal/codegen/mootable/
 
 # THE TARGET'S COMPILER CLAIMS under its build tag (compiler/tablesmoo_test.go,
 # compiler/tablesmoonames_test.go): the half of test-moo-tables the untagged
 # package runs cannot reach.
 .PHONY: tables-moo-compiler-claims
 tables-moo-compiler-claims: moo-toolchain-ready
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
 
 # THE WHOLE-ROSTER DRIVER's parts (test/conformance/moo/wirefuzz-driver): the
 # generated units and the native host its one process runs under, both built

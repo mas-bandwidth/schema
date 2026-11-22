@@ -14,7 +14,7 @@ tables-elixir-pointer-node-defaults-negative-control: bin/schema
 	@sed -i.bak '/value = Map.merge(defaults(node_desc), value)/d' $(ELIXIR_POINTER_NODE_DEFAULTS_NEG)/generated/Table.ex && rm -f $(ELIXIR_POINTER_NODE_DEFAULTS_NEG)/generated/Table.ex.bak
 	@if env ELIXIR_POINTER_NODE_DEFAULTS_DIR=$(CURDIR)/$(ELIXIR_POINTER_NODE_DEFAULTS_NEG)/generated \
 		SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 \
-		go test -count=1 -v -run '^TestElixirPointerNodesReadDeclaredDefaults$$' ./internal/codegen/elixirtable/ \
+		$(GOTESTRUN) -count=1 -v -run '^TestElixirPointerNodesReadDeclaredDefaults$$' ./internal/codegen/elixirtable/ \
 		> $(ELIXIR_POINTER_NODE_DEFAULTS_NEG)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: removing the node default fill left the pointer-node defaults test green'; \
 		cat $(ELIXIR_POINTER_NODE_DEFAULTS_NEG)/log; exit 1; fi

@@ -38,13 +38,13 @@ $(foreach pin,current floor,$(foreach arm,plain mixed retain,$(foreach shard,$(R
 tables-ruby-wire-fuzz: $(RUBY_WIRE_FUZZ_ROWS)
 
 tables-ruby-wire-fuzz-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestRubyWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/rubytable/
 
 tables-ruby-wire-fuzz-retain-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainNegativeControl$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-wirefuzz-retain-loss-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainLoss$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainLoss$$' ./internal/codegen/rubytable/
 
 ruby-wirefuzz-release-check: build/conformance-ruby
 	@if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi

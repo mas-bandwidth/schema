@@ -68,7 +68,7 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 		".PHONY: packet-wire-moo-emitter-negative-control\n",
 		"\npacket-wire-moo-emitter-negative-control: toolchain-moo\n",
 		"go run ./tools/sabotage -name packet-wire-moo-bool-twice",
-		"go test -overlay=$(MOO_WIRE_NC_DIR)/overlay.json",
+		"$(GOTESTRUN) -overlay=$(MOO_WIRE_NC_DIR)/overlay.json",
 		"MOO_WIRE_NC_RED := inputpacket joins probearray rigidbody_at_rest rigidbody_moving shipcreate_flags testdata\n",
 	} {
 		if !strings.Contains(mk, want) {

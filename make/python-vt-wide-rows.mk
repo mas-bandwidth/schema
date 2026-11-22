@@ -14,9 +14,9 @@ PYTHON_CI_SUPPORT_GROUPS += python-vt-wide-rows python-vt-wide-rows-negative-con
 
 .PHONY: python-vt-wide-rows python-vt-wide-rows-negative-control
 python-vt-wide-rows: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideRows$$' ./internal/codegen/pythontable/
 
 python-vt-wide-rows-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideRowsNegativeControl$$' ./internal/codegen/pythontable/
 
 test-python: python-vt-wide-rows python-vt-wide-rows-negative-control

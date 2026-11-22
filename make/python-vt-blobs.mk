@@ -8,4 +8,4 @@
 PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-blobs
 python-ci-vt-blobs: python-vt-blobs-negative-control
 python-vt-blobs-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtBlobs(UnknownCount)?NegativeControl' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtBlobs(UnknownCount)?NegativeControl' ./internal/codegen/pythontable/

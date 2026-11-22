@@ -143,7 +143,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	for _, a := range args {
-		if a == "-json" || a == "-v" || a == "-list" || strings.HasPrefix(a, "-list=") || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
+		if a == "-json" || a == "-list" || strings.HasPrefix(a, "-list=") || a == "-c" || strings.HasPrefix(a, "-exec") || a == "-n" {
 			_, _ = fmt.Fprintf(stderr, "gotestrun: %s is not for this wrapper (it already runs go test -json)\n", a)
 			return 2
 		}

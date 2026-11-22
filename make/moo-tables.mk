@@ -15,7 +15,7 @@
 .PHONY: test-moo-tables
 test-moo-tables: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/...
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
 
 # the table surface is part of the moo leg's `make test` half: test-moo (make/moo.mk)
 # takes it as a prerequisite, so the leg stays one leg (REGISTERED_LEGS)
@@ -30,7 +30,7 @@ test-moo: test-moo-tables
 # the skip a FAILURE.
 .PHONY: tables-moo-fixed
 tables-moo-fixed: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'
 
 test-moo: tables-moo-fixed
 
@@ -40,12 +40,12 @@ test-moo: tables-moo-fixed
 # write of a kept record, and the fixed-class and nil-report refusals.
 .PHONY: tables-moo-retain-negative-control tables-moo-retain-refusal-negative-control
 tables-moo-retain-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
 tables-moo-retain-refusal-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
 
 # Damage (§4) refuses the whole load or batch. The control removes each
 # runtime discard and requires the same malformed inputs to expose values.
 .PHONY: tables-moo-damage-discard-negative-control
 tables-moo-damage-discard-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'

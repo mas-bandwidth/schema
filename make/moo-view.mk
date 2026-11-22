@@ -10,7 +10,7 @@
 # identity (§8.2), and the empty doc defined once.
 .PHONY: tables-moo-view tables-moo-view-negative-controls
 tables-moo-view: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/mootable/ \
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s ./internal/codegen/mootable/ \
 		-run '^(TestMooUnitViewCorpus|TestMooUnitViewPacketStorage|TestMooEmptyDocIsOneDefinition)$$'
 
 # THE NEGATIVE CONTROLS (§8.7: a gate that cannot go red proves nothing): an
@@ -19,7 +19,7 @@ tables-moo-view: toolchain-moo
 # a wire id, each in a copy of the generated text, and each must turn the
 # listing red on the line it owns.
 tables-moo-view-negative-controls: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/mootable/ -run '^TestMooUnitViewNegativeControl$$' -v
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s ./internal/codegen/mootable/ -run '^TestMooUnitViewNegativeControl$$' -v
 	@echo "moo view negative controls: five sabotages, each red on its own line"
 
 test-moo: tables-moo-view tables-moo-view-negative-controls

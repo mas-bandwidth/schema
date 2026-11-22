@@ -574,10 +574,10 @@ tables-cs-view: bin/schema
 		$(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll > build/view-cs/$$pkg.listing; \
 		if [ "$$pkg" = tabledemo ]; then $(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll unflattened > build/view-cs/unflattened.listing; fi \
 	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
-	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/view-cs/negative
 	@cp build/view-cs/unflattened.listing build/view-cs/negative/tabledemo.listing
-	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-cs/negative.log 2>&1; then echo "C# UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GOTESTRUN) ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-cs/negative.log 2>&1; then echo "C# UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
@@ -813,17 +813,17 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # reference's EXACT four since (csVersionRow.widened).
 .PHONY: tables-cs-versioning
 tables-cs-versioning: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-cs-fixed-t13
 tables-cs-fixed-t13:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
 	@echo 'tables C# fixed-t13: cs/F12 a second layout for a held hash is refused layout_malformed'
 
 .PHONY: tables-cs-fixed-t18
 tables-cs-fixed-t18:
-	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
+	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
@@ -855,7 +855,7 @@ test-cs: tables-cs-json-differential tables-cs-json-differential-negative-contro
 
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
 	@echo 'tables C# fixed-roadmap: t12 plan selection, closure, retirement, retired runtime and widening'
 
 # THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
@@ -871,7 +871,7 @@ tables-cs-fixed-roadmap:
 # a missing runtime is a failure. Verbose output retains every native verdict.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's cs-fuzz
@@ -909,9 +909,9 @@ tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 # same artifact and requires the check red.
 .PHONY: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
 tables-cs-wire-fuzz-repeated-id:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
 tables-cs-wire-fuzz-repeated-id-negative-control:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
 
 # EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
@@ -923,9 +923,9 @@ test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negativ
 # check out of the same artifact and requires the check red.
 .PHONY: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 tables-cs-wire-fuzz-dead-bytes:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
 tables-cs-wire-fuzz-dead-bytes-negative-control:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(GOTESTRUN) ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness

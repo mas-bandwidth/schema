@@ -14,18 +14,18 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-evolution
 python-ci-vt-evolution: python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
 
 python-vt-evolution-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControl$$' ./internal/codegen/pythontable/
 
 python-vt-evolution-defaults-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlDefaults$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlDefaults$$' ./internal/codegen/pythontable/
 
 python-vt-evolution-renames-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlRenames$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlRenames$$' ./internal/codegen/pythontable/
 
 python-vt-evolution-skip-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlSkipCheck$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlSkipCheck$$' ./internal/codegen/pythontable/
 
 .PHONY: python-vt-evolution-public-renames-negative-control
 python-ci-vt-evolution: python-vt-evolution-public-renames-negative-control
 python-vt-evolution-public-renames-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonEvolutionRenameNegativeControls$$' ./compiler/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonEvolutionRenameNegativeControls$$' ./compiler/

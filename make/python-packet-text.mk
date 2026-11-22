@@ -12,7 +12,7 @@
 PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-text
 python-ci-packet-text: deps-go packet-utf8-python python-packet-text-negative-control packet-utf8-python-negative-control
 python-packet-text-negative-control: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketTextNegativeControl ./internal/codegen/python/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketTextNegativeControl ./internal/codegen/python/
 
 # packet-utf8-python: the shared packet-text sweep (test/packet-text/README.md)
 # against the C++ oracle: the 33 corpus rows and every bit flip of every

@@ -9,7 +9,7 @@ $(CARDS_PYTHON_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/car
 	@touch $@
 
 cards-python-test:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonCards' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonCards' ./internal/codegen/pythontable/
 
 cards-python-conformance: toolchain-python build/conformance-harness cards-python-generate
 	PYTHON=$(PYTHON) ./build/conformance-harness cards --work build/cards-python-current --corpus tables/cards/conformance --driver 'tables/cards/python/driver' --require $(CARDS_PYTHON_SURFACES)
@@ -40,6 +40,6 @@ test-python: cards-python-test cards-python-conformance cards-python-render-nega
 
 .PHONY: cards-python-facade-negative-control
 cards-python-facade-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonCardsFacadeNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonCardsFacadeNegativeControl$$' ./internal/codegen/pythontable/
 python-ci-cards: cards-python-facade-negative-control
 test-python: cards-python-facade-negative-control

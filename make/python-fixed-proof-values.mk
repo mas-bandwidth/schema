@@ -9,10 +9,10 @@ PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_FIXED_VALUE_TARGETS) $(PYTHON_FIXED_VALUE_E
 test-python: $(PYTHON_FIXED_VALUE_TARGETS) $(PYTHON_FIXED_VALUE_EXTRA)
 python-fixed-proof-values: $(PYTHON_FIXED_VALUE_TARGETS) $(PYTHON_FIXED_VALUE_EXTRA)
 python-fixed-proof-values-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonFixedProofValues(NegativeControl|ReadRules|FloatBounds)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -tags schema_leg_python -run '^TestPythonFixedProofValues(NegativeControl|ReadRules|FloatBounds)$$' ./internal/codegen/pythontable/
 $(PYTHON_FIXED_VALUE_TARGETS): dist-python
-	SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValues(Types|NegativeControl)?$$/^$(@:python-fixed-proof-value-%=%)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValues(Types|NegativeControl)?$$/^$(@:python-fixed-proof-value-%=%)$$' ./internal/codegen/pythontable/
 python-fixed-proof-value-read-rules: dist-python
-	SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValuesReadRules$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValuesReadRules$$' ./internal/codegen/pythontable/
 python-fixed-proof-value-float-bounds: dist-python
-	SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValuesFloatBounds$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofValuesFloatBounds$$' ./internal/codegen/pythontable/

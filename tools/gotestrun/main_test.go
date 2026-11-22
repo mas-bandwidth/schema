@@ -65,7 +65,7 @@ func TestReadPassesTextThrough(t *testing.T) {
 }
 
 func TestRunRefusesNoArgumentsAndForeignFlags(t *testing.T) {
-	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-v", "./x"}, {"-list", "X", "./x"}} {
+	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-list", "X", "./x"}} {
 		var out, errb bytes.Buffer
 		if code := run(args, &out, &errb); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)

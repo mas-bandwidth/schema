@@ -43,19 +43,19 @@ $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed 
 tables-python-wire-fuzz: $(PYTHON_WIRE_FUZZ_ROWS)
 
 tables-python-wire-fuzz-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/pythontable/
 
 tables-python-wire-fuzz-retain-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzRetainNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzRetainNegativeControl$$' ./internal/codegen/pythontable/
 
 python-wirefuzz-partition-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzCIPartitionNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzCIPartitionNegativeControl$$' ./internal/codegen/pythontable/
 
 python-wirefuzz-retain-loss-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzRetainLoss$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzRetainLoss$$' ./internal/codegen/pythontable/
 
 python-array-widen-negative-control:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonArrayWideningNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 $(GOTESTRUN) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonArrayWideningNegativeControl$$' ./internal/codegen/pythontable/
 test-python: $(PYTHON_WIRE_FUZZ_CI_ROWS) tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-wirefuzz-retain-loss-negative-control python-wirefuzz-partition-negative-control python-array-widen-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-array-widen-negative-control $(PYTHON_WIRE_FUZZ_CI_ROWS) tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-wirefuzz-retain-loss-negative-control python-wirefuzz-partition-negative-control
 
