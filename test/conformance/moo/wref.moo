@@ -116,7 +116,7 @@ return function(ctx: any): { [string]: Surface }
 		elseif what == "int" then
 			local num = tonumber(text) :: number
 			holder[key] = if d.cls == "fx" then num / 65536 else num
-		elseif what == "float" then
+		elseif what == "float" or what == "real" then
 			if d.f32 then
 				if text == "nan" then holder[key] = 0x7fc00000
 				elseif text == "inf" then holder[key] = 0x7f800000
@@ -145,8 +145,18 @@ return function(ctx: any): { [string]: Surface }
 			local arr = holder[key]
 			if owner[fd.slot .. "Count"] ~= nil then
 				owner[fd.slot .. "Count"] = n
-				for i = #arr + 1, n do
-					arr[i] = deepCopy(arr[1])
+				if type(arr) == "buffer" then
+					-- a byte-sized element array is one buffer: the count says how
+					-- much of it is live, and it grows (zero filled) to hold n
+					if buffer.len(arr) < n then
+						local grown = buffer.create(n)
+						buffer.copy(grown, 0, arr, 0, buffer.len(arr))
+						holder[key] = grown
+					end
+				else
+					for i = #arr + 1, n do
+						arr[i] = deepCopy(arr[1])
+					end
 				end
 			else
 				for i = #arr + 1, n do
