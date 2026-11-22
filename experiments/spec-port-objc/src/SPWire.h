@@ -16,6 +16,8 @@ uint32_t SPCrc32c(const uint8_t *p, NSUInteger n);
 
 NSData *SPSaveVariable(SPTableVal *root);
 SPTableVal *SPLoadVariable(NSData *wire, SPDecl *root, SPUnit *unit);
+// the form-1 reader at any root, a declared fixed one included (SPEC-GAP 11)
+SPTableVal *SPLoadForm1(NSData *wire, SPDecl *root, SPUnit *unit);
 
 // write-contract checks shared with the text writer (SPEC §5.1)
 void SPCheckScalar(id v, SPType *t, NSString *where);

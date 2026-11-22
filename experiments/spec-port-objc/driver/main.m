@@ -97,6 +97,12 @@ static NSArray<NSNumber *> *lineageOf(NSString *unitKey, NSString *root) {
 }
 
 static SPTableVal *loadAny(NSData *wire, SPDecl *d, SPUnit *u) {
+    // SPEC-GAP 11: SPEC-TABLES "The three wires" refuses form 1 at a declared
+    // fixed root (`previous_form`), but fifteen framing rows at the fixed root
+    // tblr1 Cfg hand a form-1 file and owe `read` and a form-3 write-back.
+    // Following the corpus: a fixed root reads a form-1 file by the form-1
+    // reader, and writes form 3.
+    if (d.fixed && wire.length && ((const uint8_t *)wire.bytes)[0] == 1) return SPLoadForm1(wire, d, u);
     if (d.fixed) return SPLoadFixed(wire, d, [NSSet setWithArray:lineageOf(gUnitKey, d.name)]);
     return SPLoadVariable(wire, d, u);
 }

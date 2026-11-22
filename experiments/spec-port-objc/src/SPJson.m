@@ -588,6 +588,7 @@ static NSString *keyText(NSData *k) { return [[NSString alloc] initWithData:k en
 @interface JReader : NSObject
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, JLabel *> *labels;
 @property (nonatomic) NSInteger unknown;
+@property (nonatomic) BOOL skipLabels; // SPEC-GAP 12: a fixed root's read
 @end
 
 @implementation JReader
@@ -616,9 +617,9 @@ static NSString *keyText(NSData *k) { return [[NSString alloc] initWithData:k en
     if (v.kind != JObj) return;
     for (NSUInteger k = 0; k < v.keys.count; k++) {
         [self nameCap:v.keys[k]];
-        if (k > 0 && isNodeKey(v.keys[k])) JMAL(@"&node after a field");
+        if (k > 0 && isNodeKey(v.keys[k]) && !self.skipLabels) JMAL(@"&node after a field");
     }
-    if (v.keys.count && isNodeKey(v.keys[0])) {
+    if (v.keys.count && isNodeKey(v.keys[0]) && !self.skipLabels) {
         uint64_t L = [self label:v.items[0]];
         JLabel *lb = self.labels[@(L)];
         if (lb) {
@@ -913,6 +914,12 @@ SPTableVal *SPFromJson(NSData *text, SPDecl *root, SPUnit *unit) {
     JNode *doc = [JParser parse:text];
     JReader *r = [JReader new];
     r.labels = [NSMutableDictionary dictionary];
+    // SPEC-GAP 12: §16.7 holds every `&node` inside a skipped value to the
+    // label rules, but the corpus row reserved-ampersand-in-skipped-value
+    // (`{ "mystery": { "&node": 1 } }` at the FIXED root RootConfig) owes
+    // `read`. Following the corpus: a fixed root's read, whose closure holds
+    // no pointer to name, does not police labels inside a value it skips.
+    r.skipLabels = root.fixed;
     if (doc.kind == JObj)
         for (NSData *k in doc.keys) if (isAmpKey(k)) JMAL(@"& key at the root");
     if (!root.jsonArray && doc.kind != JObj) SPRefuse(@"kind_mismatch: the root is not an object");

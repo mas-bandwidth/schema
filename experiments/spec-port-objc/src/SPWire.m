@@ -1180,13 +1180,17 @@ NSData *SPSaveVariable(SPTableVal *root) {
 @end
 
 SPTableVal *SPLoadVariable(NSData *wire, SPDecl *root, SPUnit *unit) {
+    if (root.fixed && wire.length && ((const uint8_t *)wire.bytes)[0] == 1) SPRefuse(@"previous_form: form 1 at a declared fixed root");
+    return SPLoadForm1(wire, root, unit);
+}
+
+SPTableVal *SPLoadForm1(NSData *wire, SPDecl *root, SPUnit *unit) {
     const uint8_t *p = wire.bytes;
     NSUInteger n = wire.length;
     if (n == 0) DAMAGE(@"a buffer of no bytes");
     if (p[0] == 2) SPRefuse(@"message_form_as_file");
     if (p[0] == 3) SPRefuse(root.fixed ? @"fixed_form_not_carried" : @"wrong_form: a fixed-form file at a variable root");
     if (p[0] != 1) SPRefuse(@"newer_form");
-    if (root.fixed) SPRefuse(@"previous_form: form 1 at a declared fixed root");
     if (root.integrity) {
         if (n < 5) DAMAGE(@"no room for the integrity trailer");
         uint32_t want = (uint32_t)p[n - 4] | (uint32_t)p[n - 3] << 8 | (uint32_t)p[n - 2] << 16 | (uint32_t)p[n - 1] << 24;
