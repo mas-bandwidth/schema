@@ -26,6 +26,7 @@ import (
 	"listdemo"
 	"messagedemo"
 	"scalardemo"
+	tblsurf "surfaces"
 	"tabledemo"
 	"tbla1"
 	"tbla2"
@@ -263,4 +264,16 @@ func init() {
 	bind("vocab9demo", "Wide19", func(c codec) codec {
 		return fixedForm(c, vocab9demo.Wide19FixedLoad, vocab9demo.Wide19FixedMeasure, vocab9demo.Wide19FixedSave)
 	})
+	bind("tblsurf", "Narrow", func(c codec) codec {
+		return fixedForm(c, tblsurf.NarrowFixedLoad, tblsurf.NarrowFixedMeasure, tblsurf.NarrowFixedSave)
+	})
+	bind("tblsurf", "Wide", func(c codec) codec {
+		return fixedForm(c, tblsurf.WideFixedLoad, tblsurf.WideFixedMeasure, tblsurf.WideFixedSave)
+	})
+	bind("tblsurf", "Arrays", func(c codec) codec {
+		return fixedForm(c, tblsurf.ArraysFixedLoad, tblsurf.ArraysFixedMeasure, tblsurf.ArraysFixedSave)
+	})
+	// Big is past the fixed form's 65536-byte record ceiling: no file form
+	// (its rows start from the fresh value), only the message form (SF-05)
+	bind("tblsurf", "Big", noFileForm)
 }

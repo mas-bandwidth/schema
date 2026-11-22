@@ -45,6 +45,8 @@ import (
 	"tblp3"
 	"tblv1"
 	"tblv2"
+
+	tblsurf "surfaces"
 )
 
 // each unit's TableReport is its OWN type, so each gets a narrowing of four
@@ -68,6 +70,10 @@ func snapP1(r *tblp1.TableReport) report {
 
 func snapP3(r *tblp3.TableReport) report {
 	return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+}
+
+func snapSurf(r *tblsurf.TableReport) report {
+	return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused(), err: r.Err()}
 }
 
 var codecTable = []codec{
@@ -899,10 +905,80 @@ var codecTable = []codec{
 		tblp1.ChainFromJSON, tblp1.ChainToJSONMeasure, tblp1.ChainToJSON, tblp1.ChainCookMeasure, tblp1.ChainCookFrom, snapP1),
 	row("tblp3", "Chain", tblp3.ChainReset, tblp3.ChainLoad, tblp3.ChainMeasure, tblp3.ChainSave,
 		tblp3.ChainFromJSON, tblp3.ChainToJSONMeasure, tblp3.ChainToJSON, tblp3.ChainCookMeasure, tblp3.ChainCookFrom, snapP3),
+	// THE 2026-11-22 SURFACES' UNIT (test/tables/surfaces): its variable roots
+	// are region rows, its fixed roots value rows (Big has no file form, fixed.go)
+	regionRow("tblsurf", "Link", tblsurf.LinkLoadMeasure, tblsurf.LinkLoad, tblsurf.LinkMeasure, tblsurf.LinkSave, func(text []byte, r *tblsurf.TableReport) (*tblsurf.Link, []byte, bool) {
+		var b tblsurf.LinkBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblsurf.LinkFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblsurf.LinkToJSONMeasure, tblsurf.LinkToJSON, tblsurf.LinkCookMeasure, tblsurf.LinkCookFrom, snapSurf),
+	regionRow("tblsurf", "Chain", tblsurf.ChainLoadMeasure, tblsurf.ChainLoad, tblsurf.ChainMeasure, tblsurf.ChainSave, func(text []byte, r *tblsurf.TableReport) (*tblsurf.Chain, []byte, bool) {
+		var b tblsurf.ChainBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblsurf.ChainFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblsurf.ChainToJSONMeasure, tblsurf.ChainToJSON, tblsurf.ChainCookMeasure, tblsurf.ChainCookFrom, snapSurf),
+	regionRow("tblsurf", "Leaf", tblsurf.LeafLoadMeasure, tblsurf.LeafLoad, tblsurf.LeafMeasure, tblsurf.LeafSave, func(text []byte, r *tblsurf.TableReport) (*tblsurf.Leaf, []byte, bool) {
+		var b tblsurf.LeafBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblsurf.LeafFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblsurf.LeafToJSONMeasure, tblsurf.LeafToJSON, tblsurf.LeafCookMeasure, tblsurf.LeafCookFrom, snapSurf),
+	regionRow("tblsurf", "Holder", tblsurf.HolderLoadMeasure, tblsurf.HolderLoad, tblsurf.HolderMeasure, tblsurf.HolderSave, func(text []byte, r *tblsurf.TableReport) (*tblsurf.Holder, []byte, bool) {
+		var b tblsurf.HolderBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblsurf.HolderFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblsurf.HolderToJSONMeasure, tblsurf.HolderToJSON, tblsurf.HolderCookMeasure, tblsurf.HolderCookFrom, snapSurf),
+	regionRow("tblsurf", "Counted", tblsurf.CountedLoadMeasure, tblsurf.CountedLoad, tblsurf.CountedMeasure, tblsurf.CountedSave, func(text []byte, r *tblsurf.TableReport) (*tblsurf.Counted, []byte, bool) {
+		var b tblsurf.CountedBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblsurf.CountedFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblsurf.CountedToJSONMeasure, tblsurf.CountedToJSON, tblsurf.CountedCookMeasure, tblsurf.CountedCookFrom, snapSurf),
+	row("tblsurf", "Narrow", tblsurf.NarrowReset, tblsurf.NarrowLoad, tblsurf.NarrowMeasure, tblsurf.NarrowSave,
+		tblsurf.NarrowFromJSON, tblsurf.NarrowToJSONMeasure, tblsurf.NarrowToJSON, tblsurf.NarrowCookMeasure, tblsurf.NarrowCookFrom, snapSurf),
+	row("tblsurf", "Wide", tblsurf.WideReset, tblsurf.WideLoad, tblsurf.WideMeasure, tblsurf.WideSave,
+		tblsurf.WideFromJSON, tblsurf.WideToJSONMeasure, tblsurf.WideToJSON, tblsurf.WideCookMeasure, tblsurf.WideCookFrom, snapSurf),
+	row("tblsurf", "Arrays", tblsurf.ArraysReset, tblsurf.ArraysLoad, tblsurf.ArraysMeasure, tblsurf.ArraysSave,
+		tblsurf.ArraysFromJSON, tblsurf.ArraysToJSONMeasure, tblsurf.ArraysToJSON, tblsurf.ArraysCookMeasure, tblsurf.ArraysCookFrom, snapSurf),
+	row("tblsurf", "Big", tblsurf.BigReset, tblsurf.BigLoad, tblsurf.BigMeasure, tblsurf.BigSave,
+		tblsurf.BigFromJSON, tblsurf.BigToJSONMeasure, tblsurf.BigToJSON, tblsurf.BigCookMeasure, tblsurf.BigCookFrom, snapSurf),
 }
 
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "message", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
+	return []string{"wire", "message", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
 }
