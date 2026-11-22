@@ -36,7 +36,11 @@ func TestGuardCondsComposeTheBranchTreeRust(t *testing.T) {
 		}
 	}
 	// and the oracle reads the same tree the same way
-	for name, terms := range tabletext.Guards(u.Tables["T"]) {
+	oracleGuards := tabletext.Guards(u.Tables["T"])
+	if len(oracleGuards) != len(want) {
+		t.Errorf("tabletext.Guards = %v, want %d guarded fields", oracleGuards, len(want))
+	}
+	for name, terms := range oracleGuards {
 		parts := make([]string, len(terms))
 		for i, term := range terms {
 			parts[i] = "v." + term.Field
@@ -134,6 +138,9 @@ fn main() {
 	}
 	bin := rustcBuild(t, dir)
 
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		inst := m.New(m.Lookup("Guarded"))
 		var rep tabletext.Report

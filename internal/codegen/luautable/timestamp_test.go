@@ -296,6 +296,9 @@ func TestLuauTimestampBinaryForms(t *testing.T) {
 			}
 		}
 	}
+	if len(wants) == 0 {
+		t.Fatal("wants is empty: the loop below would check nothing")
+	}
 	for k, want := range wants {
 		got, ok := gots[k]
 		if !ok {

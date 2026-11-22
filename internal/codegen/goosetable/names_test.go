@@ -156,7 +156,11 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 // module that declared into another namespace would leave the claim's reach.
 func TestGooseNamesScanSeesTheRuntime(t *testing.T) {
 	t.Parallel()
-	for file, data := range goosetable.Runtime() {
+	allRuntime := goosetable.Runtime()
+	if len(allRuntime) == 0 {
+		t.Fatal("goosetable.Runtime() is empty: the loop below would check nothing")
+	}
+	for file, data := range allRuntime {
 		if !strings.HasSuffix(file, ".goose") {
 			continue
 		}

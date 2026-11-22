@@ -885,7 +885,11 @@ func TestPythonFixedProofEvolutionStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python strict analyzer")
 	selected := map[string]bool{"retirement": true, "retired-runtime": true, "field-evolution": true, "plan-execution": true, "interoperability": true, "file-envelope": true}
-	for _, tc := range fixedproof.Cases() {
+	allCases := fixedproof.Cases()
+	if len(allCases) == 0 {
+		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCases {
 		if !selected[tc.ID] {
 			continue
 		}

@@ -79,7 +79,11 @@ for order in (1,2):
 		planted[path] = []byte(strings.Replace(body, anchor, "for position, item in enumerate(current):\n                if item is None or position == 0:", 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
-		for name, runner := range cookPins() {
+		allCookPins := cookPins()
+		if len(allCookPins) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name, runner := range allCookPins {
 			got := strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))
 			if got == baseline[name] {
 				t.Errorf("%s: lost pointer slot was not detected", name)

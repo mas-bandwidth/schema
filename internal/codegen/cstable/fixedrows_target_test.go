@@ -35,7 +35,11 @@ func TestCsFixedRowsTargetCoversEveryRoadmapTest(t *testing.T) {
 	if run == nil {
 		t.Fatalf("tables-cs-fixed-rows recipe has no -run pattern")
 	}
-	for _, name := range csRoadmapTestNames(t, root) {
+	allCsRoadmapTestNames := csRoadmapTestNames(t, root)
+	if len(allCsRoadmapTestNames) == 0 {
+		t.Fatal("csRoadmapTestNames(t, root) is empty: the loop below would check nothing")
+	}
+	for _, name := range allCsRoadmapTestNames {
 		if !run.MatchString(name) {
 			t.Errorf("-run pattern %q does not match roadmap test %s", run.String(), name)
 		}

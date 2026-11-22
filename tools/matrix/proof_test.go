@@ -323,7 +323,11 @@ func TestProofReportsAPortInProgressAndGatesTheRest(t *testing.T) {
 	if c := mustCell(t, p, "surface wire", "aa"); c.Status != StatusRed {
 		t.Errorf("surface wire / aa = %+v: a port at parity was not gated", c)
 	}
-	for _, r := range p.Red() {
+	allRed := p.Red()
+	if len(allRed) == 0 {
+		t.Fatal("p.Red() is empty: the loop below would check nothing")
+	}
+	for _, r := range allRed {
 		if r.Lang == "bb" {
 			t.Errorf("an in-progress cell is red: %+v", r)
 		}

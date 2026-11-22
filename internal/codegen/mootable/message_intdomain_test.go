@@ -281,7 +281,11 @@ func TestMooMessageIntegerHoldsTheReadersKind(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g, u, fields := intDomainUnit(t)
-	for _, c := range intDomainCases() {
+	allIntDomainCases := intDomainCases()
+	if len(allIntDomainCases) == 0 {
+		t.Fatal("intDomainCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allIntDomainCases {
 		ann, msg := intDomainWire(t, u, fields, c.ends)
 		got := intDomainRun(t, g, ann, msg)
 		want := "refuse"

@@ -47,18 +47,24 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		"Position":      true,
 	}
 	mt := reflect.TypeFor[Manifest]()
+	manifestFields, rowFields := 0, 0
 	for sf := range mt.Fields() {
+		manifestFields++
 		if retiredFields[sf.Name] {
 			t.Errorf("Manifest still carries retired field %s", sf.Name)
 		}
 		if sf.Type.Kind() == reflect.Slice && sf.Type.Elem().Kind() == reflect.Struct {
 			et := sf.Type.Elem()
 			for ef := range et.Fields() {
+				rowFields++
 				if retiredFields[ef.Name] {
 					t.Errorf("Manifest row type %s still carries retired field %s", et.Name(), ef.Name)
 				}
 			}
 		}
+	}
+	if manifestFields == 0 || rowFields == 0 {
+		t.Fatalf("checked %d Manifest fields and %d row-type fields: a row type that stopped being a slice of structs would escape the retired-field check", manifestFields, rowFields)
 	}
 	for _, s := range surfaces {
 		if s == "cook-reason" || s == "block-reason" || s == "strict-reason" {
@@ -298,6 +304,9 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".json") && !framingValues[e.Name()] {
 			t.Errorf("framing value %s is referenced by no read row", filepath.Join(framingDir, e.Name()))
@@ -331,6 +340,9 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		entries, err := os.ReadDir(filepath.Join(root, hostileDir))
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
 		}
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".value.json") && !hostileValues[e.Name()] {

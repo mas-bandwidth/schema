@@ -3052,10 +3052,10 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putU64(v.frameTick);
   }
   assert(!v.serverTime.isFinite || (v.serverTime >= 0.0 && v.serverTime <= 65535.0));
-  if (_f32Bits(v.serverTime) != 0) {
+  if (_f32Bits((v.serverTime == 0 ? 0.0 : v.serverTime)) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
-    w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
+    w.putU32(_f32Write((v.serverTime == 0 ? 0.0 : v.serverTime), 'TableMixed.server_time'));
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
   if (v.entities.isNotEmpty) {
@@ -3137,22 +3137,22 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putBytes(s.buf);
   }
   assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
-  if (_f32Bits(v.aimX) != 0) {
+  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
+    w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'TableMixed.aim_x'));
   }
   assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
-  if (_f32Bits(v.aimY) != 0) {
+  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
+    w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'TableMixed.aim_y'));
   }
   assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
-  if (_f32Bits(v.aimZ) != 0) {
+  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimZ, 'TableMixed.aim_z'));
+    w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'TableMixed.aim_z'));
   }
   if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
@@ -3176,10 +3176,10 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putU64(v.flux);
   }
   assert(!v.ping.isFinite || (v.ping >= 0.0 && v.ping <= 250.0));
-  if (_f32Bits(v.ping) != 0) {
+  if (_f32Bits((v.ping == 0 ? 0.0 : v.ping)) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
-    w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
+    w.putU32(_f32Write((v.ping == 0 ? 0.0 : v.ping), 'TableMixed.ping'));
   }
   assert(v.crcHint >= 0 && v.crcHint <= 16777215);
   if (v.crcHint != 0) {
@@ -7621,7 +7621,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("server_time"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.serverTime, true));
+  out.raw(_jsonFloat((v.serverTime == 0 ? 0.0 : v.serverTime), true));
   if (comma) out.raw(',');
   comma = true;
   if (v.entities.length < 1 || v.entities.length > 8) { throw StateError('invalid_value: field entities out of range'); }
@@ -7707,21 +7707,21 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimX, true));
+  out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
   if (!(v.aimY >= -1 && v.aimY <= 1)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimY, true));
+  out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
   if (!(v.aimZ >= -1 && v.aimZ <= 1)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimZ, true));
+  out.raw(_jsonFloat((v.aimZ == 0 ? 0.0 : v.aimZ), true));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7753,7 +7753,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("ping"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.ping, true));
+  out.raw(_jsonFloat((v.ping == 0 ? 0.0 : v.ping), true));
   if (comma) out.raw(',');
   comma = true;
   if (!((v.crcHint & ~16777215) == 0)) { throw StateError('invalid_value: field crc_hint out of range'); }

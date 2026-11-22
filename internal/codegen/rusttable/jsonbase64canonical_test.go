@@ -119,6 +119,9 @@ func TestRustJsonBase64Canonical(t *testing.T) {
 		}
 		groups[r.schema] = append(groups[r.schema], r)
 	}
+	if len(order) == 0 {
+		t.Fatal("order is empty: the loop below would check nothing")
+	}
 	for _, schema := range order {
 		u := generateUnit(t, repo, []string{schema})
 		var body strings.Builder
@@ -147,13 +150,13 @@ func TestRustJsonBase64Canonical(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: the generated reader did not run: %v\n%s", schema, err, out)
 		}
+		if !strings.Contains(out, "PROBE DONE") {
+			t.Fatalf("%s: the probe did not finish:\n%s", schema, out)
+		}
 		for line := range strings.SplitSeq(out, "\n") {
 			if strings.HasPrefix(line, "MISMATCH ") {
 				t.Errorf("%s", line)
 			}
-		}
-		if !strings.Contains(out, "PROBE DONE") {
-			t.Fatalf("%s: the probe did not finish:\n%s", schema, out)
 		}
 	}
 }

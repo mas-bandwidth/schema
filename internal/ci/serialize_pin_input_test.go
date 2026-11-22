@@ -83,12 +83,15 @@ func TestConformanceCompilersRebuildOnTheirRuntime(t *testing.T) {
 	}
 	cmd := exec.Command("make", "-pq", "--no-print-directory", "build/schema-python", "build/schema-ruby")
 	cmd.Dir = root
-	out, _ := cmd.Output() // -q exits 1 when a target is out of date; the database is printed either way
+	out := makeQueryOutput(t, cmd) // -q exits 1 when a target is out of date; the database is printed either way
 	prereqs := makeDatabasePrereqs(string(out), targets)
 	for _, e := range runtimeInputErrors(prereqs, files) {
 		t.Error(e)
 	}
 	// the control: SERIALIZE_PIN dropped from each rule must be named
+	if len(targets) == 0 {
+		t.Fatal("targets is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		pin := conformanceCompilerRuntimes[target][0] + "/SERIALIZE_PIN"
 		planted := map[string][]string{}

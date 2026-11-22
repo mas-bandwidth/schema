@@ -123,6 +123,17 @@ fixed table Root
 }
 `
 
+// mustEncodeMessage is EncodeMessage for a value the test placed itself: a
+// save that fails leaves nothing to splice.
+func mustEncodeMessage(t *testing.T, m *tabletext.Model, inst *tabletext.Instance) []byte {
+	t.Helper()
+	data, err := EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatalf("EncodeMessage: %v", err)
+	}
+	return data
+}
+
 // TestMessageRefusesRepeatedFieldId holds docs/SPEC-TABLES.md §3.3: a field id
 // twice in one message body (the first body's fields, then a second body's,
 // under one terminator) is damage, and the batch refuses wire_damaged.
@@ -131,10 +142,12 @@ func TestMessageRefusesRepeatedFieldId(t *testing.T) {
 	root := m.Lookup("Root")
 	var voc Vocabulary
 	var ann tabletext.Report
-	voc.AnnounceRead(Announce(m.Unit), &ann)
+	if err := voc.AnnounceRead(Announce(m.Unit), &ann); err != nil {
+		t.Fatalf("the reader's own announcement was refused: %v %+v", err, ann)
+	}
 	for _, pair := range [][2]string{{`{"bi":5}`, `{"bi":300}`}, {`{"f64":1.5}`, `{"f64":-2}`}, {`{"flag":true}`, `{"flag":true}`}, {`{"opt":"1"}`, `{"opt":"2"}`}} {
-		x, _ := EncodeMessage(m, covPlace(t, m, "Root", pair[0]))
-		y, _ := EncodeMessage(m, covPlace(t, m, "Root", pair[1]))
+		x := mustEncodeMessage(t, m, covPlace(t, m, "Root", pair[0]))
+		y := mustEncodeMessage(t, m, covPlace(t, m, "Root", pair[1]))
 		ex := messageBodyEnd(t, m, &voc, x)
 		ey := messageBodyEnd(t, m, &voc, y)
 		rb := voc.RefBits()
@@ -159,9 +172,12 @@ func TestMessageRefusesRepeatedFieldId(t *testing.T) {
 	// id-twice check is what refuses it.
 	writer := covModel(t, messageRepeatWriterUnit)
 	var wvoc Vocabulary
-	wvoc.AnnounceRead(Announce(writer.Unit), &ann)
-	x, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"zzz":5}`))
-	y, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"zzz":6}`))
+	var wann tabletext.Report
+	if err := wvoc.AnnounceRead(Announce(writer.Unit), &wann); err != nil {
+		t.Fatalf("the writer's announcement was refused: %v %+v", err, wann)
+	}
+	x := mustEncodeMessage(t, writer, covPlace(t, writer, "Root", `{"zzz":5}`))
+	y := mustEncodeMessage(t, writer, covPlace(t, writer, "Root", `{"zzz":6}`))
 	ex := messageBodyEnd(t, writer, &wvoc, x)
 	ey := messageBodyEnd(t, writer, &wvoc, y)
 	rb := wvoc.RefBits()
@@ -195,8 +211,10 @@ func TestMessageRefusesRepeatedKeyedSlot(t *testing.T) {
 	}
 	var voc Vocabulary
 	var ann tabletext.Report
-	voc.AnnounceRead(Announce(writer.Unit), &ann)
-	data, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"by":{"Run":1,"Fly":2}}`))
+	if err := voc.AnnounceRead(Announce(writer.Unit), &ann); err != nil {
+		t.Fatalf("the writer's announcement was refused: %v %+v", err, ann)
+	}
+	data := mustEncodeMessage(t, writer, covPlace(t, writer, "Root", `{"by":{"Run":1,"Fly":2}}`))
 	v := voc
 	if ok, err := DecodeMessage(m, m.New(root), data, &v, &tabletext.Report{}); !ok {
 		t.Fatalf("the clean batch was refused: %v", err)

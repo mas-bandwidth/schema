@@ -40,7 +40,11 @@ type Holder
 func TestPacketValueDefaultsCarriers(t *testing.T) {
 	u := unitFromSource(t, packetValueDefaultsUnit)
 	c := New()
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if target == "cpp" || target == "cs" || target == "go" || target == "c" || target == "rust" || target == "java" || target == "js" || target == "dart" || target == "elixir" || target == "goose" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" || target == "ruby" || target == "squirrel" || target == "unity" {

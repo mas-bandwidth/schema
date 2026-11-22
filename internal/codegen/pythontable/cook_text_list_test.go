@@ -105,7 +105,11 @@ else: raise AssertionError("unordered text map was accepted")
 		planted[path] = []byte(strings.Replace(body, anchor, `buf[start + 8 : start + 8 + len(raw)] = bytes(len(raw)) if raw == b"long text" else raw`, 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
-		for name, runner := range cookPins() {
+		allCookPins := cookPins()
+		if len(allCookPins) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name, runner := range allCookPins {
 			got := strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(strings.Split(probe, "\nnative =")[0])})))
 			if got == baseline[name] {
 				t.Errorf("%s: damaged text payload was not detected", name)
