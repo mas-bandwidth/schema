@@ -87,6 +87,7 @@ schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
 schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
 	@status=0; \
 	for profile in $(RUST_HOSTILE_PROFILES); do \
+		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv || status=1; \
 		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
 	done; \
 	exit $$status

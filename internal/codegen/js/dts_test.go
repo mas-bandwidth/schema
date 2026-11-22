@@ -102,8 +102,8 @@ func TestDeclarationsMatchTheModules(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"  id: number;", "  big: bigint;", "  team: Team;", "  caps: bigint;", "  name: Uint8Array;",
-		"  nameLength: number;", "  grid: Uint8Array;", "  marks: number[];", "  marksCount: number;",
+		"  id: number;", "  big: bigint;", "  team: Team;", "  caps: bigint;", "  name: globalThis.Uint8Array;",
+		"  nameLength: number;", "  grid: globalThis.Uint8Array;", "  marks: number[];", "  marksCount: number;",
 		"  type: PickType;", "  leaf: Leaf;", "  rows: Leaf[];",
 		"export type Team = (typeof Team)[keyof typeof Team];",
 		"export declare const TeamMax: 2;",
@@ -117,8 +117,8 @@ func TestDeclarationsMatchTheModules(t *testing.T) {
 	flat := string(out["ProbeFlat.d.ts"])
 	for _, want := range []string{
 		`import type { Empty, Leaf, Pick, Root } from "./Probe.js";`,
-		"export declare function ReadRootFlat(view: DataView, numBits: number, value: Root): boolean;",
-		"export declare function WritePickFlat(view: DataView, value: Pick): number;",
+		"export declare function ReadRootFlat(view: globalThis.DataView, numBits: number, value: Root): boolean;",
+		"export declare function WritePickFlat(view: globalThis.DataView, value: Pick): number;",
 	} {
 		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(flat) {
 			t.Errorf("ProbeFlat.d.ts lacks %q", want)

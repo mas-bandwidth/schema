@@ -7,7 +7,7 @@
 
 // ABSENCE HAS A SPELLING (§8.1): one shared empty doc, one shared empty tag list.
 export const TableDocNone = "";
-export const TableTagsNone = Object.freeze([]);
+export const TableTagsNone = globalThis.Object.freeze([]);
 
 // THE REGISTRY (§8.3), built once. Every descriptor is a local of this
 // closure, so no declaration's name is a binding of this module.
@@ -157,22 +157,22 @@ export const TableUnitView = (() => {
   unions["MixedEvent"].variants.push({ value: 1, name: "hit", id: 0x33732819300680aan, payloadName: "MixedHitEvent", payload: types["MixedHitEvent"], field: null, doc: TableDocNone, tags: TableTagsNone });
   unions["MixedEvent"].variants.push({ value: 2, name: "chat", id: 0xf2a38d910b5b348bn, payloadName: "MixedChatEvent", payload: types["MixedChatEvent"], field: null, doc: TableDocNone, tags: TableTagsNone });
   unions["MixedEvent"].variants.push({ value: 3, name: "pickup", id: 0x9fa3a41c86ecb765n, payloadName: "MixedPickupEvent", payload: types["MixedPickupEvent"], field: null, doc: TableDocNone, tags: TableTagsNone });
-  for (const t of Object.values(types)) { for (const f of t.fields) { Object.freeze(f); } Object.freeze(t.fields); Object.freeze(t); }
+  for (const t of globalThis.Object.values(types)) { for (const f of t.fields) { globalThis.Object.freeze(f); } globalThis.Object.freeze(t.fields); globalThis.Object.freeze(t); }
   const constants = [
   ];
-  const row = (t) => Object.freeze({ name: t.name, file: t.file, type: t, doc: t.doc, tags: t.tags });
-  for (const set of [enums, flags, unions]) { for (const r of Object.values(set)) { for (const x of r.variants) { Object.freeze(x); } Object.freeze(r.variants); Object.freeze(r); } }
-  return Object.freeze({
+  const row = (t) => globalThis.Object.freeze({ name: t.name, file: t.file, type: t, doc: t.doc, tags: t.tags });
+  for (const set of [enums, flags, unions]) { for (const r of globalThis.Object.values(set)) { for (const x of r.variants) { globalThis.Object.freeze(x); } globalThis.Object.freeze(r.variants); globalThis.Object.freeze(r); } }
+  return globalThis.Object.freeze({
     package: "bench",
     protocolId: 0xc52a41defad6ebb0n,
-    constants: Object.freeze(constants.map((c) => Object.freeze(c))),
-    enums: Object.freeze([enums["MixedWeapon"]]),
-    flags: Object.freeze([flags["MixedDamage"]]),
-    unions: Object.freeze([unions["MixedEvent"]]),
-    types: Object.freeze([types["BenchBits"], types["BenchInts"], types["BenchMixed"], types["BenchPacket"], types["MixedChatEvent"], types["MixedEntity"], types["MixedHitEvent"], types["MixedPickupEvent"], types["MixedStat"]].map(row)),
-    tables: Object.freeze([types["FixedTable"]].map(row)),
+    constants: globalThis.Object.freeze(constants.map((c) => globalThis.Object.freeze(c))),
+    enums: globalThis.Object.freeze([enums["MixedWeapon"]]),
+    flags: globalThis.Object.freeze([flags["MixedDamage"]]),
+    unions: globalThis.Object.freeze([unions["MixedEvent"]]),
+    types: globalThis.Object.freeze([types["BenchBits"], types["BenchInts"], types["BenchMixed"], types["BenchPacket"], types["MixedChatEvent"], types["MixedEntity"], types["MixedHitEvent"], types["MixedPickupEvent"], types["MixedStat"]].map(row)),
+    tables: globalThis.Object.freeze([types["FixedTable"]].map(row)),
     // every descriptor by declaration name, the map entry tables included
-    descriptors: Object.freeze(types),
+    descriptors: globalThis.Object.freeze(types),
   });
 })();
 
