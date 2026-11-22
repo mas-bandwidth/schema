@@ -98,7 +98,7 @@ static NSArray<NSNumber *> *lineageOf(NSString *unitKey, NSString *root) {
 
 static BOOL gFramingReadsForm1;
 static SPTableVal *loadAny(NSData *wire, SPDecl *d, SPUnit *u) {
-    // SPEC-GAP 11: SPEC-TABLES "The three wires" refuses form 1 at a declared
+    // SPEC-GAP 8: SPEC-TABLES "The three wires" refuses form 1 at a declared
     // fixed root (`previous_form`), and the report rows previous_form_* owe
     // exactly that; but fifteen FRAMING rows at the same fixed root (tblr1
     // Cfg) hand a form-1 file and owe `read` and a form-3 write-back

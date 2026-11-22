@@ -22,6 +22,9 @@ static NSUInteger structC(SPDecl *d) {
     return s;
 }
 
+// SPEC-GAP 10: §3's C table gives a union `tag width + max(C(arm))` and never
+// says how the tag width is chosen; the enum's rule (note a: the top ordinal,
+// here the arm count, at 1/2/4/8 bytes) is used, and every lock hash matches.
 static NSUInteger unionTagW(SPDecl *d) { return (NSUInteger)ordinalWidth(d.fields.count); }
 
 static NSUInteger unionWidest(SPDecl *d) {
@@ -443,7 +446,7 @@ static id readValue(const uint8_t *b, SPType *t, id def, NSString *where) {
     case SPKEnum: {
         sp_u128 k = load(b, w);
         if (k > t.decl.variants.count) SPRefuse(@"out_of_range: %@ an ordinal past the enum", where);
-        // SPEC-GAP 9: a deprecated variant on the fixed form; the form-1 rule
+        // SPEC-GAP 7: a deprecated variant on the fixed form; the form-1 rule
         // (it reads as the field's declared default) is applied here too
         if (k && t.decl.variants[(NSUInteger)k - 1].deprecated) return def ? SPCopyValue(def) : [SPInt u:0];
         return [SPInt u:k];
@@ -526,7 +529,7 @@ SPTableVal *SPLoadFixed(NSData *file, SPDecl *root, NSSet<NSNumber *> *lineage) 
     if (rb <= 8 || rest % rb) SPRefuse(@"truncated: the records do not fill the file");
     NSUInteger count = rest / rb;
     if (count == 0) SPRefuse(@"truncated: a fixed-form file holds at least one record");
-    // SPEC-GAP 10: a single-root Load is a caller of capacity one, so a batch
+    // SPEC-GAP 6: a single-root Load is a caller of capacity one, so a batch
     // of two refuses batch_too_large
     if (count > 1) SPRefuse(@"batch_too_large");
     const uint8_t *rec = p + 20 + L;

@@ -588,7 +588,7 @@ static NSString *keyText(NSData *k) { return [[NSString alloc] initWithData:k en
 @interface JReader : NSObject
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, JLabel *> *labels;
 @property (nonatomic) NSInteger unknown;
-@property (nonatomic) BOOL skipLabels; // SPEC-GAP 12: a fixed root's read
+@property (nonatomic) BOOL skipLabels; // SPEC-GAP 9: a fixed root's read
 @end
 
 @implementation JReader
@@ -612,6 +612,11 @@ static NSString *keyText(NSData *k) { return [[NSString alloc] initWithData:k en
 }
 
 // A value this build does not place, read for its labels at every depth (§16.7).
+// SPEC-GAP 4: the 255-byte name cap reaches "every object and inside a skipped
+// value", but a skipped value has no schema to say which keys are names and
+// which are map keys (which the cap never reaches); every key is capped here.
+// SPEC-GAP 5: an `&`-prefixed key other than `&node` inside a skipped value
+// is not named by §16.7's rules; it is let through here.
 - (void)skip:(JNode *)v {
     if (v.kind == JArr) { for (JNode *x in v.items) [self skip:x]; return; }
     if (v.kind != JObj) return;
@@ -914,7 +919,7 @@ SPTableVal *SPFromJson(NSData *text, SPDecl *root, SPUnit *unit) {
     JNode *doc = [JParser parse:text];
     JReader *r = [JReader new];
     r.labels = [NSMutableDictionary dictionary];
-    // SPEC-GAP 12: §16.7 holds every `&node` inside a skipped value to the
+    // SPEC-GAP 9: §16.7 holds every `&node` inside a skipped value to the
     // label rules, but the corpus row reserved-ampersand-in-skipped-value
     // (`{ "mystery": { "&node": 1 } }` at the FIXED root RootConfig) owes
     // `read`. Following the corpus: a fixed root's read, whose closure holds
