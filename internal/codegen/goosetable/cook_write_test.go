@@ -497,6 +497,18 @@ fn main() {
     }
     if !changed { write_stdout("bad no union slot\n"); exit(1); }
     verdict("union", probe::RootCookMeasure(data, vals3, nodes3, root3), probe::RootCook(data, vals3, nodes3, root3, out, false), out);
+
+    // SF-29: a counted array whose live length is past its declared bound
+    // is refused, never clamped to the bound and written. Root.other is
+    // [..2]Value, field 6 of the root record.
+    var vals4: schema_rt::LoadVal[>..] = [];
+    var nodes4: schema_rt::LoadNode[>..] = [];
+    let root4 = load(data, vals4, nodes4);
+    let slot = vals4[root4].first + 6;
+    if vals4[slot].shape != schema_rt::ShapeArr || vals4[slot].len != 2 || slot + 3 > vals4.len { write_stdout("bad counted slot\n"); exit(1); }
+    vals4[slot].len = 3;
+    vals4[slot].count = 3;
+    verdict("count", probe::RootCookMeasure(data, vals4, nodes4, root4), probe::RootCook(data, vals4, nodes4, root4, out, false), out);
 }
 `
 
@@ -553,7 +565,7 @@ func TestGooseCookRegionWriterBoundsCallerIndices(t *testing.T) {
 	slowtest.Gate(t, "goose")
 	t.Parallel()
 	out, ok := cookBounds(t, nil)
-	if want := "pointer refused\ntable refused\nunion refused\n"; !ok || out != want {
+	if want := "pointer refused\ntable refused\nunion refused\ncount refused\n"; !ok || out != want {
 		t.Fatalf("the bounds program answered %q (ran to its end: %t), want %q", out, ok, want)
 	}
 }
@@ -609,6 +621,14 @@ func TestGooseCookRegionWriterNegativeControl(t *testing.T) {
 		out, ok := cookBounds(t, cookSabotage(t, "    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { c.refused = true; return 0; }\n", ""))
 		if ok && strings.Contains(out, "pointer refused") {
 			t.Fatalf("without the pointer bound the writer still refused: %q", out)
+		}
+	})
+	t.Run("count-bound", func(t *testing.T) {
+		t.Parallel()
+		// SF-29: the old code clamped the counted length to the bound and wrote it
+		out, ok := cookBounds(t, cookSabotage(t, "    if d.array == ArrayCounted && n > d.bound { c.refused = true; n = d.bound; }\n", "    if d.array == ArrayCounted && n > d.bound { n = d.bound; }\n"))
+		if ok && strings.Contains(out, "count refused") {
+			t.Fatalf("with the count clamp back the writer still refused: %q", out)
 		}
 	})
 	t.Run("table-bound", func(t *testing.T) {

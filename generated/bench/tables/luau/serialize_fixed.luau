@@ -5,14 +5,13 @@
 -- the stored integer the real value scaled by 2^fraction_bits, min and max
 -- whole-unit bounds. The encoding is an offset encoding over the RAW (scaled)
 -- bounds, byte identical to serializeInt64 / serializeInt128 of the raw value
--- over the raw bounds (STANDARD.md fixed; serialize.go fixedPointParams64/128
--- and SerializeFixed64/128, v2.0.0).
+-- over the raw bounds (STANDARD.md fixed; mas-bandwidth/serialize (C++)
+-- fixedPointParams64/128 and SerializeFixed64/128, v2.1.4).
 --
--- This card lands without serialize_bits / serialize_int / serialize_int128
--- (they are not yet on the base branch), so the helpers this family needs —
--- bitsRequired64 and the Uint128 pair arithmetic — are implemented here,
--- inline, rather than required from those modules. The behavior is identical
--- to the design's dependency structure; the bytes are the serialize.go bytes.
+-- The helpers this family needs — bitsRequired64 and the Uint128 pair
+-- arithmetic — come from serialize_bits and serialize_int128, so the design's
+-- dependency structure has one implementation of each; the bytes are the
+-- reference's bytes.
 --
 -- Copyright © 2016 - 2026, Más Bandwidth LLC. BSD 3-Clause (see LICENSE).
 
@@ -37,84 +36,19 @@ local RAISE_PARAMS = "serialize: fixed point requires integer bits >= 1, fractio
 local RAISE_BOUNDS = "serialize: fixed point bounds in whole units do not fit the Q format"
 
 -- ---------------------------------------------------------------------------
--- The Uint128 pair and the integer helpers this family needs (DESIGN.md (c);
--- serialize.go int128.go): { lo, hi } of integer bit patterns, two's
--- complement halves, unsigned 128-bit semantics, wrapping modulo 2^128.
+-- The shared helpers (DESIGN.md (c)): bitsRequired64 from serialize_bits, and
+-- the Uint128 pair arithmetic from serialize_int128, whose { lo, hi } of
+-- integer bit patterns are the two's-complement halves with unsigned 128-bit
+-- wrapping semantics (serialize.go int128.go).
+local Bits = require("./serialize_bits")
+local Int128 = require("./serialize_int128")
+local Uint128: any = Int128.Uint128
+local bitsRequired64 = Bits.bitsRequired64
+
 type U128 = { lo: integer, hi: integer }
 
 local MIN_INT64 = integer.lshift(1i, 63i)
 local MAX_INT64 = 0x7fffffffffffffffi
-
--- bitLen64 is the bit length of an unsigned 64-bit pattern: floor(log2(v))+1,
--- and zero for zero (serialize.go bits.Len64).
-local function bitLen64(v: integer): number
-	local n = 0
-	while v ~= 0i do
-		v = integer.rshift(v, 1i)
-		n += 1
-	end
-	return n
-end
-
--- bitsRequired64 is the bit count of the range [min,max] in the unsigned
--- 64-bit domain: zero when min == max, else the bit length of max - min
--- (STANDARD.md int64; serialize.go BitsRequired64).
-local function bitsRequired64(min: integer, max: integer): number
-	if min == max then
-		return 0
-	end
-	return bitLen64(integer.sub(max, min))
-end
-
--- from64 turns an int64 bit pattern into the unsigned 128-bit pair, sign
--- extending (serialize.go Int128From64).
-local function from64(x: integer): U128
-	return { lo = x, hi = if integer.lt(x, 0i) then -1i else 0i }
-end
-
--- lshU shifts an unsigned 128-bit pair left by n bits, wrapping (serialize.go
--- Uint128.Lsh).
-local function lshU(u: U128, n: number): U128
-	if n == 0 then
-		return u
-	end
-	if n < 64 then
-		local lo = integer.lshift(u.lo, integer.create(n))
-		local hi = integer.bor(integer.lshift(u.hi, integer.create(n)), integer.rshift(u.lo, integer.create(64 - n)))
-		return { lo = lo, hi = hi }
-	end
-	if n < 128 then
-		return { lo = 0i, hi = integer.lshift(u.lo, integer.create(n - 64)) }
-	end
-	return { lo = 0i, hi = 0i }
-end
-
--- subU subtracts two unsigned 128-bit pairs, wrapping (serialize.go Uint128.Sub).
-local function subU(x: U128, y: U128): U128
-	local lo = integer.sub(x.lo, y.lo)
-	local borrow = if integer.ult(x.lo, y.lo) then 1i else 0i
-	local hi = integer.sub(integer.sub(x.hi, y.hi), borrow)
-	return { lo = lo, hi = hi }
-end
-
--- addU adds two unsigned 128-bit pairs, wrapping (serialize.go Uint128.Add).
-local function addU(x: U128, y: U128): U128
-	local lo = integer.add(x.lo, y.lo)
-	local carry = if integer.ult(lo, x.lo) then 1i else 0i
-	local hi = integer.add(integer.add(x.hi, y.hi), carry)
-	return { lo = lo, hi = hi }
-end
-
--- cmpU compares two unsigned 128-bit pairs, -1/0/+1 (serialize.go Uint128.Cmp).
-local function cmpU(x: U128, y: U128): number
-	if x.hi ~= y.hi then
-		return if integer.ult(x.hi, y.hi) then -1 else 1
-	end
-	if x.lo ~= y.lo then
-		return if integer.ult(x.lo, y.lo) then -1 else 1
-	end
-	return 0
-end
 
 -- ---------------------------------------------------------------------------
 -- The capacity check (serialize.go fixedPointCapacity): the whole-unit bounds
@@ -183,9 +117,9 @@ end
 -- whole-unit range's bit length plus fractionBits. The arm has applied misuse
 -- first.
 local function params128(integerBits: number, fractionBits: number, min: integer, max: integer): (U128, U128, number)
-	local rawMin = lshU(from64(min), fractionBits)
-	local rawMax = lshU(from64(max), fractionBits)
-	local rawRange = subU(rawMax, rawMin)
+	local rawMin = Uint128.lsh(Uint128.from64(min), fractionBits)
+	local rawMax = Uint128.lsh(Uint128.from64(max), fractionBits)
+	local rawRange = Uint128.sub(rawMax, rawMin)
 	local numBits
 	if min == max then
 		numBits = 0
@@ -279,8 +213,8 @@ local function writeFixed128(self: any, h: { value: U128 }, integerBits: number,
 	if self:_latched() then
 		return false
 	end
-	local offset = subU({ lo = h.value.lo, hi = h.value.hi }, rawMin)
-	if cmpU(offset, rawRange) > 0 then
+	local offset = Uint128.sub({ lo = h.value.lo, hi = h.value.hi }, rawMin)
+	if Uint128.cmp(offset, rawRange) > 0 then
 		return self:_misuse(RAISE_RANGE)
 	end
 	if self:_available() < numBits then
@@ -320,10 +254,10 @@ local function readFixed128(self: any, h: { value: U128 }, integerBits: number, 
 		end
 	end
 	local offset = { lo = lo, hi = hi }
-	if cmpU(offset, rawRange) > 0 then
+	if Uint128.cmp(offset, rawRange) > 0 then
 		return self:_fail(VALUE_OUT_OF_RANGE)
 	end
-	local v = addU(rawMin, offset)
+	local v = Uint128.add(rawMin, offset)
 	h.value = { lo = v.lo, hi = v.hi }
 	return true
 end
@@ -337,8 +271,8 @@ local function measureFixed128(self: any, h: { value: U128 }, integerBits: numbe
 	if self:_latched() then
 		return false
 	end
-	local offset = subU({ lo = h.value.lo, hi = h.value.hi }, rawMin)
-	if cmpU(offset, rawRange) > 0 then
+	local offset = Uint128.sub({ lo = h.value.lo, hi = h.value.hi }, rawMin)
+	if Uint128.cmp(offset, rawRange) > 0 then
 		return self:_misuse(RAISE_RANGE)
 	end
 	return self:_measure(numBits)

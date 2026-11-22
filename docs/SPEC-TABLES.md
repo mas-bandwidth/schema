@@ -4629,6 +4629,11 @@ a map, whose VALUES) are enum values. It does NOT cover a keyed `[Enum]T`:
 a deprecated variant's slot does not apply there. A text-list spelling
 (`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
 
+**The text form is a form.** The hand-editable text (§16.9) and the JSON text
+read a deprecated variant by its name the same way every other form reads its
+id: the fields declared default, an array or map elements default, and never
+the variant itself.
+
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
 deprecated field is never refused because its value is the writer's own
@@ -6143,6 +6148,13 @@ byte, no byte length and no alignment inside a message or between messages.
 **FORM BYTE `2` IS THE MESSAGE FORM, and form byte `1` does not move.** A
 form-`1` wire is the three parts §3 describes and every rule above holds over it
 unchanged. Nothing in this subsection touches a file.
+
+**A VALUE IS HELD TO ITS OWN DECLARATION.** Two declarations that share a
+field name and kind may share one announced entry, and an entry carries the
+looser of their spans. The writer still holds a value to the rule of the
+declaration it is written under (the table, the struct or the union that
+owns the field), never to the looser rule of a same-named field elsewhere:
+`A.hp = 6` is refused on `A.hp` being `0..5` whatever `B.hp` admits.
 
 **THE FORM IS A FIXED TABLE'S, and that is a declaration, not a derivation**
 (§2.2). A message is a bitpacked body under a vocabulary announced once, so the
@@ -12560,6 +12572,14 @@ every clause above by construction.
     documentation goes red with the code rather than a release later.
 
 ### 7.6 The write side: `Cook` and `CookMeasure`
+
+**A COOK NEVER CLAMPS AND NEVER LETS A NON-FINITE FLOAT THROUGH.** The write
+contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
+count lies below its array's `Min` or above its bound, or whose length is
+negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
+never clamped to the bound and written. A NaN or an infinity in a plain float
+is refused (row 7), as the save refuses it. A leg whose measure and write
+share one body refuses in both.
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -19055,6 +19075,14 @@ question; the C# side is a reflection question; and the form is what falls
 out when both are asked of one table.
 
 ### 19.1 The builder
+
+**EVERY REFUSAL OF THE BUILDER IS A NAMED REFUSAL, IN EVERY BUILD.** A count
+past an array's maximum, a text or bytes used length outside its field's
+`[0, N]` and a NaN or an infinity in a float make the builder fail by name
+(`Begin` returns false; a leg without a boolean answers its empty value and
+names the field). A refusal held only by a build-removable assert is not one:
+with the assert compiled away the writer would write past the field into the
+next one.
 
 **One extent, 64-byte aligned at its base**, laid out in this order:
 

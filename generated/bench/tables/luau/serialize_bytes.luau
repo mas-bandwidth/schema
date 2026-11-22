@@ -2,15 +2,15 @@
 -- serialize_bytes.luau — bytes and string (DESIGN.md (g) and (h);
 -- STANDARD.md, Bytes and Strings, Reader Obligations, The vector format).
 --
--- Wire compatible with serialize.go v2.0.0: the same values produce the same
--- bytes, every refusal STANDARD.md and serialize.go state is made, a refusal
--- writes nothing (the whole operation's width is checked before any bit
--- moves), reads never go past the data's end and hostile bytes never raise.
+-- Wire compatible with mas-bandwidth/serialize (C++) v2.1.4: the same values
+-- produce the same bytes, every refusal STANDARD.md and the reference state is
+-- made, a refusal writes nothing (the whole operation's width is checked
+-- before any bit moves), reads never go past the data's end and hostile bytes
+-- never raise.
 --
--- The stream's bit I/O is reached through Luau's buffer bit operations
--- (buffer.readbits/writebits, little-endian and LSB-first, the format's own
--- order) because this card's base has no serialize_bitpacker.luau. The
--- arms use only the buffer the stream already holds and its bit accounting.
+-- The stream's bit I/O is reached through its own bit primitives, so the
+-- stream's scratch word and a later family's writes stay coherent (DESIGN.md
+-- (b); STANDARD.md General Conventions).
 --
 -- Copyright © 2016 - 2026, Más Bandwidth LLC. BSD 3-Clause (see LICENSE).
 
@@ -33,14 +33,6 @@ local RAISE_TEXT: { [string]: string } = {
 }
 
 local M: { [string]: any } = {}
-
--- serialize_bitpacker.luau may not be on this card's base yet. When it is,
--- the stream's own bit primitives are used so the stream's scratch word and a
--- later family's writes stay coherent; while it is absent, the same bits go
--- through the buffer's own LSB-first bit operations.
-local hasBitpacker = pcall(function()
-	return Stream.family("bitpacker")
-end)
 
 -- bitsRequired is (min == max) ? 0 : 32 - clz(max - min) over the unsigned
 -- domain; the callers here pass [0, bufferSize - 1] (STANDARD.md int (ranged)).
@@ -77,24 +69,14 @@ local function writeBitsRaw(s: any, value: number, bits: number)
 	if bits == 0 then
 		return
 	end
-	if hasBitpacker then
-		s:_writeBits(value, bits)
-	else
-		buffer.writebits(s._data, s._bits, bits, value)
-		s._bits += bits
-	end
+	s:_writeBits(value, bits)
 end
 
 local function readBitsRaw(s: any, bits: number): number
 	if bits == 0 then
 		return 0
 	end
-	if hasBitpacker then
-		return s:_readBits(bits)
-	end
-	local value = buffer.readbits(s._data, s._bits, bits)
-	s._bits += bits
-	return value
+	return s:_readBits(bits)
 end
 
 -- readAlign is the stream's own align (STANDARD.md align): bytes and string
@@ -244,6 +226,11 @@ local RAISE_BYTES_DATA = "serialize: serializeBytes data must be a buffer"
 local RAISE_BYTES_RANGE = "serialize: serializeBytes offset and count must be integers inside the buffer"
 
 local function bytesRange(data: any, offset: any, count: any): (number?, number?, string?)
+	if data == nil and count == 0 and (offset == nil or offset == 0) then
+		-- no destination and a zero count is not misuse on any stream: the
+		-- operation aligns and copies nothing (IMPLEMENTING.md U7)
+		return 0, 0, nil
+	end
 	if type(data) ~= "buffer" then
 		return nil, nil, RAISE_BYTES_DATA
 	end
@@ -276,14 +263,7 @@ function M.writeBytes(s: any, data: any, offset: any, count: any): boolean
 		return s:_misuse(RAISE_ROOM)
 	end
 	writeBitsRaw(s, 0, align)
-	if n > 0 then
-		if hasBitpacker then
-			s:_writeBytes(data, off, n)
-		else
-			buffer.copy(s._data, s._bits // 8, data, off, n)
-			s._bits += n * 8
-		end
-	end
+	s:_writeBytes(data, off, n)
 	return true
 end
 
@@ -302,12 +282,7 @@ function M.readBytes(s: any, data: any, offset: any, count: any): boolean
 		return s:_fail(PastEnd)
 	end
 	if n > 0 then
-		if hasBitpacker then
-			s:_readBytes(data, off, n)
-		else
-			buffer.copy(data, off, s._data, s._bits // 8, n)
-			s._bits += n * 8
-		end
+		s:_readBytes(data, off, n)
 	end
 	return true
 end
@@ -364,14 +339,7 @@ function M.writeString(s: any, holder: any, bufferSize: any): boolean
 	end
 	writeLength(s, length, maxLength)
 	writeBitsRaw(s, 0, align)
-	if length > 0 then
-		if hasBitpacker then
-			s:_writeBytes(buffer.fromstring(value), 0, length)
-		else
-			buffer.writestring(s._data, s._bits // 8, value)
-			s._bits += length * 8
-		end
-	end
+	s:_writeBytes(buffer.fromstring(value), 0, length)
 	return true
 end
 
@@ -399,16 +367,17 @@ function M.readString(s: any, holder: any, bufferSize: any): boolean
 		return s:_fail(PastEnd)
 	end
 	local value: string
-	if hasBitpacker then
-		local payload = buffer.create(length)
-		if length > 0 then
-			s:_readBytes(payload, 0, length)
+	if length > 0 then
+		local packer = s._packer
+		if packer == nil then
+			packer = Stream.family("bitpacker").BitReader.new(s._data)
+			s._packer = packer
 		end
-		value = buffer.tostring(payload)
+		value = packer:readString(length)
 	else
-		value = buffer.readstring(s._data, s._bits // 8, length)
-		s._bits += length * 8
+		value = buffer.readstring(s._data, s._bits // 8, 0)
 	end
+	s._bits += length * 8
 	local refusal = textRefusal(value)
 	if refusal ~= nil then
 		return s:_fail(refusal)

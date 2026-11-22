@@ -3,12 +3,12 @@
 -- STANDARD.md, Integers: int (ranged) and int64 (ranged)).
 --
 -- The stream dispatches serializeInt and serializeInt64 here; each arm does
--- the whole operation in serialize.go v2.0.0's order: misuse first (a min
--- greater than max), then on write and measure a value outside [min,max] and
--- a write that does not fit the room left trap (IMPLEMENTING.md U9, U6: write
--- misuse never latches), and on read an offset past the span refuses
--- ValueOutOfRange; the offset moves in the operation's unsigned domain so a
--- span wider than 2^31 (or 2^63) is exact (STANDARD.md, int (ranged)).
+-- the whole operation in mas-bandwidth/serialize (C++) v2.1.4's order: misuse
+-- first (a min greater than max), then on write and measure a value outside
+-- [min,max] and a write that does not fit the room left trap (IMPLEMENTING.md
+-- U9, U6: write misuse never latches), and on read an offset past the span
+-- refuses ValueOutOfRange; the offset moves in the operation's unsigned domain
+-- so a span wider than 2^31 (or 2^63) is exact (STANDARD.md, int (ranged)).
 --
 -- A degenerate range min == max costs zero bits and takes its value from the
 -- range (STANDARD.md, int (ranged)). The bitsRequired functions live here as
