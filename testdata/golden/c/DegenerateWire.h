@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_DEGENERATEWIRE_H
-#define SCHEMA_EXAMPLE_DEGENERATEWIRE_H
+#ifndef SCHEMA_EXAMPLE_Degenerate_wire_h
+#define SCHEMA_EXAMPLE_Degenerate_wire_h
 
 #include "Degenerate.h"
 #include "serialize.h"
@@ -808,4 +808,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_straddle( serial
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_DEGENERATEWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Degenerate_wire_h */

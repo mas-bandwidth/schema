@@ -11,8 +11,10 @@ mod fixedtable; // no items — documentation only
 
 // a schema name both layers declare: the packet type keeps the root name,
 // the table type is crate::tables::<Name> (docs/SPEC-TABLES.md, Rust notes)
+pub use bench::BenchMixed;
 pub use bench::MixedChatEvent;
 pub use bench::MixedEntity;
+pub use bench::MixedEvent;
 pub use bench::MixedHitEvent;
 pub use bench::MixedPickupEvent;
 pub use bench::MixedStat;
@@ -54,10 +56,16 @@ mod fixed_runtime;
 pub use fixed_runtime::*;
 mod fixedtable_fixed;
 pub use fixedtable_fixed::*;
+mod fixedtable_fixed_values;
 mod fixedtable_message;
 pub use fixedtable_message::*;
 mod fixedtable_records;
 pub use fixedtable_records::*;
+mod fixedtable_table;
+pub use fixedtable_table::*;
+#[path = "fixedtable_variable.rs"]
+mod fixedtable_variable_constants;
+pub use fixedtable_variable_constants::*;
 mod message_runtime;
 pub use message_runtime::*;
 mod table_enums;
@@ -84,6 +92,8 @@ pub mod tables {
     pub use super::fixedtable_fixed::*;
     pub use super::fixedtable_message::*;
     pub use super::fixedtable_records::*;
+    pub use super::fixedtable_table::*;
+    pub use super::fixedtable_variable_constants::*;
     pub use super::message_runtime::*;
     pub use super::table_enums::*;
     pub use super::unit_view::*;
