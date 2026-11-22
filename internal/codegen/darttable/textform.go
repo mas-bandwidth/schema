@@ -897,6 +897,12 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as
+			// the element default (docs/SPEC-TABLES.md §2.13); never unknown.
+			g.pf("\t\tcase %s: return def ?? %s;\n", viewDartString(name), none)
+			continue
+		}
 		g.pf("\t\tcase %s: return %s;\n", viewDartString(name), g.enumConst(e, i+1))
 	}
 	g.pf("\t}\n\tr.unknown++;\n\treturn %s;\n}\n\n", none)
@@ -1198,6 +1204,10 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MINIMUM A REFUSES (docs/SPEC.md §4.2)
+			g.pf("\t\t\t\tif (v.%s.length < %d) { r.refuse('count_over_bound'); }\n", name, f.ArrayMin)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)
