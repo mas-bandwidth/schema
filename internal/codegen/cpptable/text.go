@@ -223,7 +223,20 @@ struct TableTextFormReader
             while ( i < n && ( s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r' ) ) { i++; }
             if ( i < n && s[i] == ';' )
             {
+                // A COMMENT HOLDS ONLY WELL-FORMED UTF-8 AND NO NUL OR BARE CR
+                // (docs/SPEC-TABLES.md §16.9.1): ill-formed bytes refuse
+                // text_encoding, a NUL or a CR that does not end the line
+                // text_syntax. The cursor stays on the semicolon, so nothing after it
+                // is read.
+                const int64_t start = i;
                 while ( i < n && s[i] != '\n' ) { i++; }
+                int64_t end = i;
+                if ( end < n && end > start && s[end - 1] == '\r' ) { end--; }
+                for ( int64_t k = start; k < end; k++ )
+                {
+                    if ( s[k] == '\0' || s[k] == '\r' ) { i = start; return fail( "text_syntax" ); }
+                }
+                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) ) { i = start; return fail( "text_encoding" ); }
                 continue;
             }
             return true;
@@ -1602,7 +1615,7 @@ inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTyp
     r.gap();
     TableTextFormNode root;
     if ( !r.value( root, 0 ) ) { return false; }
-    r.gap();
+    if ( !r.gap() ) { return false; }
     if ( r.i != r.n )
     {
         *why = "text_syntax";
