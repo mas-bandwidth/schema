@@ -437,13 +437,15 @@ tables-cs-byte-order-negative-control: bin/schema
 
 test-cs: tables-cs-byte-order
 
-# I4 (docs/PORTING.md) — PER-CASE ABSENT, C# side. The C# driver answers a case
+# I4 (docs/PORTING.md) — PER-CASE ANSWERS, C# side. The C# driver answers a case
 # it cannot answer with <case>.absent (test/conformance/cs/src/Program.cs:
-# SpillAbsent, and the wire surface's blob_shared rows), and the harness counts
-# it while the rest of the surface passes: `wire pass N/N +Ma`. The gate runs
-# the C# leg's table surfaces alone and requires that line. Its control builds
-# the driver from a copy whose per-case absent answers are removed and requires
-# the wire surface RED: a case with no answer at all is a failure, never a pass.
+# SpillAbsent), and a must-refuse row its runtime refuses (the wire surface's
+# blob_shared rows, the message surface's variable root) with <case> holding
+# `refused\n` (SpillRefused; ruling R13: an absence is never the refusal). The
+# gate runs the C# leg's table surfaces alone and requires no per-case absence.
+# Its control builds the driver from a copy whose per-case answers (both
+# helpers) write nothing and requires the wire surface RED: a case with no
+# answer at all is a failure, never a pass.
 CS_ABSENT := build/conformance-cs-absent
 .PHONY: conformance-cs-absent conformance-cs-absent-negative-control
 conformance-cs-absent: build-conformance-cs build/conformance-harness
@@ -458,9 +460,9 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 	@rm -rf $(CS_ABSENT)-nc && mkdir -p $(CS_ABSENT)-nc/proj
 	@cp -R test/conformance/cs/src test/conformance/cs/schemaconformance.csproj $(CS_ABSENT)-nc/proj/
 	@sed -e 's|File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte\[0\]);|/* SABOTAGED: no per-case answer */|' \
-	     -e 's|File.WriteAllText(Path.Combine(outDir, f\[1\] + ".absent"), "blob_shared");|/* SABOTAGED: no per-case answer */|' \
+	     -e 's|File.WriteAllText(Path.Combine(outDir, name), "refused\\n");|/* SABOTAGED: no per-case answer */|' \
 		test/conformance/cs/src/Program.cs > $(CS_ABSENT)-nc/proj/src/Program.cs
-	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 3 || \
+	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 2 || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch every absent write"; exit 1; }
 	@$(DOTNET) build $(CS_ABSENT)-nc/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/build/tables-generated-cs \
 		-p:CardsGeneratedDir=$(CURDIR)/build/tables-generated-cs/cards -o $(CS_ABSENT)-nc/checker > $(CS_ABSENT)-nc/build.log 2>&1 || \

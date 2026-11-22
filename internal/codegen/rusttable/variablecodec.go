@@ -2180,13 +2180,13 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
 		// It holds no pointer, so no edge is ever noted: wire_edges stays empty
 		// and the load allocates nothing (make/rust.mk tables-rust-alloc).
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
 		fmt.Fprintf(b, "    let declared: &[u64] = &[%s];\n", strings.Join(declared, ", "))
 		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, declared, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
-		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "        None => return None,\n")
 		fmt.Fprintf(b, "    };\n")
 	}
@@ -2264,6 +2264,10 @@ func (g *gen) emitVariableGraphPass(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
 	fmt.Fprintf(b, "    if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
+	fmt.Fprintf(b, "    // ONE BLOB NAMED FROM TWO SLOTS IS REFUSED BY NAME, blob_shared\n")
+	fmt.Fprintf(b, "    // (docs/SPEC-TABLES.md §2.5, §6.5): after the damage the bodies met and\n")
+	fmt.Fprintf(b, "    // before a cycle or an unreached record, in the oracle's order.\n")
+	fmt.Fprintf(b, "    if nodes.blob_twice && !report.damaged { report.refuse(TableReason::BlobShared); return None; }\n")
 	fmt.Fprintf(b, "    nodes.root_open = false;\n")
 	fmt.Fprintf(b, "    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); nodes.slots.len() + 1];\n")
 	fmt.Fprintf(b, "    v.__table_edges(&nodes, &mut edges[0]);\n")

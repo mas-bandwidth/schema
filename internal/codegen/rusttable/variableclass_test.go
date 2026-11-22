@@ -265,8 +265,9 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 			}
 			snake := ir.RustSnake(c.root)
 			if c.shared {
-				// THE SHARED BLOB (§2.5, §4): the read refuses the whole load
-				want = append(want, "SHARED "+c.name+" LOAD REFUSED")
+				// THE SHARED BLOB (§2.5, §4): the read refuses the whole load,
+				// BY NAME, blob_shared, as the oracle does — never as damage
+				want = append(want, "SHARED "+c.name+" LOAD REFUSED blob_shared")
 				fmt.Fprintf(&main, "    shared_case!(%q, %q, crate::%s::%s, %s_load, %s_save_checked, %d);\n",
 					c.name, wirePath, u.module, table, snake, snake, 1)
 				if c.refuseText {
@@ -522,7 +523,7 @@ macro_rules! shared_case {
         let wire = std::fs::read($wire).unwrap();
         let mut r = Default::default();
         match table::$load(&wire, &mut r) {
-            None => println!("SHARED {} LOAD REFUSED", $case),
+            None => println!("SHARED {} LOAD REFUSED {}", $case, if r.damaged { "malformed" } else { r.reason.name() }),
             Some(v) => match table::$save_checked(&v) {
                 Err(why) => println!("SHARED {} REFUSED {} expected {}", $case, why, $count),
                 Ok(b) => println!("SHARED {} WROTE {} bytes", $case, b.len()),

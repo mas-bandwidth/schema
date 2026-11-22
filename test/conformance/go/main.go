@@ -217,7 +217,7 @@ func surfaceWire(lines []line, out string) error {
 			// this row's answer (the corpus marks it wire-refused); any other
 			// refusal of a corpus instance is a failure.
 			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) {
-				if err := spillAbsentReason(out, f[1], rep.err.Error()); err != nil {
+				if err := spill(out, f[1], []byte("refused\n")); err != nil {
 					return err
 				}
 				continue
@@ -232,7 +232,7 @@ func surfaceWire(lines []line, out string) error {
 			if c.measureReason != nil {
 				_, reason := c.measureReason(value)
 				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
-					if err := spillAbsentReason(out, f[1], reason.Error()); err != nil {
+					if err := spill(out, f[1], []byte("refused\n")); err != nil {
 						return err
 					}
 					continue

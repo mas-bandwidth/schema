@@ -1267,6 +1267,14 @@ fn spill_absent(dir: &str, name: &str) {
     spill(dir, &format!("{name}.absent"), b"");
 }
 
+// a must-refuse row's answer when this leg's runtime refused it (a strict read
+// refusing a blob two slots name, §2.5) or carries no codec for it (a variable
+// root's message form, §3.3): `<case>` holding exactly `refused\n`, never an
+// absence (ruling R13)
+fn spill_refused(dir: &str, name: &str) {
+    spill(dir, name, b"refused\n");
+}
+
 fn no_text(f: &[String]) -> bool {
     f.len() > 5 && f[5] == "no-text"
 }
@@ -1650,6 +1658,8 @@ fn surface_wire(manifest: &Manifest, out: &str) {
             }
             continue;
         }
+        // set only when the strict READ refused by the reason blob_shared
+        let mut blob_shared = false;
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
             let mut report = Default::default();
             match load(&data, &mut report) {
@@ -1657,16 +1667,21 @@ fn surface_wire(manifest: &Manifest, out: &str) {
                 // blob two slots name, and nothing else, answers absent by name
                 Some(v) => save(&v),
                 // STRICT-ONLY: this leg's READ refuses a blob two slots name
-                // (§2.5) as damage, so the row answers ABSENT naming the
-                // refusal; the harness scores that as the wire refusal a
-                // `wire-refused` row owes, and as a missing case anywhere else
-                None => Err(format!(
-                    "load refused: {}",
-                    if report.damaged { "malformed" } else { report.reason.name() }
-                )),
+                // (§2.5); that refusal is the answer a `wire-refused` row owes,
+                // `<case>` holding `refused\n` (ruling R13). Any other refusal
+                // answers ABSENT naming it, which the harness holds against
+                // the row.
+                None => {
+                    blob_shared = !report.damaged && report.reason.name() == "blob_shared";
+                    Err(format!(
+                        "load refused: {}",
+                        if report.damaged { "malformed" } else { report.reason.name() }
+                    ))
+                }
             }
         });
         match answer {
+            Some(Err(_)) if blob_shared => spill_refused(out, &f[1]),
             Some(Ok(bytes)) => spill(out, &f[1], &bytes),
             Some(Err(why)) => spill(out, &format!("{}.absent", f[1]), why.as_bytes()),
             None => spill_absent(out, &f[1]),
@@ -2236,8 +2251,9 @@ fn surface_message(manifest: &Manifest, out: &str) {
         };
         if f[5] == "-" {
             // a named refusal row: the root is a variable table, and the
-            // message form is fixed tables only (docs/SPEC-TABLES.md §3.3)
-            spill(out, &format!("{}.absent", f[1]), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)".as_bytes());
+            // message form is fixed tables only (docs/SPEC-TABLES.md §3.3), so
+            // the row's answer is the refusal (ruling R13)
+            spill_refused(out, &f[1]);
             continue;
         }
         let ann = slurp(&c[4]);

@@ -542,20 +542,25 @@ conformance-negative-control-c: build/conformance-harness
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
 
-# I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
-# answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
-# blob_shared instance is a NAMED absence today, as every writer refuses a blob
-# two slots name. The sabotage makes the marker write nothing — a driver that
-# silently drops a case — in a copy of the driver, built against the tree's own
-# generated units, and the harness must go red naming the absence it expected.
+# I4 (docs/PORTING.md) — PER-CASE ANSWERS, the C driver's half. The C leg
+# answers a case it cannot write as `<case>.absent` (spill_absent_reason), and a
+# must-refuse row its runtime refuses — the blob_shared instances, which the
+# strict read refuses as a blob two slots name — as `<case>` holding `refused\n`
+# (spill_refused; ruling R13: an absence is never the refusal). The sabotage
+# makes both write nothing — a driver that silently drops a case — in a copy of
+# the driver, built against the tree's own generated units, and the harness
+# must go red naming the answer it expected.
 CONFORMANCE_NEGATIVE_C_ABSENT := build/conformance-negative-c-absent
 .PHONY: conformance-negative-control-c-absent
 conformance-negative-control-c-absent: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_ABSENT) && mkdir -p $(CONFORMANCE_NEGATIVE_C_ABSENT)
-	@sed 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
+	@sed -e 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
+	     -e 's|    return spill( dir, name, "refused\\n", 8 );|    (void) dir; (void) name; return 1; /* SABOTAGED: the refusal is dropped */|' \
 		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c
 	@grep -q "SABOTAGED: the absence is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@grep -q "SABOTAGED: the refusal is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c \
 		$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver-bin -lm
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_ABSENT)" > $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver

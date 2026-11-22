@@ -1471,9 +1471,12 @@ test-rust: conformance-negative-control-rust-walk
 # driver (its own target directory) from a copy whose every absence write
 # (spill_absent, the named refusals and the not-applicable rows, on the plain,
 # `.json` and `-be` names alike) drops its `.absent` suffix and so writes an
-# ANSWER where the marker belongs, and the leg must go red on the surfaces that
-# carry an absence. The count of writes is read off the driver, not written
-# here, so a new absence write is sabotaged with the rest.
+# ANSWER where the marker belongs, and whose spill_refused (a must-refuse row
+# the runtime refused: the blob_shared wires, the variable root's message;
+# ruling R13) writes an empty answer instead of `refused\n`; the leg must go
+# red on wire and message, where those rows sit. The count of absence writes
+# is read off the driver, not written here, so a new absence write is
+# sabotaged with the rest.
 RUST_ABSENT_CONTROL := build/rust-absent-control
 .PHONY: conformance-rust-absent conformance-rust-absent-negative-control
 conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
@@ -1488,12 +1491,15 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|\.absent"\([,)]\)|" /* SABOTAGED: an absence answered as an answer */\1|' \
+	     -e 's|^    spill(dir, name, b"refused\\n");$$|    spill(dir, name, b""); /* DROPPED: a refusal answered empty */|' \
 		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
 	@writes=$$(grep -c '\.absent"[,)]' test/conformance/rust/src/main.rs); \
 	[ "$$writes" -gt 0 ] && [ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = "$$writes" ] || \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach every absence write"; exit 1; }
 	@! grep -q '\.absent"[,)]' $(RUST_ABSENT_CONTROL)/driver/src/main.rs || \
 		{ echo "NEGATIVE CONTROL: an absence write survived the absent sabotage"; exit 1; }
+	@grep -q 'DROPPED: a refusal answered empty' $(RUST_ABSENT_CONTROL)/driver/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the refusal sabotage did not reach spill_refused"; exit 1; }
 	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
