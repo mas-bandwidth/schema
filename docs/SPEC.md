@@ -2397,6 +2397,12 @@ a caller can hold that the declaration does not admit:
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 | 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
 
+**A writer refuses in EVERY form it writes.** The binary save, the text
+(JSON) writer and the cook each hold rows 1-10 (a counted array below its `Min`
+included, in the text writer as much as in the binary save). A field that
+holds a value of the wrong kind (a list field holding a number) is refused,
+never written as an empty list or a default.
+
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its

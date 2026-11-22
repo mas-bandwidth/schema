@@ -1154,7 +1154,7 @@ defmodule Benchtable.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -1179,7 +1179,7 @@ defmodule Benchtable.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -1648,17 +1648,19 @@ defmodule Benchtable.TableMessage do
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
+  # owner is the name of the table or struct whose body is written (the bound
+  # root, then each nested record), the key of its own write rules
+  defp encode_bodies(_vocab, [], acc, _owner), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, rec) do
-    case encode_body(vocab, body, acc, rec) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
+  defp encode_bodies(vocab, [body | rest], acc, owner) do
+    case encode_body(vocab, body, acc, owner) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, owner)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, rec) do
-    case encode_fields(vocab, body, acc, rec, -1) do
+  defp encode_body(vocab, body, acc, owner) do
+    case encode_fields(vocab, body, acc, owner, -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -1670,16 +1672,16 @@ defmodule Benchtable.TableMessage do
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _owner, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, owner, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, entry, value, owner)
         check(not (entry.kind == 15 and value == :none))
 
         decl =
-          case write_decl(rec, entry, last, vocab) do
+          case write_decl(record(owner), entry, last, vocab) do
             {:ok, decl} -> decl
             _ -> throw(:invalid_value)
           end
@@ -1690,7 +1692,7 @@ defmodule Benchtable.TableMessage do
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, owner, next_last(decl, last))
 
           :error ->
             :error
@@ -1721,7 +1723,7 @@ defmodule Benchtable.TableMessage do
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, record(sub))
+    do: encode_body(vocab, value, acc, sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -1873,7 +1875,7 @@ defmodule Benchtable.TableMessage do
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, entry, value, sub)
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -1892,8 +1894,20 @@ defmodule Benchtable.TableMessage do
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  defp check_field(vocab, entry, value) do
-    case Map.get(write_rules(), {entry.id, entry.kind}) do
+  #
+  # A value is held to the rule of the declaration that owns it (the owner: a
+  # table or struct name, or {:union, name} for an arm), never to the looser
+  # rule a same-named field of another declaration shares its wire entry with.
+  # Only a field the owner declares no rule for falls back to the rule merged
+  # over every declaration of its {id, kind}.
+  defp check_field(vocab, entry, value, owner) do
+    rule =
+      case Map.fetch(owner_rules(), {owner, entry.id, entry.kind}) do
+        {:ok, rule} -> rule
+        :error -> Map.get(write_rules(), {entry.id, entry.kind})
+      end
+
+    case rule do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -1950,6 +1964,27 @@ defmodule Benchtable.TableMessage do
   end
 
   defp named?(_vocab, _ids, _ref), do: false
+
+  defp owner_rules do
+    case :persistent_term.get({__MODULE__, :owner_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(write_owner_rows(), %{}, fn {owner, id, kind, what, v}, acc ->
+            Map.update(
+              acc,
+              {owner, id, kind},
+              add_rule(%{}, what, v),
+              &add_rule(&1, what, v)
+            )
+          end)
+
+        :persistent_term.put({__MODULE__, :owner_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
 
   defp write_rules do
     case :persistent_term.get({__MODULE__, :write_rules}, nil) do
@@ -2869,6 +2904,99 @@ defmodule Benchtable.TableMessage do
       {0xFBF1AC4D96EBD022, 7, :max, 4095},
       {0xFD29EE12A979CB69, 4, :min, 0},
       {0xFD29EE12A979CB69, 4, :max, 255}
+    ]
+  end
+
+  # the same rules per DECLARING table, struct or {:union, name}, one {owner, id, kind, rule, value} row each: a value is held to its own declaration, never to the looser rule a same-named field of another declaration shares its wire entry with
+  defp write_owner_rows do
+    [
+      {"TableChatEvent", 0xA5013E9AD5CAEDA4, 4, :min, 0},
+      {"TableChatEvent", 0xA5013E9AD5CAEDA4, 4, :max, 3},
+      {"TableChatEvent", 0xFBF1AC4D96EBD022, 7, :min, 0},
+      {"TableChatEvent", 0xFBF1AC4D96EBD022, 7, :max, 4095},
+      {"TableEntity", 0x23FCFD6678E36712, 7, :min, 0},
+      {"TableEntity", 0x23FCFD6678E36712, 7, :max, 4095},
+      {"TableEntity", 0x53A9F665A90CC1B1, 7, :min, 0},
+      {"TableEntity", 0x53A9F665A90CC1B1, 7, :max, 511},
+      {"TableEntity", 0x6CEDE5B6EB60ECB4, 4, :min, -2048},
+      {"TableEntity", 0x6CEDE5B6EB60ECB4, 4, :max, 2047},
+      {"TableEntity", 0x6CEDE6B6EB60EE67, 4, :min, -2048},
+      {"TableEntity", 0x6CEDE6B6EB60EE67, 4, :max, 2047},
+      {"TableEntity", 0x6CEDE8B6EB60F1CD, 4, :min, -2048},
+      {"TableEntity", 0x6CEDE8B6EB60F1CD, 4, :max, 2047},
+      {"TableEntity", 0x7F69D4B5288BA9CF, 4, :min, 0},
+      {"TableEntity", 0x7F69D4B5288BA9CF, 4, :max, 1000},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x011C7B49A7228F9D},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x04DC16AEA8FF5276},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x0CA8B41B00D755F6},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x188BBB1783928A95},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x20BADA21BC8CB334},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x229D0447C3086A55},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x2C3667B9C2F272F1},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x2CC8282FB0DE8831},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x35E53BC341129217},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x89F7566E1123E15F},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x8D7F25318B3B4469},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x985FC819FAB21A4E},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0x9FBFEFA835DA8476},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0xA790EEE12766CF0C},
+      {"TableEntity", 0xA0B610205F2C6E01, 30, :member, 0xD9CD0DCC285B7816},
+      {"TableEntity", 0xB54D8E19798E16E8, 7, :min, 0},
+      {"TableEntity", 0xB54D8E19798E16E8, 7, :max, 511},
+      {"TableEntity", 0xCB4B353576672DA8, 4, :min, -16_383},
+      {"TableEntity", 0xCB4B353576672DA8, 4, :max, 16_383},
+      {"TableEntity", 0xCB4B37357667310E, 4, :min, -16_383},
+      {"TableEntity", 0xCB4B37357667310E, 4, :max, 16_383},
+      {"TableEntity", 0xCB4B3835766732C1, 4, :min, -16_383},
+      {"TableEntity", 0xCB4B3835766732C1, 4, :max, 16_383},
+      {"TableHitEvent", 0x01FBC365B059B925, 4, :min, 0},
+      {"TableHitEvent", 0x01FBC365B059B925, 4, :max, 7},
+      {"TableHitEvent", 0x7F6308BE8AB37FC0, 4, :min, 0},
+      {"TableHitEvent", 0x7F6308BE8AB37FC0, 4, :max, 4095},
+      {"TableHitEvent", 0xB7BC9AC015A25050, 7, :min, 0},
+      {"TableHitEvent", 0xB7BC9AC015A25050, 7, :max, 4095},
+      {"TableMixed", 0x0DBE005C56697C3E, 4, :min, 0},
+      {"TableMixed", 0x0DBE005C56697C3E, 4, :max, 65_535},
+      {"TableMixed", 0x13A62F542CF8E86E, 12, :text, 15},
+      {"TableMixed", 0x2E35DC5321AA5790, 15, :arm, 0x33732819300680AA},
+      {"TableMixed", 0x2E35DC5321AA5790, 15, :arm, 0x9FA3A41C86ECB765},
+      {"TableMixed", 0x2E35DC5321AA5790, 15, :arm, 0xF2A38D910B5B348B},
+      {"TableMixed", 0x3EEE6B51BE54FC85, 5, :min, -1_000_000_000_000},
+      {"TableMixed", 0x3EEE6B51BE54FC85, 5, :max, 1_000_000_000_000},
+      {"TableMixed", 0x560D6527CCD8515F, 8, :min, 0},
+      {"TableMixed", 0x560D6527CCD8515F, 8, :max, 16_777_215},
+      {"TableMixed", 0x5759CE7586BBB5A3, 14, :each_min, 0},
+      {"TableMixed", 0x5759CE7586BBB5A3, 14, :each_max, 255},
+      {"TableMixed", 0x6A5A70D91AA115FD, 7, :min, 0},
+      {"TableMixed", 0x6A5A70D91AA115FD, 7, :max, 65_535},
+      {"TableMixed", 0x6D7B98E2D095967E, 8, :min, 0},
+      {"TableMixed", 0x6D7B98E2D095967E, 8, :max, 4_294_967_295},
+      {"TableMixed", 0x73A94C71D60DC0D8, 9, :min, 1},
+      {"TableMixed", 0x73A94C71D60DC0D8, 9, :max, 9_223_372_036_854_775_807},
+      {"TableMixed", 0x78101AC0AA8CBCFE, 4, :min, 0},
+      {"TableMixed", 0x78101AC0AA8CBCFE, 4, :max, 15},
+      {"TableMixed", 0x7BBC035F7B6D0112, 9, :min, 0},
+      {"TableMixed", 0x7BBC035F7B6D0112, 9, :max, 281_474_976_710_655},
+      {"TableMixed", 0x9BAE0DA8B829EE03, 8, :min, 0},
+      {"TableMixed", 0x9BAE0DA8B829EE03, 8, :max, 4_294_967_295},
+      {"TableMixed", 0xA3348580461FAF16, 9, :min, 0},
+      {"TableMixed", 0xA3348580461FAF16, 9, :max, 18_446_744_073_709_551_615},
+      {"TableMixed", 0xAA38ACA481F528A8, 7, :min, 0},
+      {"TableMixed", 0xAA38ACA481F528A8, 7, :max, 65_535},
+      {"TableMixed", 0xB7D7B5650A590B05, 9, :min, 0},
+      {"TableMixed", 0xB7D7B5650A590B05, 9, :max, 18_446_744_073_709_551_615},
+      {"TableMixed", 0xD61BDD7908AF2642, 5, :min, -1_000_000_000_000_000_000},
+      {"TableMixed", 0xD61BDD7908AF2642, 5, :max, 1_000_000_000_000_000_000},
+      {"TableMixed", 0xFD29EE12A979CB69, 4, :min, 0},
+      {"TableMixed", 0xFD29EE12A979CB69, 4, :max, 255},
+      {"TablePickupEvent", 0x8113FE7EA2B16969, 4, :min, 0},
+      {"TablePickupEvent", 0x8113FE7EA2B16969, 4, :max, 255},
+      {"TablePickupEvent", 0x9E7FD06D864FBD56, 7, :min, 0},
+      {"TablePickupEvent", 0x9E7FD06D864FBD56, 7, :max, 1023},
+      {"TableStat", 0x52076675EC13A0C1, 4, :min, -512},
+      {"TableStat", 0x52076675EC13A0C1, 4, :max, 511},
+      {"TableStat", 0x80AB75F0866DBF65, 6, :min, 0},
+      {"TableStat", 0x80AB75F0866DBF65, 6, :max, 255}
     ]
   end
 end
