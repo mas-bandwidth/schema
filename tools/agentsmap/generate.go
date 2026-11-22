@@ -218,6 +218,7 @@ func childDirs(root, rel string) ([]string, error) {
 // name, as .claude-plugin did.
 var mappedDotDirs = map[string]bool{
 	".claude-plugin": true,
+	".githooks":      true,
 	".github":        true,
 }
 
