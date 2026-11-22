@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // specMakeTarget matches the backticked spelling docs/SPEC-TABLES.md §11 uses to
@@ -158,7 +160,7 @@ func withControlEntries(t *testing.T, root, registryJSON string) string {
 	if err := json.Unmarshal([]byte(registryJSON), &plan); err != nil {
 		t.Fatalf("make/negative-controls.json is not a valid registry: %v", err)
 	}
-	files, err := filepath.Glob(filepath.Join(root, "make", "negative-controls.d", "*.json"))
+	files, err := provesran.Glob(filepath.Join(root, "make", "negative-controls.d", "*.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +233,7 @@ func makeText(t *testing.T, root string) string {
 		}
 		files := []string{path}
 		if info.IsDir() {
-			files, err = filepath.Glob(filepath.Join(path, "*.mk"))
+			files, err = provesran.Glob(filepath.Join(path, "*.mk"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -307,6 +309,9 @@ func TestEverySpecTablesTargetIsInvokedByCI(t *testing.T) {
 		defined[m[1]] = true
 	}
 
+	if len(targets) == 0 {
+		t.Fatal("targets is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		docLine := startLine + target.line - 1
 		if !defined[target.name] {

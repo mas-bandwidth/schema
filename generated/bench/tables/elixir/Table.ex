@@ -1797,6 +1797,11 @@ defmodule Benchtable.Table do
 
       {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
+
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
       {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
@@ -2106,10 +2111,38 @@ defmodule Benchtable.Table do
   defp map_entries(_f, nil), do: []
 
   defp map_entries(f, values) do
+    check_map_keys(f, values)
+
     values
     |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)
     |> Enum.map(fn {key, value} -> %{"key" => map_key_value(f, key), "value" => value} end)
   end
+
+  # A KEY OF THE WRONG TYPE IS REFUSED (SPEC-TABLES §2.8): a string-keyed map
+  # holds binaries; an integer-keyed one holds integers, or the canonical
+  # decimal text a load hands back for one (the loaded value's integer keys are
+  # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
+  # that names the same integer as another ("7" beside 7) is refused, so no
+  # key is written twice and none raises.
+  defp check_map_keys(%{key_kind: 12}, values) do
+    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+  end
+
+  defp check_map_keys(_f, values) do
+    ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
+    if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
+  end
+
+  defp map_int_key(key) when is_integer(key), do: key
+
+  defp map_int_key(key) when is_binary(key) do
+    case Integer.parse(key) do
+      {v, ""} -> if Integer.to_string(v) == key, do: v, else: throw(:invalid_value)
+      _ -> throw(:invalid_value)
+    end
+  end
+
+  defp map_int_key(_key), do: throw(:invalid_value)
 
   defp map_sort_key(%{key_kind: 12}, key), do: key
 
@@ -2185,7 +2218,7 @@ defmodule Benchtable.Table do
         {idx_map, ids, order, acc}
 
       elements ->
-        elements = pad_fixed(f, elements)
+        elements = stored_floats(f, pad_fixed(f, elements))
 
         if list_elides?(f, elements) do
           {idx_map, ids, order, acc}
@@ -2357,7 +2390,7 @@ defmodule Benchtable.Table do
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
-    v = Map.get(value, f.name, f.default)
+    v = stored_float(f, Map.get(value, f.name, f.default))
 
     if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
@@ -2435,10 +2468,11 @@ defmodule Benchtable.Table do
   end
 
   # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
-  # value is padded with the element default, a longer one is cut at N.
+  # value is padded with the element default, and a longer one is refused
+  # (check_field, as to_json refuses it), never cut at N.
   defp pad_fixed(%{fixed_array: n} = f, elements) when is_list(elements) do
-    kept = Enum.take(elements, n)
-    kept ++ List.duplicate(f.elem_default, n - length(kept))
+    if length(elements) > n, do: throw(:invalid_value)
+    elements ++ List.duplicate(f.elem_default, n - length(elements))
   end
 
   defp pad_fixed(_f, elements), do: elements
@@ -2451,6 +2485,8 @@ defmodule Benchtable.Table do
   end
 
   defp keyed_elem(item, v, idx_map, ids, order) do
+    v = stored_float(item, v)
+
     if same_field?(item, v, item.default),
       do: :elide,
       else: emit_element(item, v, idx_map, ids, order)
@@ -2462,6 +2498,7 @@ defmodule Benchtable.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    check_field(a, payload)
     {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
@@ -2531,8 +2568,8 @@ defmodule Benchtable.Table do
     {if(e, do: <<1>>, else: <<0>>), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order) when kind in [10, 11] do
-    {float_bytes(e, kind_width(kind)), ids, order}
+  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
+    {float_bytes(stored_float(f, e), kind_width(kind)), ids, order}
   end
 
   defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
@@ -5193,16 +5230,116 @@ defmodule Benchtable.Table do
         end
       end
 
+      if float_ranged?(f) and field_active?(f, desc, value) do
+        float_range(f, Map.get(value, f.name, f.default))
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
+
+      if Map.has_key?(value, f.name) and field_active?(f, desc, value),
+        do: check_field(f, Map.fetch!(value, f.name))
     end)
   end
 
+  # A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3):
+  # every writer narrows the value to float32 and refuses it, invalid_value,
+  # when the narrowed value lies outside the float32 nearest each declared end,
+  # which is what the descriptor's min and max already are. A value past
+  # float32's own range is not tested here: it is the float writer's
+  # non_finite_float. A float64 with a range is held at float64.
+  defp float_ranged?(%{t: :float, min: _}), do: true
+  defp float_ranged?(%{elem_t: :float, elem_min: _}), do: true
+  defp float_ranged?(%{t: :keyed, item: item}), do: float_ranged?(item)
+  defp float_ranged?(_f), do: false
+
+  defp float_range(%{t: :float, width: w, min: lo, max: hi}, v), do: float_in_range(v, w, lo, hi)
+
+  defp float_range(%{elem_t: :float, elem_min: lo, elem_max: hi} = f, values)
+       when is_list(values) do
+    w = kind_width(f.elem_kind)
+    Enum.each(values, &float_in_range(&1, w, lo, hi))
+  end
+
+  defp float_range(%{t: :keyed, item: item}, slots) when is_map(slots),
+    do: Enum.each(slots, fn {_name, v} -> float_range(item, v) end)
+
+  defp float_range(_f, _v), do: :ok
+
+  defp float_in_range(v, 4, lo, hi)
+       when is_number(v) and v > -3.4028235677973366e38 and v < 3.4028235677973366e38 do
+    <<n::float-32>> = <<v::float-32>>
+    if n < lo or n > hi, do: throw(:invalid_value)
+  end
+
+  defp float_in_range(v, 8, lo, hi) when is_number(v) and (v < lo or v > hi),
+    do: throw(:invalid_value)
+
+  defp float_in_range(_v, _w, _lo, _hi), do: :ok
+
+  # EVERY FIELD IS CHECKED ON WRITE, not only a required one (docs/SPEC.md
+  # §5.1 rows 1-5 and 11, as the Go leg's Reason twin does): a ranged or
+  # bits(N) integer off its domain, a counted or fixed array past its bound, a
+  # string(N) or bytes(N) past N, and an enum
+  # name that is no variant or a deprecated one (docs/SPEC-TABLES.md §2.15) are
+  # refused, so nothing is truncated into the width or written as is. A field the
+  # value does not carry reads its declared default, and a nil holds nothing.
+  defp check_field(_f, nil), do: :ok
+  defp check_field(%{t: :int} = f, v), do: required_value(f, v)
+
+  defp check_field(%{t: :float, min: _lo, max: _hi} = f, v) when is_number(v),
+    do: required_value(f, v)
+
+  defp check_field(%{t: :string} = f, v) do
+    if not is_binary(v) or
+         (not Map.get(f, :unbounded, false) and Map.has_key?(f, :size) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+  end
+
+  defp check_field(%{t: :bytes} = f, v) do
+    if not is_binary(v) or (Map.has_key?(f, :size) and f.size > 0 and byte_size(v) > f.size),
+      do: throw(:invalid_value)
+  end
+
+  defp check_field(%{t: :enum} = f, v), do: check_enum(f, v)
+
+  defp check_field(%{t: :list} = f, v) when is_list(v) do
+    n = length(v)
+
+    if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
+      do: throw(:invalid_value)
+
+    required_value(f, v)
+    if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
+  end
+
+  defp check_field(%{t: :keyed} = f, slots) when is_map(slots) do
+    Enum.each(f.key_names, fn name ->
+      check_field(f.item, Map.get(slots, name, f.item.default))
+    end)
+  end
+
+  defp check_field(_f, _v), do: :ok
+
+  # An enum value is nil, the reserved "None", or the name of a variant that is
+  # not deprecated; any other name is a refusal and never a raise.
+  defp check_enum(_f, nil), do: :ok
+  defp check_enum(_f, "None"), do: :ok
+
+  defp check_enum(f, name) when is_binary(name) do
+    if not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, []),
+      do: throw(:invalid_value)
+  end
+
+  defp check_enum(_f, _bad), do: throw(:invalid_value)
+
   defp required_value(%{t: :list} = f, values) do
     Enum.each(pad_fixed(f, values), fn v ->
-      if Map.has_key?(f, :elem_min) and (v < f.elem_min or v > f.elem_max),
-        do: throw(:invalid_value)
+      # a ranged float is held at float32 by float_range/2, never here
+      if Map.has_key?(f, :elem_min) and Map.get(f, :elem_t) != :float and
+           (v < f.elem_min or v > f.elem_max),
+         do: throw(:invalid_value)
 
       if f.elem_kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
         bits = Map.get(f, :elem_bits, kind_width(f.elem_kind) * 8)
@@ -5217,6 +5354,8 @@ defmodule Benchtable.Table do
       required_value(f.item, Map.get(slots, name, f.item.default))
     end)
   end
+
+  defp required_value(%{t: :float}, _v), do: :ok
 
   defp required_value(%{min: lo, max: hi}, v) when v < lo or v > hi,
     do: throw(:invalid_value)
@@ -5423,6 +5562,23 @@ defmodule Benchtable.Table do
   # refuses it. The bound is float32's largest finite value plus half its last
   # place, the least magnitude that rounds to infinity, so the test is a
   # comparison and builds nothing.
+  # A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3, ruled
+  # 2026-11-10 fixed-compressed-negzero): a writer stores the bits +0 stores, in
+  # every build and every writer (the variable save and its retaining twin, the
+  # cook and the text). A compressed float is the one a range rides on: :min on
+  # a leaf, a keyed slot's item or an arm, :elem_min on an array. A plain
+  # float's -0 is carried bit-exact. v == 0.0 holds for both zeros (== is
+  # arithmetic equality; only === and matching tell them apart).
+  defp stored_float(%{min: _}, v) when is_float(v) and v == 0.0, do: 0.0
+  defp stored_float(%{elem_min: _}, v) when is_float(v) and v == 0.0, do: 0.0
+  defp stored_float(_f, v), do: v
+
+  defp stored_floats(%{elem_kind: kind, elem_min: _} = f, elements)
+       when kind in [10, 11] and is_list(elements),
+       do: Enum.map(elements, &stored_float(f, &1))
+
+  defp stored_floats(_f, elements), do: elements
+
   defp float_bytes(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
     do: throw(:non_finite_float)
 
@@ -6031,8 +6187,10 @@ defmodule Benchtable.Table do
 
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
 
-  defp json_field(%{t: :enum}, name, _depth) when is_binary(name),
-    do: ["\"", json_escape(name), "\""]
+  defp json_field(%{t: :enum} = f, name, _depth) when is_binary(name) do
+    check_enum(f, name)
+    ["\"", json_escape(name), "\""]
+  end
 
   defp json_field(%{t: :enum}, _bad, _depth), do: throw(:invalid_value)
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
@@ -6103,7 +6261,7 @@ defmodule Benchtable.Table do
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
 
-  defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
+  defp json_field(%{t: :float} = f, v, _depth), do: json_float(stored_float(f, v), f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
   # json_list_elem writes one unbounded array's element by its element kind
@@ -6126,8 +6284,10 @@ defmodule Benchtable.Table do
   defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
 
-  defp json_list_elem(%{elem_kind: 30}, e, _depth) when is_binary(e),
-    do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30} = f, e, _depth) when is_binary(e) do
+    check_enum(f, e)
+    ["\"", json_escape(e), "\""]
+  end
 
   defp json_list_elem(%{elem_kind: 30}, _bad, _depth), do: throw(:invalid_value)
 
@@ -6148,8 +6308,8 @@ defmodule Benchtable.Table do
   defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
     do: fixed_text(e, frac)
 
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
-    do: json_float(e, kind_width(kind))
+  defp json_list_elem(%{elem_kind: kind} = f, e, _depth) when kind in [10, 11],
+    do: json_float(stored_float(f, e), kind_width(kind))
 
   defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
   defp json_list_elem(_f, _e, _depth), do: "null"
@@ -6559,14 +6719,40 @@ defmodule Benchtable.Table do
   # (docs/SPEC-TABLES.md §16.2, §16.7).
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) do
+      # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must
+      # name a definition already closed; fields after one must follow a label
+      # not yet defined, and the definition is open until this object closes.
+      # What the reader does not place is the value.
       defs = Process.get(:elixir_json_defs, %{})
-      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
-    end
+      open = Process.get(:elixir_json_open, %{})
 
-    Enum.each(rest, fn {k, v} ->
-      json_skip_key(k)
-      json_skip_value(v)
-    end)
+      if rest == [] do
+        if Map.has_key?(open, label) or not Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+      else
+        if Map.has_key?(open, label) or Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
+        Process.put(:elixir_json_open, Map.put(open, label, true))
+
+        Enum.each(rest, fn {k, v} ->
+          json_skip_key(k)
+          json_skip_value(v)
+        end)
+
+        Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+        Process.put(:elixir_json_defs, Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped))
+      end
+    else
+      Enum.each(rest, fn {k, v} ->
+        json_skip_key(k)
+        json_skip_value(v)
+      end)
+    end
   end
 
   defp json_skip_value({:obj, pairs}) do
@@ -7250,9 +7436,9 @@ defmodule Benchtable.Table do
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
        do: {:skip, throw(:wire_damaged)}
 
-  defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
+  defp json_read_list_elem(%{elem_kind: 10} = f, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
-      {:ok, value} -> {value, report}
+      {:ok, value} -> clamp_list_int(value, f, report)
       :error -> {:skip, throw(:wire_damaged)}
     end
   end
@@ -7576,7 +7762,7 @@ defmodule Benchtable.Table do
   # json_object_val reads one member's value; in a variable-class document
   # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
-    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+    if String.starts_with?(key, "&") do
       if key != "&node" or acc != [] do
         :error
       else
@@ -8840,9 +9026,9 @@ defmodule Benchtable.Table do
     put_int(buf, base + off, v, w, Map.get(f, :signed, false), order)
   end
 
-  defp cook_value(%{t: :float, cook_off: off, width: w}, v, base, _index, order, buf) do
+  defp cook_value(%{t: :float, cook_off: off, width: w} = f, v, base, _index, order, buf) do
     if not is_number(v), do: throw(:invalid)
-    put_float(buf, base + off, v, w, order)
+    put_float(buf, base + off, stored_float(f, v), w, order)
   end
 
   defp cook_value(%{t: :bool, cook_off: off}, v, base, _index, _order, buf) do
@@ -8936,9 +9122,9 @@ defmodule Benchtable.Table do
     put_u8(buf, at, if(e, do: 1, else: 0))
   end
 
-  defp cook_elem(%{elem_t: :float, elem_size: w}, e, at, _index, order, buf) do
+  defp cook_elem(%{elem_t: :float, elem_size: w} = f, e, at, _index, order, buf) do
     if not is_number(e), do: throw(:invalid)
-    put_float(buf, at, e, w, order)
+    put_float(buf, at, stored_float(f, e), w, order)
   end
 
   defp cook_elem(%{elem_t: :int, elem_size: w} = f, e, at, _index, order, buf) do

@@ -81,8 +81,8 @@ var tagRefusesEveryBuild = map[string][]string{
 	// JavaScript has no build-removable assert: the stream writer and the one
 	// flat writer refuse an out-of-set tag in every build (SPEC §5.1).
 	"js": {
-		"if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {",
-		"if (!Number.isInteger(value.shot.type) || value.shot.type < 0 || value.shot.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)",
+		"if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {",
+		"if (!globalThis.Number.isInteger(value.shot.type) || value.shot.type < 0 || value.shot.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)",
 	},
 	// Lua's assert() is an ordinary call no build strips, so the writer
 	// refuses an out-of-set tag (returns false) in every build, as Go does.
@@ -100,7 +100,11 @@ var tagRefusesEveryBuild = map[string][]string{
 // build only where it has none, and needing no check at all in Rust, whose
 // tag IS the enum discriminant.
 func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		text := generatedText(t, unionTagUnit, target)
 
 		switch {

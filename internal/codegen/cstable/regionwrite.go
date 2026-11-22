@@ -27,7 +27,7 @@ const tableRegionWriteSource = `
             // BORN AT ITS MIN (docs/SPEC.md §4.2), as Rides says
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!RegionDefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -74,7 +74,7 @@ const tableRegionWriteSource = `
         {
             ulong v = value.Raw(f, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -201,9 +201,9 @@ const tableRegionWriteSource = `
         else if (f.GetWide != null)
         {
             UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
-            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+            w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f, i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : StoredRaw(value.Raw(f, i), f), Width(f.Kind)); }
     }
     static void RegionWritePayload(ref Writer w, NativeValue value, TableFieldInfo f, ref RegionIds ids)
     {

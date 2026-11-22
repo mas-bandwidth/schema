@@ -3,7 +3,6 @@ package javatable
 import (
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type idOrderCase struct {
@@ -113,7 +114,7 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 		t.Fatal(err)
 	}
 	sources = append(sources, driver)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	args := []string{"-ea", "-cp", classes, "IdOrderDriver"}
@@ -172,7 +173,7 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 		}
 		args = append(args, row.name, p)
 	}
-	out, err := exec.Command(java, args...).CombinedOutput()
+	out, err := testproc.Command(t, java, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
@@ -205,7 +206,11 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 func TestJavaTransportIDFirstUse(t *testing.T) {
 	slowtest.Gate(t, "generated Java transport ID order")
 	got := javaIdOrderAnswers(t, false)
-	for _, row := range idOrderCases(t) {
+	allIdOrderCases := idOrderCases(t)
+	if len(allIdOrderCases) == 0 {
+		t.Fatal("idOrderCases(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allIdOrderCases {
 		for _, mode := range []string{"plain", "retain"} {
 			want := "damaged"
 			if row.read {
@@ -221,7 +226,11 @@ func TestJavaTransportIDFirstUse(t *testing.T) {
 func TestJavaTransportIDNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "generated Java transport ID negative control")
 	got := javaIdOrderAnswers(t, true)
-	for _, row := range idOrderCases(t) {
+	allIdOrderCases := idOrderCases(t)
+	if len(allIdOrderCases) == 0 {
+		t.Fatal("idOrderCases(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allIdOrderCases {
 		for _, mode := range []string{"plain", "retain"} {
 			want := "read"
 			key := row.name + " " + mode

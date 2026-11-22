@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -63,5 +64,47 @@ func TestJobsRunIsTheSerialRun(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestJobsRunOnlyTheNamedSurfaces: with --surfaces, --jobs starts only the
+// surfaces the run names, as the serial run does; a surface the run leaves
+// out is not run at all (no driver, no out directory), and the matrix is the
+// serial run's.
+func TestJobsRunOnlyTheNamedSurfaces(t *testing.T) {
+	needShell(t)
+	c := newFakeCorpus(t)
+	drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {}})
+	only, err := parseSurfaces("wire,json-read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(jobs int) (string, string) {
+		var out bytes.Buffer
+		work := filepath.Join(t.TempDir(), "work")
+		ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers, work, "", "",
+			runOptions{jobs: jobs, only: only})
+		if err != nil || !ok {
+			t.Fatalf("harness run --jobs %d --surfaces wire,json-read: ok=%v err=%v\n%s", jobs, ok, err, out.String())
+		}
+		return strings.ReplaceAll(out.String(), work, "WORK"), work
+	}
+	serial, _ := run(1)
+	out, work := run(4)
+	if out != serial {
+		t.Errorf("--jobs 4 --surfaces prints a different matrix.\nserial:\n%s\n--jobs 4:\n%s", serial, out)
+	}
+	for _, lang := range []string{referenceLang, "zz"} {
+		entries, err := os.ReadDir(filepath.Join(work, "out", lang))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ran []string
+		for _, e := range entries {
+			ran = append(ran, e.Name())
+		}
+		if !reflect.DeepEqual(ran, []string{"json-read", "wire"}) {
+			t.Errorf("--jobs 4 --surfaces wire,json-read ran the %s surfaces %v", lang, ran)
+		}
 	}
 }

@@ -192,6 +192,9 @@ func TestLuauJsonWideIntegersAreStrings(t *testing.T) {
 	if byKey["built"] != "ok|"+wantHex {
 		t.Errorf("direct ToJson mismatch:\n got: %s\nwant: ok|%s", byKey["built"], wantHex)
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for i, row := range rows {
 		key := fmt.Sprintf("row%d", i)
 		line := byKey[key]

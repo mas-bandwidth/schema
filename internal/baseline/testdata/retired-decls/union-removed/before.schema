@@ -1,0 +1,14 @@
+package decls
+
+type Leaf
+{
+    n int32
+}
+
+union Choice { leaf Leaf }
+
+table Holder
+{
+    pick Choice
+    c    int32
+}

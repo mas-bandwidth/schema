@@ -138,9 +138,9 @@ _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-un
 # ---- go ----
 
 .PHONY: _verify-go-conformance _verify-go-bench
-_verify-go-conformance: build/conformance-harness build/conformance-go generated/go/.stamp generated/go-ludicrous/.stamp cards-go-conformance tables-go-view tables-go-textform packet-defaults-go packet-utf8-go packet-finite-go table-base64-go
-	cd test/go && go run .
-	cd test/go-ludicrous && go run .
+_verify-go-conformance: build/mustrun build/conformance-harness build/conformance-go generated/go/.stamp generated/go-ludicrous/.stamp cards-go-conformance tables-go-view tables-go-textform packet-defaults-go packet-utf8-go packet-finite-go table-base64-go
+	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
+	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 	@rm -rf build/verify/conformance-go && mkdir -p build/verify/conformance-go $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only go --claims --work build/verify/conformance-go --results $(VERIFY_RESULTS_DIR)/go.json
 
@@ -196,9 +196,9 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-bench
-_verify-dart-conformance: toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
-	cd test/dart && $(DART) --enable-asserts main.dart
-	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
+_verify-dart-conformance: build/mustrun toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 
@@ -210,15 +210,15 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 # ---- elixir ----
 
 .PHONY: _verify-elixir-conformance _verify-elixir-bench
-_verify-elixir-conformance: toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
+_verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
 	@# The two packet suites and the tables run are independent, so they run
 	@# side by side, and the tables run starts the leg's 21 surface drivers
 	@# up to $(VERIFY_JOBS) at a time (--jobs): each is a BEAM start-up plus
 	@# its cases, 50 s in a row and the job's longest step on an amd-1 slot.
 	@set -e; \
-		(cd test/elixir && $(ELIXIR) main.exs) & p1=$$!; \
-		(cd test/elixir-ludicrous && $(ELIXIR) main.exs) & p2=$$!; \
+		(cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs) & p1=$$!; \
+		(cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs) & p2=$$!; \
 		BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --jobs $(VERIFY_JOBS) --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json & p3=$$!; \
 		rc=0; wait $$p1 || rc=1; wait $$p2 || rc=1; wait $$p3 || rc=1; exit $$rc
 

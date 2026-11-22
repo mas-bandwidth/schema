@@ -165,17 +165,14 @@ func main() {
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
-	// RELAXED 2026-11-14 (maintainer: get main green): --relax-dead-bytes skips the fixed-form dead-byte mutants; re-enable: relax/dead-bytes
-	relaxDeadBytes := fs.Bool("relax-dead-bytes", false, "RELAXED 2026-11-14, relax/dead-bytes (docs/relaxed.md): a fixed-class mutant the leg refuses and the oracle accepts, whose oracle re-encoding has the same length but different bytes (dead bytes the value does not carry), is counted and not compared (wire-fuzz only)")
-	// RELAXED 2026-11-14 (maintainer: get main green): --relax-vector names the pinned vectors a leg diverges on; re-enable: relax/unknown-arm-text-<lang>
-	relaxVectors := fs.String("relax-vector", "", "RELAXED 2026-11-14 (docs/relaxed.md): comma-separated pinned vector names whose divergence is counted and not failed; a named vector that agrees with the oracle, or that the run does not carry, fails the run (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
-	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
+	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
 	jobs := fs.Int("jobs", 1, "run up to this many of a leg's surface drivers at once; each surface still writes its own out directory and is scored in the same order (run only)")
+	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
@@ -210,6 +207,12 @@ func main() {
 	}
 
 	if command == "cards" {
+		// The required set is what turns an absent or caseless surface red: an
+		// empty one, or a name that is no card surface (a typo), would quietly
+		// require less than it reads as requiring.
+		if err := checkRequire(*require); err != nil {
+			fatalf("%v", err)
+		}
 		exp := *expected
 		if exp == "" {
 			exp = filepath.Join(*corpus, "expected")
@@ -281,7 +284,7 @@ func main() {
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")
 		}
-		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":
@@ -307,6 +310,12 @@ func main() {
 		}
 		opts.results = *resultsOut
 		opts.jobs = *jobs
+		runSurfaces, err := parseSurfaces(*onlySurfaces)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		opts.only = runSurfaces
+		opts.strictRows = true
 		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)

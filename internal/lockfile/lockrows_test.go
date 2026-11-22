@@ -108,6 +108,9 @@ func rowAllows(t *testing.T, before, after, table string) {
 		t.Fatal(err)
 	}
 	errs := lockfile.Check(load(t, paths), paths)
+	if len(errs) == 0 {
+		t.Fatal("errs is empty: the loop below would check nothing")
+	}
 	for _, err := range errs {
 		if !strings.Contains(err.Error(), "write it with `schema lock`") {
 			t.Fatalf("a widening is a change the record must carry, not a break: %v", err)

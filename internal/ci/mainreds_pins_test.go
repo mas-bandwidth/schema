@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // mainRedsSiblingPins is one CI sibling tag and the make variable that owns
@@ -199,7 +201,7 @@ func mainRedsMakeText(t *testing.T, root string) string {
 	var text strings.Builder
 	paths := []string{filepath.Join(root, "Makefile")}
 	for _, pattern := range []string{"make/*.mk", "make/checks/*.mk"} {
-		files, err := filepath.Glob(filepath.Join(root, pattern))
+		files, err := provesran.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			t.Fatal(err)
 		}

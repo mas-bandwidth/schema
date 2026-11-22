@@ -18,7 +18,11 @@ import (
 // requires a successful, idempotent, value-preserving Upgrade.
 func TestUpgradeKeepsEveryField(t *testing.T) {
 	t.Parallel()
-	for _, caseName := range shippedCases(t) {
+	allShippedCases := shippedCases(t)
+	if len(allShippedCases) == 0 {
+		t.Fatal("shippedCases(t) is empty: the loop below would check nothing")
+	}
+	for _, caseName := range allShippedCases {
 		caseName := caseName
 		dir := filepath.Join("corpus", caseName)
 		wires, err := filepath.Glob(filepath.Join(dir, "*.wire"))

@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/scanner"
@@ -313,6 +314,9 @@ func checkHarnessUsesEngine(root string, harnesses []string) ([]string, error) {
 				if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
 					files = append(files, filepath.Join(full, e.Name()))
 				}
+			}
+			if len(files) == 0 {
+				return nil, fmt.Errorf("harness directory %s holds no .go source: the harness moved, and nothing was checked", rel)
 			}
 		} else {
 			files = []string{full}

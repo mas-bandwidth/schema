@@ -7,7 +7,11 @@ with a sibling `.bin.meta` (`seed=`, `iteration=`, `kind=`, `unit=`, `root=`,
 On a red night the workflow uploads that directory and the fuzz log as the
 `luau-nightly-fuzz-findings` artifact (30 days). Nothing is committed by the
 job: a person copies the input here under a name of its fix card, with its
-`.meta`, in the fix card's or the fuzz card's own change. The fast lane
+`.meta`, and adds its name to `INPUTS`, in the fix card's or the fuzz card's
+own change. `INPUTS` is the registered replay set, one `.bin` name per line:
+the replay refuses a listed input without its `.bin` or `.bin.meta`, a `.bin`
+or `.bin.meta` that is not listed, and an empty or missing list, and it must
+report exactly as many inputs as the list names. The fast lane
 replays every saved input with `make luau-nightly-fuzz-replay`; the seed and
 iteration reproduce the original (unminimised) input from the fuzzer's own
 arguments, and `harness=` names the harness variant that found it.

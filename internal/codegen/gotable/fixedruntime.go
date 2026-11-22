@@ -1851,4 +1851,6 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 func tableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
 	return unsafe.Slice((*byte)(ptr), n)
 }
+
+func tableFixedOverlayOf[T any](p *T) []byte { return tableFixedOverlay(unsafe.Pointer(p), unsafe.Sizeof(*p)) }
 `

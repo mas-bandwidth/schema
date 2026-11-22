@@ -341,6 +341,8 @@ var framingVectors = []framingVector{
 	{name: "frame_empty_buffer", unit: "tblr1", root: "Cfg", raw: []byte{}},
 	// F2–F4: the ten-byte empty table reads clean.
 	{name: "frame_empty_table", unit: "tblr1", root: "Cfg", ids: nil, body: b(0)},
+	// a [N]T of tables NEVER elides (docs/SPEC-TABLES.md §3): bytes that lack the field read as N default elements, and the canonical write-back carries them (fixed_array_rides_default)
+	{name: "fixed_array_rides_absent", unit: "tblvarevo1", root: "EvoDoc", ids: nil, body: b(0)},
 	// F5: fewer than eight bytes in the file.
 	{name: "frame_seven_bytes", unit: "tblr1", root: "Cfg", raw: b(1, 0, 0, 0, 0, 0, 0)},
 	// F5: eight bytes, the count would have to begin at the form byte.
@@ -569,6 +571,17 @@ var framingVectors = []framingVector{
 	// omits the pointer and has the same value, without a node directory.
 	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), b(0))},
 	{name: "node_index_null_canonical", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(0)), held: true},
+	// §3.1, §4, §18.3: a DECLARED pointer field (ListNode.next) names a record
+	// whose type id no table this reader declares hashes to. That is what a
+	// file saved before a bare rename of the target table carries, and what a
+	// hostile file can forge: the pointer reads null and the record counts
+	// unknown, and the rest of the load lands. Its controls are node_clean
+	// (the same bytes with ListNode's type id: the pointer resolves) and
+	// node_type_declared_wrong (a type id this reader DOES declare, but not
+	// the one the slot requires: the whole load refuses wire_damaged). No type
+	// id makes a pointer resolve to a table other than its declared target.
+	{name: "node_type_undeclared", unit: "graphdemo", root: "ListNode", ids: []string{"value", "name", "next", "node-table", "graphUnknown"}, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), b(0))},
+	{name: "node_type_declared_wrong", unit: "graphdemo", root: "ListNode", ids: []string{"value", "name", "next", "node-table", "type:TreeNode"}, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 1, 0)), b(0))},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
 	// T1: the node table rides twice, so the repeated ID refuses wire_damaged.

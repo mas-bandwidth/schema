@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const idTableBoundProbeSchema = `package probe
@@ -111,7 +113,7 @@ func main() {
 	if err := os.WriteFile(wirePath, wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "run", ".", wirePath)
+	cmd := testproc.Command(t, "go", "run", ".", wirePath)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	out, err := cmd.CombinedOutput()
@@ -309,12 +311,12 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	}
 
 	bin := filepath.Join(work, "idtable_probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = work
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rustc failed: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = work
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("idtable_probe failed: %v\n%s", err, out)
@@ -354,12 +356,12 @@ func TestRustIdTableReaderContract(t *testing.T) {
 		}
 	}
 	negBin := filepath.Join(negDir, "idtable_probe_neg")
-	negBuild := exec.Command("rustc", "--edition", "2024", "-O", "-o", negBin, "main.rs")
+	negBuild := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", negBin, "main.rs")
 	negBuild.Dir = negDir
 	if out, err := negBuild.CombinedOutput(); err != nil {
 		t.Fatalf("negative control build failed: %v\n%s", err, out)
 	}
-	negRun := exec.Command(negBin)
+	negRun := testproc.Command(t, negBin)
 	negRun.Dir = negDir
 	if out, err := negRun.CombinedOutput(); err == nil {
 		t.Fatalf("negative control unexpectedly succeeded with ID_TABLE_PROBE_BOUND stripped:\n%s", out)

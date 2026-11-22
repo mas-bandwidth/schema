@@ -7,7 +7,6 @@ package gotable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func keysOf(files map[string][]byte) []string {
@@ -48,6 +49,9 @@ fixed table Fox { x int32 }
 
 	// Single-table unit with a map field (synthesizing PongMEntry) declaring only wire.
 	decl := generate(t, "package probe\ntable Pong | forms = \"wire\"\n{\n    x int32\n    m map[string(8)]int32\n}\n")
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
+	}
 	for _, name := range keysOf(decl) {
 		if strings.HasSuffix(name, "Block.go") ||
 			strings.HasSuffix(name, "Cook.go") ||
@@ -147,7 +151,7 @@ func compileDeclaredFormUnit(t *testing.T, schema, testSource string) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated runtime: %v\n%s", err, out)

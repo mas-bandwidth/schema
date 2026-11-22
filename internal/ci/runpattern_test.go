@@ -24,6 +24,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -246,7 +248,7 @@ func makefileSet(root string) ([]string, error) {
 			if pattern == "" || strings.Contains(pattern, "$") {
 				return nil, fmt.Errorf("include line %q carries a variable this reader does not expand", trimmed)
 			}
-			matches, err := filepath.Glob(filepath.Join(root, pattern))
+			matches, err := provesran.Glob(filepath.Join(root, pattern))
 			if err != nil {
 				return nil, err
 			}
@@ -613,8 +615,7 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 // rule names to the shape that fits it: the toolchain-dependent build is
 // restored from a cache (or handed over as an artifact), the make
 // prerequisite is a real stamp rather than a phony regenerator, each fuzz
-// row runs its campaign as the workflow's tracked relaxations set it (the C#
-// region row's per-commit smoke), and the full campaign still runs nightly in
+// row runs its full campaign, and the full campaign also runs nightly in
 // certify.yml. A job that rebuilds its driver from nothing on
 // every run spends its two minutes before it tests, which is the red this
 // pins.
@@ -648,7 +649,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 				"build/tables-generated-cs/cards/.stamp",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
-			run:   "make ${{ matrix.target }}${{ (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.name == 'region' && '-smoke' || '' }}",
+			run:   "make ${{ matrix.target }}",
 		},
 		{
 			job:      "dart-fuzz",

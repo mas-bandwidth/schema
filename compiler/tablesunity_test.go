@@ -23,6 +23,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // unityTableProbe is the reader every Unity table test generates: two roots
@@ -196,7 +198,11 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 			t.Errorf("Probe.Tables.cs has no descriptor row %q", row)
 		}
 	}
-	for name := range unityGenerate(t, packetSrc) {
+	allUnityGenerate := unityGenerate(t, packetSrc)
+	if len(allUnityGenerate) == 0 {
+		t.Fatal("unityGenerate(t, packetSrc) is empty: the loop below would check nothing")
+	}
+	for name := range allUnityGenerate {
 		if strings.HasSuffix(name, ".Tables.cs") || name == unitytable.RuntimeFile {
 			t.Errorf("a unit with no table emitted the table file %s", name)
 		}
@@ -639,7 +645,7 @@ func (h *unityTableHarness) build(project, out, artifacts string, props ...strin
 		"--artifacts-path", filepath.Join(h.tmp, "artifacts", artifacts), "--nologo", "-v", "q",
 		"-p:RestoreLockedMode=false", "-p:SerializeCsRoot=" + h.serialize}
 	args = append(args, props...)
-	cmd := exec.Command(h.dotnet, args...)
+	cmd := testproc.Command(h.t, h.dotnet, args...)
 	cmd.Dir = h.root
 	cmd.Env = h.env
 	if msg, err := cmd.CombinedOutput(); err != nil {
@@ -658,7 +664,7 @@ func (h *unityTableHarness) buildUnit(generated, out, artifacts string) error {
 }
 
 func (h *unityTableHarness) run(env []string, args ...string) (string, int) {
-	cmd := exec.Command(h.dotnet, append([]string{filepath.Join(h.driver, "unityconformance.dll")}, args...)...)
+	cmd := testproc.Command(h.t, h.dotnet, append([]string{filepath.Join(h.driver, "unityconformance.dll")}, args...)...)
 	cmd.Dir = h.root
 	cmd.Env = append(append([]string(nil), h.env...), env...)
 	out, err := cmd.CombinedOutput()
@@ -697,6 +703,15 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 		if (strings.HasPrefix(c.name, "reader-") && !strings.Contains(c.name, "-flip") && !strings.HasSuffix(c.name, "-cut") && !strings.HasSuffix(c.name, "-grown")) || c.name == "undeclared-absent" {
 			rows = append(rows, c)
 		}
+	}
+	undeclared := 0
+	for _, c := range rows {
+		if c.root == "UndeclaredRoot" {
+			undeclared++
+		}
+	}
+	if undeclared != 1 || len(rows) < 2 {
+		h.t.Fatalf("wire surface: %d rows with %d undeclared; want the undeclared root once and at least one reader row", len(rows), undeclared)
 	}
 	for i, c := range rows {
 		path := filepath.Join(h.tmp, "surface", fmt.Sprintf("%s.bin", c.name))
@@ -790,7 +805,11 @@ table NativeRoot
 			t.Errorf("the Unity table emitter spells %s and internal/tablenames does not register it", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Unity) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Unity)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Unity) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says Unity defines %s, and nothing emitted spells it", name)
 		}

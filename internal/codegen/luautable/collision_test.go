@@ -42,6 +42,9 @@ func TestLuauNoCorpusModuleFoldsOntoTheRuntime(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, key := range keys {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
@@ -55,6 +58,9 @@ func TestLuauNoCorpusModuleFoldsOntoTheRuntime(t *testing.T) {
 			mods := []string{f.Base + "Table.luau"}
 			if luau.EmitsTypeModule(f) {
 				mods = append(mods, f.Base+".luau")
+			}
+			if len(mods) == 0 {
+				t.Fatal("mods is empty: the loop below would check nothing")
 			}
 			for _, mod := range mods {
 				if rt, ok := runtimes[strings.ToLower(mod)]; ok {

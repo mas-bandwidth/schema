@@ -147,11 +147,9 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List buffer", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
-	if st.Integrity != "" {
-		g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
-	} else {
-		g.pf("  if (buffer.length < 2) return -1;\n")
-	}
+	// MEASURE FIRST, as Go's SaveMessages does: a batch that refuses, or that does not
+	// fit the buffer, answers -1 before the first byte lands (docs/SPEC-TABLES.md §3.3).
+	g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
 	g.pf("  buffer[0] = 2;\n  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {
 		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2, need - 4));\n")
@@ -175,11 +173,14 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 			"TableVocabulary vocabulary", "TableReport report"})
 	if st.Integrity != "" {
 		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.refused = false; }\n")
-		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return -1;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
+		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return 0;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
 	}
 	g.pf("  final r = TableMessageReader();\n")
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
-	g.pf("  if (count < 0) return -1;\n")
+	// "A refused batch returns a count of `0`, as every refused batch does"
+	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0 with the report
+	// refused, and a delivered batch is never empty (M is at least 1).
+	g.pf("  if (count < 0) return 0;\n")
 	g.pf("  if (count > values.length) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return 0;\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
@@ -448,7 +449,7 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 		return "keyedPresent > 0"
 	}
 	if f.Array == ir.ArrayCounted {
-		if f.BornCount() > 0 && !f.Required {
+		if f.ElidesAtBirth() {
 			elem := messageElementField(f)
 			g.pf("%svar arrayRides = %sCount != %d;\n", ind, expr, f.BornCount())
 			g.pf("%sif (!arrayRides) {\n", ind)
@@ -492,7 +493,9 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 		// ELISION COMPARES BITS (docs/SPEC-TABLES.md §3.3): a -0 under a +0
-		// default rides, as on the variable form
+		// default rides, as on the variable form; a COMPRESSED float's -0 is
+		// stored as +0 (fixed-compressed-negzero) and compares as +0
+		expr = dartStoredFloat(f, expr)
 		if f.Type.Kind == ir.TFloat32 {
 			def := float32(0)
 			if f.HasDefault {

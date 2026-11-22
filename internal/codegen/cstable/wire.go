@@ -73,11 +73,16 @@ func isPayloadPrefixed(f *ir.Field) bool {
 	return f.Array != ir.ArrayNone || kind == tkString || kind == tkTable
 }
 
-// leafRideCondition is a clean scalar leaf's elision test. A float compares
-// its BITS with the default's (docs/SPEC-TABLES.md §3.3), so a -0 under a +0
-// default rides.
+// leafRideCondition is a clean scalar leaf's elision test. A plain float
+// compares its BITS with the default's (docs/SPEC-TABLES.md §3.3), so a -0
+// under a +0 default rides; a compressed float compares by value.
 func leafRideCondition(f *ir.Field) string {
 	prop := member(f)
+	if f.HasFloatRange {
+		// a compressed float's -0 IS +0 (docs/SPEC-TABLES.md §3.3): it rides
+		// by value, so a -0 under a +0 default is elided
+		return fmt.Sprintf("v.%s != %s", prop, leafFloatLiteral(f))
+	}
 	switch f.Type.Kind {
 	case ir.TFloat32:
 		return fmt.Sprintf("BitConverter.SingleToUInt32Bits(v.%s) != 0x%08xu", prop, math.Float32bits(float32(fieldDefaultFloat(f))))
@@ -85,6 +90,22 @@ func leafRideCondition(f *ir.Field) string {
 		return fmt.Sprintf("BitConverter.DoubleToUInt64Bits(v.%s) != 0x%016xul", prop, math.Float64bits(fieldDefaultFloat(f)))
 	}
 	return fmt.Sprintf("v.%s != %s", prop, fieldDefaultExpr(f))
+}
+
+// leafFloatLiteral is a compressed float's declared default as an exact
+// float32 literal (a compressed float is a float32, SPEC.md §4.3).
+func leafFloatLiteral(f *ir.Field) string {
+	return fmt.Sprintf("BitConverter.Int32BitsToSingle(unchecked((int)0x%08xu))", math.Float32bits(float32(fieldDefaultFloat(f))))
+}
+
+// leafStoredExpr is what a clean scalar leaf stores: a compressed float's -0
+// is stored as +0 (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+// fixed-compressed-negzero), and -0 + 0 is +0.
+func leafStoredExpr(f *ir.Field) string {
+	if f.HasFloatRange {
+		return "(v." + member(f) + " + 0.0f)"
+	}
+	return "v." + member(f)
 }
 
 // fieldDefaultFloat is a float field's declared default, 0 without one.
@@ -188,7 +209,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			}
 			g.pf("        scoped Span<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long nChild_%d = 0;\n", i)
@@ -207,7 +228,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 				g.pf("    scoped Span<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, elemCache_%d, out long payload_%d);\n", i, i, i)
@@ -238,7 +259,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			cond := leafRideCondition(f)
 			kind := tableScalarKind(f)
 			width := tableKindWidth(kind)
-			raw := csRawGet("v."+member(f), f.Type)
+			raw := csRawGet(leafStoredExpr(f), f.Type)
 			g.pf("    if (%s)\n    {\n", cond)
 			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(f, id), id, kind)
 			g.pf("        w.Fixed(%s, %d);\n", raw, width)
@@ -255,7 +276,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
+			g.pf("            int take = global::System.Math.Min(count_%d, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
 			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 			g.pf("            elemOffset += take;\n        }\n")
 			g.pf("        long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -280,7 +301,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 				g.pf("    scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
+				g.pf("        int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
 				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
@@ -341,7 +362,7 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(%sTableType(), bytes, out _); }\n\n", st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
 	}
-	cap := ir.TableWireIdCapacity(g.unit)
+	cap := min(ir.TableWireIdCapacity(g.unit), ir.TableWireIdTableBound)
 	if !ir.VariableTables(g.unit)[st.Name] {
 		g.emitTypedWireSurface(st)
 		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
@@ -806,12 +827,24 @@ public static partial class TableWire
     public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
     static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
     static bool Named(string name) { return name != null && name != "???"; }
-    // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
-    // under a +0 default rides and reads back as -0.
+    // Elision compares BITS for a plain float (docs/SPEC-TABLES.md §3.3): a -0
+    // under a +0 default rides and reads back as -0. A COMPRESSED float's -0
+    // IS +0, so it compares by value, and under a +0 default it is elided.
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
-        if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
+        if (f.Kind == 10)
+        {
+            if (f.HasRange) { return BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)) == BitConverter.Int32BitsToSingle(unchecked((int)(uint)f.DefaultRaw)); }
+            return (uint)raw == (uint)f.DefaultRaw;
+        }
         return raw == f.DefaultRaw;
+    }
+    // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+    // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bits as +0.
+    // A compressed float is a float32 (SPEC.md §4.3).
+    internal static ulong StoredRaw(ulong raw, TableFieldInfo f)
+    {
+        return f.Kind == 10 && f.HasRange && (uint)raw == 0x80000000u ? 0 : raw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)
     {
@@ -837,10 +870,12 @@ public static partial class TableWire
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
             // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
-            // is A default elements, and that is what the writer elides
+            // is A default elements, and that is what the writer elides; a table
+            // element is at its default when its body is its terminator alone
+            // (Empty), as the reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
-                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                if (n != f.ArrayMin) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -890,7 +925,7 @@ public static partial class TableWire
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && (f.EnumDeprecated == null || !f.EnumDeprecated(v))); // a deprecated variant is never written (docs/SPEC-TABLES.md §2.15)
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -995,7 +1030,7 @@ public static partial class TableWire
                 if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                 {
                     int c = Count(value, f);
-                    int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -1039,9 +1074,9 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+            w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
     }
     static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, scoped ReadOnlySpan<long> elemCache = default)
     {
@@ -1094,7 +1129,7 @@ public static partial class TableWire
             if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
             {
                 int c = Count(value, f);
-                int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -1299,7 +1334,7 @@ public static partial class TableWire
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(Math.Min(width, 8));
+            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
@@ -1313,6 +1348,8 @@ public static partial class TableWire
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
             if (reference != 0 && variant == 0) { report.Unknown++; }
             raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -1481,7 +1518,7 @@ public static partial class TableWire
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -1565,7 +1602,7 @@ public static partial class TableWire
             }
             else
             {
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
@@ -1719,7 +1756,7 @@ public static partial class TableWire
     {
         if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Zero();
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (bytes[0] != 1)
         {

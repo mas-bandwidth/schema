@@ -1,0 +1,20 @@
+schema-tables-baseline 10
+package decls
+
+table Holder
+    field c id=0xaf63de4c8601eff2 kind=4
+
+## retired
+    table Extra id=0xbce8d5791b8d6ac9 date=2026-11-21
+    field Extra.v id=0xaf63eb4c86020609 date=2026-11-21
+    field Holder.extra id=0xfd29ee12a979cb69 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- table Extra: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- retired table Extra id=0xbce8d5791b8d6ac9 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Extra.v id=0xaf63eb4c86020609 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Holder.extra id=0xfd29ee12a979cb69 — a re-added name or id is refused until this entry is acknowledged (issue #441)

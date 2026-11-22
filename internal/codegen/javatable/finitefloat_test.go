@@ -29,7 +29,6 @@ package javatable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,6 +37,8 @@ import (
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const finiteSchema = `package probe
@@ -197,6 +198,10 @@ public final class Driver {
 
     static final long[] F32 = { 0x3f800000L, 0x00800000L, 0x40800000L };
     static final long[] F64 = { 0x3ff0000000000000L, 0x0010000000000000L, 0x4010000000000000L };
+    // a compressed float32 under min = -2, max = 2: 1.0 ^ 2.0 ^ 0.0 is +infinity
+    // too, and every save of the three stays inside the range its fixed
+    // writer holds (docs/SPEC-TABLES.md §3.3)
+    static final long[] F32C = { 0x3f800000L, 0x40000000L, 0x00000000L };
 
     static FxFixed.Value fx(Set s, long bits) {
         FxFixed.Value v = new FxFixed.Value();
@@ -375,7 +380,7 @@ public final class Driver {
         // THE FIXED FORM: a compressed float is refused before its bounds
         check("fixed-read:f32", () -> refusesFixed((v, b) -> v.f = Float.intBitsToFloat((int) b), F32, "Fx.f"));
         check("fixed-read:f64", () -> refusesFixed((v, b) -> v.d = Double.longBitsToDouble(b), F64, "Fx.d"));
-        check("fixed-read:compressed", () -> refusesFixed((v, b) -> v.c = Float.intBitsToFloat((int) b), F32, "Fx.c"));
+        check("fixed-read:compressed", () -> refusesFixed((v, b) -> v.c = Float.intBitsToFloat((int) b), F32C, "Fx.c"));
         check("fixed-read:array-element", () -> refusesFixed((v, b) -> v.arr[1] = Float.intBitsToFloat((int) b), F32, "Fx.arr"));
         check("fixed-read:nested-type", () -> refusesFixed((v, b) -> v.inner.g = Float.intBitsToFloat((int) b), F32, "Inner.g"));
         check("fixed-read:union-arm", () -> refusesFixed((v, b) -> { v.pick.type = PickFixed.b; v.pick.b = Double.longBitsToDouble(b); }, F64, "Pick.b"));
@@ -541,10 +546,10 @@ func runFiniteProbe(t *testing.T, sabotage *finiteSabotage) map[string]string {
 	}
 	sort.Strings(sources)
 	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

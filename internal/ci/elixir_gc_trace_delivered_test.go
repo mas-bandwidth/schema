@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -112,15 +113,51 @@ func TestCIFastLangCleanElixirRunsOffsetsGate(t *testing.T) {
 	wf := string(raw)
 	// The offsets gate is the lang-clean (elixir offsets) row, beside the
 	// agreement gate's shard rows (#4530: on shard 1 it took that row past
-	// the two-minute cap). The plan must write the row whenever it writes the
-	// Elixir shards, and the row must run the gate.
-	if !strings.Contains(wf, `if ($1 == "elixir") printf ",{\"lang\":\"elixir\",\"shard\":\"offsets\"}"`) {
+	// the two-minute cap; #4597). The plan must write the row from its
+	// elixir-offsets leg, and the row must run the gate.
+	if !strings.Contains(wf, `if ($1 == "elixir-offsets") { printf "%s{\"lang\":\"elixir\",\"shard\":\"offsets\"}"`) {
 		t.Error("ci-fast.yml plan no longer writes the lang-clean (elixir offsets) row")
 	}
-	if !strings.Contains(wf, "                offsets)\n                  make tables-elixir-offsets ") {
+	if !strings.Contains(wf, "                offsets)\n                  set -- tables-elixir-offsets\n") {
 		t.Error("ci-fast.yml lang-clean (elixir offsets) does not run tables-elixir-offsets")
 	}
-	if !strings.Contains(wf, "elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement") {
-		t.Error("ci-fast.yml lang-clean (elixir K/N) does not run tables-elixir-accessor-descriptor-agreement")
+	if !strings.Contains(wf, `set -- "tables-elixir-accessor-descriptor-agreement-shard-${SHARD%/*}"`) {
+		t.Error("ci-fast.yml lang-clean (elixir K/N) does not run tables-elixir-accessor-descriptor-agreement-shard-K")
+	}
+}
+
+// The agreement gate's per-commit rows must be exactly shards 1..N of
+// make/elixir.mk's ELIXIR_AGREEMENT_SHARDS: a row short and some units are
+// never walked per commit; a row over and its make target refuses. The plan
+// names the legs elixir-agreement-1..N and writes each as row elixir K/N with
+// N its elixir_clean_shards, which must be the same N.
+func TestCIFastLangCleanElixirAgreementRowsMatchShards(t *testing.T) {
+	root := repoRoot(t)
+	mk, err := os.ReadFile(filepath.Join(root, "make", "elixir.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^ELIXIR_AGREEMENT_SHARDS := ([0-9]+)$`).FindSubmatch(mk)
+	if m == nil {
+		t.Fatal("make/elixir.mk sets no ELIXIR_AGREEMENT_SHARDS")
+	}
+	n, err := strconv.Atoi(string(m[1]))
+	if err != nil || n < 1 {
+		t.Fatalf("ELIXIR_AGREEMENT_SHARDS %q is not a positive count", m[1])
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "elixir-offsets"
+	for k := 1; k <= n; k++ {
+		want += fmt.Sprintf(" elixir-agreement-%d", k)
+	}
+	line := `clean_legs="$clean_legs ` + want + `"`
+	if !strings.Contains(string(raw), line) {
+		t.Fatalf("ci-fast.yml plan must add the elixir rows as %s (ELIXIR_AGREEMENT_SHARDS=%d)", line, n)
+	}
+	if shards := fmt.Sprintf("\n          elixir_clean_shards=%d\n", n); !strings.Contains(string(raw), shards) {
+		t.Fatalf("ci-fast.yml plan must write the elixir-agreement rows as K/%d: it needs elixir_clean_shards=%d (ELIXIR_AGREEMENT_SHARDS)", n, n)
 	}
 }

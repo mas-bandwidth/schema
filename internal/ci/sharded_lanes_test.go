@@ -202,7 +202,9 @@ func shardsOf(t *testing.T, rows []struct{ Lang, Shard string }, lang string) []
 
 // TestLangCleanPlanWritesTheShardRows: the plan writes the C and Elixir gates
 // as shards 1/N .. N/N, the other languages as one row each, and a diff to
-// the splitter itself selects both sharded gates.
+// the splitter itself selects both sharded gates. The Elixir rows
+// are the plan's elixir-agreement-K legs (make/elixir.mk's agreement shards,
+// #4597) written as elixir K/N, and elixir-offsets written as elixir offsets.
 func TestLangCleanPlanWritesTheShardRows(t *testing.T) {
 	t.Parallel()
 	needTools(t, "bash", "awk")
@@ -626,7 +628,7 @@ func TestLangCleanRowsKeepNoStore(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "make", "elixir-ebin-cache.sh")); err == nil {
 		t.Error("make/elixir-ebin-cache.sh is back: no row keeps an ebin between runs")
 	}
-	for _, s := range []string{"include: ${{ fromJSON(needs.plan.outputs.clean_rows) }}", `C_FORMAT_SHARD="$SHARD"`, `ELIXIR_TABLE_SHARD="$SHARD"`} {
+	for _, s := range []string{"include: ${{ fromJSON(needs.plan.outputs.clean_rows) }}", `C_FORMAT_SHARD="$SHARD"`, `"tables-elixir-accessor-descriptor-agreement-shard-${SHARD%/*}"`} {
 		if !strings.Contains(body, s) {
 			t.Errorf("ci-fast.yml lang-clean does not carry %q: its rows are not the plan's shards", s)
 		}
@@ -688,8 +690,7 @@ func TestVerifyLegHandoffTakesTheShards(t *testing.T) {
 		}
 	}
 	for _, s := range []string{
-		"elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement",
-		`ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]'`,
+		`set -- "tables-elixir-accessor-descriptor-agreement-shard-${SHARD%/*}" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]'`,
 		"HANDOFF_LEGS: ${{ needs.plan.outputs.handoff_legs }}",
 		`*'"c"'*) c_targets="$c_targets c-conformance-objs-handoff" ;;`,
 		`C_CONFORMANCE_SHARD="$SHARD"`,
@@ -703,6 +704,13 @@ func TestVerifyLegHandoffTakesTheShards(t *testing.T) {
 		if !strings.Contains(clean, s) {
 			t.Errorf("lang-clean does not carry %q: the shards are not handed over", s)
 		}
+	}
+	mk, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "elixir.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "\t$(MAKE) elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement ELIXIR_TABLE_SHARD=$*/$(ELIXIR_AGREEMENT_SHARDS)\n"; !strings.Contains(string(mk), want) {
+		t.Errorf("make/elixir.mk's agreement shard target does not compile its shard as ELIXIR_TABLE_SHARD and hand it over: want %q", want)
 	}
 }
 

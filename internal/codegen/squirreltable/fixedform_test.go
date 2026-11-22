@@ -3,6 +3,7 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ func fixedCorpus(t *testing.T) string {
 	}
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "1" {
+		if slowtest.CorpusRequired() {
 			t.Fatalf("the fixed-form corpus is the byte oracle and it is absent: %v (run make tables-fixedform-corpus)", err)
 		}
 		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", err)

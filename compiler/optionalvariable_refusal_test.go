@@ -16,7 +16,11 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	c := New()
 	src := "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n"
 	u := unitFromSource(t, src)
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		_, err := c.Generate(u, lang, nil)
 		if carries(lang, carryOptionalVariableClosure) {
 			if err != nil {
@@ -38,7 +42,11 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	// scalar ?T to trip the gate for it. Every non-carrier refuses it by
 	// name; the four carriers generate it.
 	pair := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    pair ?[2]Inner\n}\n")
-	for _, lang := range c.Targets() {
+	allTargetss := c.Targets()
+	if len(allTargetss) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargetss {
 		_, err := c.Generate(pair, lang, nil)
 		if carries(lang, carryOptionalVariableClosure) {
 			// A carrier that does not also carry the optional array refuses
@@ -63,7 +71,11 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	}
 	// a ?T over a FIXED closure is untouched: every target generates it
 	plain := unitFromSource(t, "package probe\ntable Inner\n{\n    n int32\n}\ntable Outer\n{\n    inner ?Inner\n}\n")
-	for _, lang := range c.Targets() {
+	allTargetsss := c.Targets()
+	if len(allTargetsss) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargetsss {
 		if _, err := c.Generate(plain, lang, nil); err != nil && strings.Contains(err.Error(), "optional over a variable closure") {
 			t.Errorf("target %s refused ?T over a fixed closure: %v", lang, err)
 		}
@@ -88,7 +100,11 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 		})
 	}
 	// every target that does not carry it yet still refuses it by name
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		if carries(lang, carryOptionalVariableClosure) {
 			continue
 		}

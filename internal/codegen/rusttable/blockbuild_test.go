@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // blockBuilderSchema is gotable/blockbuild_test.go's own shape: a counted
@@ -202,7 +204,7 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "blockbuildprobe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if spillTo != "" {
@@ -214,7 +216,7 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 	if o, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the emitted Rust runtime did not build: %v\n%s", err, o)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = root
 	run.Env = cmd.Env
 	o, err := run.CombinedOutput()
@@ -341,7 +343,7 @@ int main(int argc, char** argv) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "cppopen")
-	cmd := exec.Command(cxx, "-std=c++17", "-O2", "-o", bin, "cppopen.cpp", "ProbeBlock.cpp")
+	cmd := testproc.Command(t, cxx, "-std=c++17", "-O2", "-o", bin, "cppopen.cpp", "ProbeBlock.cpp")
 	cmd.Dir = root
 	if o, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the C++ block reader did not build: %v\n%s", err, o)
@@ -350,7 +352,7 @@ int main(int argc, char** argv) {
 	if err := os.WriteFile(path, block, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(bin, path).CombinedOutput()
+	out, err := testproc.Command(t, bin, path).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the C++ reader did not open the Rust-built block (docs/SPEC-TABLES.md §19.2): %v\n%s", err, out)
 	}

@@ -5,7 +5,7 @@ defmodule PacketWriteTextTest do
 
   def fail(what) do
     IO.puts("FAILED: #{what}")
-    Process.put(:failed, true)
+    Process.put(:failed, Process.get(:failed, 0) + 1)
   end
 
   def check(true, _what), do: :ok
@@ -68,21 +68,27 @@ defmodule PacketWriteTextTest do
         end
 
       _ ->
-        :ok
+        fail("packet-write-text malformed case line: #{inspect(line)}")
     end
   end
 
   def run do
-    @cases
-    |> File.read!()
-    |> String.split("\n")
-    |> Enum.reject(fn line -> line == "" or String.starts_with?(line, "#") end)
-    |> Enum.each(&case_line/1)
+    lines =
+      @cases
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.reject(fn line -> line == "" or String.starts_with?(line, "#") end)
 
-    if Process.get(:failed) do
+    Enum.each(lines, &case_line/1)
+
+    # One unit per shared case: tools/mustrun holds the count to the one the
+    # recipe registers, so an emptied or shortened cases.txt is red.
+    ran = length(lines)
+    failed = Process.get(:failed, 0)
+    IO.puts("packet-write-text Elixir: ran #{ran}, failed #{failed}")
+
+    if failed != 0 or ran == 0 do
       System.halt(1)
     end
-
-    IO.puts("OK")
   end
 end

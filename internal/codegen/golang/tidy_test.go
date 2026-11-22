@@ -60,6 +60,9 @@ type Shapes
 // the only blocks are the bodies of if, for, switch and case.
 func TestTidyLeavesNoBareBlocks(t *testing.T) {
 	files := generateGo(t, "Shapes", shapesUnit)
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, src := range files {
 		fset := token.NewFileSet()
 		f, err := goparser.ParseFile(fset, name, src, 0)
@@ -139,6 +142,9 @@ func TestGoInitialismsOnMembers(t *testing.T) {
 // comment, and a lone declaration's begins with its own name.
 func TestGodocOnEveryExport(t *testing.T) {
 	files := generateGo(t, "Shapes", shapesUnit)
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, src := range files {
 		fset := token.NewFileSet()
 		f, err := goparser.ParseFile(fset, name, src, goparser.ParseComments)

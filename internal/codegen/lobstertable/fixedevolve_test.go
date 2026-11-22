@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -39,7 +40,13 @@ var lobsterVersionRows = []lobsterVersionRow{
     assert_eq(back[0].Vals[0].X, -500, "vals[0].x")
     assert_eq(back[0].Vals[3].Y, -603, "vals[3].y")
     assert_eq(back[0].Vals[4].X, 7, "vals[4].x prefill default")
-    assert_eq(back[0].Vals[7].Y, 9, "vals[7].y prefill default")`},
+    assert_eq(back[0].Vals[7].Y, 9, "vals[7].y prefill default")
+    assert_eq(back[0].Ints[3], -803, "ints[3]")
+    assert_eq(back[0].Ints[4], 0, "ints[4] born zero")
+    assert_eq(back[0].Ints[7], 0, "ints[7] born zero")
+    assert_eq(back[0].Octet[3], 203, "octet[3]")
+    assert_eq(back[0].Octet[4], 0, "octet[4] born zero")
+    assert_eq(back[0].Octet[7], 0, "octet[7] born zero")`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},
@@ -956,8 +963,8 @@ func lobsterFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}

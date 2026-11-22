@@ -105,9 +105,10 @@ name: CI full
 # `go test` records its event stream line by line, and a last step that runs
 # whatever happened (tools/gotestreport) names every failed test, every test
 # that never reported (the row cut short at the backstop), the slowest tests,
-# and goes red when a package's test binary ran past the -timeout its command
-# named (go test's 10m default when it named none), which is what caught a
-# hang or a blow-up before: now only AFTER every test has reported. The streams are kept as each row's go-test-json artifact. The
+# and names (never fails) a package whose test binary ran past the -timeout its
+# command named (go test's 10m default when it named none): a nightly has no
+# time limit (the owner, 2026-11-16 and 2026-11-21). A hang is still red, as a
+# test that never reported. The streams are kept as each row's go-test-json artifact. The
 # `verdict` job at the end fails when any job's result is not success, so a
 # cancelled or skipped row can never read green.
 
@@ -142,11 +143,11 @@ env:
   # the nightly rule in the header: no go test -timeout under tools/pgroup
   PGROUP_GO_TEST_TIMEOUT: '0'
   PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
-  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_TAG: v2.1.6
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
   SERIALIZE_RS_TAG: v5.0.0
-  SERIALIZE_CS_TAG: v2.1.1
+  SERIALIZE_CS_TAG: v2.2.1
   SERIALIZE_JS_TAG: v2.1.2
 
 jobs:
@@ -185,6 +186,17 @@ jobs:
     # hosted two-core runner the SCHEMA_SLOW=1 gotable package ran past ten
     # minutes; with no cap it would finish there too, only later.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # WHAT THIS JOB PROVIDES, SO A TEST CANNOT SKIP FOR WANT OF IT. Every fleet
+    # runner's service PATH resolves node and tsc (the fleet SDK's bin), and the
+    # step below clones serialize.js beside the checkout. A test that needs one
+    # and does not find it would skip, and a skipped test exits 0; under these
+    # two variables the same absence fails by name (internal/slowtest,
+    # Program and Require; internal/ci, TestTheGoTestJobProvidesNodeAndTsc).
+    # Under the skip ledger (.github/skip-ledger.txt, schema#4525) the same
+    # promise is the classes tool:node and tool:tsc in each row's -provides.
+    env:
+      SCHEMA_REQUIRE_NODE: '1'
+      SCHEMA_REQUIRE_TSC: '1'
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -259,23 +271,6 @@ jobs:
       fail-fast: false
       matrix:
         group: [ unit-codegen, unit-codegen-lobster-1, unit-codegen-lobster-2, unit-codegen-lobster-3, unit-codegen-java-1, unit-codegen-java-2, unit-codegen-java-3, unit-codegen-java-4, unit-codegen-java-5, unit-codegen-java-6, unit-codegen-java-7, unit-codegen-python-1, unit-codegen-python-2, unit-codegen-python-3, unit-codegen-python-4, unit-codegen-python-5, unit-codegen-python-6, unit-codegen-python-7, unit-codegen-python-8, unit-codegen-python-9, unit-codegen-python-10, unit-codegen-python-11, unit-codegen-python-12, unit-codegen-python-13, unit-codegen-python-14, unit-codegen-python-15, unit-codegen-python-16, unit-codegen-rust-1, unit-codegen-rust-2, unit-codegen-rust-3, unit-codegen-rust-4, unit-codegen-go-1, unit-codegen-go-2, unit-codegen-go-3, unit-codegen-go-4, unit-codegen-go-5, unit-codegen-go-6, unit-codegen-c-1, unit-codegen-c-2, unit-codegen-c-3, unit-codegen-cs-1, unit-codegen-cs-2, unit-codegen-cs-3, unit-codegen-ruby-1, unit-codegen-ruby-2, unit-codegen-ruby-3, unit-codegen-dart-1, unit-codegen-dart-2, unit-codegen-dart-3, unit-codegen-goose-1, unit-codegen-goose-2, unit-codegen-goose-3, unit-codegen-goose-4, unit-codegen-goose-5, unit-codegen-unity-1, unit-codegen-unity-2, unit-codegen-js-1, unit-codegen-js-2, unit-codegen-lua-1, unit-codegen-lua-2, unit-codegen-lua-3, unit-codegen-luau-1, unit-codegen-luau-2, unit-codegen-moo-1, unit-codegen-moo-2, unit-codegen-squirrel-1, unit-codegen-squirrel-2, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-compiler-19, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-ci-2, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
-        # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
-        # request (the events the 110 s PGROUP_WALL applies to) these rows are
-        # excluded, because their median job wall over four CI full runs on
-        # 2026-11-13/14 was past the 110 s per-commit budget: unit-codegen 642 s,
-        # versioning-cs 193 s, versioning-rust 131 s, versioning-java 129 s,
-        # versioning-c 128 s, unit-rest-ci 118 s, unit-rest-fuzz-2 115 s. The
-        # nightly schedule and a dispatch run them unchanged and at full strength.
-        # internal/codegen/cpptable left unit-codegen for unit-codegen-cpp-1..3,
-        # which are each under the budget and are not excluded.
-        # re-enable: relax/ci-time-unit-codegen, relax/ci-time-versioning-cs,
-        # relax/ci-time-versioning-rust, relax/ci-time-versioning-java,
-        # relax/ci-time-versioning-c, relax/ci-time-unit-rest-ci,
-        # relax/ci-time-unit-rest-fuzz-2 (docs/relaxed.md). Also unit-elixir-3, which
-        # was killed at the wall in run 43630522257 (runner captain-8 on
-        # captainamerica: 64 cores, no core cap, load1 96.5);
-        # re-enable: relax/ci-time-unit-elixir-3 (docs/relaxed.md)
-        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"group":"unit-codegen"},{"group":"versioning-cs"},{"group":"versioning-rust"},{"group":"versioning-java"},{"group":"versioning-c"},{"group":"unit-rest-ci"},{"group":"unit-rest-fuzz-2"},{"group":"unit-elixir-3"}]' || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -285,14 +280,14 @@ jobs:
       - name: where this row records its go test events
         run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
-      - name: Check out the C, C++, C#, Go and Rust serialize runtimes (pinned releases)
+      - name: Check out the C, C++, C#, Go, Rust and JavaScript serialize runtimes (pinned releases)
         run: |
           set -euo pipefail
           cd ..
           # A self-hosted runner's workspace PARENT persists between runs: the
           # previous run's clones are removed and re-cloned at the pinned tag
           # every time, never reused (as ci-fast's go-test-touched does).
-          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
@@ -300,6 +295,9 @@ jobs:
           # compiler.TestRustEverySchemaNameIsReachable (unit-rest) builds the
           # generated crates against the sibling serialize.rs.
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          # the JavaScript runtime the node halves of the js and compiler
+          # tests import (SCHEMA_REQUIRE_NODE, the job's env)
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -511,7 +509,18 @@ jobs:
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
+        run: go test -timeout 0 -skip '^TestNameCorpusBuilds' $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
+
+      # THE NAME CORPUS (testdata/name-buildability-emit), in a step of its own
+      # under SCHEMA_REQUIRE_CORPUS: each leg skips without its runtime sibling or
+      # toolchain (serialize.h, serialize.c, serialize.cs, dotnet, Elixir), and a
+      # skip under SCHEMA_SLOW alone would pass a missing toolchain silently.
+      - name: go test the name corpus, every emitter leg
+        if: matrix.group == 'unit-codegen'
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+        run: go test -timeout 0 -v ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run '^TestNameCorpusBuilds'
 
       - name: go test the Lobster emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-lobster-1'
@@ -1659,10 +1668,10 @@ jobs:
       # cancellation, the backstop). It reads the -json streams the row's
       # outermost go test recorded and names every failed test, every test
       # that started and never reported, and the slowest; it is red for a
-      # test or package that never reported, and for a package whose test
-      # binary ran past the -timeout its go test named (go test's 10m default
-      # when it named none): the detection the lifted limits gave, applied
-      # only after every test has reported. A test failure stays the test
+      # test or package that never reported. A package whose test binary ran
+      # past the -timeout its go test named (go test's 10m default when it
+      # named none) is named OVER BUDGET and is not a failure: a nightly has
+      # no time limit (the owner, 2026-11-16 and 2026-11-21). A test failure stays the test
       # step's verdict.
       - name: report every test this row ran, and each package's named budget
         if: always()
@@ -1674,6 +1683,20 @@ jobs:
           name: go-test-json-${{ matrix.group }}
           path: ${{ runner.temp }}/go-test-json
           if-no-files-found: ignore
+          retention-days: 7
+
+      # THE SLOW-GATE TABLE, uploaded as the accounting above promises: every
+      # gate skip of the row's shard, its bucket and who runs it. The upload
+      # above carries only the go test transcripts, and a shard that printed
+      # its table uploaded no table (the reviewer's F-235). A slow-gate row
+      # that wrote no table is red here too. internal/ci's
+      # TestSlowGateRowsUploadTheirCoverageTable holds this step in place.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && startsWith(matrix.group, 'slow-gate-')
+        with:
+          name: slow-gate-coverage-${{ matrix.group }}
+          path: build/slowgate/coverage.tsv
+          if-no-files-found: error
           retention-days: 7
 
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
@@ -1781,6 +1804,14 @@ jobs:
       - name: install the Luau and Squirrel pins
         if: github.event_name == 'schedule' && matrix.group != 'goose'
         run: make dist-luau dist-squirrel
+      # The full moo-compiler row runs the whole compiler package with
+      # SCHEMA_SLOW=1, so it runs the compiler's Python and Ruby tests too,
+      # which fail, never skip, without the pins (go-test's unit-compiler-18
+      # installs the same two).
+      - uses: ./.github/actions/python
+        if: github.event_name == 'schedule' && matrix.group == 'moo-compiler'
+      - uses: ./.github/actions/ruby
+        if: github.event_name == 'schedule' && matrix.group == 'moo-compiler'
       - uses: ./.github/actions/moo
         if: matrix.group != 'goose'
 
@@ -2606,9 +2637,10 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
-          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/**', 'make/**', 'Makefile', 'go.mod') }}
 
       - name: stand cached C# fuzz inputs newer than this checkout
         if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
@@ -2629,18 +2661,13 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
           key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}
 
-      # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
-      # request (the 110 s PGROUP_WALL events) the region row runs its smoke
-      # target, CS_FUZZ_SMOKE_N random mutants after the full enumerated pass,
-      # because its median job wall was 127 s over four CI full runs on
-      # 2026-11-13/14; the nightly schedule and a dispatch run the full N.
-      # re-enable: relax/ci-time-cs-fuzz-region (docs/relaxed.md)
       - name: run C# ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }}${{ (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.name == 'region' && '-smoke' || '' }}
+        run: make ${{ matrix.target }}
 
   # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
   #
@@ -2675,13 +2702,6 @@ jobs:
             target: tables-js-wire-fuzz-plain
           - name: retain
             target: tables-js-wire-fuzz-retain
-        # RELAXED 2026-11-14 (maintainer: get main green): the retain row is
-        # excluded on a push and a pull request (the 110 s PGROUP_WALL events):
-        # its median job wall was 261 s over four CI full runs on 2026-11-13/14,
-        # and its cost is the enumerated pass, which a smaller N does not cut. The
-        # nightly schedule and a dispatch run it unchanged and at full strength.
-        # re-enable: relax/ci-time-js-fuzz-retain (docs/relaxed.md)
-        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"name":"retain"}]' || '[]') }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2730,17 +2750,7 @@ jobs:
   # Go and the pinned SDK only. The AOT driver build is cached between runs, and
   # the full 100,000-mutant campaign also runs nightly in certify.yml.
   dart-fuzz:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    # RELAXED 2026-11-14 (maintainer: get main green): skipped on a push and a
-    # pull request (the 110 s PGROUP_WALL events), because its median job wall
-    # was 132 s over four CI full runs on 2026-11-13/14, most of it the build,
-    # the roster tests and the enumerated pass, which a smaller N does not cut.
-    # The nightly schedule and a dispatch run it unchanged and at full strength.
-    # re-enable: relax/ci-time-dart-fuzz-wire (docs/relaxed.md), and restore:
-    #   if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    # Runs on every run of this workflow: the nightly schedule and a dispatch.
     name: Dart fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
@@ -3404,6 +3414,11 @@ jobs:
 
       - run: go vet ./...
       - run: go build ./...
+      # THE WINDOWS-ONLY TESTS RUN HERE OR NOWHERE. tools/treelock's
+      # treelock_windows_test.go is `//go:build windows`: go vet compiled it
+      # and no lane ran it (internal/ci,
+      # TestEveryConstrainedTestFileCompilesInSomeLane).
+      - run: go test ./tools/treelock/
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds

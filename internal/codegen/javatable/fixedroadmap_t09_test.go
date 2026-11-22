@@ -25,10 +25,11 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapJavaT09Optionals(t *testing.T) {
@@ -86,7 +87,7 @@ func t09BuildInline(t *testing.T, dir, src, probe string) (classes, pkg, root st
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes, pkg, root
@@ -202,7 +203,7 @@ func t09Run(t *testing.T, classes, class string) string {
 
 	t.Helper()
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, class).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, class).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s: %v\n%s", class, err, out)
 	}

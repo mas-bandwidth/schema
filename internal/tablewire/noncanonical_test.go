@@ -65,6 +65,9 @@ func TestEngineReadsRefuseNonCanonical(t *testing.T) {
 		t.Fatalf("message-one-encoding announcement: %v", err)
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, r := range rows {
 		data := readNonCanonicalFile(t, filepath.Join(vector, r.file))
 		got := readVerdict(t, nc, one, &ncVocab, &oneVocab, r, data)

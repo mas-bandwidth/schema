@@ -23,7 +23,6 @@ package gotable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t03GoRetireReason is the operator mark the retirement subtests hand in.
@@ -159,7 +160,11 @@ fixed table Big
 	if ir.TableFixedEmitted(u, big) {
 		t.Error("R6: a table past the ceiling is a fixed-form root")
 	}
-	for _, r := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	if len(allTableFixedFormRoots) == 0 {
+		t.Fatal("ir.TableFixedFormRoots(u) is empty: the loop below would check nothing")
+	}
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: TableFixedFormRoots keeps a table past the ceiling")
 		}
@@ -634,7 +639,7 @@ func t03GoR21Exec(t *testing.T, arm string) {
 	if err := os.WriteFile(filepath.Join(dir, "widen_test.go"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -672,7 +677,8 @@ func t03GoR29(t *testing.T) {
 	if !found {
 		t.Error("R29: a body AT 65536 is not a fixed-form root")
 	}
-	for _, r := range ir.TableFixedFormRoots(past) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(past)
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Lineage" {
 			t.Error("R29: a body one past 65536 is still a fixed-form root")
 		}

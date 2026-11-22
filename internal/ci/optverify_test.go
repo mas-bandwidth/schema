@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var allOptVerifyLangs = []string{
@@ -36,7 +38,7 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 	root := repoRoot(t)
 
 	// 1. Discover SCHEMA_PORTS from non-dashed make/<lang>.mk files.
-	matches, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	matches, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatalf("glob make/*.mk: %v", err)
 	}

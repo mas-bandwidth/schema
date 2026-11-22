@@ -216,9 +216,26 @@ tables-cs-variable-surface: build/tables-generated-cs/.stamp
 COOK_CS_N ?= 1000000
 COOK_CS := cd test/cs-cook && $(DOTNET) run --no-build --
 
+# THE DRIVER BUILDS ARE DECIDED BY CONTENT (make/driver-stamp.sh). `dotnet build`
+# compares timestamps, and these two projects compile sources generated OUTSIDE
+# them (build/tables-generated-cs) and from a sibling checkout (SERIALIZE_CS),
+# so a regenerated file that is not newer than the built assembly left a STALE
+# driver that a test then passed against. The stamp hashes every input's path
+# and bytes: unchanged inputs skip the build tool entirely, changed ones run a
+# FULL build (--no-incremental). The stamps live in build/driver-stamps, which
+# the CI driver cache carries beside the driver it describes.
+DRIVER_STAMPS := build/driver-stamps
+CS_CONFORMANCE_DLL := test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll
+CS_CONFORMANCE_INPUTS := test/conformance/cs/schemaconformance.csproj test/conformance/cs/src \
+	build/tables-generated-cs $(SERIALIZE_CS)/src .github/dotnet-version
+CS_COOK_DLL := test/cs-cook/bin/Debug/net10.0/schemacooktest.dll
+CS_COOK_INPUTS := test/cs-cook/schemacook.csproj test/cs-cook/src \
+	build/tables-generated-cs/pointers .github/dotnet-version
+
 .PHONY: build-cs-cook
 build-cs-cook: build/tables-generated-cs/.stamp
-	cd test/cs-cook && $(DOTNET) build -v q --nologo
+	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
+		"cd test/cs-cook && $(DOTNET) build -v q --nologo --no-incremental"
 
 .PHONY: tables-cook-open-cs
 tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp build/cook-open-fixed/.stamp
@@ -515,7 +532,8 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 CARDS_CS_STAMP := build/tables-generated-cs/cards/.stamp
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp $(CARDS_CS_STAMP)
-	cd test/conformance/cs && $(DOTNET) build -v q --nologo -p:RunAnalyzers=false
+	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/conformance-cs.sha256 $(CS_CONFORMANCE_DLL) $(CS_CONFORMANCE_INPUTS) -- \
+		"cd test/conformance/cs && $(DOTNET) build -v q --nologo --no-incremental -p:RunAnalyzers=false"
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -1026,7 +1044,10 @@ test-cs: tables-cs-bench-gate
 # as `error WHITESPACE` or `error <rule id>` with its file), then a full rebuild
 # with the analyzer set on and TreatWarningsAsErrors, so a compiler or analyzer
 # warning (CS0169 for an unused private field, CA<n> for an analyzer finding)
-# turns it red. $(1) the gate's label, $(2) the project, $(3) the generated
+# turns it red. The build keeps its OWN obj directory: the negative controls
+# build the project over a planted copy of the generated sources, and into the
+# project's shared obj/ that left an assembly of the PLANTED code which the next
+# incremental driver build copied to bin/ as current (the stale driver). $(1) the gate's label, $(2) the project, $(3) the generated
 # directories formatted, $(4) extra NAME=VALUE properties (the negative
 # control's redirect).
 #
@@ -1046,6 +1067,7 @@ define cs_clean_check
 		grep -E ' (error|warning) [A-Z]+[A-Z0-9]*:' build/cs-clean/$(1)/format.log || cat build/cs-clean/$(1)/format.log; \
 	fi; \
 	if $(DOTNET) build $(2) --no-incremental --nologo -v q -o build/cs-clean/$(1)/bin \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-clean/$(1)/obj/ \
 		$(addprefix -p:,$(CS_ANALYSIS_PROPS) $(4)) -p:TreatWarningsAsErrors=true \
 		> build/cs-clean/$(1)/build.log 2>&1; then :; else \
 		st=1; echo "RED $(1): dotnet build with $(CS_ANALYSIS_PROPS)"; \
@@ -1105,7 +1127,7 @@ tables-cs-clean-negative-control-run:
 		echo 'NEGATIVE CONTROL FAILED: tables-cs-clean stayed green over a planted violation'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
 	@grep -Eq 'A1Table\.cs.* error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the misindented statement was not named'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; }
-	@if grep -E ' error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log | grep -qv 'A1Table\.cs'; then \
+	@if grep -E ' error WHITESPACE:' $(TABLES_CS_CLEAN_NEG)/log | grep -v 'A1Table\.cs' >/dev/null; then \
 		echo 'NEGATIVE CONTROL FAILED: a finding outside the planted unit'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
 	@if grep -q 'RED tables-cs-clean-negative: dotnet build' $(TABLES_CS_CLEAN_NEG)/log; then \
 		echo 'NEGATIVE CONTROL FAILED: the build half went red, not the format half'; cat $(TABLES_CS_CLEAN_NEG)/log; exit 1; fi
@@ -1196,7 +1218,7 @@ tables-cs-fixedform-arm-negative-control: bin/schema
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
 .PHONY: test-cs
-test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
@@ -1222,9 +1244,9 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
 	$(DOTNET) build bench/paired/cs -c Release --nologo -v quiet -property:UseSharedCompilation=false "-property:SerializeCsRoot=$(abspath $(SERIALIZE_CS))"
 	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
-	cd test/cs && $(DOTNET) run
-	cd test/cs && $(DOTNET) run -c Release
-	cd test/cs-ludicrous && $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-debug -count 966 -- $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-release -count 968 -- $(DOTNET) run -c Release
+	cd test/cs-ludicrous && ../../$(MUSTRUN) -name test-cs-ludicrous -count 56 -- $(DOTNET) run
 
 TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
@@ -1313,11 +1335,11 @@ $(CARDS_CS_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 # and cards-cs-generate only, never on build/tables-generated-cs/.stamp or
 # build-conformance-cs, so a red elsewhere in the leg cannot hold it.
 .PHONY: cards-cs-test
-cards-cs-test: bin/schema cards-cs-generate
+cards-cs-test: build/mustrun bin/schema cards-cs-generate
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Debug --nologo -v quiet
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Release --nologo -v quiet
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
+	$(MUSTRUN) -name cards-cs-test-debug -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
+	$(MUSTRUN) -name cards-cs-test-release -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
 
 # cards-cs-driver builds the facade driver program once, so the conformance
 # check pays no build per surface.
@@ -1545,9 +1567,9 @@ build/packet-end/cs/.stamp: bin/schema test/packet-end/End.schema make/cs.mk
 	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/End.schema
 	@touch $@
 
-packet-end-cs: build/packet-end/cs/.stamp
-	$(DOTNET) run --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
-	$(DOTNET) run --configuration Release --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
+packet-end-cs: build/mustrun build/packet-end/cs/.stamp
+	$(MUSTRUN) -name packet-end-cs-debug -count 3 -- $(DOTNET) run --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-cs-release -count 3 -- $(DOTNET) run --configuration Release --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
 	@echo 'packet end C#: exact packet accepted as 3, trailing byte and final-byte padding refused'
 
 # The control removes the end call from the emitter through a go build
@@ -1593,8 +1615,8 @@ $(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.sch
 	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
 	@touch $@
 
-packet-write-cfloat-cs: $(PACKET_WRITE_CFLOAT_CS)/.stamp
-	$(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-cs -count 10 -- $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
 	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
 
 # The control turns the generated finite/range assertion into a constant true

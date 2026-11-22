@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // checkEverySetupRustIsHostedOnly requires every dtolnay/rust-toolchain step in
@@ -330,7 +332,7 @@ func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
 	makeFiles := map[string]string{
 		"Makefile": readCI(t, root, "Makefile"),
 	}
-	mkPaths, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	mkPaths, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

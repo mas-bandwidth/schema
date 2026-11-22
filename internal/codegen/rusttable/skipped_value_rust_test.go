@@ -11,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRustSkippedValueIsValidated runs every row of the shared skipped-value
@@ -296,12 +298,12 @@ fn main() {
 		args = append(args, "-C", "linker="+cc)
 	}
 	args = append(args, "-o", "run", "main.rs")
-	cmd := exec.Command("rustc", args...)
+	cmd := testproc.Command(t, "rustc", args...)
 	cmd.Dir = build
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(build, "run")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(build, "run")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
 	}

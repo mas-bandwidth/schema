@@ -32,6 +32,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const bigEndianForm3Schema = `package probe
@@ -177,7 +179,7 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 		t.Fatal(err)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O1"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -185,17 +187,23 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, _ := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.HasPrefix(line, "FAIL: ") {
 			fails = append(fails, line)
 		}
+	}
+	// The probe exits 1 exactly when a CHECK printed a FAIL line, so a
+	// non-zero exit with no FAIL line (a crash, a kill at the deadline) or a
+	// FAIL line with a clean exit is a probe that did not run to its verdict.
+	if (runErr != nil) != (len(fails) != 0) {
+		t.Fatalf("the probe's exit (%v) disagrees with its %d FAIL lines:\n%s", runErr, len(fails), output)
 	}
 	return fails, string(output)
 }

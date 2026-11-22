@@ -73,7 +73,9 @@ func TestWireFeedChainMalformedDart(t *testing.T) {
 	var report tabletext.Report
 	// STRICT VERDICT: the oracle refuses this mutant whole (wire_damaged);
 	// the Dart read must answer the same refusal.
-	_, _ = tablewire.DecodeRegion(model, inst, mutant, &report)
+	if accepted, derr := tablewire.DecodeRegion(model, inst, mutant, &report); derr == nil || accepted {
+		t.Fatalf("the oracle's region read accepted the replay mutant (ok=%v err=%v)", accepted, derr)
+	}
 	encoded, err := tablewire.Encode(model, inst)
 	if err != nil {
 		t.Fatalf("the oracle could not save its read: %v", err)

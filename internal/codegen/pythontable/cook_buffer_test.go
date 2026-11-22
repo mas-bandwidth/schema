@@ -29,7 +29,11 @@ for view in (memoryview(raw)[::2], memoryview(raw).cast("B", shape=[len(raw), 1]
     else: raise AssertionError("invalid memoryview accepted")
 print("OK")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "sample": oracle.cooks["full"][0]}))
 		if !strings.Contains(out, "OK\n") {
 			t.Errorf("%s: %s", name, out)
@@ -47,7 +51,11 @@ print("OK")
 		planted[path] = []byte(strings.Replace(text, from, "data.format != \"B\"", 1))
 		copyDir := t.TempDir()
 		writeTree(t, copyDir, planted)
-		for name := range cookPins() {
+		allCookPinss := cookPins()
+		if len(allCookPinss) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name := range allCookPinss {
 			var interpreter func(testing.TB) string
 			if name == "python-3.11.18" {
 				interpreter = pyrun.Floor

@@ -139,6 +139,9 @@ func TestLobsterKeyedAccessorCoversBothEnds(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", name, rows[name], w)
 		}
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for name := range rows {
 		if _, ok := want[name]; !ok {
 			t.Errorf("unexpected row %s: %q", name, rows[name])
@@ -175,6 +178,9 @@ func TestLobsterKeyedNegativeControls(t *testing.T) {
 			want := map[string]bool{}
 			for _, r := range c.red {
 				want[r] = true
+			}
+			if len(clean) == 0 {
+				t.Fatal("clean is empty: the loop below would check nothing")
 			}
 			for name := range clean {
 				turned := got[name] != clean[name]

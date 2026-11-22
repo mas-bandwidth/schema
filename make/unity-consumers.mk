@@ -17,11 +17,11 @@ $(CARDS_UNITY_STAMP): bin/schema tables/cards/Card.schema tables/cards/schema.lo
 	./bin/schema generate --lang unity --out $(CARDS_UNITY_GENERATED) tables/cards
 	@touch $@
 
-cards-unity-test: toolchain-unity cards-unity-generate
+cards-unity-test: build/mustrun toolchain-unity cards-unity-generate
 	$(DOTNET) build tables/cards/unity/Cards.csproj -c Debug --nologo -v quiet
 	$(DOTNET) build tables/cards/unity/Cards.csproj -c Release --nologo -v quiet
-	$(DOTNET) run --project tables/cards/unity/Tests/Tests.csproj -c Debug --nologo
-	$(DOTNET) run --project tables/cards/unity/Tests/Tests.csproj -c Release --nologo
+	$(MUSTRUN) -name cards-unity-test-debug -count 7 -- $(DOTNET) run --project tables/cards/unity/Tests/Tests.csproj -c Debug --nologo
+	$(MUSTRUN) -name cards-unity-test-release -count 7 -- $(DOTNET) run --project tables/cards/unity/Tests/Tests.csproj -c Release --nologo
 
 cards-unity-driver: toolchain-unity cards-unity-generate
 	@mkdir -p build/cards-driver-unity
