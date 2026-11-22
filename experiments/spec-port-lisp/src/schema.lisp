@@ -486,7 +486,12 @@ are order-free (SPEC.md §4.2)."
       (:fixed (destructuring-bind (signed i f) (rest form)
                 (let ((ii (eval-int i)) (ff (eval-int f)))
                   (multiple-value-bind (mn mx) (rng)
-                    (list :fixed signed ii ff (* (or mn 0) (expt 2 ff)) (* (or mx 0) (expt 2 ff)))))))
+                    (let* ((w (+ ii ff))
+                           (lo (if signed (- (expt 2 (1- w))) 0))
+                           (hi (if signed (1- (expt 2 (1- w))) (1- (expt 2 w)))))
+                      (list :fixed signed ii ff
+                            (if mn (* mn (expt 2 ff)) lo)
+                            (if mx (* mx (expt 2 ff)) hi)))))))
       (:ptr (let ((name (second form)))
               (cond ((string= name "bytes") (list :ptr :bytes))
                     ((string= name "string") (list :ptr :string))

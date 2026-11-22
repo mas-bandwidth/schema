@@ -16,8 +16,10 @@
 
 (defparameter +surfaces+ '("wire" "json-read" "json-write"))
 
+(defvar *json-write-refusals* '())
+
 (defun read-manifest (path)
-  (setf *instances* '() *manifest-lines* '())
+  (setf *instances* '() *manifest-lines* '() *json-write-refusals* '())
   (clrhash *manifest-units*)
   (with-open-file (s path :external-format :utf-8)
     (loop for line = (read-line s nil)
@@ -28,8 +30,11 @@
                  (cond ((string= (first f) "unit")
                         (setf (gethash (second f) *manifest-units*) (cddr f)))
                        ((string= (first f) "instance")
-                        (push f *instances*)))))))
-  (setf *instances* (nreverse *instances*) *manifest-lines* (nreverse *manifest-lines*)))
+                        (push f *instances*))
+                       ((string= (first f) "json-write-refusal")
+                        (push f *json-write-refusals*)))))))
+  (setf *instances* (nreverse *instances*) *manifest-lines* (nreverse *manifest-lines*)
+        *json-write-refusals* (nreverse *json-write-refusals*)))
 
 (defun unit-for (key)
   (or (gethash key *loaded-units*)
@@ -88,13 +93,41 @@
             (handler-case (values :bytes (json-write-value (wire-load decl (read-file-octets wire))))
               (refusal () (values :refused nil))))))))
 
+(defun answer-json-write-refusal (row)
+  "FORMAT.md: load the wire, apply the row's damage in code, write the text."
+  (destructuring-bind (kw name ukey root wire damage &rest more) row
+    (declare (ignore kw name more))
+    (with-unit (u ukey)
+      (let ((decl (root-decl u root)))
+        (if (not (variable-root-p decl))
+            (values :absent nil)
+            (handler-case
+                (let ((tv (wire-load decl (read-file-octets wire))))
+                  (cond ((string= damage "none"))
+                        ((starts-with damage "narrow:")
+                         (let ((f (find (subseq damage 7) (struct-fields decl) :key #'field-name :test #'string=)))
+                           (setf (aref (tval-slots tv) (field-index f)) (octets #x61 #xFF #x62))))
+                        ;; `wide:` names UTF-16 storage; this leg's text is UTF-8 octets,
+                        ;; and the nearest value that is not text is the narrow one.
+                        ((starts-with damage "wide:")
+                         (let ((f (find (subseq damage 5) (struct-fields decl) :key #'field-name :test #'string=)))
+                           (setf (aref (tval-slots tv) (field-index f)) (octets #x61 #xED #xA0 #x80 #x62)))))
+                  (values :bytes (json-write-value tv)))
+              (refusal () (values :refused nil))))))))
+
+(defun json-write-refusal-p (case) (string= (first case) "json-write-refusal"))
+
 (defun surface-cases (surface)
   "The instance lines a surface answers."
   (cond ((string= surface "wire") *instances*)
+        ((string= surface "json-write")
+         (append (remove-if (lambda (i) (member "no-text" (instance-flags i) :test #'string=)) *instances*)
+                 *json-write-refusals*))
         (t (remove-if (lambda (i) (member "no-text" (instance-flags i) :test #'string=)) *instances*))))
 
 (defun answer (surface inst)
-  (cond ((string= surface "wire") (answer-wire inst))
+  (cond ((json-write-refusal-p inst) (answer-json-write-refusal inst))
+        ((string= surface "wire") (answer-wire inst))
         ((string= surface "json-read") (answer-json-read inst))
         ((string= surface "json-write") (answer-json-write inst))))
 
@@ -116,7 +149,8 @@
 
 (defun expected (surface inst)
   (let ((name (second inst)) (flags (instance-flags inst)))
-    (cond ((member "wire-refused" flags :test #'string=) :refused)
+    (cond ((json-write-refusal-p inst) :refused)
+          ((member "wire-refused" flags :test #'string=) :refused)
           ((string= surface "json-write") (read-file-octets (json-golden-path name)))
           (t (read-file-octets (fifth inst))))))
 
