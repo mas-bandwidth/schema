@@ -100,9 +100,9 @@ func t15RunCS(t *testing.T, schemaSrc, body string) {
 	}
 	run := testproc.Command(t, csDotnet(), "exec", filepath.Join(dir, "probe.dll"))
 	run.Env = csDotnetEnv(dir, dir)
-	out, _ := run.CombinedOutput()
-	if strings.Contains(string(out), "FAIL ") || !strings.Contains(string(out), "PROBE OK") {
-		t.Fatalf("the driven reader failed:\n%s", out)
+	out, err := run.CombinedOutput()
+	if err != nil || strings.Contains(string(out), "FAIL ") || !strings.Contains(string(out), "PROBE OK") {
+		t.Fatalf("the driven reader failed (exit: %v):\n%s", err, out)
 	}
 }
 

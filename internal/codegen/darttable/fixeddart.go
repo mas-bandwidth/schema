@@ -835,12 +835,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 		}
 	}
 	g.emitWriteBoundsAssert(g.pf, f, expr, ind)
-	if f.Type.Kind == ir.TFloat32 {
-		// A COMPRESSED -0 IS STORED AS +0 (ruling fixed-compressed-negzero):
-		// its float32 bits would otherwise carry the sign the reader folds.
-		expr = cfloatStored(f, expr)
-	}
-	g.store(ind, fixedOff(base, at), f.Type, expr)
+	// A compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3,
+	// fixed-compressed-negzero); its range keeps it off the Float32List fast
+	// path above, so every compressed store comes through here.
+	g.store(ind, fixedOff(base, at), f.Type, dartStoredFloat(f, expr))
 }
 
 func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, expr, ind string) {
@@ -869,8 +867,8 @@ func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, e
 		maxv := (int64(1) << uint(f.Type.Width)) - 1
 		pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
 	}
-	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+	if _, _, ok := fixedFloatClampEnds(f); ok {
+		pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "TableFixedLayout._f32"))
 	}
 }
 

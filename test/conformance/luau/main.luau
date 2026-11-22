@@ -614,6 +614,28 @@ local function surfaceMessage(lines: { { string } })
 			say(f[2], out)
 		end
 	end
+	-- message-batch <case> <connection> <root> <wire>: load with room for every
+	-- body and answer the count LoadMessages returned (docs/SPEC-TABLES.md
+	-- §3.3; FORMAT.md, `message-batch`).
+	for _, f in kind(lines, "message-batch") do
+		local conn = connections[f[3]]
+		if conn == nil then
+			error("message-batch " .. f[2] .. " names no connection " .. f[3])
+		end
+		local u = unit(conn[3])
+		local M = u and optional(u, "schema_message")
+		if u == nil or M == nil then
+			say(f[2], nil)
+		else
+			local v = M.NewVocabulary()
+			local r = report()
+			if not M.AnnounceRead(v, file(conn[5]), r) then
+				error(f[2] .. ": the announcement was refused (" .. tostring(r.reason) .. ")")
+			end
+			local count = M.LoadMessages(v, f[4], file(f[5]), 256, report())
+			sayText(f[2], "count " .. tostring(count) .. "\n")
+		end
+	end
 end
 
 -- `message-prior` (testdata/conformance/tables/FORMAT.md) is the same read of a

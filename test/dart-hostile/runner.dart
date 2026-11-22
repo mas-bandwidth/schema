@@ -747,5 +747,10 @@ Future<void> main(List<String> args) async {
   }
   stdout.writeln('${manifest.length} cases: $passed pass, $carried carried as FIX-CARD, '
       '${bad.length} unexplained, ${stale.length} stale');
-  exit(bad.isNotEmpty || stale.isNotEmpty ? 1 : 0);
+  // One unit per manifest case. tools/mustrun holds the count to the one the
+  // recipe registers for the committed corpus, so an emptied or shortened
+  // manifest is red.
+  final failed = bad.length + stale.length;
+  stdout.writeln('ran ${manifest.length}, failed $failed');
+  exit(failed != 0 || manifest.isEmpty ? 1 : 0);
 }

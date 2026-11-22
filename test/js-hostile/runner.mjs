@@ -778,7 +778,13 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   }
   console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
     `${bad.length} unexplained, ${stale.length} stale, ${skipped.length} skipped, ${unbound.length} unbound`);
-  process.exit(bad.length > 0 || stale.length > 0 || unbound.length > 0 ? 1 : 0);
+  // One unit per manifest row that reached a reader. tools/mustrun holds the
+  // count to the one the recipe registers for the committed corpus, so an
+  // emptied or shortened manifest is red; a row no JavaScript reader carries
+  // is a failure here, never a quiet skip.
+  const failed = bad.length + stale.length + unbound.length + skipped.length;
+  console.log(`ran ${live.length}, failed ${failed}`);
+  process.exit(failed > 0 || live.length === 0 ? 1 : 0);
 }
 
 // `show <row>` runs one row on this thread and prints the port's canonical

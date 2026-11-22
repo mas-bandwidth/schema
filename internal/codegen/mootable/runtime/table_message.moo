@@ -2362,10 +2362,11 @@ end
 
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
--- -1 with report.reason is a refusal (newer_form, no_vocabulary,
--- integrity_mismatch, kind_mismatch, out_of_range, count_over_bound,
--- length_over_bound; non_finite_float answers 0); a count above capacity is
--- batch_too_large and returns the wire's M. Damage anywhere discards the
+-- "A refused batch returns a count of `0`, as every refused batch does"
+-- (docs/SPEC-TABLES.md §3.3): every refusal answers 0 with report.reason
+-- (newer_form, no_vocabulary, integrity_mismatch, kind_mismatch,
+-- out_of_range, count_over_bound, length_over_bound, non_finite_float, and
+-- batch_too_large for a count above capacity). Damage anywhere discards the
 -- whole batch: zero bodies, no values, with report.damaged set (§4). Every
 -- refusal returns no values: the whole batch or nothing.
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
@@ -2379,14 +2380,14 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if buffer.readu8(data, 0) ~= 2 then
 		refuse(rep, "newer_form")
-		return -1, {}
+		return 0, {}
 	end
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local n = len
 		if n < 6 or buffer.readu32(data, n - 4) ~= V.crc32c(data, n - 4) then
 			rep.damaged = true
 			rep.reason = "integrity_mismatch"
-			return -1, {}
+			return 0, {}
 		end
 		local body = buffer.create(n - 4)
 		buffer.copy(body, 0, data, 0, n - 4)
@@ -2395,7 +2396,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if v == nil or not v.announced then
 		refuse(rep, "no_vocabulary")
-		return -1, {}
+		return 0, {}
 	end
 	if home == nil then
 		error("schema: this build has no message vocabulary: its announcement carries a kind the message form does not spell (docs/SPEC-TABLES.md §3.3)")
@@ -2409,7 +2410,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	local count = raw + 1
 	if count > capacity then
 		refuse(rep, "batch_too_large")
-		return count, {}
+		return 0, {}
 	end
 	-- the batch's announced build version against this build's own (the unit's
 	-- announcement, registered by MS.unit)
@@ -2428,7 +2429,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	if t.refusal ~= nil then
 		rep.damaged = false
 		refuse(rep, t.refusal)
-		return -1, {}
+		return 0, {}
 	end
 	if not whole then
 		rep.damaged = true

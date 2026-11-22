@@ -848,7 +848,7 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 			bad = true
 			continue
 		}
-		if !ir.TableForms[name] {
+		if !ir.IsTableForm(name) {
 			c.errf(a.Pos, "table %s: forms = %q names no form — the forms are wire, json, block and cook (docs/SPEC-TABLES.md §2.12)", d.Name, name)
 			bad = true
 			continue
@@ -868,8 +868,8 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 
 // tableIntegrity reads an `integrity = "crc32c"` declaration
 // (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
-// vocabulary [ir.TableIntegrityChecks]. A `fixed table` takes it too: its
-// form-3 file carries the trailer once per file (§2.14, §3.4), and its
+// vocabulary [ir.IsTableIntegrityCheck] reads. A `fixed table` takes it too:
+// its form-3 file carries the trailer once per file (§2.14, §3.4), and its
 // message-form batch carries it once per batch (§2.14, §3.3).
 func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	lit, ok := a.Value.(*ast.StringLit)
@@ -877,7 +877,7 @@ func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
 		return
 	}
-	if !ir.TableIntegrityChecks[lit.Value] {
+	if !ir.IsTableIntegrityCheck(lit.Value) {
 		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
 		return
 	}
@@ -2054,7 +2054,7 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g does not fit finite float32 storage", f.Name, v)
 			return
 		}
-		if out.HasFloatRange && (v < out.FMin || v > out.FMax) {
+		if out.HasFloatRange && !ir.CompressedFloatInRange(out.FMin, out.FMax, v) {
 			c.errf(f.Default.ExprPos(), "field %s: default %g is outside its range [%s, %s]", f.Name, v, formatFloat(out.FMin), formatFloat(out.FMax))
 			return
 		}
@@ -4543,7 +4543,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.MapFieldVerbs {
+					for verb := range ir.AllMapFieldVerbs() {
 						add(base+verb, whyMap, d.DeclPos())
 					}
 					add(base+"FindMut", whyMap, d.DeclPos())
@@ -4560,7 +4560,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.ListFieldVerbs {
+					for verb := range ir.AllListFieldVerbs() {
 						add(base+verb, whyList, d.DeclPos())
 					}
 					add(base+"At", whyList, d.DeclPos())
@@ -4573,7 +4573,7 @@ func (c *checker) checkClaimedNames() {
 						continue
 					}
 					base := name + ir.GoExportName(f.Name)
-					for _, verb := range ir.TextListVerbs {
+					for verb := range ir.AllTextListVerbs() {
 						if verb == "Text" {
 							continue // the element record, claimed as a closure member
 						}

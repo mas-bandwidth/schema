@@ -776,6 +776,25 @@ if (mode == "message") {
     if (T[root + "SaveMessages"](values, out, {}) != size) throw name + ": SaveMessages did not write the measure";
     writeBytes(outdir + "/" + name, out);
   }
+  // message-batch <case> <connection> <root> <wire>: load with room for every
+  // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md
+  // §3.3; FORMAT.md, `message-batch`).
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 5 || f[0] != "message-batch") continue;
+    local name = f[1]; local root = f[3];
+    if (!(f[2] in connections)) throw name + ": no connection " + f[2];
+    local conn = connections[f[2]];
+    if (!generated(conn.unit)) { writeAbsent(name); continue; }
+    local T = openUnit(conn.unit)[1];
+    local v = {};
+    local ar = {};
+    if (!T.AnnounceRead(v, readBytes(conn.file), ar)) throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+    local storage = array(256);
+    for (local i = 0; i < storage.len(); i++) storage[i] = T[root]();
+    local count = T[root + "LoadMessages"](storage, v, readBytes(f[4]), {});
+    writeText(outdir + "/" + name, "count " + count + "\n");
+  }
   return;
 }
 

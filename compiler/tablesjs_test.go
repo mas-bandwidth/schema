@@ -53,6 +53,9 @@ func TestJsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
+		if len(without) == 0 {
+			t.Fatal("without is empty: the loop below would check nothing")
+		}
 		for name := range without {
 			for _, suffix := range []string{"Table.js", "Block.js", "Cook.js", "Variable.js", "View.js"} {
 				if strings.HasSuffix(name, suffix) {
@@ -63,6 +66,9 @@ func TestJsEmitsTableSources(t *testing.T) {
 		// ZERO COST: a table moves NO packet byte. Every module a table-free
 		// unit emits is byte-identical in the unit that adds a table, and the
 		// only modules a table adds are the accelerator ones.
+		if len(without) == 0 {
+			t.Fatal("without is empty: the loop below would check nothing")
+		}
 		for name, data := range without {
 			got, ok := with[name]
 			if !ok {
@@ -112,6 +118,9 @@ table Node
 	}
 	if cooks == 0 {
 		t.Error("--lang js emitted no cook reader for a pointered unit — a cook needs no codec")
+	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
 	}
 	for name, data := range files {
 		if !strings.HasSuffix(name, "Cook.js") {
@@ -251,6 +260,9 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 	}
 	sort.Strings(names)
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if declared[name] {
 			// a table's own storage class takes the declaration's name, which
@@ -269,7 +281,11 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Js) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Js)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Js) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the JS backend defines %s, but nothing in the emitted JS names it", name)
 		}

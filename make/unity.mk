@@ -34,9 +34,9 @@ generated/unity-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # Debug, where the write contracts are live, and in Release, where they are
 # gone. The buffer layout the Span views rest on is asserted first.
 .PHONY: unity-wire unity-wire-negative-control
-unity-wire: generated/unity/.stamp generated/unity-ludicrous/.stamp
-	cd test/unity && $(DOTNET) run -c Debug
-	cd test/unity && $(DOTNET) run -c Release
+unity-wire: build/mustrun generated/unity/.stamp generated/unity-ludicrous/.stamp
+	cd test/unity && ../../$(MUSTRUN) -name unity-wire-debug -count 1037 -- $(DOTNET) run -c Debug
+	cd test/unity && ../../$(MUSTRUN) -name unity-wire-release -count 1039 -- $(DOTNET) run -c Release
 
 # The wire test must go red on one wrong wire constant in the generated code.
 UNITY_WIRE_NC := build/unity-wire-negative

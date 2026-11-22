@@ -103,6 +103,9 @@ func TestFormatSplitsAStringWithoutChangingIt(t *testing.T) {
 	in := `_M.Fixed["Cfg"].layout = "` + body + `"`
 	out := strings.Split(string(Format([]byte(in))), "\n")
 	var joined strings.Builder
+	if len(out) == 0 {
+		t.Fatal("out is empty: the loop below would check nothing")
+	}
 	for i, line := range out {
 		if width(line) > MaxLineLength {
 			t.Errorf("line %d is %d wide", i, width(line))

@@ -394,6 +394,33 @@ type RetainCase struct {
 	Value   string
 }
 
+// MessageBatch is one row of the batch's refusal contract (docs/SPEC-TABLES.md
+// §3.3, §6.5: "the batch is accepted whole, every body delivered, or refused
+// with a count of `0`"). The driver loads the batch at Wire with room for
+// every body and answers the count the loader reported. Shape says how Wire
+// is derived from two bodies of SentJSON: `whole` is the lawful batch, `cut`
+// loses its last byte, `byte-after-pad` gains one, and `out-of-range` carries
+// a ranged value past its maximum in the SECOND body, after a first body that
+// reads.
+type MessageBatch struct {
+	Name       string
+	Connection string
+	Unit       string
+	Root       string
+	SentJSON   string
+	Shape      string
+	// Verdict is what the load owes: `delivered`, the wire's count, or
+	// `refused`, a count of 0. Nothing is owed about the storage or the reason.
+	Verdict string
+}
+
+// MessageBatchDir holds the wire `make conformance-generate` writes for each
+// message-batch row.
+const MessageBatchDir = "testdata/conformance/tables/message-batch"
+
+// Wire is the batch the row loads.
+func (b MessageBatch) Wire() string { return MessageBatchDir + "/" + b.Name + ".bin" }
+
 // RetainShortSlack is the byte margin the `short` capacity rule subtracts from
 // the wire's length: `len(wire) - RetainShortSlack` fits the first unknown and
 // refuses the second in every port's layout.
@@ -409,6 +436,7 @@ type Manifest struct {
 	Messages      []Message
 	Grown         []AnnounceGrown
 	MessageDrifts []MessageDrift
+	Batches       []MessageBatch
 	Reports       []ReportCase
 	Framings      []FramingCase
 	Rewrites      []RewriteCase
@@ -736,6 +764,32 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: %q is not an answer; it is read or refused", where, f[7])
 			}
 			m.MessageDrifts = append(m.MessageDrifts, md)
+		case "message-batch":
+			// message-batch <case> <connection> <root> <sent json> <shape> <verdict>
+			if len(f) != 7 {
+				return nil, fmt.Errorf("%s: message-batch takes case, connection, root, sent json, shape, verdict", where)
+			}
+			conn, err := m.LookupConnection(f[2])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			switch f[5] {
+			case "whole", "cut", "byte-after-pad", "out-of-range":
+			default:
+				return nil, fmt.Errorf("%s: %q is not a batch shape: whole, cut, byte-after-pad or out-of-range", where, f[5])
+			}
+			switch f[6] {
+			case "delivered", "refused":
+			default:
+				return nil, fmt.Errorf("%s: %q is not a batch verdict: delivered or refused", where, f[6])
+			}
+			if (f[5] == "whole") != (f[6] == "delivered") {
+				return nil, fmt.Errorf("%s: the whole batch is delivered and every damaged shape is refused", where)
+			}
+			m.Batches = append(m.Batches, MessageBatch{
+				Name: f[1], Connection: f[2], Unit: conn.Unit, Root: f[3],
+				SentJSON: f[4], Shape: f[5], Verdict: f[6],
+			})
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->
 			if len(f) != 8 && len(f) != 10 {

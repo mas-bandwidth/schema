@@ -1400,6 +1400,12 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return false; }
+            // A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+            // §3.3; docs/rulings.json fixed-compressed-negzero), tested on the
+            // bits so a NaN still reaches the writer's refusal
+            uint32_t bits = 0;
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x80000000u ) { v = 0.0f; }
             return TableJsonWriteFloat( out, (double) v, true );
         }
         case 11:
@@ -1407,6 +1413,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
             if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return false; }
+            uint64_t bits = 0;
+            memcpy( &bits, &v, sizeof( bits ) );
+            if ( f->has_range && bits == 0x8000000000000000ull ) { v = 0.0; } // a compressed float's -0 is written as +0 (§3.3)
             return TableJsonWriteFloat( out, v, false );
         }
         case 2:
@@ -5764,7 +5773,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         else { out += integer; }
         return true;
     }
-    double d = strtod( n.text.c_str(), NULL );
+    // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
+    // token is narrowed to float32 before its ends are tested, the value
+    // the JSON read lands, so a text this test passes reads back.
+    double d = f->kind == 10 ? (double) strtof( n.text.c_str(), NULL ) : strtod( n.text.c_str(), NULL );
     if ( f->has_range )
     {
         if ( d < f->range_min || d > f->range_max )

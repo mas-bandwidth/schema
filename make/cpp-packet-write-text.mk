@@ -17,8 +17,8 @@ build/packet-write-text/cpp/driver: build/packet-write-text/cpp/.stamp test/pack
 	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_TEXT_CPP) test/packet-write-text/cpp/main.cpp -o $@
 
 .PHONY: packet-write-text-cpp
-packet-write-text-cpp: build/packet-write-text/cpp/driver
-	./$(PACKET_WRITE_TEXT_CPP)/driver $(PACKET_WRITE_TEXT_CPP_CASES)
+packet-write-text-cpp: build/mustrun build/packet-write-text/cpp/driver
+	$(MUSTRUN) -name packet-write-text-cpp -count 11 -- ./$(PACKET_WRITE_TEXT_CPP)/driver $(PACKET_WRITE_TEXT_CPP_CASES)
 
 test: packet-write-text-cpp
 

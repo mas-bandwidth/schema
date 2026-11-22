@@ -279,6 +279,9 @@ func TestCVariableCellsStrict(t *testing.T) {
 	// plain strict entry points and none of the retired tolerant spellings.
 	files := generate(t, vtCellsStrictSchema)
 	var header strings.Builder
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, data := range files {
 		for _, f := range vtStrictFindings("generated "+name, string(data)) {
 			t.Error(f)

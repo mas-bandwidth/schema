@@ -443,21 +443,21 @@ export function ZeroTrio(value) {
 }
 
 export function WriteTrio(stream, value) {
-  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  if (!globalThis.Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.c;
@@ -584,7 +584,7 @@ export function WriteTrioFirst(stream, value) {
   if (!WriteTrio(stream, value.inner)) {
     return false;
   }
-  if (!globalThis.Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
+  if (!globalThis.Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.trailer;
@@ -646,42 +646,42 @@ export function ZeroTrioStraddle(value) {
 }
 
 export function WriteTrioStraddle(stream, value) {
-  if (typeof value.pad0 !== "bigint" || value.pad0 < 0n || value.pad0 > 18446744073709551615n) {
+  if (typeof value.pad0 !== "bigint" || value.pad0 < 0n || value.pad0 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.pad0;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (typeof value.pad1 !== "bigint" || value.pad1 < 0n || value.pad1 > 18446744073709551615n) {
+  if (typeof value.pad1 !== "bigint" || value.pad1 < 0n || value.pad1 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.pad1;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (typeof value.pad2 !== "bigint" || value.pad2 < 0n || value.pad2 > 18446744073709551615n) {
+  if (typeof value.pad2 !== "bigint" || value.pad2 < 0n || value.pad2 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.pad2;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (typeof value.pad3 !== "bigint" || value.pad3 < 0n || value.pad3 > 18446744073709551615n) {
+  if (typeof value.pad3 !== "bigint" || value.pad3 < 0n || value.pad3 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.pad3;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (typeof value.pad4 !== "bigint" || value.pad4 < 0n || value.pad4 > 18446744073709551615n) {
+  if (typeof value.pad4 !== "bigint" || value.pad4 < 0n || value.pad4 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.pad4;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+  if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.pad5;

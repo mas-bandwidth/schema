@@ -177,6 +177,19 @@ func (g *tableGen) floatDefaultOrdered(f *ir.Field) bool {
 	return d != "0.0f" && d != "0.0"
 }
 
+// storedFloatBits names the function whose bits a float store writes: a
+// COMPRESSED float's (a declared range) is TableStoredFloatBits, which writes
+// +0 for its -0 (docs/SPEC-TABLES.md §3.3; docs/rulings.json
+// fixed-compressed-negzero), and a plain float's is `plain`, the bits as held,
+// so its -0 rides bit-exact. Every writer — variable, fixed, message, cook —
+// spells its float store through here.
+func storedFloatBits(f *ir.Field, plain string) string {
+	if f.HasFloatRange {
+		return "TableStoredFloatBits"
+	}
+	return plain
+}
+
 // fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
 // condition under which a slot elides.
 func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
@@ -1040,7 +1053,16 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 	g.pf("%sif ( !TableFloatFinite( %s ) ) { %s } // a NaN or an infinity is refused (§3.3)\n", ind, expr, onBad)
 }
 
+// emitRequiredRangeCheck is the writer's range check. A `| required` field's
+// is a refusal in every build; any other compressed float's is ROW 10 of the
+// write contract (docs/SPEC.md §5.1), which in this assert leg is a debug
+// assert, against the float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
+	if !f.Required && f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+		g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)\n",
+			ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		return
+	}
 	if !f.Required {
 		g.emitWriteContractAssert(f, expr, ind)
 		return
@@ -2074,22 +2096,11 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md §3.3)
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		if f.HasFloatRange {
-			// A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3;
-			// ruling fixed-compressed-negzero), the bits +0 rides as, so a -0
-			// under a non-zero default never rides its sign bit
-			g.pf("%sw.put32( ( !( %s < 0.0f ) && !( %s > 0.0f ) ) ? 0u : table_float_to_bits( %s ) ); // -0 is stored as +0\n", ind, expr, expr, expr)
-		} else {
-			g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
-		}
+		g.pf("%sw.put32( %s( %s ) );\n", ind, storedFloatBits(f, "table_float_to_bits"), expr)
 	case tkF64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		if f.HasFloatRange {
-			g.pf("%sw.put64( ( !( %s < 0.0 ) && !( %s > 0.0 ) ) ? 0ull : table_double_to_bits( %s ) ); // -0 is stored as +0\n", ind, expr, expr, expr)
-		} else {
-			g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
-		}
+		g.pf("%sw.put64( %s( %s ) );\n", ind, storedFloatBits(f, "table_double_to_bits"), expr)
 	case tkString:
 		g.pf("%s{\n", ind)
 		if ir.TextListUnbounded(f) {
@@ -3482,7 +3493,12 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
-		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+		// THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a compressed
+		// float's ends are float32(min) and float32(max), spelled exactly as
+		// doubles, so a read that narrows its value first and a write that
+		// casts the end back to float hold the one test every port holds, and
+		// the 0.1f a writer saved under max = 0.1 reads back.
+		rangeMin, rangeMax = formatFloat(float64(float32(f.FMin)), false), formatFloat(float64(float32(f.FMax)), false)
 	}
 	// THE WIDE KINDS (18-29) carry no int64/uint64 pair: their bounds may not
 	// fit sixty-four bits and their exact raw range is the `wide` column

@@ -201,11 +201,17 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		{"luautable.Refuse", "a file and its own block module",
 			map[string]string{"Game.schema": table, "GameBlock.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock"},
 	}
+	// luau is a builtin target (compiler/target_luau.go): its Generate is the
+	// half of every refusal below that a user meets, so an unregistered luau
+	// is a red here, never a silent skip of that half
 	var c *Compiler
 	for _, g := range builtins() {
 		if slices.Contains(g.Names(), "luau") {
-			c = New() // the tagged build: the target is registered
+			c = New()
 		}
+	}
+	if c == nil {
+		t.Fatal("luau is not a registered builtin target: the Generate half of every refusal would go unchecked")
 	}
 	named := func(tc string, err error, what string) {
 		t.Helper()
@@ -221,10 +227,8 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	for _, tc := range cases {
 		u := luauUnit(t, tc.files)
 		named(tc.name+" (the luau chain)", chain(u), tc.names)
-		if c != nil {
-			_, err := c.Generate(u, "luau", nil)
-			named(tc.name+" (Generate luau)", err, tc.names)
-		}
+		_, err := c.Generate(u, "luau", nil)
+		named(tc.name+" (Generate luau)", err, tc.names)
 		covered[tc.site] = true
 	}
 	for _, s := range sites {
@@ -237,12 +241,10 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	if err := chain(clean); err != nil {
 		t.Errorf("the control, a clean table unit: %v", err)
 	}
-	if c != nil {
-		if _, err := c.Generate(clean, "luau", nil); err != nil {
-			t.Errorf("the control, a clean table unit (Generate luau): %v", err)
-		}
+	if _, err := c.Generate(clean, "luau", nil); err != nil {
+		t.Errorf("the control, a clean table unit (Generate luau): %v", err)
 	}
-	t.Logf("%d constructs over %d refusal sites %v; the tagged target %v", len(cases), len(sites), sites, c != nil)
+	t.Logf("%d constructs over %d refusal sites %v", len(cases), len(sites), sites)
 }
 
 // TestLuauStrictReadNamesAreEmitted holds internal/tablenames/luau.go honest

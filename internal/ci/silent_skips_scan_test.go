@@ -31,6 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // skipScanPrune are the directories no scanner descends into: fixtures that
@@ -664,7 +666,10 @@ func laneProofs(root string) ([]laneProof, error) {
 	workflows := wfText.String()
 
 	makefiles := []string{filepath.Join(root, "Makefile")}
-	more, _ := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	more, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
+	if err != nil {
+		return nil, err
+	}
 	makefiles = append(makefiles, more...)
 	for _, mf := range makefiles {
 		b, err := os.ReadFile(mf)

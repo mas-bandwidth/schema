@@ -94,6 +94,22 @@ glue() {
 		done
 		echo "    return -1;"
 		echo "}"
+		# conformance_message_count answers a message-batch row: the count
+		# <Root>LoadMessages returned into storage for 256 bodies (§3.3).
+		# -1 is a root the leg carries no message form for, -2 a refused
+		# announcement; a load's own answer is never below 0.
+		echo "fn conformance_message_count(root: const u8[:], announce: const u8[:], wire: const u8[:]) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var voc = schema_rt::MsgVocabulary { .. };"
+			echo "        var rep = schema_rt::MsgReport { .. };"
+			echo "        if !schema_rt::announce_read(voc, announce, rep) { return -2; }"
+			echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
+			echo "        return $ns::${r}LoadMessages(values[0..256], voc, wire, rep);"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
 		NS="$ns" perl - "$1"/*.goose <<'EOF_WREF_PERL'
 use strict;
 use warnings;
@@ -1046,6 +1062,8 @@ else
 	active_units=$(main_units "$1" "$2")
 fi
 running=0
+pids=""
+jobfailed=0
 keys=""
 for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 	printf '%s\n' "$active_units" | grep -qx "$key" || continue
@@ -1095,13 +1113,22 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			echo $? >"$dir/$2.$key.rc"
 		) &
 	fi
+	pids="$pids $!"
 	running=$((running + 1))
 	if [ "$running" -ge 8 ]; then
-		wait
+		for p in $pids; do
+			wait "$p" || jobfailed=1
+		done
+		pids=""
 		running=0
 	fi
 done
-wait
+# Each job is waited on by its pid, never a bare wait (F-068). A unit's status
+# is the one its job recorded in its .rc file, read below; a job that exited
+# non-zero without a failing .rc is still a failure.
+for p in $pids; do
+	wait "$p" || jobfailed=1
+done
 for key in $keys; do
 	status=$(cat "$dir/$2.$key.rc" 2>/dev/null || echo 1)
 	if [ "$status" -ne 0 ]; then
@@ -1110,4 +1137,8 @@ for key in $keys; do
 	fi
 	cat "$dir/$2.$key.out" >>"$out"
 done
+if [ "$jobfailed" -ne 0 ]; then
+	echo "driver: a unit job exited non-zero and recorded no failing status" >&2
+	exit 1
+fi
 GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h =~ /^refused(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.refused") or die; print $f (defined $1 ? $1 : ""); close $f; next } if (defined $h && $h =~ /^absent(?: (.*))?$/) { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; print $f (defined $1 ? $1 : ""); close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$out"

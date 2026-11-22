@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -276,6 +277,11 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "%s %s %s 0x%016x %s\n", connection, md.Name, md.Unit, peerBuild, peerWire)
 		fmt.Fprintf(&b, "%s %s %s %s %s %s\n", message, md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
 	}
+	for _, mb := range m.Batches {
+		// THE VERDICT IS WITHHELD, and so is the recipe: a driver is handed the
+		// batch and loads it with room for every body (docs/SPEC-TABLES.md §3.3).
+		fmt.Fprintf(&b, "message-batch %s %s %s %s\n", mb.Name, mb.Connection, mb.Root, mb.Wire())
+	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
 		// the wire and the two capacities and nothing about the counters or the
@@ -357,6 +363,9 @@ type expectation struct {
 	// COMPARED, not only the counters, because two legs can count the same
 	// events and land different values.
 	value string
+	// batch is the message-batch row this case answers (docs/SPEC-TABLES.md
+	// §3.3): the answer is the reported count, not bytes.
+	batch *MessageBatch
 	// save is the canonical write-back wire a readable report, framing or
 	// json-hostile row owes in `<name>.wire`. The read must return the WHOLE
 	// value: the JSON text above and the wire bytes here, both the oracle's.
@@ -495,6 +504,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: md.Name, want: want})
+		}
+		// THE BATCH'S REFUSAL CONTRACT (§3.3, §6.5): the count the loader
+		// reported, scored by scoreMessageBatch against the row's verdict.
+		for i := range m.Batches {
+			out = append(out, expectation{name: m.Batches[i].Name, batch: &m.Batches[i]})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how
@@ -707,6 +721,28 @@ type runOptions struct {
 	// results, when set, is where every case's verdict is written
 	// (writeResults), the input tools/matrix proof reads.
 	results string
+	// only, when set, is the surfaces this run asks the legs for; every other
+	// surface is not run at all, so it is neither an answer nor an absence.
+	// A gate that drives one leg through a wrapper listing a few surfaces (the
+	// JS and Dart text-boundary gates) names them here, or the ticked-cell rule
+	// (ticked.go) reads the surfaces it leaves out as owed and absent.
+	only map[string]bool
+}
+
+// parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
+// nil for every surface. A name that is not a surface is refused.
+func parseSurfaces(list string) (map[string]bool, error) {
+	if list == "" {
+		return nil, nil
+	}
+	set := map[string]bool{}
+	for s := range strings.SplitSeq(list, ",") {
+		if !slices.Contains(surfaces, s) {
+			return nil, fmt.Errorf("--surfaces: %q is not a surface (%s)", s, strings.Join(surfaces, ","))
+		}
+		set[s] = true
+	}
+	return set, nil
 }
 
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
@@ -788,6 +824,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
 		}
 		for _, s := range surfaces {
+			if opts.only != nil && !opts.only[s] {
+				continue
+			}
 			legWant := want[s]
 			var exemptions []string
 			if s == "json-hostile" {
@@ -899,6 +938,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 
+	// A run that compared no leg proved nothing: --only naming no registered
+	// driver (a typo, or a leg whose driver file is gone), an empty registry, or
+	// every leg skipped. It must not print "every registered surface passes".
+	if len(langs) == 0 {
+		return false, fmt.Errorf("conformance ran no leg: the registry, --only %q and --skip left nothing to compare", only)
+	}
+
 	if opts.coverage != nil {
 		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
 	}
@@ -983,6 +1029,10 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	answer := filepath.Join(out, e.name)
 	if surface == "message-prior" {
 		scorePrior(answer, e, r)
+		return
+	}
+	if e.batch != nil {
+		scoreMessageBatch(answer, e, r)
 		return
 	}
 	if surface == "message" && e.want == nil {
@@ -1297,11 +1347,21 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	}
 	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", label+width*len(langs)))
 	for _, s := range surfaces {
+		ran := false
+		for _, l := range langs {
+			ran = ran || results[l][s] != nil
+		}
+		if !ran {
+			// a surface --surfaces left out: not run, so no row
+			continue
+		}
 		fmt.Fprintf(&b, "%-*s", max(label, len(s)+1), s)
 		for _, l := range langs {
 			r := results[l][s]
 			var cell string
 			switch {
+			case r == nil:
+				cell = "not run"
 			case len(r.failures) > 0 && r.absent:
 				// the REFERENCE leg's absence: what it did, and what that is.
 				// "FAIL 0/13" would claim it ran the surface and answered
@@ -1328,6 +1388,9 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	var lines []string
 	for _, l := range langs {
 		for _, s := range surfaces {
+			if results[l][s] == nil {
+				continue
+			}
 			for _, f := range results[l][s].failures {
 				lines = append(lines, fmt.Sprintf("  %s / %s: %s", l, s, f))
 			}

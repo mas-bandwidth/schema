@@ -1811,7 +1811,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		return in.fail("out_of_range: " + f.Name)
 	}
 	if f.HasFloatRange {
-		if !FloatInRange(f, value) {
+		if !ir.CompressedFloatInRange(f.FMin, f.FMax, value) {
 			return in.fail("out_of_range: " + f.Name)
 		}
 		if value == 0 {
@@ -2437,11 +2437,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	// string value"): a `string(N)` key is held to its declared N (§2.8). An
 	// integer key keeps the name cap, which holds any integer token.
 	keyCapacity := maxJsonKey
-	switch {
-	case keyField.Type.TextUnbounded():
-		keyCapacity = -1 // map identity uses the whole unbounded key (§2.13.1)
-	case MapKeyIsString(f):
-		keyCapacity = int(keyField.Type.Size)
+	if keyField.Type.TextUnbounded() || MapKeyIsString(f) {
+		// A string key is bounded by its own string(N) alone (§16.3: the
+		// 255-byte cap is for schema names, never a map key); MapKeyFits holds
+		// it to N below. An unbounded key is held whole (§2.13.1).
+		keyCapacity = -1
 	}
 	// THE DUPLICATE TEST IS A HASH LOOKUP, never a scan of the entries placed
 	// so far: a scan is quadratic in the entry count, so a large map in text

@@ -5169,7 +5169,9 @@ namespace Bench
                 int total = MessageCount(bytes, vocabulary, report);
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
-                if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+                // the capacity refusal included, and nothing is decoded.
+                if (total > values.Length) { return Refuse(report, "batch_too_large"); }
                 bool damagedBefore = report.Damaged;
                 report.Damaged = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
@@ -9790,6 +9792,9 @@ namespace Bench
                 }
             }
             if (value.PlayerName != null && value.PlayerNameLength >= 0 && value.PlayerNameLength <= value.PlayerName.Length && !TableWire.TextValid(value.PlayerName.AsSpan(0, value.PlayerNameLength))) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
             if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
             if (value.Ping > 64000) { clamped++; }
             // bits(24) width clamp

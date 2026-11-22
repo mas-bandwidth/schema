@@ -93,6 +93,33 @@ return function(ctx: any): { [string]: Surface }
 		carried = carried,
 		run = function()
 			run("connection", "message", false)
+			-- message-batch <case> <connection> <root> <wire>: load with room for
+			-- every body and answer the count LoadMessages returned
+			-- (SPEC-TABLES §3.3; FORMAT.md, `message-batch`)
+			local connections: { [string]: { string } } = {}
+			for _, c in ctx.kind("connection") do
+				connections[c[2]] = c
+			end
+			for _, f in ctx.kind("message-batch") do
+				local conn = connections[f[3]]
+				if conn == nil then
+					error("driver: message-batch " .. f[2] .. " names no connection " .. f[3], 0)
+				end
+				local unit = conn[3]
+				if not carried(nil, unit) then
+					ctx.say(f[2], nil)
+					continue
+				end
+				ctx.tables(unit)
+				local MS: any = ctx.module(unit, "table_message")
+				local vocabulary = MS.NewVocabulary()
+				local areport: any = {}
+				if not MS.AnnounceRead(vocabulary, ctx.inputs(conn[5]), areport) then
+					error("driver: " .. f[2] .. ": the announcement was refused: " .. tostring(areport.reason), 0)
+				end
+				local count = MS.LoadMessages(vocabulary, f[4], ctx.inputs(f[5]), BATCH, {})
+				ctx.say(f[2], "count " .. tostring(count) .. "\n")
+			end
 		end,
 	}
 	-- `message-prior` (testdata/conformance/tables/FORMAT.md): the same read of a

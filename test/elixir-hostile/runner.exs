@@ -641,6 +641,12 @@ stale = stale ++ orphans
 
 IO.puts("#{length(manifest)} cases: #{passed} pass, #{carried} carried as FIX-CARD, #{length(bad)} unexplained, #{length(stale)} stale")
 
-if bad != [] or stale != [] do
+# One unit per manifest case. tools/mustrun holds the count to the one the
+# recipe registers for the committed corpus, so an emptied or shortened
+# manifest is red.
+failed = length(bad) + length(stale)
+IO.puts("ran #{length(manifest)}, failed #{failed}")
+
+if failed != 0 or manifest == [] do
   System.halt(1)
 end

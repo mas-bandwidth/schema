@@ -73,11 +73,13 @@ sys.argv=["driver.py",%q,%q,%q]
 runpy.run_path("tables/cards/python/driver.py",run_name="__main__")
 `, root, dir, filepath.Join(root, "tables/cards/conformance/MANIFEST.txt"), surface, outdir)
 			pin.run(t, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+			rows := 0
 			for line := range strings.SplitSeq(string(manifest), "\n") {
 				parts := strings.Fields(line)
 				if len(parts) < 3 || parts[0] != surface {
 					continue
 				}
+				rows++
 				suffixes := []string{".wire"}
 				switch surface {
 				case "load":
@@ -117,6 +119,11 @@ runpy.run_path("tables/cards/python/driver.py",run_name="__main__")
 						break
 					}
 				}
+			}
+			// every surface has rows in MANIFEST.txt today (view has one,
+			// bounds twelve): a surface with none compared nothing
+			if rows == 0 {
+				t.Fatalf("%s/%s: tables/cards/conformance/MANIFEST.txt names no %s row: this surface compared nothing", pin.name, surface, surface)
 			}
 		}
 	}

@@ -701,6 +701,7 @@ func ExcludedFiles(root string) ([]string, error) {
 	var out []string
 	for _, prefix := range ExcludedSourceDirs {
 		dir := filepath.Join(root, filepath.FromSlash(prefix))
+		before := len(out)
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -717,6 +718,9 @@ func ExcludedFiles(root string) ([]string, error) {
 		})
 		if err != nil {
 			return nil, err
+		}
+		if len(out) == before {
+			return nil, fmt.Errorf("excluded source tree %s holds no file: the exclusion names a tree that is gone, and nothing under it was checked", prefix)
 		}
 	}
 	sort.Strings(out)

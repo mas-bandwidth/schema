@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // mayCaseLabel is one `case` label of the verdict's may_skip function.
@@ -115,7 +117,7 @@ func TestCIFastVerdictNeedsEveryJob(t *testing.T) {
 	for _, e := range ciFastVerdictErrors(wf) {
 		t.Error(e)
 	}
-	files, err := filepath.Glob(filepath.Join("testdata", "fastverdict", "*.yml"))
+	files, err := provesran.Glob(filepath.Join("testdata", "fastverdict", "*.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}

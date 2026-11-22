@@ -275,10 +275,15 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	width := int(fixedStorageBytes(f.Type))
 	switch {
-	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
-		// §5.1): a quantized float past its range is the message form's to
-		// clamp, and the writers hold row 10 where the table says they do.
+	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && !f.HasFloatRange:
+		// A PLAIN FLOAT HAS NO RANGE: its only write check is row 7 (a NaN or
+		// an infinity), which the finite pass holds.
+	// A COMPRESSED OR RANGED FLOAT OFF ITS RANGE IS ROW 10 (docs/SPEC.md
+	// §5.1), a debug assert in C# like every other row, the FixedSave and the
+	// message writers' included. THE RANGE IS HELD AT FLOAT32
+	// (docs/SPEC-TABLES.md §3.3): a float32 field compares against the float32
+	// nearest each declared end (formatFloat32's `f` literal), never the
+	// declared decimal as a double, on the read and on the write alike.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.csCompressedFloat(expr, formatFloat32(f.FMin), formatFloat32(f.FMax), "0.0f", ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:

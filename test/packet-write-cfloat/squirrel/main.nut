@@ -42,7 +42,9 @@ local parseFloat = function(text) {
 };
 
 local failed = 0;
+local ran = 0;
 local check = function(ok, name, detail) {
+  ran++;
   if (!ok) {
     print("FAILED: packet-write-cfloat " + name + ": " + detail + "\n");
     failed++;
@@ -102,6 +104,9 @@ for (local i = 0; i <= input.len(); i++) {
     name, "lawful value did not read back as its quantized value");
 }
 
-if (failed != 0) return 1;
+// The count tools/mustrun reads: one check per case of cases.txt. An empty
+// cases.txt is a failure (it used to print "shared cases passed" and exit 0).
+print("packet-write-cfloat-squirrel: ran " + ran + ", failed " + failed + "\n");
+if (failed != 0 || ran == 0) return 1;
 print("packet-write-cfloat-squirrel: shared cases passed\n");
 return 0;

@@ -209,8 +209,10 @@ func TestLuauRequiresResolveInsideTheUnitOnly(t *testing.T) {
 	}
 	req := regexp.MustCompile(`require\(([^)]*)\)`)
 	local := regexp.MustCompile(`^"\./([A-Za-z0-9_]+)"$`)
+	requires := 0
 	for name, data := range files {
 		for _, m := range req.FindAllStringSubmatch(string(data), -1) {
+			requires++
 			lm := local.FindStringSubmatch(m[1])
 			if lm == nil {
 				t.Errorf("%s: require(%s) is not a ./<module> path inside the unit", name, m[1])
@@ -220,6 +222,9 @@ func TestLuauRequiresResolveInsideTheUnitOnly(t *testing.T) {
 				t.Errorf("%s: require(%s) names a module the unit does not emit", name, m[1])
 			}
 		}
+	}
+	if requires == 0 {
+		t.Fatalf("no require was found in the unit's %d files: the require rule was held to nothing", len(files))
 	}
 	outside := t.TempDir()
 	unit := filepath.Join(outside, "unit")

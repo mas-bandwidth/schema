@@ -15,7 +15,7 @@ import (
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md
 // §3.3, §4.2). The wire fuzzer's form-2 arm reads one batch body from each
-// mutant. LoadMessages answers the bodies it read, -1 on failure (§3.3), and
+// mutant. LoadMessages answers the bodies it read, 0 on a refusal (§3.3), and
 // the reference arm, messageRow in test/conformance/go/messages.go run with
 // fuzz=true, takes `count, ok := load(...)` and sets
 //

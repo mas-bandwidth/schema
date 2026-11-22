@@ -213,6 +213,9 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 	// short to hold the trailer (1..4 bytes) and every longer prefix of the
 	// file are integrity_mismatch, and the file without its last four bytes
 	// is too.
+	if len(keyed) == 0 {
+		t.Fatal("keyed is empty: the loop below would check nothing")
+	}
 	for n := 1; n < len(keyed); n++ {
 		if reason := truncs[fmt.Sprintf("%d", n)]; reason != "integrity_mismatch" {
 			t.Errorf("%d-byte truncation refused %q, want integrity_mismatch", n, reason)

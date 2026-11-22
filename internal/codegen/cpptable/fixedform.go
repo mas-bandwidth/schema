@@ -427,19 +427,19 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		g.pf("%sTableFixedPut8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
-			// §3.3's FIXED row; ruling fixed-compressed-negzero), the +0 image
-			// the read lands it as
-			g.pf("%sTableFixedPutF32( %s + %d, ( !( %s < 0.0f ) && !( %s > 0.0f ) ) ? 0.0f : %s ); // -0 is stored as +0\n", ind, buf, off, expr, expr, expr)
-		} else {
-			g.pf("%sTableFixedPutF32( %s + %d, %s );\n", ind, buf, off, expr)
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3; docs/rulings.json fixed-compressed-negzero), the +0 bits
+			// the read lands it as; a plain float's -0 rides bit-exact
+			g.pf("%sTableFixedPut32( %s + %d, TableStoredFloatBits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%sTableFixedPutF32( %s + %d, %s );\n", ind, buf, off, expr)
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			g.pf("%sTableFixedPutF64( %s + %d, ( !( %s < 0.0 ) && !( %s > 0.0 ) ) ? 0.0 : %s ); // -0 is stored as +0\n", ind, buf, off, expr, expr, expr)
-		} else {
-			g.pf("%sTableFixedPutF64( %s + %d, %s );\n", ind, buf, off, expr)
+			g.pf("%sTableFixedPut64( %s + %d, TableStoredFloatBits( %s ) );\n", ind, buf, off, expr)
+			return
 		}
+		g.pf("%sTableFixedPutF64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
 		if w == 16 {
 			g.pf("%sTableFixedPut128( %s + %d, %s );\n", ind, buf, off, expr)

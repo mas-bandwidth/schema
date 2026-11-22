@@ -579,7 +579,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
-  if (count < 0) { return -1; }
+  if (count < 0) { return 0; }
   if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return 0; }
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
@@ -588,7 +588,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       if (report.NonFiniteFloat) {
         for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
-        return -1;
+        return 0;
       }
       // A REFUSAL IN ANY BODY (a length or count past a bound, §3.3) refuses
       // the batch with its reason; no body of it is delivered.
@@ -602,14 +602,14 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
       return 0;
     }
-    // A VALUE, A COUNT OR A LENGTH PAST ITS BOUND, OR A KIND MISMATCH, IN
-    // ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §4, the strict read):
-    // the body walk counts it, at any depth, and a body handed back cut to
-    // its bound would be a value the Go engine refuses (messagedecode.go).
-    if (report.Oor > 0 || report.Mismatch > 0) {
-      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
-      TableMessageRefuse(report, report.Oor > 0 ? "out_of_range" : "kind_mismatch");
-      return -1;
+    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
+    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
+    // reference and the Rust port do: the count is 0 and
+    // every body of the batch goes back to its declared defaults.
+    if (report.Oor > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "out_of_range");
+      return 0;
     }
   }
   // damage after the last body discards the batch too (§4)

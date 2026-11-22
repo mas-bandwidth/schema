@@ -12,6 +12,12 @@ local refuse = function(r, why) {
   if (r != null) { r.refused = true; r.reason = why; }
   return -1;
 };
+// refuseLoad is a batch read's refusal: "A refused batch returns a count of
+// `0`, as every refused batch does" (docs/SPEC-TABLES.md §3.3).
+local refuseLoad = function(r, why) {
+  refuse(r, why);
+  return 0;
+};
 
 local equalBytes = function(a, b) {
   if (a.len() != b.len()) return false;
@@ -1182,17 +1188,19 @@ _M.SaveMessages <- function(T, root, values, out, report) {
 // to its declared defaults, and rows it never reached are untouched: the Go
 // engine's LoadMessages, which resets values[0..i] and, on a bad batch end,
 // values[0..count-1]. Damage answers 0 with bodyDamaged and wire_damaged; a
-// named refusal (kind_mismatch, out_of_range, length_over_bound,
-// count_over_bound, non_finite_float) answers -1 with that name.
+// named refusal (no_vocabulary, newer_form, batch_too_large, kind_mismatch,
+// out_of_range, length_over_bound, count_over_bound, non_finite_float)
+// answers 0 with that name: "A refused batch returns a count of `0`, as
+// every refused batch does" (§3.3). A delivered batch is never empty.
 _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   reset(report);
-  if(v==null||!("Announced" in v)||!v.Announced)return refuse(report,"no_vocabulary");
-  if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return -1;}
-  if((bytes[0]&0xff)!=2)return refuse(report,"newer_form");
+  if(v==null||!("Announced" in v)||!v.Announced)return refuseLoad(report,"no_vocabulary");
+  if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return 0;}
+  if((bytes[0]&0xff)!=2)return refuseLoad(report,"newer_form");
   local count = (bytes[1]&0xff)+1;
-  if(count>storage.len())return refuse(report,"batch_too_large");
+  if(count>storage.len())return refuseLoad(report,"batch_too_large");
   local d=T.Descriptors[root];
-  if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
+  if(d==null||!d.fixed)return refuseLoad(report,"message_form_plain_table:"+root);
   // THE BATCH AS AN ARRAY OF BYTES: indexing a blob is a native metamethod,
   // and the interpreter cannot grow its stack inside one, so a deep but legal
   // nesting would die in the bit reader rather than at the depth bound.
@@ -1202,7 +1210,7 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   if(report!=null){report.unknown=r.unknown;report.widened=r.widened;}
   if(whole)return count;
   for(local i=0;i<r.written;i++)storage[i]=d.make();
-  if(r.refusal!=null)return refuse(report,r.refusal);
+  if(r.refusal!=null)return refuseLoad(report,r.refusal);
   if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}
   return 0;
 };

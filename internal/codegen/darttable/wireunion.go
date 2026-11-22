@@ -365,9 +365,9 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindBool:
 		g.pf("%s%s.putByte(%s ? 1 : 0);\n", ind, p, e)
 	case wireKindF32:
-		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, cfloatStored(f, e), g.floatOwner(f))
+		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, dartStoredFloat(f, e), g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
+		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, dartStoredFloat(f, e), g.floatOwner(f))
 	default:
 		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
 			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))
@@ -660,8 +660,9 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s\t%s = %s.readF64(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL
-			// VALUES); the ends are the float32 the declaration names
+			// held at the float32 nearest each end (§3.3, THE RANGE IS HELD AT
+			// FLOAT32); a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S
+			// SPECIAL VALUES)
 			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, lo, p)
 			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, hi, p)
 			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
@@ -801,21 +802,10 @@ func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 		g.pf("%s%s.add(%s.readBool());\n", ind, out, p)
 	case wireKindF32:
 		g.pf("%sif (!%s.has(4)) %s\n", ind, p, bad)
-		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			// a compressed float element is held to the field's float32
-			// range and lands a -0 as +0 (§3.3), as a scalar one is
-			g.pf("%s{\n", ind)
-			g.pf("%s\tvar x = %s.readF32(%s.pos, '%s'); %s.pos += 4;\n", ind, p, p, g.floatOwner(f), p)
-			g.pf("%s\tif (x < %s || x > %s) { %s.report.refuse('out_of_range'); %s }\n", ind, lo, hi, p, bad)
-			g.pf("%s\tif (x == 0) { x = 0.0; }\n", ind)
-			g.pf("%s\t%s.add(x);\n", ind, out)
-			g.pf("%s}\n", ind)
-			break
-		}
-		g.pf("%s%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
+		g.pf("%s%s\n", ind, rangedFloatAdd(f, out, fmt.Sprintf("%s.readF32(%s.pos, '%s')", p, p, g.floatOwner(f)), p+".pos += 4;", p+".report"))
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, out, p, p, g.floatOwner(f), p)
+		g.pf("%s%s\n", ind, rangedFloatAdd(f, out, fmt.Sprintf("%s.readF64(%s.pos, '%s')", p, p, g.floatOwner(f)), p+".pos += 8;", p+".report"))
 	default:
 		w := ir.TableKindWidth(ek)
 		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)

@@ -816,7 +816,7 @@ func surfaceForm(surface string) string {
 // cook) is skipped when st.DeclaredForms() leaves it out.
 func tableCarriesSurface(u *ir.Unit, st *ir.Struct, surface string) bool {
 	form := surfaceForm(surface)
-	if !ir.TableForms[form] {
+	if !ir.IsTableForm(form) {
 		return true
 	}
 	if st.IsTable {
@@ -834,7 +834,7 @@ func tableCarriesSurface(u *ir.Unit, st *ir.Struct, surface string) bool {
 // carries is omitted.
 func unitCarriesSurface(u *ir.Unit, surface string) bool {
 	form := surfaceForm(surface)
-	if !ir.TableForms[form] {
+	if !ir.IsTableForm(form) {
 		return true
 	}
 	declared := false

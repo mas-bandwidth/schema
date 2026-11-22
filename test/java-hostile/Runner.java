@@ -876,6 +876,12 @@ public final class Runner {
         System.out.println(
                 manifest.size() + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, "
                         + bad.size() + " unexplained, " + stale.size() + " stale");
-        System.exit(!bad.isEmpty() || !stale.isEmpty() ? 1 : 0);
+        // The count line build/mustrun reads: a case is RUN when the port
+        // answered it (a pass, a carried FIX-CARD or an unexplained verdict),
+        // so a case that stops being answered moves the count off the one the
+        // recipe registers, and an empty manifest runs nothing and is red.
+        int ran = passed + carried + bad.size();
+        System.out.println("java-hostile: ran " + ran + ", failed " + (bad.size() + stale.size()));
+        System.exit(!bad.isEmpty() || !stale.isEmpty() || ran == 0 ? 1 : 0);
     }
 }

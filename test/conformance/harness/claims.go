@@ -258,6 +258,11 @@ func walkCases(m *Manifest, add func(surface, name, unit, root string) error) er
 			return err
 		}
 	}
+	for _, mb := range m.Batches {
+		if err := add("message", mb.Name, mb.Unit, mb.Root); err != nil {
+			return err
+		}
+	}
 	for _, r := range m.Reports {
 		if err := add("report", r.Name, r.Unit, r.Root); err != nil {
 			return err

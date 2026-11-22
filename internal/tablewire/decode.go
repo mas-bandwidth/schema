@@ -1181,8 +1181,7 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 			return true
 		}
 		if f.HasFloatRange {
-			// the range as every runtime holds it, at float32 (SPEC.md §4.6)
-			if !tabletext.FloatInRange(f, v) {
+			if !ir.CompressedFloatInRange(f.FMin, f.FMax, v) {
 				return r.refuseField(ReasonOutOfRange, f)
 			}
 			if v == 0 {

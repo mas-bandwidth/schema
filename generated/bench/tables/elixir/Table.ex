@@ -2116,10 +2116,38 @@ defmodule Benchtable.Table do
   defp map_entries(_f, nil), do: []
 
   defp map_entries(f, values) do
+    check_map_keys(f, values)
+
     values
     |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)
     |> Enum.map(fn {key, value} -> %{"key" => map_key_value(f, key), "value" => value} end)
   end
+
+  # A KEY OF THE WRONG TYPE IS REFUSED (SPEC-TABLES §2.8): a string-keyed map
+  # holds binaries; an integer-keyed one holds integers, or the canonical
+  # decimal text a load hands back for one (the loaded value's integer keys are
+  # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
+  # that names the same integer as another ("7" beside 7) is refused, so no
+  # key is written twice and none raises.
+  defp check_map_keys(%{key_kind: 12}, values) do
+    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+  end
+
+  defp check_map_keys(_f, values) do
+    ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
+    if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
+  end
+
+  defp map_int_key(key) when is_integer(key), do: key
+
+  defp map_int_key(key) when is_binary(key) do
+    case Integer.parse(key) do
+      {v, ""} -> if Integer.to_string(v) == key, do: v, else: throw(:invalid_value)
+      _ -> throw(:invalid_value)
+    end
+  end
+
+  defp map_int_key(_key), do: throw(:invalid_value)
 
   defp map_sort_key(%{key_kind: 12}, key), do: key
 
@@ -2512,6 +2540,7 @@ defmodule Benchtable.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    check_field(a, payload)
     {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
@@ -5323,9 +5352,7 @@ defmodule Benchtable.Table do
       do: throw(:invalid_value)
   end
 
-  defp write_value(%{t: :enum} = f, v) do
-    if v not in [nil, "None"] and not Map.has_key?(f.by_name, v), do: throw(:invalid_value)
-  end
+  defp write_value(%{t: :enum} = f, v), do: write_enum_name(f, v)
 
   defp write_value(%{t: :union} = f, v), do: write_arm(f.elem, v)
 
@@ -5347,8 +5374,15 @@ defmodule Benchtable.Table do
 
   # "None" is the reserved nil spelling a fixed root's optional enum array
   # carries (json_list_elem/3 writes it as is)
-  defp write_element(%{elem_kind: 30} = f, e) do
-    if e not in [nil, "None"] and not Map.has_key?(f.by_name, e), do: throw(:invalid_value)
+  defp write_element(%{elem_kind: 30} = f, e), do: write_enum_name(f, e)
+
+  # An enum value is nil, the reserved "None", or the name of a variant that is
+  # not deprecated (docs/SPEC-TABLES.md §2.15); any other name is a refusal and
+  # never a raise.
+  defp write_enum_name(f, name) do
+    if name not in [nil, "None"] and
+         (not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),
+       do: throw(:invalid_value)
   end
 
   defp write_element(%{elem_kind: 15} = f, e), do: write_arm(f.elem, e)
@@ -6240,8 +6274,10 @@ defmodule Benchtable.Table do
 
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
 
-  defp json_field(%{t: :enum}, name, _depth) when is_binary(name),
-    do: ["\"", json_escape(name), "\""]
+  defp json_field(%{t: :enum} = f, name, _depth) when is_binary(name) do
+    check_enum(f, name)
+    ["\"", json_escape(name), "\""]
+  end
 
   defp json_field(%{t: :enum}, _bad, _depth), do: throw(:invalid_value)
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
@@ -6335,8 +6371,10 @@ defmodule Benchtable.Table do
   defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
 
-  defp json_list_elem(%{elem_kind: 30}, e, _depth) when is_binary(e),
-    do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30} = f, e, _depth) when is_binary(e) do
+    check_enum(f, e)
+    ["\"", json_escape(e), "\""]
+  end
 
   defp json_list_elem(%{elem_kind: 30}, _bad, _depth), do: throw(:invalid_value)
 

@@ -11,12 +11,24 @@ import .Plain;
 import .serialize;
 
 var failed = false;
+var failures = 0;
+var ran = 0;
 
 fn check(ok: bool, name: const u8[:]) {
+    ran += 1;
     if !ok {
         write_stderr(str("FAILED: ", name, "\n"));
         failed = true;
+        failures += 1;
     }
+}
+
+// knownGolden answers whether run() reads the golden named file (a *.bin of
+// the goldens directory). main holds the directory's own listing to it.
+fn knownGolden(file: const u8[:]) -> bool {
+    return file == "sample-defaults.bin" || file == "zero-count.bin" || file == "batch-defaults.bin"
+        || file == "conditional-on.bin" || file == "conditional-off.bin" || file == "choice-sample.bin"
+        || file == "sample-short.bin" || file == "sample-empty.bin";
 }
 
 // fixture values, independent of the generated constructors; schema
@@ -327,11 +339,21 @@ fn run(dir: const u8[:]) {
 
 fn main() {
     let argv = args();
-    if argv.len != 2 {
-        write_stderr("usage: main.goose -- <golden-directory>\n");
+    if argv.len < 2 {
+        write_stderr("usage: main.goose -- <golden-directory> <golden .bin file>...\n");
         exit(2);
     }
     run(argv[1]);
-    if failed { exit(1); }
-    print("packet defaults Goose: constructors, eight C++ goldens and reused storage OK");
+    // The arguments after the directory are its own listing of *.bin (the
+    // make recipe passes it). A golden on disk that run() does not read and
+    // an empty listing fail here; a golden run() reads that is gone already
+    // failed its read above.
+    for i in argv.len {
+        if i < 2 { continue; }
+        check(knownGolden(argv[i]), str("golden ", argv[i], " is in the directory and this driver does not read it"));
+    }
+    check(argv.len > 2, "the goldens directory listing is not empty");
+    // The last stdout line is the count tools/mustrun reads.
+    print("packet defaults Goose: ran ", ran, ", failed ", failures);
+    if failed || ran == 0 { exit(1); }
 }

@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestRubyPins holds the Ruby leg's toolchain pins, its analyzer lock and its
@@ -250,7 +252,7 @@ func TestRubyPins(t *testing.T) {
 		".github/actions/ruby/*.yml",
 		".github/workflows/ruby-leg.yml",
 	} {
-		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		matches, err := provesran.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -264,6 +266,7 @@ func TestRubyPins(t *testing.T) {
 	envRubyRE := regexp.MustCompile(`/usr/bin/env\s+ruby`)
 	execRubyRE := regexp.MustCompile(`(Command|LookPath)\("ruby`)
 
+	codeLines := 0
 	for _, f := range legFiles {
 		rel, err := filepath.Rel(root, f)
 		if err != nil {
@@ -281,9 +284,13 @@ func TestRubyPins(t *testing.T) {
 			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
+			codeLines++
 			if bareRubyRE.MatchString(line) || envRubyRE.MatchString(line) || execRubyRE.MatchString(line) {
 				t.Errorf("%s:%d runs an interpreter from PATH: %s", rel, i+1, trimmed)
 			}
 		}
+	}
+	if codeLines == 0 {
+		t.Fatal("no non-comment line was read from the Ruby leg files: the PATH-interpreter check checked nothing")
 	}
 }

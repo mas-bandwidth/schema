@@ -2887,6 +2887,13 @@ static SCHEMA_UNUSED int blockdemo_table_bits_finite32( uint32_t bits ) { return
 static SCHEMA_UNUSED int blockdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int blockdemo_table_float_finite( float f ) { return blockdemo_table_bits_finite32( blockdemo_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int blockdemo_table_double_finite( double d ) { return blockdemo_table_bits_finite64( blockdemo_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t blockdemo_table_stored_float_bits( float f ) { uint32_t b = blockdemo_table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+static SCHEMA_UNUSED uint64_t blockdemo_table_stored_double_bits( double d ) { uint64_t b = blockdemo_table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -4083,6 +4090,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_body( blockdemo_table_writer_
             blockdemo_table_writer_header_at( w, 36, 0x7ce4fd9430e80ceaull, 11 );
             if ( !blockdemo_table_double_finite( value->value ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->value ) );
+            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->value ) );
         }
     }
     { /* flag */
@@ -5014,8 +5022,8 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_messages(blockdemo_padded_row
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -5605,8 +5613,8 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_messages(blockdemo_padded_f
  *count=0;
  bodies=blockdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6256,16 +6264,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_row_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash )
-        {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { blockdemo_padded_row_reset( values + j ); }
-            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
-            return -1;
-        }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -7994,16 +8002,16 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
     blockdemo_padded_frame_reset( &defaults );
     read_widened = report->widened;
+    /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
+       'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
+       as untouched as values[k]. */
+    for ( k = 0; k < count; ++k )
+    {
+        if ( blockdemo_table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+    }
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash )
-        {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { blockdemo_padded_frame_reset( values + j ); }
-            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
-            return -1;
-        }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */

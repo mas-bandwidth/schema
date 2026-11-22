@@ -1954,6 +1954,9 @@ function TableAnnounceRead(v, data, report) {
     return TableMessageRefuse(report, "build_version_mismatch");
   }
   const src = new TableMessageReader(words, null);
+  // PARSED INTO A LOCAL LIST FIRST: a vocabulary past the capacity refuses
+  // before one slot of v.Entries is touched
+  const parsed = [];
   let count = 0, nodeSeen = false;
   while (src.Offset < words.length) {
     if (count >= v.Entries.length) { return TableMessageRefuse(report, "vocabulary_too_large"); }
@@ -1967,9 +1970,9 @@ function TableAnnounceRead(v, data, report) {
     e.Shape.Min = began;
     e.Shape.Max = src.Offset;
     for (let i = 0; i < count; i++) {
-      if (TableMessageEntryEqual(words, v.Entries[i], e)) { report.Damaged = true; return false; }
+      if (TableMessageEntryEqual(words, parsed[i], e)) { report.Damaged = true; return false; }
     }
-    v.Entries[count] = e;
+    parsed.push(e);
     count++;
   }
   src.Offset = 0;
@@ -2752,7 +2755,9 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.ackBits !== "number" || !globalThis.Number.isInteger(value.ackBits)) { return false; }
   if (value.ackBits < 0 || value.ackBits > 4294967295) { return false; }
   if (typeof value.sessionId !== "bigint") { return false; }
+  if (value.sessionId < 0n || value.sessionId > 18446744073709551615n) { return false; }
   if (typeof value.clientId !== "number" || !globalThis.Number.isInteger(value.clientId)) { return false; }
+  if (value.clientId < 0 || value.clientId > 4294967295) { return false; }
   if (typeof value.nonce !== "bigint") { return false; }
   if (value.nonce < 0n || value.nonce > 18446744073709551615n) { return false; }
   if (typeof value.worldTime !== "bigint") { return false; }
@@ -2796,6 +2801,7 @@ export function BenchMixedFixedCheckBody(value) {
   if (!globalThis.Array.isArray(value.loadout) && !(value.loadout instanceof globalThis.Uint8Array)) { return false; }
   for (let i1 = 0; i1 < 4; i1++) {
     if (typeof value.loadout[i1] !== "number" || !globalThis.Number.isInteger(value.loadout[i1])) { return false; }
+    if (value.loadout[i1] < 0 || value.loadout[i1] > 255) { return false; }
   }
   if (!(value.playerName instanceof globalThis.Uint8Array)) { return false; }
   if (typeof value.playerNameLength !== "number" || !globalThis.Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { return false; }
@@ -2813,6 +2819,7 @@ export function BenchMixedFixedCheckBody(value) {
   if (typeof value.recoil !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.recoil))) { return false; }
   if (typeof value.drift !== "number" || !globalThis.Number.isFinite(value.drift)) { return false; }
   if (typeof value.wideKey !== "bigint") { return false; }
+  if (value.wideKey < 0n || value.wideKey > 340282366920938463463374607431768211455n) { return false; }
   if (typeof value.flux !== "bigint") { return false; }
   if (value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) { return false; }
   if (typeof value.ping !== "number" || !globalThis.Number.isInteger(value.ping)) { return false; }

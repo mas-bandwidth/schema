@@ -32,6 +32,9 @@ func TestLobsterTableFreePacketIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(view) == 0 {
+		t.Fatal("view is empty: the loop below would check nothing")
+	}
 	for name := range view {
 		if name != u.Package+"View.lobster" && name != "descriptors.lobster" && name != "schema_tables.lobster" {
 			t.Errorf("table-free reflection emits table module or codec %s", name)

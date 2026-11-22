@@ -1592,9 +1592,10 @@ defmodule Benchtable.TableMessage do
 
     if count > capacity do
       # "M above the caller's capacity on the read side is a refusal by name"
-      # and "the reader sets the returned count to the wire's M before it
-      # returns the refusal" (docs/SPEC-TABLES.md §3.3).
-      {:error, :batch_too_large, count}
+      # and "A refused batch returns a count of `0`, as every refused batch
+      # does; a caller that needs room reads the wire's `M` itself"
+      # (docs/SPEC-TABLES.md §3.3).
+      {:error, :batch_too_large, 0}
     else
       # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
       # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is

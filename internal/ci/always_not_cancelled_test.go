@@ -33,8 +33,15 @@ func TestNoJobRunsAfterItsRunIsCancelled(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
-		for job := range yamlJobs(wfs[name]) {
+		allYamlJobs := yamlJobs(wfs[name])
+		if len(allYamlJobs) == 0 {
+			t.Fatal("yamlJobs(wfs[name]) is empty: the loop below would check nothing")
+		}
+		for job := range allYamlJobs {
 			if cond := jobIfCondition(wfs[name], job); alwaysWithoutNotCancelled(cond) {
 				t.Errorf("%s:%s runs on always() without !cancelled() (%q): a cancelled run would still queue it for a runner; write always() && !cancelled()", name, job, cond)
 			}

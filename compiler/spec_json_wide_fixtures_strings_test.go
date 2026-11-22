@@ -603,6 +603,7 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 	unitPath := map[string]string{}
 	type bound struct{ unit, table string }
 	instances := map[string]bound{}
+	connUnit := map[string]string{}
 	var out []wideFixture
 	bind := func(manifest, row, unit, table, file string) error {
 		schema, ok := unitPath[unit]
@@ -629,6 +630,9 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 			if f[0] == "instance" && len(f) >= 4 {
 				instances[f[1]] = bound{f[2], f[3]}
 			}
+			if f[0] == "connection" && len(f) >= 3 {
+				connUnit[f[1]] = f[2]
+			}
 		}
 		for _, f := range rows {
 			if len(f) < 4 {
@@ -644,6 +648,11 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 				}
 			case "instance":
 				files = append(files, dir+"/json/"+name+".json")
+			case "message-batch":
+				// <case> <connection> <root> <sent json>: the sent value is read
+				// at the connection's unit
+				unit = connUnit[f[2]]
+				files = append(files, f[4])
 			case "report":
 				files = append(files, dir+"/report-values/"+name+".json")
 			case "retain":
