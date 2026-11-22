@@ -4057,7 +4057,9 @@ generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
 holding `string(M)`, or `?string(M)` for the `?` spelling. It is reached only
 through the list that generates it, so it has no `Save`, `Load` or `Open` of its
 own, and in the projections (§18.1, §20.2) it takes a map entry's anonymous key,
-`<holder id>.<field id>`, so a `was` rename moves no line. The storage of the
+`<holder id>.<field id>`, so a `was` rename moves no line; the list field's own
+`type=` spells the record from the holder's and the field's WIRE names, so it
+moves no line either. The storage of the
 list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
 why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
@@ -9163,7 +9165,10 @@ only.
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
 | a field's wire KIND, or an array's ELEMENT kind, changed | refuses `kind_mismatch` | **refuses** | **moves** |
 | a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the widening runs ONE WAY, so the old build reading the NEW file refuses `kind_mismatch`, and a mixed fleet has readers on both sides | **moves** |
-| an array changed between keyed and positional, or its KEY enum swapped | refuses `kind_mismatch` | **refuses** | **moves** |
+| an array changed between keyed and positional | refuses `kind_mismatch` | **refuses** | **moves** |
+| an enum-keyed array's KEY enum swapped for another (§2.4) | `unknown` for each stored slot keyed by a variant name the new enum does not declare, and the slot is dropped; the new enum's unreached slots read their defaults | **refuses**, unless the new enum declares every variant name the old one did (§18.2) | **moves** |
+| a counted array's MINIMUM count moved, or gained or lost with the array's shape (SPEC §4.6) | refuses `count_over_bound` on a count below a raised minimum; silent on an array the writer elided at its born count, which reads back as the READER's minimum of default elements | **refuses** — the `mincount=` token is the array's born count as well as its floor (§18.1) | **moves** |
+| an enum VARIANT deprecated in place (§2.15) | silent — a stored value naming it reads as the field's declared default, and nothing is counted | **warns** | no |
 | a field or a union ARM changed between an `enum` and its raw integer | refuses `kind_mismatch` | **refuses** | **moves** |
 | a union ARM's declared TYPE changed | refuses `kind_mismatch` where the arm's kind moved, `wire_damaged` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | refuses `out_of_range` on a value past the new bounds | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |
@@ -17929,9 +17934,10 @@ file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
-the shape has one, for a keyed
+the shape has one, a counted array's MINIMUM count where its range starts
+above zero (`mincount=`), for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
-capacity), string and bytes capacity, a byte buffer's `type=string` or
+capacity), string and bytes capacity, a `bits(N)` field's `N` (`bits=`), a byte buffer's `type=string` or
 `type=bytes` (the blob node's shape, §2.5), the declared
 RANGE (`min=` and `max=`), presence of an optional, a required field's
 `required=true` (§2.3), a fixed field's `F`
@@ -17940,7 +17946,8 @@ default as exact canonical text (a fixed default as the RAW integer its
 storage holds, a string or bytes default as `bytes:` and its bytes in hex,
 so a space in a default cannot split the token, and a flags default as the
 mask its names spell), and the `was` alias; then each enum's variants in order with their ids and,
-on a renamed variant, `was=` and its alias, each flags'
+on a renamed variant, `was=` and its alias, and on a variant deprecated in
+place (§2.15) `deprecated=true`, each flags'
 variants in positional order, and each union's arms in order with their ids
 and their own wire facts.
 
@@ -17953,7 +17960,7 @@ file's spelling of the payload-free kind the arm carries on the wire (§3). Ever
 FIELD tokens for what it is, in the field line's own column order and judged
 by the field line's own rules: `kind=`, then where the fact exists `elem=`,
 the `enum=` / `flags=` / `union=` / `type=` that names its referent,
-`array=`, `bound=`, `frac=`, `size=`, `min=` and `max=`. A tightened arm
+`array=`, `bound=`, `frac=`, `size=`, `bits=`, `min=` and `max=`. A tightened arm
 range warns exactly as a field's does, an arm records no default because an
 arm takes none (§2.6), and a renamed arm records `was=` and its alias on
 every spelling, judged on nothing: the id is the identity, and the alias is
@@ -18025,6 +18032,28 @@ have carried. **Every other token keeps judging exactly as it did**: `elem=`,
 element retyped, a referent swapped or a kind changed refuses under the shape
 that was there and under the shape that replaces it alike.
 
+**A COUNTED ARRAY'S MINIMUM IS RECORDED, and it is not an extent that only
+tightens.** A `[Min..N]T` whose range starts above zero renders `mincount=Min`
+after its `bound=`, wherever a counted array can stand: a field, a field of a
+nested record, a union arm, a map's value. The minimum is two reader facts at
+once. A present array holding fewer elements than the reader's minimum refuses
+the load `count_over_bound` (§4). And the minimum is the array's BORN count
+(SPEC §4.6), which a writer elides, so an array left at its born value reads
+back with the READER's minimum of default elements, raised or lowered, and no
+counter fires. That second half is the class a changed specified default is
+in, so any move of the minimum is refused (§18.2). A `[..N]T` renders no
+token, and its absence is a minimum of zero. The token is judged, so it takes
+the rendering version: a file written before it refuses on check and names
+`--update` as the remedy (§18.4), and is never read as "no minimum".
+
+**RENDERING `9` RECORDS ALL THREE, AND `8` IS REFUSED WHATEVER IT HOLDS.** Two
+unreleased renderings were both numbered `8`: one added `bits=` alone, the
+other `mincount=` and `deprecated=true` alone. A file opening with `8` may
+lack either fact, so the check reads no `8` at all; it refuses the file by its
+version and names `--update` as the remedy, exactly as for any older
+rendering. Rendering `9` records all three. A rendering number names one set
+of facts and is never issued again for another.
+
 **UNBOUNDED TEXT (§2.13.1) RENDERS ITS OWN LINE.** A text list's unbounded
 `value` renders with no `size=` token, and an unbounded map key as
 `keybound=0`, a value no `string(N)` key carries (`N >= 2`), so neither line is
@@ -18042,8 +18071,11 @@ addition does not meet the test.
 holds a stored value to its OWN declared bounds and refuses `out_of_range` past
 them (§4), so a tightened range is a data edit — every stored file holding a
 value past the new bound no longer reads. Only a DECLARED
-range is recorded: `bits(N)`'s implied `[0, 2^N − 1]` is its WIDTH, and the
-width is the `kind` this file already holds fixed. A fixed field's bounds
+range is recorded as `min=` and `max=`. A `bits(N)` field's implied
+`[0, 2^N − 1]` is recorded as `bits=N`, because the `kind` cannot hold it:
+`bits(9)` through `bits(16)` and `uint16` are all kind `7`, so an N narrowed
+inside one storage bucket would move no other token. `bits=` is judged as an
+extent (§18.2). A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
@@ -18062,11 +18094,27 @@ is a kind change and is refused (§4.1). This restores the pre-existing
 presence evolution contract rather than adding a ban to justify read-side
 elision.
 
-It carries no protocol id and no packet fact: the type wire, the wire-shape
-projection and the protocol id are untouched by all of it (§10).
+It carries no protocol id, and ONE packet fact: the type wire, the
+wire-shape projection and the protocol id are untouched by all of it (§10).
+
+**A PACKET'S KEYED ARRAY IS RECORDED, because the protocol id cannot see its
+key enum swapped.** On the packet wire an enum-keyed array's slots are
+POSITIONS, and `[Team]T`, `[Axis]T` and `[2]T` are one layout and one
+protocol id (SPEC §4 item 4), so a key enum swapped for another of the same
+size reads every stored or sent slot under the new enum's name in the same
+place: bytes written as `Red = 11, Blue = 22` read as `East = 11,
+West = 22`, and no id moves. So the file renders, after the closure, a
+`packet <Name>` section for each `type` or packet union that holds an
+enum-keyed array, one line per array: `keyed <member> key=<Enum> bound=<N>
+slots=<names in slot order>`. The check REFUSES a key enum swapped under the
+same bound when the slot names differ, naming each renamed slot. A swap whose
+slot names line up, a move to the positional spelling, and an edit that moves
+the bound pass here: the first two rename nothing, and the last moves the
+layout, which the protocol id reports. Nothing else of the packet wire is
+recorded. The section takes the rendering version: `10`.
 
 ```
-schema-tables-baseline 7
+schema-tables-baseline 10
 package shipdemo
 
 table ShipConfig
@@ -18103,7 +18151,15 @@ committed file whenever one is there, and:
   a byte buffer's `type=string` or `type=bytes` moved between the two, or
   dropped, because the slot then meets a record of another node type (§2.5);
   an array changed between the keyed and the positional spelling,
-  or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
+  or an enum-keyed array's KEY enum swapped for another that does not declare
+  every variant name the old one did — a keyed slot rides under its variant's
+  NAME id (§3.2), so each stored slot keyed by a name the new enum lacks is
+  dropped and counts `unknown`, and the new enum's unreached slots read their
+  defaults; a counted array's MINIMUM count moved, in either direction, or a
+  minimum gained or lost on a shape change (§18.1) — raised, a file holding
+  fewer elements refuses `count_over_bound`, and moved either way a file whose
+  writer elided the array at its born value reads back with the new minimum of
+  default elements and nothing reports it; a field's REFERENT
   dropped, or replaced by one that cannot STAND IN for it — every identity
   survives AND, for a table or a union arm's payload, the facts under the
   shared field ids are unchanged (§18.3). **An ARM is judged by the FIELD
@@ -18129,7 +18185,9 @@ committed file whenever one is there, and:
   RANGE tightened, from either end, or declared where the field or the ARM
   had none; a text list's `total=` lowered, or declared where the list had
   none (§2.13); an
-  enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
+  enum variant or a union arm removed; an enum variant DEPRECATED in place
+  (§2.15), because stored values naming it then read as the field's declared
+  default and nothing is counted; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
   a field ADDED in one table in one edit, which is the shape a bare rename
   leaves — the warning names both and says how to declare it, and it is a
@@ -18148,8 +18206,9 @@ committed file whenever one is there, and:
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
-  which is the largest growth there is; a bounded array made fixed or the
-  reverse; a field moved between `T` and `?T` (a field moved to or from `*T` is a
+  which is the largest growth there is; a bounded array that declares no
+  minimum made fixed, or the reverse; an enum variant's `deprecated` marker
+  taken off; a field moved between `T` and `?T` (a field moved to or from `*T` is a
   kind change and is refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
@@ -18230,11 +18289,26 @@ and each vocabulary's standard is its own (§3):
   carrying the same id under a different specified default rewrites the
   meaning of every stored body, and that is the flagship class this file
   exists to refuse. The facts are judged by the same rules a field's own
-  facts are, so the two paths cannot disagree.
-- An **enum** value is its variant NAME hash, so it stands in when every
-  variant name survives.
-- A **union** body opens with its arm NAME hash, and each arm is a field
-  line (§2.6), so it stands in when every arm name survives AND THE FACTS
+  facts are, so the two paths cannot disagree. **Both sides are walked**: a
+  field the new declaration adds is absorbed, unless it is `| required` —
+  every body stored under the old declaration lacks it, and a reader
+  refuses each one `missing_required`, exactly as for a required field added
+  in place (§2.3).
+- A **pointer**'s target is the one referent the wire NAMES: its node
+  carries the table's type id (§3.1, §5). So a pointer slot — scalar, array
+  element or map value — admits no stand-in at all, however alike the two
+  bodies: a stored node of the old type refuses the whole load
+  `wire_damaged` where the reader still declares that type, and reads null
+  counted `unknown` where it does not. Only a rename under `was` keeps the
+  type id, and that one moves no `type=`. A table renamed bare where it is a
+  pointer target is an edit in place, and warns as the read reports it.
+- An **enum** value is its variant's WIRE ID — the hash of its first name,
+  the `was` alias after a rename — so it stands in when every variant id
+  survives. Spelling is not identity: a same-spelled variant under another
+  `was` is a different id, and a differently spelled one whose `was` names
+  the old variant is the same one.
+- A **union** body opens with its arm's WIRE ID, and each arm is a field
+  line (§2.6), so it stands in when every arm id survives AND THE FACTS
   UNDER THOSE ARMS ARE UNCHANGED. The facts are judged by the same rules a
   field's own facts are, the arm's payload included, which is the table
   rule above applied one level in: a union whose arm names all survive
@@ -18253,8 +18327,8 @@ still an edit a save game may not survive.
 **AN ARM'S REFERENT IS JUDGED BY THE SAME THREE STANDARDS**, selected by the
 same token, because an arm's line is a field's line (§18.1, §2.6): an arm
 naming a table or a `type` stands in when the ids and the facts under them
-survive, an arm naming an enum when the names do, an arm naming a union
-when the arm names and the facts under them do, an arm naming a `flags`
+survive, an arm naming an enum when the variant ids do, an arm naming a union
+when the arm ids and the facts under them do, an arm naming a `flags`
 when the bits do. An arm that names NO declaration — a scalar, a
 string, an array of scalars — has its kind and its shape tokens instead.
 Those admit no substitute at all, so any change to one refuses: there is
@@ -18281,7 +18355,8 @@ rewrites nothing.
 
 **A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
 reused** (issue #441). The `## retired` section records every field, enum
-variant and union arm a `--update` removes — its vocabulary, its
+variant and union arm a `--update` removes, and every declaration name it
+frees (below) — its vocabulary, its
 fully-qualified name, the wire id it rode under and the day it was retired —
 and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
 history, so this is the one record in the file the live projection cannot
@@ -18293,6 +18368,21 @@ reuse is legal once it is deliberate: `--update --reason "..."` writes
 `revived=<date>` on the entry, which is the acknowledgment, and the entry
 itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
 cost.
+
+**A freed DECLARATION NAME is retired too.** A table, enum, flags or union
+whose name an update frees — by removing it, by renaming it without `was`, or
+in the same update as a package rename — leaves a `table`, `enum`, `flags` or
+`union` entry under the id its name hashes to. A table's wire name IS its node
+records' type id (§3.1): a later table declared under a freed name is the type
+a save made before then names, so its pointers would read those records as the
+new table. The check refuses the reuse exactly as it refuses a member's, until
+`--update --reason` acknowledges it, and the same holds for an enum, a flags
+and a union, strict, because a reused declaration name is an edit no other row
+of the diff sees. A `was` rename keeps the wire name and frees nothing. An
+update over a renamed package's baseline still retires what the previous
+projection carried, because it parsed: a package rename is not a way to free
+a name. A package name itself needs no entry, because the check refuses ANY
+change of package until `--update` regenerates over it (above).
 
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one

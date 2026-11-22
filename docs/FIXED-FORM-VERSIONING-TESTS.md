@@ -35,7 +35,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the hash |
 | `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the hash |
 | `array_bounded_grow` | `[..4]int32` | `[..8]int32` | `[..2]`: "bound narrowed (4 -> 2)" | count and 4 elements exact; slots 4..7 default | the hash |
-| `array_fixed_grow` | `[4]Vec` | `[8]Vec` | `[2]`: "bound narrowed" | 4 exact, 4 at the ELEMENT DEFAULT (a nested Vec's own defaults, bill §12.6) | the hash |
+| `array_fixed_grow` | `[4]Vec`, `[4]int32`, `[4]uint8` | `[8]` each | `[2]`: "bound narrowed" | 4 exact, 4 at the ELEMENT DEFAULT (a nested Vec's own defaults, bill §12.6); the scalar arrays 4 exact and 4 born 0, never unset or short (F-092) | the hash |
 | `array_shape` | `[4]T` | — | `[..4]T`: "shape changed"; `[Enum]T`: "shape changed" | — | — |
 | `array_elem_widen` | `[..4]int16` | `[..4]int32` | `[..4]int8`: "element narrowed" | 4 exact, widened | the hash |
 | `keyed_array_enum_append` | `[Tier]int32`, Tier 3 | Tier 4 | Tier reordered: "variant reordered" (the array follows) | 3 slots exact, slot 4 default | the hash |

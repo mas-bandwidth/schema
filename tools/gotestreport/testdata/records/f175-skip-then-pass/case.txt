@@ -1,0 +1,7 @@
+# F-175: go test -count=2; TestRepeat skips for "no cargo on PATH" on its
+# first run and passes on its second. The skip happened: a lane that has
+# cargo is red for it, though the test's latest verdict is a pass.
+args: -require-record -provides tool:rust
+exit: 1
+want: skip ledger: 1 skip(s)
+want: UNEXPECTED SKIP      example.org/ledgertest TestRepeat: "no cargo on PATH" is class tool:rust, which this lane provides

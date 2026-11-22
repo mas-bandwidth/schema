@@ -30,6 +30,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
 | `runmatch/` | go test -run selection, as Go matches it | `go test ./internal/runmatch` | `go test ./internal/runmatch` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |
+| `skipledger/` | skip ledger: every reason a test may skip for | `go test ./internal/skipledger` | `go test ./internal/ci -run Skip` |
 | `slowtest/` | 1-2 minute unit-test gate | `make slow-gate-scan` | `make slow-gate-scan` |
 | `tablecook/` | cook form | `go test ./internal/tablecook` | `go test ./internal/tablecook` |
 | `tablenames/` | per-language claimed names | `go test ./compiler` | `go test ./compiler` |
