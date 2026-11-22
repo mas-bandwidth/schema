@@ -34,7 +34,7 @@ for (int i = 0; i < texts.Length; i++) {
  var value = new Probe.Root();
  var report = new Probe.TableReport { Unknown = 3 };
  bool ok = Probe.Schema.RootFromJson(value, System.Text.Encoding.UTF8.GetBytes(texts[i]), report);
- if (ok || (!report.Damaged && !report.Refused) || report.Reason != "text_holds_zero: " + fields[i] || report.Unknown != 3)
+ if (ok || (!report.Damaged && !report.Refused) || report.Reason != "text_holds_zero: " + fields[i] || report.Unknown != 0)
   bad += ProbeLog.Fail("stored NUL scope " + i + " reason=" + report.Reason);
  if (!Probe.Schema.RootFromJson(value, System.Text.Encoding.UTF8.GetBytes("{\"name\":\"ok\"}"), report) || report.Refused || report.Reason != null)
   bad += ProbeLog.Fail("prior diagnostic poisoned a clean read");

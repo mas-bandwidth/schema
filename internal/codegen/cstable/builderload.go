@@ -14,8 +14,7 @@ const tableBuilderLoadSource = `
     public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        bool damagedBefore = report.Damaged;
-        report.Damaged = false;
+        report.Zero(); // every read zeroes the report it is handed first (SPEC-TABLES §6.5)
         bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);
         if (report.Damaged)
         {
@@ -23,7 +22,6 @@ const tableBuilderLoadSource = `
             if (report.Verdict != Verdict.Refused) { Finish(report, Verdict.Damaged); }
             return false;
         }
-        report.Damaged = damagedBefore;
         return whole;
     }
     static bool LoadBuilderWalk(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
