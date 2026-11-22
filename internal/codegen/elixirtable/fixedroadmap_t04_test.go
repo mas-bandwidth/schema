@@ -336,7 +336,7 @@ fixed table T
 
 	// a narrower value past its range still counts as clamped, the same bound
 	// answer §3 gives every value outside its reader's range.
-	t04Has(t, fixedRuntimeBody, "defp clamp_count(raw, max, report)", "R20 an out-of-range count clamps to the reader's bound")
+	t04Has(t, fixedRuntimeBody, "defp clamp_count(raw, min, max, report)", "R20 an out-of-range count clamps to the reader's bound")
 }
 
 // ---- elixir/R21 -------------------------------------------------------------
@@ -368,7 +368,7 @@ func t04R21(t *testing.T) {
 func t04R29(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "@record_max 65536", "R29 the 65536 ceiling")
 	t04Has(t, fixedRuntimeBody, "size > @record_max -> {:error, :layout_record_too_large}", "R29 a record past the ceiling is refused")
-	t04Has(t, fixedRuntimeBody, "defp clamp_count(raw, max, report)", "R29 the bounds pass clamps a count")
+	t04Has(t, fixedRuntimeBody, "defp clamp_count(raw, min, max, report)", "R29 the bounds pass clamps a count")
 	if ir.TableFixedRecordMaxBytes != 65536 {
 		t.Errorf("R29: TableFixedRecordMaxBytes = %d, want 65536", ir.TableFixedRecordMaxBytes)
 	}

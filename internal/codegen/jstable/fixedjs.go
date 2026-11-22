@@ -919,7 +919,7 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind stri
 	case f.Array == ir.ArrayCounted:
 		g.pf("%s{\n", ind)
 		g.pf("%s  const n = view.getInt32(%s, true);\n", ind, off(base, at))
-		g.pf("%s  if (n < 0 || n > %d) { report.refused = TableFixedRefusal.CountOverBound; return; }\n", ind, f.ArrayBound)
+		g.pf("%s  if (n < %d || n > %d) { report.refused = TableFixedRefusal.CountOverBound; return; }\n", ind, f.ArrayMin, f.ArrayBound)
 		g.emitCheckLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
@@ -1230,7 +1230,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Array == ir.ArrayFixed:
 		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound, "TableFixedRefusal.CountOverBound")
+		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayMin, f.ArrayBound, "TableFixedRefusal.CountOverBound")
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity copies the whole
 		// array into the image; this loop is the pass both paths share.
@@ -1238,12 +1238,12 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Type.Kind == ir.TString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), 0, f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TBytes:
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), 0, f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
@@ -1265,10 +1265,10 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 // It is also the only guard for a count or length inside a union arm, which
 // has no check loop of its own. This is the twin of javatable/fixedform.go's
 // emitScatterCount and of rusttable/fixedform.go's emitFixedScatterCount.
-func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64, refusal string) {
+func (g *fixedGen) emitDecodeCount(ind, dst, at string, min, bound int64, refusal string) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  let n = view.getInt32(%s, true);\n", ind, at)
-	g.pf("%s  if (n < 0 || n > %d) { report.refused = %s; return; }\n", ind, bound, refusal)
+	g.pf("%s  if (n < %d || n > %d) { report.refused = %s; return; }\n", ind, min, bound, refusal)
 	g.pf("%s  %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
@@ -1946,7 +1946,11 @@ func (g *fixedGen) emitFromTextField(f *ir.Field) {
 		}
 		g.pf("    for (let i = 0; i < n; i++) {\n")
 		g.emitFromTextElement(f, s+"[i]", d+"[i]", "      ")
-		g.pf("    }\n  }\n")
+		// A VALUE THAT IS NOT ARRAY-LIKE (a number, a string, an object with no
+		// length) is carried as held, so <T>FixedCheckBody refuses it: leaving the
+		// fresh defaults in its place would write a value nobody held (SF-38,
+		// docs/SPEC.md section 5.1). Only an absent or null field keeps the defaults.
+		g.pf("    }\n  } else if (%s !== undefined && %s !== null) { %s = %s; }\n", s, s, d, s)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("  if (%s !== undefined) { %s = %s; }\n", s, d, s)
 		g.pf("  if (%sLength !== undefined) { %sLength = %sLength; }\n", s, d, s)

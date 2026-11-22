@@ -725,6 +725,8 @@ const wireRows = [
   ["tabledemo", "WideBlob", "examples/TabledemoVariable.js"],
   ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "CountedMin", "examples/TabledemoVariable.js"],
+  ["tabledemo", "Moods", "examples/TabledemoVariable.js"],
   ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
   ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
   ["tblw1", "Fleet", "w1/Tblw1Variable.js"],

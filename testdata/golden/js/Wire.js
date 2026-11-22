@@ -1443,6 +1443,9 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
+  if (!(value.fixedBytes instanceof globalThis.Uint8Array) || value.fixedBytes.length < 17) {
+    return false;
+  }
   if (!stream.serializeBytes(value.fixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }

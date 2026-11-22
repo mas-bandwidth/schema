@@ -2499,6 +2499,20 @@ A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
 writer holds exactly N values: a writer checks any other length like a count
 past its storage, and never cuts or pads it to N (SF-20,
 docs/silent-failure-audit-1122.md).
+A counted array `[A..B]T` holds a count from A to B in every direction. A
+writer refuses a count below A (SF-21, SF-22, as it refuses one above B), and
+**a reader meeting a count below A refuses it, `count_over_bound`, in EVERY
+form it reads: the binary body, the text, the fixed file and the evolved
+reader plan** (SF-01, SF-02; SPEC-TABLES.md §22.2). No reader places the short
+array and no reader answers the damage class for it. A value that fails a
+check is never replaced by something that passes it: a text writer refuses a
+list field holding what is not a list and never writes `[]` over it (SF-28),
+and the fixed form places a text value whose array field is not array-like as
+held, so the check refuses it, never as the fresh defaults (SF-38). A packet
+`[N]uint8` that the writer copies in bulk is refused unless its storage is a
+`Uint8Array` of at least N bytes (SF-24). The message form holds an integer to
+the range of the declaration that holds it, never to the looser range of
+another declaration that shares its field name and wire kind (SF-23).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.

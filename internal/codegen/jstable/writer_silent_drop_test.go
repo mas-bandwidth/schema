@@ -14,6 +14,8 @@ package jstable
 //     rest; the variable Save refuses it (TableVariableArrayValid: exactly N).
 //   - SF-21: FixedSave accepted a counted array's count below its Min (§5.1
 //     row 3).
+//   - SF-38: FixedFromText passed over a field that is not array-like and left
+//     the fresh defaults, so the writer wrote a value nobody held.
 //
 // Each refusal answers -1 before a byte is written; each lawful twin saves.
 // Unit-test rules: no real time, no socket, no network.
@@ -106,6 +108,24 @@ refuses("count below Min", "fixed", (v) => { v.itemsCount = 1; });
 refuses("count zero below Min", "fixed", (v) => { v.itemsCount = 0; });
 saves("count at Min", "fixed", (v) => { v.itemsCount = 2; });
 refuses("count below Min", "message", (v) => { v.itemsCount = 1; });
+
+// SF-38: a text-placed value whose array field is not array-like (a number, a
+// string, an object with no length) is carried as held and refused by the check,
+// never replaced by the fresh defaults.
+for (const [label, src] of [
+  ["a [3]T holding a number", { trio: 5 }],
+  ["a [Key]T holding an object with no length", { keyed: { A: 1, B: 2 } }],
+  ["a [2..4]T holding a string", { items: "xy" }],
+]) {
+  const dst = fresh();
+  m.RowFixedFromText(src, dst);
+  if (m.RowFixedCheckBody(dst) !== false) { fail("FixedFromText: " + label + " was not refused"); }
+}
+{
+  const dst = fresh();
+  m.RowFixedFromText({ trio: [1, 2, 3], keyed: [4, 5], items: [7, 8] }, dst);
+  if (m.RowFixedCheckBody(dst) !== true) { fail("FixedFromText: a lawful text value was refused"); }
+}
 
 if (failures !== 0) { process.exit(1); }
 console.log("ok");

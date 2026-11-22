@@ -99,6 +99,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString(messageIntegrity(u, runtime+batch))
 	b.WriteString(messageBinding(u))
 	b.WriteString(messageWriteRuleRows(u))
+	b.WriteString(messageScopedRuleRows(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -133,7 +134,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab), own_scope(vocab)) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -158,7 +159,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab), own_scope(vocab)) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -627,17 +628,17 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
+  defp encode_bodies(_vocab, [], acc, _rec, _scope), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, rec) do
-    case encode_body(vocab, body, acc, rec) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
+  defp encode_bodies(vocab, [body | rest], acc, rec, scope) do
+    case encode_body(vocab, body, acc, rec, scope) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec, scope)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, rec) do
-    case encode_fields(vocab, body, acc, rec, -1) do
+  defp encode_body(vocab, body, acc, rec, scope) do
+    case encode_fields(vocab, body, acc, rec, scope, -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -649,19 +650,22 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _rec, _scope, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, scope, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
-        check(not (entry.kind == 15 and value == :none))
-
         decl =
           case write_decl(rec, entry, last, vocab) do
             {:ok, decl} -> decl
             _ -> throw(:invalid_value)
           end
+
+        # THE RULE IS THE DECLARATION'S OWN: the record being written holds this
+        # field, so the rule of THIS table's declaration judges it, never the
+        # merge of every declaration that shares its name and kind on the wire
+        check_field(vocab, entry, value, scope, decl != nil)
+        check(not (entry.kind == 15 and value == :none))
 
         acc2 = put_bits(acc, ref, vocab.ref_bits)
         elem = Map.get(entry, :element)
@@ -669,7 +673,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, rec, scope, next_last(decl, last))
 
           :error ->
             :error
@@ -700,7 +704,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, record(sub))
+    do: encode_body(vocab, value, acc, record(sub), sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -852,7 +856,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, entry, value, sub, arm_known?(sub, entry.id))
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -871,8 +875,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  defp check_field(vocab, entry, value) do
-    case Map.get(write_rules(), {entry.id, entry.kind}) do
+  defp check_field(vocab, entry, value, scope, declared) do
+    case field_rule(entry, scope, declared) do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -912,6 +916,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # a declaration of the scope (a table name, or {:union, name}) judges its own
+  # field; a field the scope does not declare (a peer at another build, an
+  # unbound root) falls back to the merge over every declaration of its id and kind
+  defp field_rule(entry, scope, true) when scope != nil,
+    do: Map.get(scoped_rules(), {scope, entry.id, entry.kind})
+
+  defp field_rule(entry, _scope, _declared), do: Map.get(write_rules(), {entry.id, entry.kind})
+
   defp check(true), do: :ok
   defp check(false), do: throw(:invalid_value)
 
@@ -929,6 +941,22 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp named?(_vocab, _ids, _ref), do: false
+
+  defp scoped_rules do
+    case :persistent_term.get({__MODULE__, :scoped_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(scoped_write_rule_rows(), %{}, fn {scope, id, kind, what, v}, acc ->
+            Map.update(acc, {scope, id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
+        :persistent_term.put({__MODULE__, :scoped_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
 
   defp write_rules do
     case :persistent_term.get({__MODULE__, :write_rules}, nil) do
@@ -1221,6 +1249,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp own_record(%{root: root}) when is_binary(root), do: record(root)
 
   defp own_record(_vocab), do: nil
+
+  defp own_scope(%{root: root}) when is_binary(root), do: root
+  defp own_scope(_vocab), do: nil
 
   defp own_build?(%{build_version: @build_version}), do: true
   defp own_build?(_vocab), do: false
@@ -2724,17 +2755,8 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		id   uint64
 		kind uint8
 	}
-	type rule struct {
-		what     string // int, each, text, member, each_member, keyed_member, arm
-		whatRet  string
-		lo, hi   *big.Int
-		text     int64
-		ids      map[uint64]bool
-		retired  map[uint64]bool
-		conflict bool
-	}
-	rules := map[key]*rule{}
-	add := func(k key, r *rule) {
+	rules := map[key]*messageRule{}
+	add := func(k key, r *messageRule) {
 		old := rules[k]
 		if old == nil {
 			rules[k] = r
@@ -2766,56 +2788,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			}
 		}
 	}
-	fieldRule := func(f *ir.Field) *rule {
-		if f.IsMap() || f.Type.Pointer {
-			return nil
-		}
-		if lo, hi, ok := messageIntBounds(f); ok {
-			if f.Array != ir.ArrayNone {
-				if f.KeyEnum != "" {
-					return &rule{what: "keyed_each", lo: lo, hi: hi}
-				}
-				return &rule{what: "each", lo: lo, hi: hi}
-			}
-			return &rule{what: "int", lo: lo, hi: hi}
-		}
-		if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
-			ids := map[uint64]bool{}
-			retired := map[uint64]bool{}
-			for i := range en.Variants {
-				wid := ir.TableWireId(en.VariantWireName(i))
-				if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
-					retired[wid] = true
-				} else {
-					ids[wid] = true
-				}
-			}
-			if f.KeyEnum != "" {
-				return &rule{what: "keyed_member", whatRet: "keyed_retired", ids: ids, retired: retired}
-			}
-			if f.Array != ir.ArrayNone {
-				return &rule{what: "each_member", whatRet: "each_retired", ids: ids, retired: retired}
-			}
-			return &rule{what: "member", whatRet: "retired", ids: ids, retired: retired}
-		}
-		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-			return nil
-		}
-		if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.Unbounded && f.Type.Size > 0 {
-			return &rule{what: "text", text: f.Type.Size}
-		}
-		if f.Type.Kind != ir.TNamed {
-			return nil
-		}
-		if ref, ok := f.Type.Ref.(*ir.Union); ok {
-			ids := map[uint64]bool{}
-			for _, v := range ref.Variants {
-				ids[ir.TableArmEntry(v).Id] = true
-			}
-			return &rule{what: "arm", ids: ids}
-		}
-		return nil
-	}
+	fieldRule := messageRuleOf
 	seenUnion := map[*ir.Union]bool{}
 	fields := func(fs []*ir.Field) {
 		for _, f := range fs {
@@ -2871,35 +2844,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 	for _, k := range keys {
 		r := rules[k]
 		head := fmt.Sprintf("{0x%016X, %d, ", k.id, k.kind)
-		switch r.what {
-		case "int":
-			rows = append(rows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
-		case "each":
-			rows = append(rows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
-		case "keyed_each":
-			rows = append(rows, head+":keyed_each_min, "+fixedIntLiteral(r.lo)+"}", head+":keyed_each_max, "+fixedIntLiteral(r.hi)+"}")
-		case "text":
-			rows = append(rows, fmt.Sprintf("%s:text, %d}", head, r.text))
-		default:
-			ids := make([]uint64, 0, len(r.ids))
-			for id := range r.ids {
-				ids = append(ids, id)
-			}
-			slices.Sort(ids)
-			for _, id := range ids {
-				rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
-			}
-			if r.whatRet != "" && len(r.retired) > 0 {
-				rids := make([]uint64, 0, len(r.retired))
-				for id := range r.retired {
-					rids = append(rids, id)
-				}
-				slices.Sort(rids)
-				for _, id := range rids {
-					rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.whatRet, id))
-				}
-			}
-		}
+		rows = append(rows, messageRuleRows(head, r)...)
 	}
 
 	var b strings.Builder
@@ -2909,6 +2854,167 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		return b.String()
 	}
 	b.WriteString("  defp write_rule_rows do\n    [\n")
+	for i, row := range rows {
+		b.WriteString("      " + row)
+		if i < len(rows)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n  end\n")
+	return b.String()
+}
+
+// messageRule is one declaration's write rule (docs/SPEC.md section 5.1).
+type messageRule struct {
+	what     string // int, each, text, member, each_member, keyed_member, arm
+	whatRet  string
+	lo, hi   *big.Int
+	text     int64
+	ids      map[uint64]bool
+	retired  map[uint64]bool
+	conflict bool
+}
+
+// messageRuleOf is the write rule one field declares, nil for a field that
+// declares none (docs/SPEC.md section 5.1).
+func messageRuleOf(f *ir.Field) *messageRule {
+	if f.IsMap() || f.Type.Pointer {
+		return nil
+	}
+	if lo, hi, ok := messageIntBounds(f); ok {
+		if f.Array != ir.ArrayNone {
+			if f.KeyEnum != "" {
+				return &messageRule{what: "keyed_each", lo: lo, hi: hi}
+			}
+			return &messageRule{what: "each", lo: lo, hi: hi}
+		}
+		return &messageRule{what: "int", lo: lo, hi: hi}
+	}
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+		ids := map[uint64]bool{}
+		retired := map[uint64]bool{}
+		for i := range en.Variants {
+			wid := ir.TableWireId(en.VariantWireName(i))
+			if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+				retired[wid] = true
+			} else {
+				ids[wid] = true
+			}
+		}
+		if f.KeyEnum != "" {
+			return &messageRule{what: "keyed_member", whatRet: "keyed_retired", ids: ids, retired: retired}
+		}
+		if f.Array != ir.ArrayNone {
+			return &messageRule{what: "each_member", whatRet: "each_retired", ids: ids, retired: retired}
+		}
+		return &messageRule{what: "member", whatRet: "retired", ids: ids, retired: retired}
+	}
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		return nil
+	}
+	if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.Unbounded && f.Type.Size > 0 {
+		return &messageRule{what: "text", text: f.Type.Size}
+	}
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	if ref, ok := f.Type.Ref.(*ir.Union); ok {
+		ids := map[uint64]bool{}
+		for _, v := range ref.Variants {
+			ids[ir.TableArmEntry(v).Id] = true
+		}
+		return &messageRule{what: "arm", ids: ids}
+	}
+	return nil
+}
+
+// messageRuleRows is the rows one rule spells, each led by head.
+func messageRuleRows(head string, r *messageRule) []string {
+	var rows []string
+	switch r.what {
+	case "int":
+		rows = append(rows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
+	case "each":
+		rows = append(rows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
+	case "keyed_each":
+		rows = append(rows, head+":keyed_each_min, "+fixedIntLiteral(r.lo)+"}", head+":keyed_each_max, "+fixedIntLiteral(r.hi)+"}")
+	case "text":
+		rows = append(rows, fmt.Sprintf("%s:text, %d}", head, r.text))
+	default:
+		ids := make([]uint64, 0, len(r.ids))
+		for id := range r.ids {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		for _, id := range ids {
+			rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
+		}
+		if r.whatRet != "" && len(r.retired) > 0 {
+			rids := make([]uint64, 0, len(r.retired))
+			for id := range r.retired {
+				rids = append(rids, id)
+			}
+			slices.Sort(rids)
+			for _, id := range rids {
+				rows = append(rows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.whatRet, id))
+			}
+		}
+	}
+	return rows
+}
+
+// messageScopedRuleRows emits scoped_write_rule_rows/0: the same rules as
+// write_rule_rows/0, one set per DECLARATION'S OWN SCOPE and never merged. A
+// table's fields are the rows of its name, a union's arms the rows of
+// {:union, name}. Declarations that share an id and a kind share one wire entry,
+// but each holds its own value to its own declaration (docs/SPEC.md section
+// 5.1 row 1; SF-23): A.hp = 6 is not lawful on the strength of B.hp.
+func messageScopedRuleRows(u *ir.Unit) string {
+	closure := tablewire.MessageClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var rows []string
+	seenUnion := map[*ir.Union]bool{}
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			e := ir.TableFieldEntry(f)
+			if r := messageRuleOf(f); r != nil {
+				rows = append(rows, messageRuleRows(fmt.Sprintf("{%q, 0x%016X, %d, ", name, e.Id, e.Kind), r)...)
+			}
+			un, ok := f.Type.Ref.(*ir.Union)
+			if f.Type.Kind != ir.TNamed || !ok || seenUnion[un] {
+				continue
+			}
+			seenUnion[un] = true
+			for _, v := range un.Variants {
+				if v.F == nil {
+					continue
+				}
+				arm := ir.TableArmEntry(v)
+				if r := messageRuleOf(v.F); r != nil {
+					rows = append(rows, messageRuleRows(fmt.Sprintf("{{:union, %q}, 0x%016X, %d, ", un.Name, arm.Id, arm.Kind), r)...)
+				}
+			}
+		}
+	}
+	var b strings.Builder
+	b.WriteString("\n  # the same rules once per declaration scope, {scope, id, kind, rule, value} each\n")
+	if len(rows) == 0 {
+		b.WriteString("  defp scoped_write_rule_rows, do: []\n")
+		return b.String()
+	}
+	b.WriteString("  defp scoped_write_rule_rows do\n    [\n")
 	for i, row := range rows {
 		b.WriteString("      " + row)
 		if i < len(rows)-1 {

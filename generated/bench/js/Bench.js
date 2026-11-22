@@ -207,6 +207,9 @@ export function WriteBenchPacket(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
+  if (!(value.blob instanceof globalThis.Uint8Array) || value.blob.length < 17) {
+    return false;
+  }
   if (!stream.serializeBytes(value.blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }

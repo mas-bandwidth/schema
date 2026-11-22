@@ -99,7 +99,7 @@ const TableFixedLaneGuardCount = 10;
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
 const TableFixedOpCopy = 0;    // move size bytes
-const TableFixedOpCount = 1;   // a count: clamp it to the reader's own bound
+const TableFixedOpCount = 1;   // a count: refuse it outside the reader's own min..bound
 const TableFixedOpText = 2;    // a length, then the units
 const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's own table
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
@@ -474,7 +474,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // forged count is not a number this writer could have written. It
         // refuses before any destination byte is written.
         const v = TableFixedGetU32(src, s) | 0;
-        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
+        // BELOW THE READER'S OWN MINIMUM A is a refusal too (SPEC-TABLES.md 22.2): the meta lane carries A.
+        if (v < 0 || v < e[b + TableFixedLaneMeta] || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -1234,7 +1235,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
-        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, dst[row + TableFixedDstArg] >>> 8);
         // THE ELEMENT SLOTS PAST THE COUNT ARE DEAD (§4.5).
         if (theirN > 0 && theirElem > 0) {
           TableFixedPush(plan, TableFixedOpDeadCounted, theirAt, 0, theirN, theirElem, guard, arg, 0);

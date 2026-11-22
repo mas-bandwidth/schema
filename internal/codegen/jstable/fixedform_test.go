@@ -815,7 +815,7 @@ func TestFixedPlanDestinationsAreThePortsOwnOffsets(t *testing.T) {
 	// its element base with its count one count-width back, a string at its
 	// length with its buffer behind it, bytes the ARRAY way round.
 	expect("session_id", 12, 0, 0, 0, 0) // after sequence u32, ack_sequence u32, ack_bits u32
-	expect("entities", 56, 51, 52, 1, 0) // counted array: dst element base, aux count
+	expect("entities", 56, 51, 52, 1, 256) // counted array: dst element base, aux count
 	expect("entity_id", 0, 0, 0, 0, 0)   // first element of entities
 	expect("pos_x", 4, 0, 0, 0, 0)       // packed inside the element, stride 51
 	expect("damage", 41, 0, 0, 0, 0)     // the element's last field

@@ -5320,6 +5320,11 @@ defmodule Benchtable.Table do
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
       do: throw(:invalid_value)
 
+    # a counted [A..B] array below its minimum A is refused by the writer, as the
+    # reader refuses it (docs/SPEC.md section 5.1 row 3; SPEC-TABLES.md 22.2)
+    if Map.get(f, :array) == :counted and n < Map.get(f, :min_count, 0),
+      do: throw(:invalid_value)
+
     required_value(f, v)
     if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
   end
@@ -6133,7 +6138,11 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp json_field(%{t: :list}, _other, _depth), do: "[]"
+  defp json_field(%{t: :list}, nil, _depth), do: "[]"
+
+  # a list field holding anything but a list or nil is a value off the contract:
+  # the writer refuses it and never writes [] over it (docs/SPEC.md section 5.1)
+  defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
 

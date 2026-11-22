@@ -1456,7 +1456,7 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableCountRefused(report) {
-  return report.refused && report.reason === "count_over_extent_cap";
+  return report.refused && (report.reason === "count_over_extent_cap" || String(report.reason).startsWith("count_over_bound"));
 }
 
 // A reference joins the id-table sequence at the moment the bytes name it.
@@ -2355,6 +2355,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     if (ek !== fd.ek) {
       if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
+    }
+    // A COUNTED [A..B] ARRAY BELOW ITS MINIMUM A REFUSES count_over_bound, in
+    // every form (docs/SPEC-TABLES.md section 22.2), before any element is read:
+    // a count short of A is a value no writer could have written.
+    if (!fd.list && !fd.fixed && fd.min > 0 && count < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return false;
     }
     let keep = count;
     if (fd.list) {

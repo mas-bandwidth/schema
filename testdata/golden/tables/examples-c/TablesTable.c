@@ -3769,6 +3769,30 @@ static const tabledemo_table_field_info_t schema_tabledemo_root_config_fields_[]
 
 const tabledemo_table_type_info_t schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( tabledemo_root_config_t ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const tabledemo_table_field_info_t schema_tabledemo_counted_min_fields_[] = {
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 5, (uint32_t) offsetof( tabledemo_counted_min_t, few ), (uint32_t) sizeof( ( (tabledemo_counted_min_t *) 0 )->few[0] ), (uint32_t) offsetof( tabledemo_counted_min_t, few_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+
+const tabledemo_table_type_info_t schema_tabledemo_counted_min_info_ = { "CountedMin", (uint32_t) sizeof( tabledemo_counted_min_t ), 1, schema_tabledemo_counted_min_fields_, schema_tabledemo_counted_min_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+
+static const tabledemo_table_field_info_t schema_tabledemo_float_bound_fields_[] = {
+    { "level", "level", "float32", 0xe8ddc90a9d7c709dull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_float_bound_t, level ), (uint32_t) sizeof( ( (tabledemo_float_bound_t *) 0 )->level ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 0.10000000149011612, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+
+const tabledemo_table_type_info_t schema_tabledemo_float_bound_info_ = { "FloatBound", (uint32_t) sizeof( tabledemo_float_bound_t ), 1, schema_tabledemo_float_bound_fields_, schema_tabledemo_float_bound_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+
+static const tabledemo_table_variant_info_t schema_tabledemo_moods_row_variants_[] = {
+    { "None", 0x0000000000000000ull },
+    { "Calm", 0xdfa47a9ce9ac16d6ull },
+    { "Old", 0x3018cd19bf898cd6ull },
+    { "Fierce", 0x199c482b49ef9acbull },
+};
+static const tabledemo_table_field_info_t schema_tabledemo_moods_fields_[] = {
+    { "row", "row", "Mood", 0x8a0bc1196111ad9bull, 30, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_moods_t, row ), (uint32_t) sizeof( ( (tabledemo_moods_t *) 0 )->row[0] ), (uint32_t) offsetof( tabledemo_moods_t, row_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_moods_row_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+};
+
+const tabledemo_table_type_info_t schema_tabledemo_moods_info_ = { "Moods", (uint32_t) sizeof( tabledemo_moods_t ), 1, schema_tabledemo_moods_fields_, schema_tabledemo_moods_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+
 static const tabledemo_table_field_info_t schema_tabledemo_attachment_fields_[] = {
     { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, slot ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, power ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -3826,6 +3850,36 @@ int schema_tabledemo_root_config_from_json_( tabledemo_root_config_t * value, co
 int64_t schema_tabledemo_root_config_to_json_( const tabledemo_root_config_t * value, char * buffer, int64_t capacity )
 {
     return tabledemo_table_json_write( value, &schema_tabledemo_root_config_info_, buffer, capacity );
+}
+
+int schema_tabledemo_counted_min_from_json_( tabledemo_counted_min_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    return tabledemo_table_json_read( value, &schema_tabledemo_counted_min_info_, text, bytes, report );
+}
+
+int64_t schema_tabledemo_counted_min_to_json_( const tabledemo_counted_min_t * value, char * buffer, int64_t capacity )
+{
+    return tabledemo_table_json_write( value, &schema_tabledemo_counted_min_info_, buffer, capacity );
+}
+
+int schema_tabledemo_float_bound_from_json_( tabledemo_float_bound_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    return tabledemo_table_json_read( value, &schema_tabledemo_float_bound_info_, text, bytes, report );
+}
+
+int64_t schema_tabledemo_float_bound_to_json_( const tabledemo_float_bound_t * value, char * buffer, int64_t capacity )
+{
+    return tabledemo_table_json_write( value, &schema_tabledemo_float_bound_info_, buffer, capacity );
+}
+
+int schema_tabledemo_moods_from_json_( tabledemo_moods_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    return tabledemo_table_json_read( value, &schema_tabledemo_moods_info_, text, bytes, report );
+}
+
+int64_t schema_tabledemo_moods_to_json_( const tabledemo_moods_t * value, char * buffer, int64_t capacity )
+{
+    return tabledemo_table_json_write( value, &schema_tabledemo_moods_info_, buffer, capacity );
 }
 
 int schema_tabledemo_attachment_from_json_( tabledemo_attachment_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )

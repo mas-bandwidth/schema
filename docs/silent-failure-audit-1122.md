@@ -48,8 +48,8 @@ Every fixed row lands three ways:
 | Dart | 1 | 0 | 1 |
 | Go | 1 | 0 | 1 |
 | Goose | 2 | 1 | 1 |
-| JavaScript | 5 (+1 noticed) | 3 | 3 |
-| Elixir | 4 | 0 | 4 |
+| JavaScript | 5 (+1 noticed) | 6 | 0 |
+| Elixir | 4 | 4 | 0 |
 | Lua | 0 | 0 | 0 |
 | Luau | 1 | 0 | 1 |
 | Squirrel | 0 | 0 | 0 |
@@ -81,6 +81,13 @@ Every fixed row lands three ways:
 | SF-21 | JavaScript | internal/codegen/jstable/fixedjs.go:446 | `FixedSave` accepted a count below `Min`. | SPEC.md §5.1 row 3 | `count < ArrayMin` refuses | M | `TestJsWritersRefuseSilentDrops` |
 | SF-25 | Lobster | internal/codegen/lobstertable/runtime/cook.lobster:462 (`cw_str`), :559 (`cw_array`) | `Cook` never ran the write contract. It cut an over-long string mid code point, wrote an over-bound count into the next field, wrote no arm for an out-of-set tag, and returned success. | SPEC-TABLES §7.6; SPEC.md §5.1 rows 3, 4, 6 | the `wc_body` walk before cook and measure; no clamp | M | `TestLobsterCookHoldsTheWriteContract` (slow) |
 | SF-26 | Lobster | internal/codegen/lobstertable/runtime/schema_save.lobster:873 | The variable `save` wrote a deprecated enum variant. | SPEC-TABLES §2.15 WRITE | `wc_value` refuses a deprecated variant with `invalid_value` | M | `TestLobsterCookHoldsTheWriteContract` |
+| SF-01 | JavaScript | internal/codegen/jstable/variableruntime.go (`TableVariableReadArrayBody`), fixedjs.go (`emitCheckPayload`, `emitDecodeCount`), fixedruntime.go (`TableFixedOpCount`) | A count below `Min` in `[Min..N]T` loaded as success on the binary body read (the harness row passed only because an unrelated cycle check damaged the load), on the fixed file read and on the evolved plan. The text read was fixed with SF-02 (#4689). | SPEC-TABLES §22.2 | refuse `count_over_bound` by name before any element is read; the plan row carries the reader minimum A | H | `TestJsReadersRefuseCountBelowMin`; corpus `framing` `sp_count_min_*_form1`, `report` `sp_count_min_evolved_*` |
+| SF-02 | Elixir | internal/codegen/elixirtable/variableform.go, fixedelixir.go, cookwrite.go (`min_count`) | The same as SF-01 for the binary, JSON, fixed and evolved reads. The descriptor carried no `min_count`. Landed with #4689 (cherry-picked here so the rows run); this PR adds the test. | as SF-01 | emit `min_count`; refuse below it on every read | H | `TestElixirCountedMinimumHoldsOnEveryPath` |
+| SF-22 | Elixir | internal/codegen/elixirtable/variableform.go (`check_field` `:list`) | `save/2` and `to_json` wrote a counted array below its `Min`. | SPEC.md §5.1 row 3 | refuse `n < min_count` | M | `TestElixirCountedMinimumHoldsOnEveryPath`; corpus `write-refusal` `wref_count_min`, `write-refusal-fixed` `fref_count_min` |
+| SF-23 | Elixir | internal/codegen/elixirtable/messageform.go (`check_field`, `messageScopedRuleRows`) | `save_messages` held an integer to the union of every declaration that shares its field name and kind, so `A.hp = 6` passed on the strength of `B.hp`. | SPEC.md §5.1 row 1; SPEC-TABLES §3.3 | a rule set per declaration scope (a table name or `{:union, name}`); a field the bound record does not declare keeps the merged rule | M | `TestElixirSaveMessagesHoldsEachDeclarationToItsOwnRange` |
+| SF-24 | JavaScript | internal/codegen/js/functions.go (`emitWriteField`) | The bulk `[N]uint8` packet write handed over `subarray(0, N)`, and a storage shorter than N made a short field on the wire with no error. Traced end to end: a short `Uint8Array` is written short. | SPEC.md §5.1 (storage rule) | refuse unless it is a `Uint8Array` of length at least N | M | `TestBulkByteArrayWriteRefusesShortStorage` |
+| SF-28 | Elixir | internal/codegen/elixirtable/variableform.go (`json_field` `:list`) | `to_json` wrote a list field holding a non-list as `[]` and succeeded. | SPEC.md §5.1; SPEC-TABLES §16.3 | `nil` writes `[]`, anything else refuses `invalid_value` | L | `TestElixirCountedMinimumHoldsOnEveryPath` |
+| SF-38 | JavaScript | internal/codegen/jstable/fixedjs.go (`emitFromTextField`) | Verified: a text-placed array field that is a number, a string or an object with no `length` fell back to the fresh defaults and the writer wrote them. | SPEC.md §5.1 | place a present, non-null, non-array-like value as held so `FixedCheckBody` refuses it | L | `TestJsWritersRefuseSilentDrops` (SF-38 cases) |
 
 SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the checker refuses those declarations (SPEC-TABLES §15), so the emitter branch is unreachable.
 
@@ -88,21 +95,14 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 
 | id | leg | file and line | what is lost | spec section | fix | blast |
 |---|---|---|---|---|---|---|
-| SF-01 | JavaScript | internal/codegen/jstable/variableruntime.go:1600 (binary read), :2871 (text read); fixedjs.go:912, :1261; fixedruntime.go:477 (fixed read) | A count below `Min` in `[Min..N]T` loads as success on every JS table read. | SPEC-TABLES §22.2 (a reader meeting a count below Min refuses `count_over_bound` in EVERY form) | refuse `count < min` on every read path | H |
-| SF-02 | Elixir | internal/codegen/elixirtable/variableform.go:2883, :3240, :5579, :9002; fixedelixir.go:857 | The same as SF-01 for the binary, JSON and fixed reads. The descriptor carries no `min_count`. | as SF-01 | emit `min_count`; refuse below it on every read | H |
 | SF-05 | C | internal/codegen/ctable/fixedform.go:1215 (`writeAdmits` gated on `TableFixedEmitted`); message_save.go:73 | A `fixed table` past the size ceiling still gets `save_messages` but no row 1, 2 or 10 assert, and `table_bit_put` masks the value. | SPEC.md §5.1 rows 1, 2, 10 | gate `writeAdmits` on `FixedDeclared`, or assert per value in `messageScalar` | M |
 | SF-06 | C++ | internal/codegen/cpptable/fixedform.go:1305; messagecodec.go:526; message.go:177 | The same as SF-05. | as SF-05 | as SF-05 | M |
 | SF-16 | Dart | internal/codegen/darttable/wireform.go:3848 (`<root>WireLoad`, `report ??= TableWireReport()`) | A caller who passes no report gets the defaults on any refusal and no signal. `<root>FromJson` throws in the same case. | SPEC-TABLES §4, §6.5 | throw `FormatException(reason)` when no report was passed and the load refused | M |
-| SF-22 | Elixir | internal/codegen/elixirtable/variableform.go:3700 (`check_field` `:list`) | `save/2` and `to_json` write a counted array below its `Min`. | SPEC.md §5.1 row 3 | refuse `n < min_count` (needs SF-02's descriptor key) | M |
-| SF-23 | Elixir | internal/codegen/elixirtable/messageform.go:2748, :875 | `save_messages` holds an integer to the union of every declaration that shares its field name and kind, so `A.hp = 6` passes on the strength of `B.hp`'s range. | SPEC.md §5.1 row 1; SPEC-TABLES §3.3 | key the rule by declaration | M |
-| SF-24 | JavaScript | internal/codegen/js/functions.go:499 | The bulk `[N]uint8` packet write hands over `subarray(0, N)`, and a shorter array is not checked. The end-to-end trace is still owed. | SPEC.md §5.1 (storage rule) | refuse unless it is a `Uint8Array` of length ≥ N | M |
 | SF-27 | Lobster | internal/codegen/lobstertable/runtime/text_form.lobster:516 | The text read gives a deprecated variant its own ordinal, not the field's default. | SPEC-TABLES §2.15 READ | map a deprecated match to the field default (0 for an element) | M |
 | SF-34 | Rust | internal/codegen/rusttable (fixed `[N]T` stored as `Vec`, `take(N)`) | A `[N]T` longer than N is cut on save with no assert (noticed, unverified). | SPEC.md §5.1; SPEC-TABLES §3 "never cut at N" | `debug_assert!(len == N)` | M |
 | SF-35 | Rust | internal/codegen/rusttable (keyed `[E]T` save, `if j >= len break`) | Values past the enum's variant count are dropped (noticed, unverified). | as SF-34 | `debug_assert!` on the length | M |
 | SF-36 | C, C++ | internal/codegen/ctable/codecs.go, cpptable/codecs.go | A non-required ranged float64 has no row-10 write check (noticed, unverified). The leg lines' "10 every build" covers `\| required` only. | SPEC.md §5.1 row 10 | `schema_assert` of the float range; correct both leg lines | M |
 | SF-37 | Lobster | internal/codegen/lobstertable/runtime/cook.lobster (contract walk) | The cook walk lets a NaN or an infinity in a plain float through. Save catches it in its encoder; cook does not (noticed, unverified). | SPEC.md §5.1 row 7 | refuse non-finite in the walk | M |
-| SF-38 | JavaScript | internal/codegen/jstable (`FixedFromText`, enum-keyed value as an object with no `length`) | It may fall back to defaults silently (noticed, unverified). | SPEC.md §5.1 | refuse a non-array | L |
-| SF-28 | Elixir | internal/codegen/elixirtable/variableform.go:4530 (`json_field(%{t: :list}, _other, _) -> "[]"`), :3714 | `to_json` writes a list field holding a non-list as `[]` and succeeds. | SPEC.md §5.1; SPEC-TABLES §16.3 | `nil -> "[]"`, anything else `throw(:invalid_value)` | L |
 | SF-29 | Goose | internal/codegen/goosetable/runtime/cook_write.goose:133 (`cook_live`) | The region cook clamps a counted length to `[0, bound]`, writes it and succeeds. Reaching it needs a caller-edited `LoadVal`. | SPEC-TABLES §7.6 | `cook_refuse` below 0, below `Min` or above the bound | L |
 | SF-30 | Go | internal/codegen/gotable/json.go:110 (builder `FromJSONWith`) | On a locked arena it returns `false` before the report is reset, so a reused report keeps a stale success. | SPEC-TABLES §6.5, §16.2 | reset, then refuse into the report | L |
 | SF-31 | Lobster | internal/codegen/lobstertable/runtime/block_form.lobster:419, :451 | `block_build` bounds a count by an `assert` only, which `--runtime-no-asserts` removes. A counted string or bytes overruns its slot. | SPEC-TABLES §19.1 (`Begin` does not clamp; it refuses); SPEC.md §5.1 | a named refusal returning `""` | L |
@@ -111,15 +111,13 @@ SF-11 (Rust `?string(N)` and `?bytes(N)` length asserts) was rejected: the check
 
 ## Fan-out groups (the open rows by leg)
 
-- **JavaScript**: SF-01 (H; the text read is in #4689, but the binary and fixed reads are not), SF-24, SF-38.
-- **Elixir**: SF-02 (H; partly in #4689), SF-22, SF-23, SF-28.
 - **C, C++**: SF-05, SF-06, SF-36.
 - **Rust**: SF-34, SF-35.
 - **Dart**: SF-16.
 - **Lobster**: SF-27, SF-31, SF-37.
 - **Go, Goose**: SF-29, SF-30.
 - **Tooling (MOO, Luau)**: SF-32, SF-33.
-- **Corpus (all legs)**: shared corpus cases are owed for SF-18/19 (a message-form flags value above its width, on `write-refusal-message`), SF-20/21 (fixed-array length and counted `Min` on `write-refusal-fixed` and `write-refusal-message`) and SF-03/04 (a non-required ranged field on a variable root, on `write-refusal`). Until a surface carries them, each rule is held per port by the tests named above.
+- **Corpus (all legs)**: shared corpus cases are owed for SF-18/19 (a message-form flags value above its width, on `write-refusal-message`), SF-20 (fixed-array length on `write-refusal-fixed` and `write-refusal-message`) and SF-03/04 (a non-required ranged field on a variable root, on `write-refusal`). Until a surface carries them, each rule is held per port by the tests named above.
 
 ## Rejected as lawful (sample)
 

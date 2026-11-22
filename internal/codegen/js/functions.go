@@ -496,6 +496,10 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			// byte-identical to the per-byte loop. subarray over the SCHEMA
 			// bound is the C# AsSpan(0, N) slice; the short-lived view is the
 			// one storage slice JavaScript cannot take without allocating.
+			// A STORAGE THAT IS NOT A Uint8Array, or is shorter than N, is refused:
+			// subarray over a short array hands over fewer than N bytes, and the
+			// wire would carry a short field with no error (docs/SPEC.md 5.1).
+			g.pf("%sif (!(%s instanceof globalThis.Uint8Array) || %s.length < %s) {\n%s  return false;\n%s}\n", ind, name, name, bound, ind, ind)
 			g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, bound),
 				" // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop")
 			return

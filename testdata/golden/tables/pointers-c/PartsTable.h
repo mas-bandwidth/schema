@@ -5926,6 +5926,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             graphdemo_table_writer_header_at( w, 27, 0x823b8a195ce2133cull, 4 );
+            schema_assert( !( value->seq < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->seq > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }
@@ -6966,7 +6968,7 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -7062,6 +7064,10 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body_retain( graphdemo_table_write
             }
             graphdemo_table_retain_writer_id( w, 0x823b8a195ce2133cull , retention);
             graphdemo_table_writer_put8( w, 4 );
+            schema_assert( !( value->seq < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->seq > 1000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }

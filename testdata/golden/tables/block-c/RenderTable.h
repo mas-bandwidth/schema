@@ -14925,7 +14925,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -15519,7 +15519,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -16097,7 +16097,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -16684,7 +16684,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -17274,7 +17274,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -17864,7 +17864,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -18458,7 +18458,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -19037,7 +19037,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -19624,7 +19624,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_LAYOUT_MALFORMED;
             return -1;

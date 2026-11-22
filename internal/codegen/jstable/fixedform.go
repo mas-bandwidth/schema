@@ -173,7 +173,7 @@ type fixedDst struct {
 	stride  int64 // an array entry's element stride
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
 	counted int   // an array that carries a live count
-	arg     int   // a text field's flavour
+	arg     int   // a text field flavour, in the low byte; a counted array minimum A, shifted left eight
 }
 
 // the text flavours, which say how a `text` entry lands its units.
@@ -244,7 +244,7 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 			counted, aux, base = 1, at, at+fixedCountBytes
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
+			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted, arg: int(countedMin(f)) << 8})
 		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, so the row
@@ -629,4 +629,14 @@ func tableVariableRefusals(st *ir.Struct) (out []string) {
 		}
 	}
 	return out
+}
+
+// countedMin is the minimum A a counted [A..B] array row carries in its arg
+// lane: the evolved-reader plan holds the writer count to THIS reader minimum
+// (docs/SPEC-TABLES.md section 22.2). A bytes(N) array has none.
+func countedMin(f *ir.Field) int64 {
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
 }

@@ -1911,3 +1911,12 @@ rewrite sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance
 rewrite sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
 rewrite sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
 rewrite sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+# the same minimum on the VARIABLE form (form 1): a count of 1 and of 0, the elements and L trimmed to
+# match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
+framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
+framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero_form1.bin refused -
+# a counted [A..B] array below its minimum A is refused by every writer (SF-21, SF-22; docs/SPEC.md section 5.1 row 3), and the count AT A writes
+write-refusal wref_count_min       tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal wref_count_min_ok    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
+write-refusal-fixed fref_count_min    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal-fixed fref_count_min_ok tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
