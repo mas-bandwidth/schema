@@ -106,8 +106,8 @@ var refusesEveryBuild = map[string][]string{
 	// one flat writer both refuse in every build (SPEC §5.1); there is no
 	// production fork and no build switch.
 	"js": {
-		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop (§6.3)",
-		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)",
+		"if (!globalThis.Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop (§6.3)",
+		"if (!globalThis.Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)",
 	},
 	// Lua's assert is a function call that no build removes, so the writer
 	// refuses (returns false) in every build, as Go's does.
