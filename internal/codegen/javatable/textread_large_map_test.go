@@ -9,7 +9,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const textReadLargeMapSchema = `package probe
@@ -161,7 +162,7 @@ func TestJavaTextLargeMapFunctional(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probeMain)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -173,7 +174,7 @@ func TestJavaTextLargeMapFunctional(t *testing.T) {
 		}
 		runArgs = append(runArgs, c.name, c.field, p)
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "LargeMapProbe")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "LargeMapProbe")
 	cmd.Args = append(cmd.Args, runArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

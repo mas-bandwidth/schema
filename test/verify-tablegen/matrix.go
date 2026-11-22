@@ -207,7 +207,7 @@ func writeMatrix(w io.Writer, matrix *matrixState, langs []string, total int) {
 		}
 		sort.Strings(ids)
 		for _, id := range ids {
-			fmt.Fprintf(w, "MATRIX_FAIL\t%s\t%s\t%s\n", lang, id, matrix.failed[lang][id])
+			_, _ = fmt.Fprintf(w, "MATRIX_FAIL\t%s\t%s\t%s\n", lang, id, matrix.failed[lang][id])
 		}
 	}
 	for _, lang := range langs {
@@ -215,9 +215,9 @@ func writeMatrix(w io.Writer, matrix *matrixState, langs []string, total int) {
 			if len(why) > 2000 {
 				why = why[:2000]
 			}
-			fmt.Fprintf(w, "MATRIX_BROKEN\t%s\t%s\n", lang, strings.ReplaceAll(why, "\n", " | "))
+			_, _ = fmt.Fprintf(w, "MATRIX_BROKEN\t%s\t%s\n", lang, strings.ReplaceAll(why, "\n", " | "))
 			continue
 		}
-		fmt.Fprintf(w, "MATRIX\t%s\tpass %d\tfail %d\n", lang, total-len(matrix.failed[lang]), len(matrix.failed[lang]))
+		_, _ = fmt.Fprintf(w, "MATRIX\t%s\tpass %d\tfail %d\n", lang, total-len(matrix.failed[lang]), len(matrix.failed[lang]))
 	}
 }

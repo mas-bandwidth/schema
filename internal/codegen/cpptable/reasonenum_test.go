@@ -25,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppReasonFixedUnit is a fixed table, so the generated unit carries the fixed
@@ -252,12 +254,12 @@ func cppReasonStage(t *testing.T, files map[string][]byte, header string) string
 	return dir
 }
 
-func cppReasonCompile(cxx, dir string) ([]byte, error) {
+func cppReasonCompile(t testing.TB, cxx, dir string) ([]byte, error) {
 	args := []string{
 		"-std=c++17", "-Wall", "-Wextra", "-Werror", "-fsyntax-only",
 		"-I" + dir, filepath.Join(dir, "tu.cpp"),
 	}
-	return exec.Command(cxx, args...).CombinedOutput()
+	return testproc.Command(t, cxx, args...).CombinedOutput()
 }
 
 func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
@@ -279,7 +281,7 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 		files, header := cppReasonFiles(t, tc.unit)
 		dir := cppReasonStage(t, files, header)
 		for _, cxx := range compilers {
-			if out, err := cppReasonCompile(cxx.path, dir); err != nil {
+			if out, err := cppReasonCompile(t, cxx.path, dir); err != nil {
 				t.Fatalf("%s refused the %s unit's %s under -std=c++17 -Wall -Wextra -Werror: %v\n%s", cxx.name, tc.label, header, err, out)
 			}
 		}
@@ -301,7 +303,7 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 	maps.Copy(witness, files)
 	witness[header] = []byte(unfixed)
 	dir := cppReasonStage(t, witness, header)
-	out, err := cppReasonCompile(clang, dir)
+	out, err := cppReasonCompile(t, clang, dir)
 	if err == nil {
 		t.Fatalf("the reversed witness compiled: clang accepted enum TableRefuseReason with no underlying type and the 0x20000000 cast")
 	}

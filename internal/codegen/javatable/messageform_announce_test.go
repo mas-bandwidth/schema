@@ -23,7 +23,6 @@ import (
 	"math/big"
 	"math/bits"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +32,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // announceRow is one `connection` line: the unit, and the announcement file its
@@ -124,11 +125,11 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 		t.Fatal(err)
 	}
 	sources = append(sources, filepath.Join(srcDir, "Driver.java"))
-	cmd := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...)
+	cmd := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	run := exec.Command(javaBin, "-ea", "-cp", classes, u.Package+".Driver")
+	run := testproc.Command(t, javaBin, "-ea", "-cp", classes, u.Package+".Driver")
 	out, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

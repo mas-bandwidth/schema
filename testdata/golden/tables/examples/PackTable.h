@@ -11100,7 +11100,7 @@ inline void ShipEntryReset( ShipEntry & value )
     value.health = 100.0f;
     value.mass = 1.0f;
     memset( value.hardpoints, 0, sizeof( value.hardpoints ) );
-    value.hardpoints_count = 0;
+    value.hardpoints_count = 0; // born at Min (docs/SPEC.md §4.2)
     GunnerSettingsReset( value.gunner );
     value.gunner_present = false;
 }
@@ -11127,7 +11127,7 @@ inline void PackConfigReset( PackConfig & value )
     {
         ShipEntryReset( value.reserves[i] );
     }
-    value.reserves_count = 0;
+    value.reserves_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline int64_t GunnerSettingsMeasureMessageBody( int64_t at, const GunnerSettings & value );
@@ -11880,7 +11880,8 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
@@ -11931,7 +11932,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
         w.put32( table_float_to_bits( value.mass ) );
     }
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
@@ -12438,7 +12440,8 @@ inline int64_t ShipEntryMeasureMessageBody( int64_t at, const ShipEntry & value 
         bits += 32;
     }
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -12484,7 +12487,8 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
         w.put( (uint64_t) table_float_to_bits( value.mass ), 32 );
     }
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         w.put( 90, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.hardpoints_count ) - 0, 3 );
@@ -14117,7 +14121,8 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
@@ -14252,7 +14257,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
@@ -14982,7 +14988,8 @@ inline int64_t PackConfigMeasureMessageBody( int64_t at, const PackConfig & valu
         }
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         bits += kTableMessageRefBitsHere;
         bits += 2;
@@ -15074,7 +15081,8 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
         }
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         w.put( 31, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.reserves_count ) - 0, 2 );
@@ -18549,7 +18557,8 @@ inline int64_t ShipEntryMeasureBodyRetain( TableRetainIds & ids, const ShipEntry
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
@@ -18591,7 +18600,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetai
         w.put32( table_float_to_bits( value.mass ) );
     }
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.hardpoints_count > 0 )
+    bool rides_hardpoints = value.hardpoints_count > 0;
+    if ( rides_hardpoints )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
@@ -19381,7 +19391,8 @@ inline int64_t PackConfigMeasureBodyRetain( TableRetainIds & ids, const PackConf
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
@@ -19507,7 +19518,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBodyRetain( TableWriter & w, TableReta
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.reserves_count > 0 )
+    bool rides_reserves = value.reserves_count > 0;
+    if ( rides_reserves )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;

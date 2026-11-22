@@ -9570,7 +9570,7 @@ inline void SceneReset( Scene & value )
     {
         LayerReset( value.layers[i] );
     }
-    value.layers_count = 0;
+    value.layers_count = 0; // born at Min (docs/SPEC.md §4.2)
     MetaReset( value.meta );
 }
 
@@ -12040,7 +12040,8 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -12136,7 +12137,8 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -22468,7 +22470,8 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -22565,7 +22568,8 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.layers_count > 0 )
+    bool rides_layers = value.layers_count > 0;
+    if ( rides_layers )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;

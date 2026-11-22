@@ -2,9 +2,9 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,7 +75,7 @@ func TestCSharpCountedArrayBirthValue(t *testing.T) {
 		args = append(args, "-r:"+ref)
 	}
 	args = append(append(args, sources...), main)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
@@ -84,7 +84,7 @@ func TestCSharpCountedArrayBirthValue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "csbirth.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	out, err := run.CombinedOutput()
 	if err != nil || strings.Contains(string(out), "FAILED") {

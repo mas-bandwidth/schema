@@ -1059,7 +1059,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedResetImage = func() []byte {\n", st.Name)
 	g.pf("\tvar def %s\n", st.Name)
 	g.pf("\t%sReset(&def)\n", st.Name)
-	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
+	g.pf("\treturn tableFixedOverlayOf(&def)\n")
 	g.pf("}()\n\n")
 	g.pf("var %sFixedHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedResetImage)))\n\n",
 		st.Name, st.Name, st.Name, st.Name)
@@ -1282,7 +1282,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.pf("\tfor k := range values[:n] {\n")
-	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
+	g.pf("\t\tdst := tableFixedOverlayOf(&values[k])\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
 	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")

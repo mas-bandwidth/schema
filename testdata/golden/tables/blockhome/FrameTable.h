@@ -6183,7 +6183,7 @@ inline void PartFrameReset( PartFrame & value )
     {
         PartRowReset( value.parts[i] );
     }
-    value.parts_count = 0;
+    value.parts_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline int64_t PartRowMeasureMessageBody( int64_t at, const PartRow & value );
@@ -7005,7 +7005,8 @@ inline int64_t PartFrameMeasureBody( TableIds & ids, const PartFrame & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
-    if ( value.parts_count > 0 )
+    bool rides_parts = value.parts_count > 0;
+    if ( rides_parts )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
@@ -7037,7 +7038,8 @@ BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, 
         w.put64( uint64_t( value.version ) );
     }
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
-    if ( value.parts_count > 0 )
+    bool rides_parts = value.parts_count > 0;
+    if ( rides_parts )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
@@ -7391,7 +7393,8 @@ inline int64_t PartFrameMeasureMessageBody( int64_t at, const PartFrame & value 
         bits += 64;
     }
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
-    if ( value.parts_count > 0 )
+    bool rides_parts = value.parts_count > 0;
+    if ( rides_parts )
     {
         bits += kTableMessageRefBitsHere;
         bits += 6;
@@ -7418,7 +7421,8 @@ inline bool PartFrameSaveMessageBody( TableBitWriter & w, const PartFrame & valu
         w.put( (uint64_t) ( value.version ), 64 );
     }
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
-    if ( value.parts_count > 0 )
+    bool rides_parts = value.parts_count > 0;
+    if ( rides_parts )
     {
         w.put( 15, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.parts_count ) - 0, 6 );

@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +31,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cRunSelfBuilt generates the READER's C (with the OLDER units' locked entries
@@ -138,13 +139,13 @@ int main( void )
 	if cc == "" {
 		cc = "cc"
 	}
-	args := append([]string{"-std=c99", "-O1", "-I" + dir}, gccFortifySilence(cc)...)
+	args := append([]string{"-std=c99", "-O1", "-I" + dir}, gccFortifySilence(t, cc)...)
 	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
-	build := exec.Command(cc, args...)
+	build := testproc.Command(t, cc, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 // cT06Header generates one schema's Table.h and returns its text, for the

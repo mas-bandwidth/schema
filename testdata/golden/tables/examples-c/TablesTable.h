@@ -7398,7 +7398,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  { /* grades */
  schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
- if(value->grades_count>0) {
+ if(value->grades_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -7490,7 +7490,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  { /* attachments */
  schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
- if(value->attachments_count>0) {
+ if(value->attachments_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -7637,7 +7637,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_message_body(tabledemo_ta
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
- if(!(value->grades_count>0))goto damaged;
+ if(!(value->grades_count > 0))goto damaged;
  }
  break;
  }
@@ -9488,7 +9488,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
  }
  { /* weapons */
  schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
- if(value->weapons_count>0) {
+ if(value->weapons_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -9503,7 +9503,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
  }
  { /* profiles */
  schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
- if(value->profiles_count>0) {
+ if(value->profiles_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -11574,11 +11574,8 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_load( tabledemo_weapo
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_weapon_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_weapon_config_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -12289,11 +12286,8 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_load( tabledemo_load
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_loadout_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_loadout_config_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -13061,11 +13055,8 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_load( tabledemo_prof
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_profile_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_profile_config_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
@@ -14239,11 +14230,8 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_root_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_root_config_reset( &defaults ); }
     read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {

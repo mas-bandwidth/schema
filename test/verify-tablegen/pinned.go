@@ -44,7 +44,7 @@ type PinnedUnit struct {
 
 const (
 	// pinnedVersion is the case layout below: 2 since fix_json became
-	// opJSONMsg (the fixed root's native message writer)
+	// opJSONMsg (the fixed root's native message writer).
 	pinnedVersion  = 2
 	pinnedFileBase = "Pin"
 	pinnedFixRoot  = "FixRoot"

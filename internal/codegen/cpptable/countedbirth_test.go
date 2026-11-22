@@ -12,6 +12,7 @@ package cpptable
 
 import (
 	"errors"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"maps"
 	"os"
 	"os/exec"
@@ -156,16 +157,16 @@ func TestCPPCountedArrayBirthValue(t *testing.T) {
 	}
 	exe := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-I", dir, mainPath}, sources...)
-	if out, err := exec.Command(cxx, append(args, "-o", exe)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, append(args, "-o", exe)...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(exe).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, exe).CombinedOutput(); err != nil {
 		t.Errorf("probe failed: %v\n%s", err, out)
 	}
 	// F-121: the message measure holds the count to [Min, N] before the
 	// elide test, so a count of zero or one stops the debug build
 	for _, count := range []string{"0", "1"} {
-		out, err := exec.Command(exe, "below", count).CombinedOutput()
+		out, err := testproc.Command(t, exe, "below", count).CombinedOutput()
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
 			t.Errorf("a count of %s under Min was measured: err=%v\n%s", count, err, out)
