@@ -321,7 +321,7 @@ type Position
 	}
 	b.WriteString(`}
 
-table Shelf
+fixed table Shelf
 {
     a float32
     b float64
