@@ -13,7 +13,8 @@
 // old generation has no such slot; and the backward-read contract holds — an
 // older reader refuses the newer file (the file that carries the appended
 // slot) BY NAME, before any record, reading nothing, counters unmoved, the
-// caller's poisoned storage untouched, the file's own hash reported.
+// caller's poisoned values back at their declared defaults (ruling R4), the
+// file's own hash reported.
 //
 // V1/V2 (test/tables/V1.schema, V2.schema) are the evolution pair: V2 carries
 // `c bool = true` where V1 has no such field.
@@ -118,7 +119,12 @@ void main() {
   final plan = v1.cfgFixedNewPlan();
   plan.image.fillRange(0, plan.image.length, 0x5A);
 
-  final back = <v1rt.Cfg>[v1rt.Cfg()];
+  // AND THE VALUE HANDED IN, poisoned off its declared defaults (a = 5,
+  // b = 1.5), so the reset ruling R4 owes after a refusal is visible.
+  final back = <v1rt.Cfg>[v1rt.Cfg()
+    ..a = 999
+    ..b = -2.5];
+  final defaults = v1rt.Cfg();
   final r = v1rt.TableFixedReport();
   final n = v1.cfgFixedLoad(back, 1, file, file.length, plan, r);
 
@@ -134,8 +140,9 @@ void main() {
   );
   check(!r.malformed, 'E8: a refusal by name is not damage (malformed=false)');
 
-  // REFUSE IS TOTAL: no counter moved, and the poisoned storage is untouched —
-  // the refusal happened before any record, so nothing was decoded.
+  // REFUSE IS TOTAL: no counter moved, and the poisoned plan image is
+  // untouched — the refusal happened before any record, so nothing was
+  // decoded — and the value handed in holds its declared defaults (R4).
   check(
     r.unknown == 0 &&
         r.kindMismatch == 0 &&
@@ -155,7 +162,12 @@ void main() {
   check(
     poison,
     'E8: the reader READS NOTHING — every poisoned byte of the caller\'s '
-    'record storage is still 0x5A',
+    'plan image is still 0x5A',
+  );
+  check(
+    back[0].a == defaults.a && back[0].b == defaults.b,
+    'E8: the refusal leaves the value handed in at its declared defaults '
+    '(a=${back[0].a} b=${back[0].b})',
   );
 
   // THE REFUSAL CARRIES THE FILE'S HASH — read back from the bytes themselves.

@@ -1,5 +1,6 @@
 // R13 — REFUSE is total: refused+reason and malformed are never both set,
-// every counter stays zero, and not one destination byte is written.
+// every counter stays zero, and every value handed in holds its declared
+// default after the refusal (ruling R4).
 //
 // THE LAW (docs/FIXED-FORM-ALGORITHM.md:906):
 //
@@ -17,15 +18,15 @@
 //   - a NAME on `refused` AND `malformed == false`, OR
 //   - `malformed == true` AND `refused == none`.
 //   - in both halves: every counter is exactly 0
-//                  : and NOT ONE destination byte is written
-//                    (the `prefill included` part of line 899).
+//                  : and every value handed in holds its declared default
+//                    (ruling R4, which replaces "not one destination byte").
 //   - the load returns -1.
 //
 // This is the four-tuple the law names. Each refusal is built via a
 // distinct posture so a regression in any ONE of them moves its caller.
 // The destination record is poisoned with sentinels BEFORE every load,
-// and the bytes are checked after. The Meta struct stores tagLength and
-// build, both ints; we plant 0x5A5A5A5A on both and check they survive.
+// and checked after. The Meta struct stores tagLength and build, both ints;
+// we plant 0x5A5A5A5A on both and check they come back at their defaults.
 //
 // Run: dart run test/conformance/dart/rows/R13.dart
 // Exit 0 = green, exit 1 = red, one printed line per assertion.
@@ -62,8 +63,8 @@ void expect(String label, bool condition, String reason) {
 /// jointOk asserts §5.9's joint outcome on a single read: either refused
 /// is a NAME and malformed is false, OR malformed is true and refused is
 /// untouched (`none`); every counter is 0 in either case; the load's
-/// return value is -1; and the destination record was untouched (the test
-/// caller plants the sentinel BEFORE the load).
+/// return value is -1; and the destination record holds its declared
+/// defaults (ruling R4; the test caller plants the sentinel BEFORE the load).
 bool jointOk(int returnValue, TableFixedReport r, Meta dest) {
   if (returnValue != -1) return false;
   if (r.malformed && r.refused != TableFixedRefusal.none) return false;
@@ -73,8 +74,9 @@ bool jointOk(int returnValue, TableFixedReport r, Meta dest) {
   if (r.clamped != 0) return false;
   if (r.widened != 0) return false;
   if (r.duplicate != 0) return false;
-  if (dest.build != 0x5A5A5A5A) return false;
-  if (dest.tagLength != 0x5A5A5A5A) return false;
+  final defaults = Meta();
+  if (dest.build != defaults.build) return false;
+  if (dest.tagLength != defaults.tagLength) return false;
   return true;
 }
 

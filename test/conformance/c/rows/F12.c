@@ -100,9 +100,9 @@ int main( void )
     memcpy( bent, clean, (size_t) saved_bytes );
     bent[(int64_t) kTableFixedHeaderBytes + 4 + 4 + 2] ^= 0x99;
 
-    /* POISON: a refused read touches no destination byte (§5.8 row 5, §5.3
-       step 7's comment), so back must come back with the bytes it had on
-       entry, byte for byte. */
+    /* POISON: a refused read hands the row back at its declared defaults
+       (ruling R4), so back must come back as the same poison reset, byte
+       for byte. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
     n = root_fixed_load( &back, 1, bent, total_bytes, NULL, 0, NULL, &report );
@@ -115,12 +115,15 @@ int main( void )
            "F12: no counter moved on the refused read" );
     {
         int64_t i;
-        int poisoned = 0;
+        int off = 0;
+        Root defaults;
+        memset( &defaults, 0x5A, sizeof( defaults ) );
+        root_reset( &defaults );
         for ( i = 0; i < (int64_t) sizeof( back ); ++i )
         {
-            if ( ( (const uint8_t *) &back )[i] != 0x5A ) { poisoned = 1; break; }
+            if ( ( (const uint8_t *) &back )[i] != ( (const uint8_t *) &defaults )[i] ) { off = 1; break; }
         }
-        check( !poisoned, "F12: no destination byte was written by the refused read" );
+        check( !off, "F12: the refused read left the row at its declared defaults" );
     }
 
     /* THE CONTRAST — a hash no lineage entry names, over the lock's OWN

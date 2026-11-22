@@ -18,8 +18,9 @@
 //     Append `extra` bytes to the valid file.
 //     Call padded_row_fixed_load on the ragged file.
 //     Assert: returns None, report.damaged is true, report.refused is false,
-//     report.reason is TableFixedReason::None, all counters zero, and destination
-//     bytes are untouched (pre-poisoned with 0x5A).
+//     report.reason is TableFixedReason::None, all counters zero, and the row
+//     handed in (pre-poisoned off its defaults) holds its declared defaults
+//     (ruling R4).
 //
 // THE NEGATIVE CONTROL:
 //   extra == record_bytes is one WHOLE extra record, not a ragged tail.
@@ -33,9 +34,23 @@
 
 use blockdemo::{
     padded_row_fixed_load, padded_row_fixed_measure, padded_row_fixed_save,
-    PaddedRowRow, TableFixedEntry, TableFixedReason, TableFixedReport,
-    PADDED_ROW_FIXED_RECORD_BYTES,
+    padded_row_fixed_scatter, PaddedRowRow, TableFixedEntry, TableFixedReason,
+    TableFixedReport, PADDED_ROW_FIXED_DEFAULTS, PADDED_ROW_FIXED_RECORD_BYTES,
 };
+
+/// The row at its declared defaults, as the reader's own reset scatters them.
+fn declared_defaults() -> PaddedRowRow {
+    let mut want = PaddedRowRow::default();
+    padded_row_fixed_scatter(&PADDED_ROW_FIXED_DEFAULTS, &mut want, &mut TableFixedReport::default());
+    want
+}
+
+/// Field by field, padding aside.
+fn same_row(a: &PaddedRowRow, b: &PaddedRowRow) -> bool {
+    a.tag == b.tag && a.value.to_bits() == b.value.to_bits() && a.flag == b.flag && a.id == b.id
+        && a.label == b.label && a.label_length == b.label_length && a.slots == b.slots
+        && a.teams == b.teams && a.counter == b.counter && a.counter_present == b.counter_present
+}
 
 #[test]
 fn test_ragged_tail() {
@@ -76,14 +91,19 @@ fn test_row_f8_ragged_tail() {
         ragged.extend_from_slice(&vec![0x7A; extra]);
 
         let mut values = [PaddedRowRow::default(); 1];
-        // Poison destination memory with 0x5A to verify it remains untouched
-        unsafe {
-            core::ptr::write_bytes(
-                values.as_mut_ptr() as *mut u8,
-                0x5A,
-                core::mem::size_of::<PaddedRowRow>() * values.len(),
-            );
-        }
+        // Poison every field off its declared default (valid values only: a
+        // bool takes true, never a raw 0x5A byte), so the reset is visible.
+        values[0].tag = 0x5A;
+        values[0].value = -5.5;
+        values[0].flag = !declared_defaults().flag;
+        values[0].id = 0x5A5A_5A5A;
+        values[0].label = [0x5A; 16];
+        values[0].label_length = 0x5A;
+        values[0].slots = [0x5A5A; 4];
+        values[0].teams = [0x5A; 4];
+        values[0].counter = 0x5A5A;
+        values[0].counter_present = !declared_defaults().counter_present;
+        assert!(!same_row(&values[0], &declared_defaults()), "the poison is off the declared defaults");
 
         let mut plan = [TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
@@ -103,16 +123,11 @@ fn test_row_f8_ragged_tail() {
         assert_eq!(report.unknown, 0, "ragged tail moves no unknown counter");
         assert_eq!(report.mismatch, 0, "ragged tail moves no kind_mismatch counter");
 
-        // Verify destination was untouched: every poisoned byte remains 0x5A
-        let raw_dest = unsafe {
-            core::slice::from_raw_parts(
-                values.as_ptr() as *const u8,
-                core::mem::size_of::<PaddedRowRow>(),
-            )
-        };
-        for (i, &b) in raw_dest.iter().enumerate() {
-            assert_eq!(b, 0x5A, "destination byte {i} was overwritten with {b:#04x}");
-        }
+        // Ruling R4: the row handed in holds its declared defaults.
+        assert!(
+            same_row(&values[0], &declared_defaults()),
+            "ragged tail at +{extra} bytes must leave the row at its declared defaults"
+        );
     }
 
     // 3. NEGATIVE CONTROL: extra == record_bytes is a whole extra record, NOT ragged.

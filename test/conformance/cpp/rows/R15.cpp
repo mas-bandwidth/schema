@@ -144,9 +144,11 @@ static void count_clamp_is_layout_newer( void )
 
     check( n == -1, "count_clamp: the OLD reader refuses the NEW file (n == -1), it does not read it" );
     expect_layout_newer( r, r.reason == vold_array_bounded_grow::layout_newer, file_hash, "count_clamp" );
-    check( back.lead == 0xDEADBEEFu && back.vals_count == 77 && back.trail == 0xFEEDFACEu &&
-           back.vals[0] == 0x7F7F7F7F,
-           "count_clamp: the count was NOT clamped and no value was landed — the destination is untouched" );
+    vold_array_bounded_grow::ArrayBoundedGrow defaults;
+    vold_array_bounded_grow::ArrayBoundedGrowReset( defaults );
+    check( back.lead == defaults.lead && back.vals_count == defaults.vals_count && back.trail == defaults.trail &&
+           back.vals[0] == defaults.vals[0],
+           "count_clamp: the count was NOT clamped and no value was landed — the destination is at its declared defaults (R4)" );
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +184,10 @@ static void range_clamp_is_layout_newer( void )
 
     check( n == -1, "range_clamp: the OLD reader refuses the NEW file (n == -1), it does not read it" );
     expect_layout_newer( r, r.reason == vold_range_widen::layout_newer, file_hash, "range_clamp" );
-    check( back.lead == 0xDEADBEEFu && back.v == 0x7F7F7F7F && back.trail == 0xFEEDFACEu,
-           "range_clamp: the value was NOT clamped to the OLD end and nothing landed — the destination is untouched" );
+    vold_range_widen::RangeWiden defaults;
+    vold_range_widen::RangeWidenReset( defaults );
+    check( back.lead == defaults.lead && back.v == defaults.v && back.trail == defaults.trail,
+           "range_clamp: the value was NOT clamped to the OLD end and nothing landed — the destination is at its declared defaults (R4)" );
 }
 
 // ---------------------------------------------------------------------------
@@ -217,8 +221,10 @@ static void unknown_variant_remap_is_layout_newer( void )
 
     check( n == -1, "unknown_variant: the OLD reader refuses the NEW file (n == -1), it does not read it" );
     expect_layout_newer( r, r.reason == vold_enum_append::layout_newer, file_hash, "unknown_variant" );
-    check( back.tier == vold_enum_append::Tier::Gold && back.seq == 0x7F7F7F7F,
-           "unknown_variant: the ordinal was NOT remapped to None and no value landed — the destination is untouched" );
+    vold_enum_append::Lineage defaults;
+    vold_enum_append::LineageReset( defaults );
+    check( back.tier == defaults.tier && back.seq == defaults.seq,
+           "unknown_variant: the ordinal was NOT remapped to None and no value landed — the destination is at its declared defaults (R4)" );
 }
 
 // ---------------------------------------------------------------------------
@@ -251,8 +257,10 @@ static void unknown_field_drop_is_layout_newer( void )
 
     check( n == -1, "unknown_field: the OLD reader refuses the NEW file (n == -1), it does not read it" );
     expect_layout_newer( r, r.reason == vold_field_append::layout_newer, file_hash, "unknown_field" );
-    check( back.x == 101 && back.y == 102 && back.z == 103,
-           "unknown_field: w was NOT dropped-and-counted and nothing landed — the destination is untouched" );
+    vold_field_append::Lineage defaults;
+    vold_field_append::LineageReset( defaults );
+    check( back.x == defaults.x && back.y == defaults.y && back.z == defaults.z,
+           "unknown_field: w was NOT dropped-and-counted and nothing landed — the destination is at its declared defaults (R4)" );
 }
 
 int main( void )

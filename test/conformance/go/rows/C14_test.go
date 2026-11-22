@@ -72,8 +72,12 @@ func TestRowC14(t *testing.T) {
 		t.Fatal("clean control did not save byte identically")
 	}
 	slack := func(body []byte) { binary.LittleEndian.PutUint32(body[70:], 500) }
-	if value, got, report := read(slack); got >= 0 || report.Err() == nil || !reflect.DeepEqual(value, sentinel) {
-		t.Fatalf("non-zero dead slot read: n=%d report=%+v", got, report)
+	// A refusal leaves the value handed in at its declared default (ruling R4),
+	// not as the sentinel it was.
+	var defaults tblv2.Cfg
+	tblv2.CfgReset(&defaults)
+	if value, got, report := read(slack); got >= 0 || report.Err() == nil || !reflect.DeepEqual(value, defaults) {
+		t.Fatalf("non-zero dead slot read, or the refusal left the value off its defaults: n=%d report=%+v value=%+v", got, report, value)
 	}
 	live := func(body []byte) { binary.LittleEndian.PutUint32(body[54:], 300) }
 	if _, got, report := read(live); got != -1 || report.Err() == nil {

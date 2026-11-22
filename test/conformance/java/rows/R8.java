@@ -54,11 +54,14 @@ public final class R8 {
         check(given != CfgFixed.hash,
                 "the corrupted hash 0x" + Long.toHexString(given) + "L is not the build's own");
 
+        // Poison the value handed in off its declared defaults: ruling R4 owes
+        // every field back at its default after the refusal.
         CfgFixed.Value[] out = { new CfgFixed.Value() };
-        int initialA = out[0].a;
-        int initialB = Float.floatToRawIntBits(out[0].b);
-        int initialNameLength = out[0].nameLength;
-        int initialItemsCount = out[0].itemsCount;
+        final CfgFixed.Value defaults = new CfgFixed.Value();
+        out[0].a = defaults.a + 101;
+        out[0].b = defaults.b + 2.5f;
+        out[0].itemsCount = 1;
+        out[0].items[0] = 9;
         TableFixed.Report r = new TableFixed.Report();
         int n = CfgFixed.load(out, 1, file, TableFixed.plan(1024), new short[1024],
                 CfgFixed.image(), r);
@@ -74,10 +77,10 @@ public final class R8 {
                         + Long.toHexString(r.layoutHash) + "L)");
         check(r.unknown == 0 && r.widened == 0,
                 "REFUSE is total: no counter moves");
-        check(out[0].a == initialA && Float.floatToRawIntBits(out[0].b) == initialB
-                        && out[0].nameLength == initialNameLength
-                        && out[0].itemsCount == initialItemsCount,
-                "nothing decoded: the destination is untouched (a=" + out[0].a + " b=" + out[0].b + ")");
+        check(out[0].a == defaults.a && Float.floatToRawIntBits(out[0].b) == Float.floatToRawIntBits(defaults.b)
+                        && out[0].nameLength == defaults.nameLength
+                        && out[0].itemsCount == defaults.itemsCount && out[0].items[0] == defaults.items[0],
+                "the value handed in is back at its declared defaults (R4) (a=" + out[0].a + " b=" + out[0].b + ")");
         check(r.layoutHash != CfgFixed.hash,
                 "the report does NOT carry this build's own hash — it carries the file's");
 

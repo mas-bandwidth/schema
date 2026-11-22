@@ -109,7 +109,10 @@ static partial class Program
         var tooMany = new Messagedemo.Cursor[257]; var refusedReport = new Messagedemo.TableReport();
         Check(Messagedemo.Schema.CursorSaveMessages(tooMany,bytes,refusedReport) == -1 && refusedReport.Reason == "batch_too_large","named oversized batch refusal");
         var shortReport = new Messagedemo.TableReport(); loaded[0].Line = 777;
-        Check(Messagedemo.Schema.CursorLoadMessages(new[] {loaded[0]},bytes,vocabulary,shortReport,out _) == Messagedemo.Schema.TableWire.Verdict.Refused && loaded[0].Line == 777,"batch capacity refused before reading");
+        // A refusal hands every value back at its declared default (ruling R4).
+        var cursorDefaults = new Messagedemo.Cursor(); Messagedemo.Schema.TableReset(cursorDefaults);
+        Check(cursorDefaults.Line != 777,"the batch-capacity poison is off the declared default");
+        Check(Messagedemo.Schema.CursorLoadMessages(new[] {loaded[0]},bytes,vocabulary,shortReport,out _) == Messagedemo.Schema.TableWire.Verdict.Refused && loaded[0].Line == cursorDefaults.Line,"batch capacity refused before reading, the value at its declared default");
         // Warm tiered JIT paths before measuring; callers own all input/output.
         var single = new[] {values[1]}; var target = new[] {loaded[1]}; byte[] small = new byte[Messagedemo.Schema.CursorMeasureMessages(single)];
         byte[] cook = new byte[Messagedemo.Schema.CursorCookMeasure(single[0])];

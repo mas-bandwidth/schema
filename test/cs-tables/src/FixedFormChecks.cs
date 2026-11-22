@@ -389,8 +389,9 @@ static partial class Program
     // EXACT input docs/FIXED-FORM-ALGORITHM.md §5.3 names and SPEC-TABLES §3.4
     // promises, asserts the report §5.3 fixes (a refusal by name is Refused with
     // its Reason and never Malformed; the residue is Malformed and names
-    // nothing), and proves REFUSE is total: the destination is pre-poisoned and
-    // compared unchanged, so a refusal that wrote even one byte would show.
+    // nothing), and proves a refusal hands the row back at its declared defaults
+    // (ruling R4): the destination is pre-poisoned and compared with a freshly
+    // reset value, so a refusal that left the row as it was would show.
     static void TestFixedFormHeaderProbes()
     {
         // A VALID FORM-3 FIXTURE, written by this reader's own writer, so the
@@ -431,6 +432,15 @@ static partial class Program
             p.Nested.A + "|" + p.Nested.B + "|" + p.MarksCount + "|" +
             string.Join(",", p.Marks) + "|" + p.BlobLength + "|" + Convert.ToHexString(p.Blob);
 
+        // WHAT EVERY REFUSAL OWES (ruling R4): the row at its declared defaults.
+        string DefaultsFp()
+        {
+            FX1.FxRoot d = new FX1.FxRoot();
+            FX1.Schema.TableReset(d);
+            return Fp(d);
+        }
+        Check(Fp(Poison()) != DefaultsFp(), "header probes: the poison is off the declared defaults");
+
         string Clean(FX1.TableReport r) =>
             " counters=(" + r.Unknown + "," + r.Widened + ") refused=" + r.Refused + " hash=" + r.LayoutHash;
 
@@ -440,13 +450,13 @@ static partial class Program
         // earned; the residue is malformed and nothing else claims success.
         {
             FX1.FxRoot v = Poison();
-            string before = Fp(v);
+            string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
             Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "empty-file: zero bytes is malformed and claims no success" + Clean(r));
-            Check(Fp(v) == before, "empty-file: no destination byte was written");
+            Check(Fp(v) == before, "empty-file: the row is at its declared defaults");
         }
 
         // CASE short-form1: THE REAL LENGTH OF A COMMITTED FORM-1 FILE — ten
@@ -456,13 +466,13 @@ static partial class Program
             byte[] form1 = new byte[10];
             form1[0] = 1;
             FX1.FxRoot v = Poison();
-            string before = Fp(v);
+            string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form1, plan, r);
             Check(n == -1 && r.Refused && r.Reason == "previous_form" && !r.Damaged &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "short-form1: a ten-byte form-1 file is previous_form, not malformed" + Clean(r));
-            Check(Fp(v) == before, "short-form1: no destination byte was written");
+            Check(Fp(v) == before, "short-form1: the row is at its declared defaults");
         }
 
         // CASE short-form2: THE REAL LENGTH OF A FORM-2 BATCH — three bytes,
@@ -470,13 +480,13 @@ static partial class Program
         {
             byte[] form2 = new byte[] { 2, 1, 0 };
             FX1.FxRoot v = Poison();
-            string before = Fp(v);
+            string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form2, plan, r);
             Check(n == -1 && r.Refused && r.Reason == "message_form_as_file" && !r.Damaged &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "short-form2: a three-byte form-2 batch is message_form_as_file, not malformed" + Clean(r));
-            Check(Fp(v) == before, "short-form2: no destination byte was written");
+            Check(Fp(v) == before, "short-form2: the row is at its declared defaults");
         }
 
         // CASE unassigned-form0: FORM BYTE 0 WITH THE OTHERWISE VALID FIXTURE
@@ -485,13 +495,13 @@ static partial class Program
             byte[] form0 = (byte[])valid.Clone();
             form0[0] = 0;
             FX1.FxRoot v = Poison();
-            string before = Fp(v);
+            string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form0, plan, r);
             Check(n == -1 && r.Refused && r.Reason == "newer_form" && !r.Damaged &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "unassigned-form0: form byte 0 is newer_form, not malformed" + Clean(r));
-            Check(Fp(v) == before, "unassigned-form0: no destination byte was written");
+            Check(Fp(v) == before, "unassigned-form0: the row is at its declared defaults");
         }
 
         // CASE reserved-byte3: A VALID FORM-3 FIXTURE WITH RESERVED BYTE 3 SET
@@ -500,13 +510,13 @@ static partial class Program
             byte[] reserved = (byte[])valid.Clone();
             reserved[3] = 1;
             FX1.FxRoot v = Poison();
-            string before = Fp(v);
+            string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
             Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
-            Check(Fp(v) == before, "reserved-byte3: no destination byte was written");
+            Check(Fp(v) == before, "reserved-byte3: the row is at its declared defaults");
         }
     }
 

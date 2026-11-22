@@ -24,9 +24,10 @@ var batchCapacityLegs = []string{
 // testdata: two LoginRequest bodies of the backenddemo unit, each with
 // client_build 40, written by the Go engine under testdata/wire/tables/
 // backend_conn.bin. A leg's own test loads it into storage for ONE body whose
-// client_build is the sentinel 17 and owes a count of 0 with the sentinel
-// untouched ("A refused batch returns a count of `0`", §3.3; "refuses before
-// it decodes anything"), then into storage for two and owes 2 and 40.
+// client_build is the sentinel 17 and owes a count of 0 with client_build at
+// its declared default ("A refused batch returns a count of `0`", §3.3; after
+// any refusal every value handed in holds its declared default, ruling R4),
+// then into storage for two and owes 2 and 40.
 const BatchCapacityFixture = "batch_capacity_two.bin"
 
 // batchCapacityWire is the fixture as the Go engine writes it.
@@ -47,9 +48,10 @@ func batchCapacityWire(t *testing.T, model *tabletext.Model) []byte {
 // TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg pins every leg's copy of the
 // capacity fixture to the Go engine's bytes (SCHEMA_UPDATE_WIRE_GOLDENS=1
 // re-pins them), and holds the engine itself to the fixture's answers: storage
-// for one refuses with a count of 0 and the sentinel untouched, storage for
-// two delivers both. Red if a copy drifts from the engine, or if the engine
-// hands back the wire's count or decodes a body before the capacity refusal.
+// for one refuses with a count of 0 and the value at its declared default
+// (ruling R4), storage for two delivers both. Red if a copy drifts from the
+// engine, or if the engine hands back the wire's count or leaves the sentinel
+// (or a decoded body) in the storage after the capacity refusal.
 func TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	built := batchCapacityWire(t, model)
@@ -70,8 +72,12 @@ func TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg(t *testing.T) {
 	if count != 0 {
 		t.Errorf("two bodies into storage for one: the returned count reads %d, and a refused batch returns 0 (§3.3)", count)
 	}
-	if got := instU64(t, one[0], "client_build"); got != 17 {
-		t.Errorf("two bodies into storage for one: client_build reads %d, not the sentinel 17: the refusal decoded a body", got)
+	want := instU64(t, model.New(login), "client_build")
+	if want == 17 {
+		t.Fatal("the sentinel 17 is client_build's declared default: the reset would not show")
+	}
+	if got := instU64(t, one[0], "client_build"); got != want {
+		t.Errorf("two bodies into storage for one: client_build reads %d, not its declared default %d (ruling R4)", got, want)
 	}
 	two := []*tabletext.Instance{model.New(login), model.New(login)}
 	report = tabletext.Report{}

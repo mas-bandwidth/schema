@@ -52,6 +52,9 @@ public final class F10 {
 
         CellFixed.Value[] values = new CellFixed.Value[1];
         values[0] = new CellFixed.Value();
+        values[0].power = 77; // poison: the refusal must put it back (ruling R4)
+        final CellFixed.Value defaults = new CellFixed.Value();
+        check(defaults.power != 77, "the poison is off the declared default");
         TableFixed.Report r = new TableFixed.Report();
         int n = CellFixed.load(values, 1, file,
                 CellFixed.identityPlan(), new short[8], CellFixed.image(), r);
@@ -63,7 +66,8 @@ public final class F10 {
         check(!r.damaged, "noLayout is a refusal, not malformed");
         check(r.unknown == 0 && r.widened == 0,
                 "REFUSE is total: no counter moves");
-        check(values[0].power == 0, "nothing decoded: the destination is untouched");
+        check(values[0].power == defaults.power,
+                "nothing decoded: the value handed in is back at its declared default (R4)");
 
         System.exit(failures == 0 ? 0 : 1);
     }

@@ -23,7 +23,8 @@
    (form byte, reserved bytes, layout length, hash selection, layout memcmp,
    tail a whole record) still passes, so the load reaches the per-record hash
    check and refuses there. The caller's storage is poisoned 0x5A first:
-   REFUSE is total (§5.8), so no counter may move and no byte may be written.
+   no counter may move, and the row handed in comes back at its declared
+   defaults (ruling R4), compared with the same poison reset.
 
    SELF-CONTAINED: reaches the generated fixed form through the SAME include
    path the conformance driver uses (build/tables-generated-c/v1), includes
@@ -39,6 +40,7 @@ int main( void )
 {
     Cell source;
     Cell back;
+    Cell defaults;
     TableReport r;
     uint8_t wire[256];
     int64_t bytes, rec_at, i, n;
@@ -65,6 +67,8 @@ int main( void )
     wire[rec_at] ^= 0xff;
 
     memset( &back, 0x5A, sizeof( back ) );
+    memset( &defaults, 0x5A, sizeof( defaults ) );
+    cell_reset( &defaults );
     memset( &r, 0, sizeof( r ) );
 
     n = cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
@@ -92,14 +96,14 @@ int main( void )
     }
     for ( i = 0; i < (int64_t) sizeof( back ); ++i )
     {
-        if ( ( (const uint8_t *) &back )[i] != 0x5A )
+        if ( ( (const uint8_t *) &back )[i] != ( (const uint8_t *) &defaults )[i] )
         {
-            printf( "F10 no_layout: byte %lld is 0x%02x — REFUSE wrote a destination byte\n",
+            printf( "F10 no_layout: byte %lld is 0x%02x — the refusal left the row off its declared defaults\n",
                     (long long) i, ( (const uint8_t *) &back )[i] );
             return 1;
         }
     }
 
-    printf( "F10 no_layout: a record whose hash names no held layout refuses no_layout; nothing decoded, no byte written\n" );
+    printf( "F10 no_layout: a record whose hash names no held layout refuses no_layout; nothing decoded, the row at its declared defaults\n" );
     return 0;
 }

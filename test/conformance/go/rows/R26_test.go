@@ -35,7 +35,8 @@ import (
 // TestRowR26 verifies that when a file matches a known lineage entry whose plan
 // could not be built (lane.Why != ""), FixedLoad refuses by that name, sets
 // report.Verdict = TableOpenRefused, Malformed = false, moves no counters,
-// leaves destination untouched, and never throws.
+// leaves every value handed in at its declared default (ruling R4), and never
+// throws.
 func TestRowR26(t *testing.T) {
 	// 1. STATIC ASSERTIONS on the generated code and runtime
 	root := findRepoRoot(t)
@@ -129,8 +130,13 @@ func TestRowR26(t *testing.T) {
 		if report.Unknown != 0 || report.Widened != 0 {
 			t.Fatalf("refusal %s must move no counters: %+v", refusalName, report)
 		}
-		if values[0].A != 999.0 {
-			t.Fatalf("refusal %s must write no destination bytes: sentinel modified to %f", refusalName, values[0].A)
+		var defaults tblv2.Cfg
+		tblv2.CfgReset(&defaults)
+		if defaults.A == 999.0 {
+			t.Fatalf("the sentinel is not visible: 999 is Cfg.A's default")
+		}
+		if values[0].A != defaults.A {
+			t.Fatalf("refusal %s must leave the value at its declared default (R4): A = %f, want %f", refusalName, values[0].A, defaults.A)
 		}
 	}
 }

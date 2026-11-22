@@ -25,10 +25,9 @@
 //     that returns, §5.9 #6).
 //   - every counter is exactly 0 (unknown, kindMismatch, clamped, widened,
 //     duplicate).
-//   - EVERY value destination byte is untouched (poisoned 0x5A stays 0x5A,
-//     §5.8 row 9 — see R12's evidence for this leg; the load writes no
-//     destination byte on refuse, which is §5.9 #16's "REFUSE moves no
-//     counter at all" applied to the byte buffer too).
+//   - EVERY value handed in holds its declared default after the refusal
+//     (ruling R4): the destination is poisoned 0x5A5A5A5A first, so a
+//     refusal that left it as it was shows.
 //
 // This test feeds a file whose header hash is a value the lineage does NOT
 // hold — neither the build's own, nor any locked layout, nor a derived
@@ -127,36 +126,13 @@ void main() {
         'metaFixedHash=0x${metaFixedHash.toRadixString(16)}',
   );
 
-  // ---- POISON THE DESTINATION SO WE CAN PROVE NO BYTE WAS WRITTEN ----
+  // ---- POISON THE DESTINATION SO THE RESET IS VISIBLE ----
   //
-  // §5.8 row 9's "writes nothing" rule: the REFUSE must leave EVERY byte
-  // of the destination record unchanged. Poison the destination with 0x5A
-  // and assert it stays 0x5A after a refused read.
+  // Ruling R4: after any refusal every value handed in holds its declared
+  // default. Poison the destination off its defaults, so a refusal that
+  // left it as it was shows, and compare with a fresh default after.
   final back = <Meta>[Meta()];
-  final stored = Meta()
-    ..build = 0x5A5A5A5A
-    ..tagLength = 0x5A5A5A5A;
-
-  // 0x5A's are not normal Meta values — but we don't care about value
-  // correctness, only that the destination remains untouched. To make
-  // the assertion readable, store the value and check the bytes are
-  // their semantic form, OR use Meta() default and check structural
-  // non-touch.
-  //
-  // The dart Meta() is a typed struct; we can't directly byte-compare.
-  // We assert: tagLength and build remain at their struct-default values
-  // (the ctor's defaults), or that no field lands from the file's
-  // body. We pick a sentinel struct: set fields to non-zero
-  // values, then check after the load.
-  // back[0] carries tagLength and build. With 0x5A in Meta's defaults
-  // being 0 (ctor), we set those fields to a sentinel value BEFORE
-  // load and check they're unchanged AFTER. Using Meta() default-value
-  // zeroes, we cannot rely on a sentinel, since the load would see the
-  // file's record hash differing from the build's (it IS the
-  // unknownWireHash) and not even reach a record decode loop — so
-  // back[0].build and .tagLength should stay whatever they were.
-  // We pin tagLength to 0x5A5A5A5A BEFORE the load (Meta.tagLength is an
-  // int; the default is 0). Set a known value:
+  final defaults = Meta();
   back[0].build = 0x5A5A5A5A;
   back[0].tagLength = 0x5A5A5A5A;
 
@@ -218,20 +194,18 @@ void main() {
     'hash=0x${report.hash.toRadixString(16)}',
   );
 
-  // ---- THE DESTINATION RECORD IS UNTOUCHED ----
+  // ---- THE DESTINATION RECORD IS AT ITS DECLARED DEFAULTS (R4) ----
   //
-  // The load wrote no destination byte — back[0].build and back[0].tagLength
-  // are 0x5A5A5A5A still, the sentinel we planted.
+  // The sentinel planted before the load is gone: back[0].build and
+  // back[0].tagLength hold their declared defaults.
   expect(
-    'destination record is untouched by REFUSE: back[0].build = 0x5A5A5A5A '
-        '(the sentinel planted before load)',
-    back[0].build == 0x5A5A5A5A,
+    'the refused read leaves back[0].build at its declared default',
+    back[0].build == defaults.build,
     'back[0].build=0x${back[0].build.toRadixString(16)}',
   );
   expect(
-    'destination record is untouched by REFUSE: back[0].tagLength = 0x5A5A5A5A '
-        '(the sentinel planted before load)',
-    back[0].tagLength == 0x5A5A5A5A,
+    'the refused read leaves back[0].tagLength at its declared default',
+    back[0].tagLength == defaults.tagLength,
     'back[0].tagLength=0x${back[0].tagLength.toRadixString(16)}',
   );
 
@@ -254,8 +228,8 @@ void main() {
         'malformed=${report.malformed}',
   );
 
-  // silence unused warnings
-  expect('stored reference is reachable', stored.build == 0x5A5A5A5A, '-');
+  // the poison was off the defaults, so the reset above is visible
+  expect('the poison is off the declared defaults', defaults.build != 0x5A5A5A5A, '-');
   expect(
     'metaFixedLayoutBytes sanity',
     metaFixedLayoutBytes == 55,

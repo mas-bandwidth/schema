@@ -818,7 +818,8 @@ static void test_message_form_five_answers()
     // M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE: refused by name from the
     // count, nothing decoded, no counter moved, and the returned count is 0,
     // "as every refused batch does; a caller that needs room reads the wire's
-    // M itself" (docs/SPEC-TABLES.md §3.3)
+    // M itself" (docs/SPEC-TABLES.md §3.3). Every value handed in holds its
+    // declared default after the refusal (ruling R4), slots past any count too
     {
         static backenddemo::LoginRequest many[256];
         for ( int32_t i = 0; i < 256; i++ ) { backenddemo::LoginRequestReset( many[i] ); many[i].client_build = 7; }
@@ -834,7 +835,10 @@ static void test_message_form_five_answers()
         CHECK( !small.damaged && small.unknown == 0 );
         CHECK( count == 0 ); // a refused batch returns a count of 0
         CHECK( wide_bytes > 1 && (int64_t) wide[1] + 1 == 256 ); // the wire's M, which the caller reads itself
-        for ( int32_t i = 0; i < 8; i++ ) { CHECK( eight[i].client_build == 17 ); } // nothing decoded, the storage as it was
+        backenddemo::LoginRequest defaults;
+        backenddemo::LoginRequestReset( defaults );
+        CHECK( defaults.client_build != 17 ); // the poison is visible
+        for ( int32_t i = 0; i < 8; i++ ) { CHECK( eight[i].client_build == defaults.client_build ); } // every value handed in at its default
         // and the recovery is one call with capacity at or above it
         static backenddemo::LoginRequest room[256];
         int64_t again = 256;
@@ -870,6 +874,9 @@ static void test_message_form_five_answers()
         CHECK( !backenddemo::LoginRequestLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.damaged && !damage.refused );
         CHECK( count == 0 ); // damage delivers no body (SPEC-TABLES §4)
+        backenddemo::LoginRequest defaults;
+        backenddemo::LoginRequestReset( defaults );
+        for ( int32_t i = 0; i < 3; i++ ) { CHECK( out[i].client_build == defaults.client_build ); } // every value handed in at its default (R4)
     }
 
     // AND A POINTERED BATCH TAKES ONE REGION: held by test_message_form_pointered

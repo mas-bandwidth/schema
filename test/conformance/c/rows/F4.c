@@ -41,8 +41,9 @@
        side so the two rows cannot drift together).
 
    REFUSE IS TOTAL (§5.8) AND SO IS MALFORMED: on either refusal no counter
-   may move and not one destination byte is written -- the destination is
-   poisoned 0x5A first and checked byte for byte after.
+   may move and the row handed in comes back at its declared defaults (ruling
+   R4) -- the destination is poisoned 0x5A first and checked byte for byte
+   after against the same poison reset.
 
    Build: cc -std=c11 -Wall <the -I and link flags make/c.mk gives
           build/conformance-c> test/conformance/c/rows/F4.c
@@ -58,10 +59,14 @@
 
 #include "V1Table.h"
 
-/* totality, shared by both refusals: nothing counted, nothing written */
+/* totality, shared by both refusals: nothing counted, the row at its
+   declared defaults (ruling R4) */
 static int check_nothing_moved( const Cell * back, const TableReport * r )
 {
     int64_t i;
+    Cell defaults;
+    memset( &defaults, 0x5A, sizeof( defaults ) );
+    cell_reset( &defaults );
     if ( r->clamped || r->unknown || r->kind_mismatch || r->widened || r->duplicate || r->retained || r->retain_lost )
     {
         printf( "F4 layout_malformed, truncated: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d retained=%d retain_lost=%d\n",
@@ -70,9 +75,9 @@ static int check_nothing_moved( const Cell * back, const TableReport * r )
     }
     for ( i = 0; i < (int64_t) sizeof( *back ); ++i )
     {
-        if ( ( (const uint8_t *) back )[i] != 0x5A )
+        if ( ( (const uint8_t *) back )[i] != ( (const uint8_t *) &defaults )[i] )
         {
-            printf( "F4 layout_malformed, truncated: byte %lld is 0x%02x -- the refusal wrote a destination byte\n",
+            printf( "F4 layout_malformed, truncated: byte %lld is 0x%02x -- the refusal left the row off its declared defaults\n",
                     (long long) i, ( (const uint8_t *) back )[i] );
             return 0;
         }
