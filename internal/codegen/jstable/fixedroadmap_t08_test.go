@@ -176,7 +176,7 @@ func t08P1(t *testing.T) {
 	_, src := t08Emit(t, t02Flat)
 	// The emitted plan IS the compiled one: eleven int32 lanes (TableFixedLanes),
 	// and the lanes carry the same op, src, dst, size and guard the IR states.
-	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
+	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new globalThis.Int32Array([", "]);"), ",")
 	if len(lanes) != 11 {
 		t.Fatalf("P1: the identity plan has %d lanes, want 11: %q", len(lanes), lanes)
 	}

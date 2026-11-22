@@ -70,7 +70,7 @@ func TestGeneratedIntegerLiteralSpelling(t *testing.T) {
 		"c":    {"char name[10 + 1];", "char tag[0x1F + 1];"},
 		"cpp":  {"char name[10 + 1]", "char tag[0x1F + 1]"},
 		"go":   {"[10]byte", "[0x1F]byte"},
-		"js":   {"new Uint8Array(10)", "new Uint8Array(0x1F)"},
+		"js":   {"new globalThis.Uint8Array(10)", "new globalThis.Uint8Array(0x1F)"},
 		"rust": {"[u8; 10]", "[u8; 0x1F]", "= 0x1F;"},
 		"cs":   {"SerializeInt(ref value.NameLength, 0, 10)", "SerializeInt(ref rangeValue, 0, 3)"},
 	}

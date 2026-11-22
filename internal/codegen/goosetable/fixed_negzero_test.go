@@ -17,7 +17,8 @@ import (
 // vector is the reference writer's file holding the sign bit alone in the
 // compressed field; this leg reads it through its generated load, lands the
 // value 0 with the sign bit clear, refuses nothing, counts nothing, and saves
-// the canonical bytes the +0 record writes.
+// the canonical bytes the +0 record writes; a -0 set in the native record
+// saves those same bytes.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose (it runs the generated reader over the fixed-form corpus)")
@@ -47,6 +48,11 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
     let w = %[1]s::%[2]sFixedSave(values[0..n], out);
     print("saved ", w);
     hex(out);
+    values[0].Value = schema_rt::fixed_bits_f32(0x80000000);
+    var minus: u8[>..] = [];
+    let wm = %[1]s::%[2]sFixedSave(values[0..n], minus);
+    print("saved ", wm);
+    hex(minus);
 }
 `, ns, vec.Root)
 			out := runCustomFixedGoose(t, u, nil, main, map[string][]byte{"in.bin": data})
@@ -54,7 +60,7 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
 			if len(lines) < 1 || lines[0] != "report 1 ok 0 0" {
 				t.Fatalf("%s: the read of a compressed -0 must land one record, refusing and counting nothing:\n%s", vec.File, out)
 			}
-			if len(lines) != 5 {
+			if len(lines) != 7 {
 				t.Fatalf("%s: an unreadable probe answer:\n%s", vec.File, out)
 			}
 			if lines[1] != "zero 1" {
@@ -68,6 +74,12 @@ func TestFixedCompressedNegZeroRead(t *testing.T) {
 			if lines[3] != fmt.Sprintf("saved %d", len(data)) || lines[4] != hex.EncodeToString(want) {
 				t.Fatalf("%s: saving the landed +0 did not write the canonical bytes\n got %s %s\nwant %d %s",
 					vec.File, lines[3], lines[4], len(data), hex.EncodeToString(want))
+			}
+			// AND THE WRITE OF A -0 ITSELF: the value set to -0 in the native
+			// record, not landed by the read, saves the same canonical bytes.
+			if lines[5] != fmt.Sprintf("saved %d", len(data)) || lines[6] != hex.EncodeToString(want) {
+				t.Fatalf("%s: saving a compressed float's -0 did not write +0\n got %s %s\nwant %d %s",
+					vec.File, lines[5], lines[6], len(data), hex.EncodeToString(want))
 			}
 		})
 	}

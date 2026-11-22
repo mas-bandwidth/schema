@@ -11,7 +11,7 @@ func init() {
 		new: `	// SABOTAGED: no [min, max] write check`,
 	}}
 	sabotages["packet-write-cfloat-js-runtime-range"] = []edit{{
-		old: `			g.pf("%s  if (!Number.isFinite(x) || x < %s || x > %s) {\n",
+		old: `			g.pf("%s  if (!globalThis.Number.isFinite(x) || x < %s || x > %s) {\n",
 				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
 			g.pf("%s    return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)\n", ind)
 			g.pf("%s  }\n%s}\n", ind, ind)`,

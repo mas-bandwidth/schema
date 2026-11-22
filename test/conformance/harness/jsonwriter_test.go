@@ -123,10 +123,10 @@ func checkCanonicalJSONWriterCodegenStrict(rustSrc, jsSrc, elixirSrc string) err
 	if strings.Contains(jsSrc, "\\ufffd") {
 		return fmt.Errorf("jstable still replaces unpaired surrogates with U+FFFD instead of refusing (§16.14 W0)")
 	}
-	if !strings.Contains(jsSrc, `throw new RangeError("TableVariableNotText")`) {
+	if !strings.Contains(jsSrc, `throw new globalThis.RangeError("TableVariableNotText")`) {
 		return fmt.Errorf("jstable is missing TableVariableNotText refusal on unpaired surrogate (§16.14 W0)")
 	}
-	if strings.Contains(jsSrc, "if (single ? Math.fround(back) === v : back === v) { return text; }") {
+	if strings.Contains(jsSrc, "Math.fround(back) === v : back === v) { return text; }") {
 		return fmt.Errorf("jstable still narrows a double with Math.fround(back) in TableVariableFloatText (§16.14 W12)")
 	}
 	if !strings.Contains(jsSrc, "if (single ? f32OfToken(text, back) === v : back === v) { return text; }") {
@@ -196,7 +196,10 @@ func TestCanonicalJSONWriterCodegenStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nodeBin := slowtest.Tool(t, "node")
+	// a missing node was a quiet return: the test passed over a node half
+	// that never ran. It is a named skip now, and a failure in a lane that
+	// sets SCHEMA_REQUIRE_NODE=1.
+	nodeBin := slowtest.Program(t, "node", "NODE", "SCHEMA_REQUIRE_NODE")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -258,7 +261,7 @@ func TestCanonicalJSONWriterCodegenStrictNegativeControl(t *testing.T) {
 
 	if err := checkCanonicalJSONWriterCodegenStrict(
 		rustSrc,
-		strings.Replace(jsSrc, "if (single ? f32OfToken(text, back) === v : back === v) { return text; }", "if (single ? Math.fround(back) === v : back === v) { return text; }", 1),
+		strings.Replace(jsSrc, "if (single ? f32OfToken(text, back) === v : back === v) { return text; }", "if (single ? globalThis.Math.fround(back) === v : back === v) { return text; }", 1),
 		elixirSrc,
 	); err == nil {
 		t.Fatal("negative control failed: accepted jstable Math.fround(back) double rounding")

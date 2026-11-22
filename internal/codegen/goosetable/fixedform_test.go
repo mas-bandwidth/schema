@@ -871,8 +871,9 @@ fixed table Reading
 			t.Fatalf("R30: missing _ReadingFixedWrite in CfoldTable.goose")
 		}
 		wfn, _, _ := strings.Cut(after, "\n}\n")
-		if !strings.Contains(wfn, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(v.Aim), 4);") {
-			t.Fatalf("R30: fixed write does not store raw float32 bits:\n%s", wfn)
+		// the float32 bits as held, but a -0 as +0 (fixed-compressed-negzero)
+		if !strings.Contains(wfn, "schema_rt::fixed_put(out, schema_rt::fixed_cf32_bits(v.Aim), 4);") {
+			t.Fatalf("R30: fixed write does not store the float32 bits, a -0 as +0:\n%s", wfn)
 		}
 		if strings.Contains(wfn, "msg_quantize") || strings.Contains(wfn, "fres") {
 			t.Fatalf("R30: fixed write quantizes compressed float:\n%s", wfn)

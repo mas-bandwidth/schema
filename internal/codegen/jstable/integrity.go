@@ -4,7 +4,7 @@ package jstable
 // it; nested records never append trailers of their own (SPEC-TABLES 2.14).
 const jsIntegrityRuntime = `
 const TableIntegrityTable = (() => {
-  const table = new Uint32Array(256);
+  const table = new globalThis.Uint32Array(256);
   for (let i = 0; i < 256; i++) {
     let crc = i;
     for (let bit = 0; bit < 8; bit++) { crc = (crc >>> 1) ^ ((crc & 1) ? 0x82f63b78 : 0); }
@@ -25,7 +25,7 @@ export function TableIntegrityHolds(bytes, minimum) {
 }
 export function TableIntegritySeal(bytes, count) {
   if (count < 0 || bytes.length - count < 4) { return -1; }
-  new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(count, TableIntegritySum(bytes, count), true);
+  new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(count, TableIntegritySum(bytes, count), true);
   return count + 4;
 }
 `
