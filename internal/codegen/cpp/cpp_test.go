@@ -96,7 +96,7 @@ func TestCppNativeQualifiedNameEmitsVerbatim(t *testing.T) {
 type Vec2 | cpp_native = math::Vec2, cpp_include = "math/vec2.h" { x float32
                                                                       y float32 }
 `,
-		"Body.schema": `package t
+		"BodyUnit.schema": `package t
 type Body { p Vec2 }
 `,
 	})
@@ -104,38 +104,38 @@ type Body { p Vec2 }
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := string(files["Body.h"])
+	body := string(files["BodyUnit.h"])
 	for _, want := range []string{
 		"::math::Vec2 p;",
 		`#include "math/vec2.h"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("Body.h lost the qualified native mapping: want %q\n%s", want, body)
+			t.Errorf("BodyUnit.h lost the qualified native mapping: want %q\n%s", want, body)
 		}
 	}
 }
 
 func TestUnionPlacementIncludeStaysInWireHeader(t *testing.T) {
 	u := unitFromSources(t, map[string]string{
-		"Payload.schema": `package t
+		"PayloadUnit.schema": `package t
 type Payload {
     value int32 = -1
 }
 `,
-		"Choice.schema": `package t
+		"ChoiceUnit.schema": `package t
 union Choice {
     ping
     payload Payload
     pong
 }
 `,
-		"Signals.schema": `package t
+		"SignalsUnit.schema": `package t
 union Signals {
     ping
     pong
 }
 `,
-		"Empty.schema": `package t
+		"EmptyUnit.schema": `package t
 union Empty {}
 `,
 	})
@@ -148,29 +148,29 @@ union Empty {}
 		// the wire header's read and the data header's arm setter (SPEC §4.8,
 		// the arm setter) construct a payload; a header with no payload arm
 		// constructs nothing
-		want := name == "ChoiceWire.h" || name == "Choice.h"
+		want := name == "ChoiceUnitWire.h" || name == "ChoiceUnit.h"
 		if got != want {
 			t.Errorf("%s: direct <new> include = %v, want %v; only a header that constructs a payload includes it", name, got, want)
 		}
 	}
-	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( static_cast<void *>( &value.payload ) ) Payload{};") {
-		t.Error("ChoiceWire.h lost selected-payload placement construction")
+	if !strings.Contains(string(files["ChoiceUnitWire.h"]), "::new ( static_cast<void *>( &value.payload ) ) Payload{};") {
+		t.Error("ChoiceUnitWire.h lost selected-payload placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "        ::new ( static_cast<void *>( &payload ) ) Payload{};\n") {
+	if !strings.Contains(string(files["ChoiceUnit.h"]), "        ::new ( static_cast<void *>( &payload ) ) Payload{};\n") {
 		t.Error("Choice.h lost the arm setter's placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "// together (SPEC §4.8, the arm setter): Payload & arm = value.SelectPayload();") {
+	if !strings.Contains(string(files["ChoiceUnit.h"]), "// together (SPEC §4.8, the arm setter): Payload & arm = value.SelectPayload();") {
 		t.Error("Choice.h must use its first payload arm, not its first tag, for the setter example")
 	}
-	if !strings.Contains(string(files["Signals.h"]), "// For example: value.SelectPing();") {
+	if !strings.Contains(string(files["SignalsUnit.h"]), "// For example: value.SelectPing();") {
 		t.Error("Signals.h must demonstrate tag-only application selection through the setter")
 	}
-	for _, name := range []string{"Signals.h", "Empty.h"} {
+	for _, name := range []string{"SignalsUnit.h", "EmptyUnit.h"} {
 		if strings.Contains(string(files[name]), "\n    union\n") {
 			t.Errorf("%s emitted an anonymous union without payload members", name)
 		}
 	}
-	for _, name := range []string{"Choice.h", "Signals.h", "ChoiceWire.h", "SignalsWire.h"} {
+	for _, name := range []string{"ChoiceUnit.h", "SignalsUnit.h", "ChoiceUnitWire.h", "SignalsUnitWire.h"} {
 		for _, absent := range []string{" ping;", " pong;", "value.ping", "value.pong"} {
 			if strings.Contains(string(files[name]), absent) {
 				t.Errorf("%s gives a payload-free arm storage or access: %q", name, absent)
@@ -178,15 +178,15 @@ union Empty {}
 		}
 	}
 	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Max = 3"} {
-		if !strings.Contains(string(files["Choice.h"]), want) {
+		if !strings.Contains(string(files["ChoiceUnit.h"]), want) {
 			t.Errorf("Choice.h lost a tag when omitting payload-free storage: %q", want)
 		}
 	}
 	// a tag enum exports Max and no Count (SPEC §4.2)
-	if strings.Contains(string(files["Choice.h"]), "Count = ") {
+	if strings.Contains(string(files["ChoiceUnit.h"]), "Count = ") {
 		t.Errorf("Choice.h tag enum exports a Count: SPEC §4.2 gives it Max only")
 	}
-	for _, name := range []string{"ChoiceWire.h", "SignalsWire.h"} {
+	for _, name := range []string{"ChoiceUnitWire.h", "SignalsUnitWire.h"} {
 		// Both void arms must remain explicit in both directions. Omitting
 		// a case would reject a legal tag even though no member is needed.
 		for _, arm := range []string{"Ping", "Pong"} {

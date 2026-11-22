@@ -151,10 +151,10 @@ func cNames(u *ir.Unit) error {
 			q := forms.Replace(tm.Form)
 			spelled := pkg.Replace(q)
 			if _, hit := slices.BinarySearch(ns.Runtime, q); hit && len(u.Tables) > 0 {
-				return fmt.Errorf("C qualifies %s %s's name to %s, which the C table runtime also declares; rename %s", kind, n, spelled, n)
+				return fmt.Errorf("the C emitter qualifies %s %s's name to %s, which the C table runtime also declares; rename %s", kind, n, spelled, n)
 			}
 			if prev, dup := owner[spelled]; dup && prev != n {
-				return fmt.Errorf("C qualifies both %s and %s to %s (C has no namespace, and the package is its only qualifier); rename one", prev, n, spelled)
+				return fmt.Errorf("the C emitter qualifies both %s and %s to %s (C has no namespace, and the package is its only qualifier); rename one", prev, n, spelled)
 			}
 			owner[spelled] = n
 		}

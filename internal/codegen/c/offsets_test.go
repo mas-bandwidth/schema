@@ -40,12 +40,12 @@ var signedOffset = regexp.MustCompile(`\(value->[A-Za-z0-9_\[\]]+\) - `)
 // 2^31. The test runs over this corpus AND the committed examples, so a new
 // emission path with the old shape fails here.
 func TestRangedOffsetsSubtractUnsigned(t *testing.T) {
-	u := unitFromSource(t, "Offsets.schema", offsetCorpus)
+	u := unitFromSource(t, "OffsetsUnit.schema", offsetCorpus)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := string(files["OffsetsWire.h"])
+	wire := string(files["OffsetsUnitWire.h"])
 	for _, want := range []string{
 		"serialize_uint64_t offset_value = (serialize_uint64_t) value->floor_bound - (serialize_uint64_t) FLOOR;",
 		"serialize_uint64_t offset_value = (serialize_uint64_t) value->doubled_floor - (serialize_uint64_t) ( -9223372036854775807LL - 1 );",
@@ -64,7 +64,7 @@ func TestRangedOffsetsSubtractUnsigned(t *testing.T) {
 		}
 	}
 
-	all := map[string]string{"OffsetsWire.h": wire}
+	all := map[string]string{"OffsetsUnitWire.h": wire}
 	examples := loadExamplesUnit(t)
 	exampleFiles, err := Generate(examples)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestRangedOffsetsSubtractUnsigned(t *testing.T) {
 // once at the end of a message" holds. A bare `return 0` is legal only right
 // after a runtime or nested read call, which has already latched the stream.
 func TestReadRefusalsLatchTheStream(t *testing.T) {
-	u := unitFromSource(t, "Refuse.schema", `package refusetest
+	u := unitFromSource(t, "RefuseUnit.schema", `package refusetest
 
 const LIMIT = 10
 
@@ -117,7 +117,7 @@ type Refuse {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := string(files["RefuseWire.h"])
+	wire := string(files["RefuseUnitWire.h"])
 	for _, fn := range []string{"schema_read_inner_body_", "schema_read_pick_body_", "schema_read_refuse_body_"} {
 		i := strings.Index(wire, "int "+fn+"( ")
 		if i < 0 {
@@ -161,7 +161,7 @@ type Refuse {
 // never a pre-folded literal (9999ULL against MAX_OBJECTS - 1), and an enum's
 // refusal and write assert both name <ENUM>_MAX.
 func TestReadBoundsAreSymbolic(t *testing.T) {
-	u := unitFromSource(t, "Sym.schema", `package symtest
+	u := unitFromSource(t, "SymUnit.schema", `package symtest
 
 const MAX_OBJECTS = 10000
 const UNITS = 4096
@@ -178,7 +178,7 @@ type Sym {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := string(files["SymWire.h"])
+	wire := string(files["SymUnitWire.h"])
 	for _, want := range []string{
 		"serialize_assert( (serialize_int64_t) value->id >= 0 && (serialize_int64_t) value->id <= MAX_OBJECTS - 1 );",
 		"if ( offset_value > (serialize_uint64_t) ( MAX_OBJECTS - 1 ) )",

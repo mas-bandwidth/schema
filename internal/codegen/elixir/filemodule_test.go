@@ -17,6 +17,21 @@ import (
 // test's temp space.
 func loadUnitFromSrc(t *testing.T, files map[string]string) *ir.Unit {
 	t.Helper()
+	return loadUnitChecked(t, files, check.Unit)
+}
+
+// emitUnitOwnRules emits a unit checked without the other targets' emitter
+// name rules (check.UnitWithoutEmitterRules): a unit only another target
+// refuses by name (a packet declaration named like its file is Java's outer
+// class, so schema check refuses it for every target, SPEC §4.6), whose Elixir
+// emission these tests still pin, as a unit built in memory meets it.
+func emitUnitOwnRules(t *testing.T, files map[string]string) (map[string][]byte, error) {
+	t.Helper()
+	return Generate(loadUnitChecked(t, files, check.UnitWithoutEmitterRules))
+}
+
+func loadUnitChecked(t *testing.T, files map[string]string, checkUnit func([]check.SourceFile) (*ir.Unit, []error)) *ir.Unit {
+	t.Helper()
 	var srcs []check.SourceFile
 	for name, src := range files {
 		base := strings.TrimSuffix(name, ".schema")
@@ -26,7 +41,7 @@ func loadUnitFromSrc(t *testing.T, files map[string]string) *ir.Unit {
 		}
 		srcs = append(srcs, check.SourceFile{Path: name, Name: name, Base: base, Bytes: []byte(src), AST: ast})
 	}
-	u, errs := check.Unit(srcs)
+	u, errs := checkUnit(srcs)
 	if len(errs) != 0 {
 		t.Fatalf("check: %v", errs)
 	}
@@ -65,7 +80,7 @@ const TEN = FIVE * 2
 
 func TestFileModuleYieldsToASameNamedDeclaration(t *testing.T) {
 	t.Parallel()
-	out, err := emitUnit(t, carryCarryFile)
+	out, err := emitUnitOwnRules(t, carryCarryFile)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -214,7 +229,7 @@ func TestFileModuleRefusesATakenBaseFileName(t *testing.T) {
 	t.Parallel()
 	// The file module steps aside to CarryFile, so a declaration that takes
 	// CarryFile is a fresh collision and must still be refused, by name.
-	_, err := emitUnit(t, map[string]string{
+	_, err := emitUnitOwnRules(t, map[string]string{
 		"Carry.schema": `package Armdemo
 
 type Leaf { v int32 }

@@ -565,6 +565,8 @@
   "{p}_table_skip_utf8",
   "{p}_table_skip_value",
   "{p}_table_skip_whole",
+  "{p}_table_stored_double_bits",
+  "{p}_table_stored_float_bits",
   "{p}_table_string_emplace",
   "{p}_table_type_info_t",
   "{p}_table_union_arm_info_t",

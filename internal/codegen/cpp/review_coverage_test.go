@@ -47,7 +47,7 @@ type BetaInner {
 	// file after the check
 	collide := unitFromSources(t, map[string]string{
 		"Probe.schema": `package t
-type Probe {
+type Prober {
     x int32
 }
 `,
@@ -136,7 +136,7 @@ type Padding {
 func TestUntakenBranchZeroesFloatsAndUnions(t *testing.T) {
 	t.Parallel()
 	u := unitFromSources(t, map[string]string{
-		"Guarded.schema": `package t
+		"GuardedUnit.schema": `package t
 type Ring {
     radius int32
 }
@@ -158,10 +158,10 @@ type Guarded {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := string(files["GuardedWire.h"])
+	w := string(files["GuardedUnitWire.h"])
 	readAt := strings.Index(w, "bool ReadGuardedBody(")
 	if readAt < 0 {
-		t.Fatal("GuardedWire.h carries no ReadGuardedBody")
+		t.Fatal("GuardedUnitWire.h carries no ReadGuardedBody")
 	}
 	read := w[readAt:]
 	for _, want := range []string{
@@ -189,7 +189,7 @@ type Guarded {
 func TestRangeShapesPastInt32(t *testing.T) {
 	t.Parallel()
 	u := unitFromSources(t, map[string]string{
-		"Ranges.schema": `package t
+		"RangesUnit.schema": `package t
 type Ranges {
     pinned64 int64  = 5000000000 | min = 5000000000, max = 5000000000
     capped   uint64 | min = 0, max = 10000000000000000000
@@ -201,10 +201,10 @@ type Ranges {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := string(files["RangesWire.h"])
+	w := string(files["RangesUnitWire.h"])
 	writeAt, readAt := strings.Index(w, "bool WriteRanges("), strings.Index(w, "bool ReadRangesBody(")
 	if writeAt < 0 || readAt < writeAt {
-		t.Fatal("RangesWire.h does not carry WriteRanges before ReadRangesBody")
+		t.Fatal("RangesUnitWire.h does not carry WriteRanges before ReadRangesBody")
 	}
 	write := w[writeAt:readAt]
 	read := w[readAt:]
@@ -250,7 +250,7 @@ func TestCStringLitEscapes(t *testing.T) {
 		}
 	}
 	u := unitFromSources(t, map[string]string{
-		"Text.schema": `package t
+		"TextUnit.schema": `package t
 type Text {
     path string(8) = "a\b"
 }
@@ -260,7 +260,7 @@ type Text {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `char path[8 + 1] = "a\\b";`; !strings.Contains(string(files["Text.h"]), want) {
-		t.Errorf("Text.h: want %s\n%s", want, files["Text.h"])
+	if want := `char path[8 + 1] = "a\\b";`; !strings.Contains(string(files["TextUnit.h"]), want) {
+		t.Errorf("TextUnit.h: want %s\n%s", want, files["TextUnit.h"])
 	}
 }

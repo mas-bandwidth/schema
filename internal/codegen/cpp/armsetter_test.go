@@ -79,18 +79,18 @@ func TestUnionArmSetterSetsTagAndArm(t *testing.T) {
 	// A payload-free arm: ArmDefaults.schema has none (adding one would move
 	// its wire in all nine targets), so the shape comes from a unit beside it.
 	free, err := Generate(unitFromSources(t, map[string]string{
-		"Payload.schema": "package t\ntype Payload {\n    value int32 = -1\n}\n",
-		"Choice.schema":  "package t\nunion Choice {\n    ping\n    payload Payload\n    pong\n}\n",
-		"Signals.schema": "package t\nunion Signals {\n    ping\n    pong\n}\n",
+		"PayloadUnit.schema": "package t\ntype Payload {\n    value int32 = -1\n}\n",
+		"ChoiceUnit.schema":  "package t\nunion Choice {\n    ping\n    payload Payload\n    pong\n}\n",
+		"SignalsUnit.schema": "package t\nunion Signals {\n    ping\n    pong\n}\n",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ file, union, arm string }{
-		{"Choice.h", "Choice", "Ping"},
-		{"Choice.h", "Choice", "Pong"},
-		{"Signals.h", "Signals", "Ping"},
-		{"Signals.h", "Signals", "Pong"},
+		{"ChoiceUnit.h", "Choice", "Ping"},
+		{"ChoiceUnit.h", "Choice", "Pong"},
+		{"SignalsUnit.h", "Signals", "Ping"},
+		{"SignalsUnit.h", "Signals", "Pong"},
 	} {
 		want := "    void Select" + c.arm + "() // payload-free: the tag is the whole selection (SPEC §4.8)\n" +
 			"    {\n" +
@@ -100,10 +100,10 @@ func TestUnionArmSetterSetsTagAndArm(t *testing.T) {
 			t.Errorf("%s: %s lacks the payload-free setter that sets the tag alone; want\n%s\ngot\n%s", c.file, c.union, want, free[c.file])
 		}
 	}
-	if !strings.Contains(string(free["Choice.h"]), "Payload & SelectPayload()") {
+	if !strings.Contains(string(free["ChoiceUnit.h"]), "Payload & SelectPayload()") {
 		t.Error("Choice.h: the payload arm beside payload-free arms lost its setter")
 	}
-	if strings.Contains(string(free["Signals.h"]), "#include <new>") {
+	if strings.Contains(string(free["SignalsUnit.h"]), "#include <new>") {
 		t.Error("Signals.h: a union with no payload arm constructs nothing and must not include <new>")
 	}
 }

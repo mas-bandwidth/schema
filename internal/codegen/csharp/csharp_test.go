@@ -78,7 +78,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	// flatWorthwhile, re-emitted through the per-field path — the one
 	// fallback that RUNS today, so this case is the live tripwire (the
 	// sabotage control doubles it).
-	files = generateCs(t, "Solo", "package t\n\ntype Solo { x bits(3) }\n")
+	files = generateCs(t, "SoloUnit", "package t\n\ntype Solo { x bits(3) }\n")
 	if got := countAcross(files, "SerializeBits(ref value.X, 3)"); got != 2 {
 		t.Errorf("bits(3) fallback emitted %d per-field serializes, want 2 (one write, one read) — "+
 			"a fallback over pieces re-emits per piece and doubles the wire", got)

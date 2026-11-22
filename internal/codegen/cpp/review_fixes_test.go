@@ -99,7 +99,7 @@ type Holder {
 	}
 
 	// a file with no nested type carries no object macros
-	_, flat := generateOne(t, "Flat", "package t\ntype Flat {\n    v uint8\n}\n")
+	_, flat := generateOne(t, "FlatUnit", "package t\ntype Flat {\n    v uint8\n}\n")
 	if strings.Contains(flat, "SCHEMA_OBJECT_MACROS_DEFINED") {
 		t.Error("FlatWire.h: a file with no nested type must not define the object macros")
 	}
@@ -111,7 +111,7 @@ type Holder {
 // assert; the read folds it (GCC -Wtype-limits) and names it in a comment.
 func TestRangeAssertsDropTautologies(t *testing.T) {
 	t.Parallel()
-	_, w := generateOne(t, "Taut", `package t
+	_, w := generateOne(t, "TautUnit", `package t
 enum Kind {
     A
     B
@@ -157,7 +157,7 @@ type Taut {
 // global namespace, as serialize.h and the table emitter do.
 func TestHeadersUseTheRuntimesCSpellings(t *testing.T) {
 	t.Parallel()
-	d, w := generateOne(t, "Text", "package t\ntype Text {\n    on bool\n    if on\n    {\n        s string(8)\n    }\n}\n")
+	d, w := generateOne(t, "TextUnit", "package t\ntype Text {\n    on bool\n    if on\n    {\n        s string(8)\n    }\n}\n")
 	for name, h := range map[string]string{"Text.h": d, "TextWire.h": w} {
 		if !strings.Contains(h, "#include <stdint.h>\n") {
 			t.Errorf("%s does not include <stdint.h>", name)
