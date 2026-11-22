@@ -1254,6 +1254,9 @@ local surface = arg[2]
 
 if surface == "list" then
   for _, name in ipairs(SURFACE_ORDER) do io.write(name .. "\n") end
+  -- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+  -- key is generated into build/conformance-lua by make/lua.mk
+  io.write("unit shapes\n")
   os.exit(0)
 end
 

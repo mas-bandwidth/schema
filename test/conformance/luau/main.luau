@@ -48,6 +48,9 @@ if surface == "list" then
 	for _, name in SURFACES do
 		print(name)
 	end
+	-- the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
+	-- key is generated into build/conformance-luau by make/luau.mk
+	print("unit shapes")
 	return
 end
 

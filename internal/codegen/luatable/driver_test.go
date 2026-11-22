@@ -28,7 +28,27 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the lua driver's list failed: %v", err)
 	}
-	lines := strings.Fields(string(out))
+	// a line "unit <key>" names an opt-in unit the leg answers (MANIFEST.txt
+	// `opt-in`, test/conformance/harness/optin.go); every other line is a surface
+	var lines []string
+	units := map[string]bool{}
+	optIn := optInUnits(t, root)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if key, ok := strings.CutPrefix(line, "unit "); ok {
+			if !optIn[key] {
+				t.Errorf("the lua driver lists unit %q, which MANIFEST.txt does not mark opt-in", key)
+			}
+			units[key] = true
+			continue
+		}
+		lines = append(lines, line)
+	}
+	for key := range optIn {
+		if !units[key] {
+			t.Errorf("the lua driver's list names no `unit %s`: that opt-in unit's rows count absent on the leg", key)
+		}
+	}
 	seen := map[string]bool{}
 	for _, s := range lines {
 		if seen[s] {
@@ -53,6 +73,7 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 var conformanceSurface = map[string]bool{
 	"wire":                  true,
 	"message":               true,
+	"message-prior":         true,
 	"report":                true,
 	"framing":               true,
 	"retain":                true,
@@ -93,4 +114,24 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// optInUnits is every unit testdata/conformance/tables/MANIFEST.txt marks
+// `opt-in`: a leg answers its rows only when its list names it.
+func optInUnits(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	units := map[string]bool{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[0] == "opt-in" {
+			units[f[1]] = true
+		}
+	}
+	if len(units) == 0 {
+		t.Fatal("MANIFEST.txt marks no unit opt-in")
+	}
+	return units
 }
