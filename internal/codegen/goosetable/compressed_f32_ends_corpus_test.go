@@ -157,14 +157,17 @@ func TestGooseCompressedF32EndsCorpus(t *testing.T) {
 	rows := gooseF32EndsRows(t, corpus)
 	_, files := cookUnitFiles(t, []string{filepath.Join(corpus, "Probe.schema")}, nil)
 	formOf := map[string]string{"V": "variable", "F": "fixed"}
-	for _, stem := range []string{"ends", "past-max", "past-min"} {
-		for _, ext := range []string{".json", ".variable.bin", ".fixed.bin"} {
-			b, err := os.ReadFile(filepath.Join(corpus, stem+ext))
-			if err != nil {
-				t.Fatal(err)
-			}
-			files[stem+ext] = b
+	// Every file a row names goes into the run, read off cases.tsv.
+	for _, r := range rows {
+		name := r.input + ".json"
+		if r.op == "read" && r.form != "json" {
+			name = r.input + "." + r.form + ".bin"
 		}
+		b, err := os.ReadFile(filepath.Join(corpus, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[name] = b
 	}
 	var b strings.Builder
 	b.WriteString(gooseF32EndsMain)

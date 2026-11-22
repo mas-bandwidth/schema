@@ -108,14 +108,17 @@ func TestLobsterCompressedF32EndsCorpus(t *testing.T) {
 		t.Fatalf("the surface refuses the corpus unit: %v", err)
 	}
 	inputs := map[string][]byte{}
-	for _, stem := range []string{"ends", "past-max", "past-min"} {
-		for _, ext := range []string{".json", ".variable.bin", ".fixed.bin"} {
-			b, err := os.ReadFile(filepath.Join(corpus, stem+ext))
-			if err != nil {
-				t.Fatal(err)
-			}
-			inputs[stem+ext] = b
+	// Every file a row names goes into the run, read off cases.tsv.
+	for _, r := range rows {
+		name := r.input + ".json"
+		if r.op == "read" && r.form != "json" {
+			name = r.input + "." + r.form + ".bin"
 		}
+		b, err := os.ReadFile(filepath.Join(corpus, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[name] = b
 	}
 	formOf := map[string]string{"V": "variable", "F": "fixed"}
 	var b strings.Builder
