@@ -1,0 +1,30 @@
+name: fixture
+on: push
+jobs:
+  go-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: [ unit-rest, slow-gate-codegen-0 ]
+    steps:
+      - name: every slowtest gate is run by somebody, shard 0
+        if: matrix.group == 'slow-gate-codegen-0'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=0
+
+      # F-235 as found: only the transcripts are uploaded, the table is not
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: go-test-json-${{ matrix.group }}
+          path: ${{ runner.temp }}/go-test-json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: slow-gate-coverage-lint
+          path: build/slowgate/coverage.tsv
+          if-no-files-found: error

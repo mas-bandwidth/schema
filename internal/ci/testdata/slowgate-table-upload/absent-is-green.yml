@@ -1,0 +1,21 @@
+name: fixture
+on: push
+jobs:
+  go-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: [ unit-rest, slow-gate-codegen-0 ]
+    steps:
+      - name: every slowtest gate is run by somebody, shard 0
+        if: matrix.group == 'slow-gate-codegen-0'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=0
+
+      # a row that wrote no table uploads nothing and stays green
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && startsWith(matrix.group, 'slow-gate-')
+        with:
+          name: slow-gate-coverage-${{ matrix.group }}
+          path: build/slowgate/coverage.tsv
+          if-no-files-found: ignore
+          retention-days: 7

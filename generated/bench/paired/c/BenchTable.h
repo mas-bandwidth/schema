@@ -5688,8 +5688,8 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_messages(bench_mixed_entity_t *
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6026,8 +6026,8 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_messages(bench_mixed_stat_t * val
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6553,8 +6553,8 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_messages(bench_mixed_hit_eve
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -6919,8 +6919,8 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_messages(bench_mixed_chat_e
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -7285,8 +7285,8 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages(bench_mixed_pick
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10107,8 +10107,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_messages(bench_bench_mixed_t * v
  *count=0;
  bodies=bench_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }

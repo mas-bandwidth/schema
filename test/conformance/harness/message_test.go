@@ -581,10 +581,12 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 // TestTheFiveAnswers holds the batch surface's stated answers (§3.3): M above
 // 256 on the write side refuses by name and writes nothing, M above the
 // caller's capacity on the read side refuses by name with the returned count
-// reading the wire's M and nothing decoded, and damage anywhere in a batch
-// delivers no body (§4). Red if a leg writes consecutive batches, decodes a
-// body before refusing on capacity, leaves the returned count at the caller's
-// capacity, or delivers any body of the damaged batch.
+// reading 0 ("A refused batch returns a count of `0`, as every refused batch
+// does; a caller that needs room reads the wire's `M` itself") and nothing
+// decoded, the storage exactly as the caller handed it in, and damage anywhere
+// in a batch delivers no body (§4). Red if a leg writes consecutive batches,
+// decodes a body before refusing on capacity, reports any count but 0 for a
+// refused batch, or delivers any body of the damaged batch.
 func TestTheFiveAnswers(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -615,6 +617,7 @@ func TestTheFiveAnswers(t *testing.T) {
 		eight := make([]*tabletext.Instance, 8)
 		for i := range eight {
 			eight[i] = model.New(login)
+			setU64(t, eight[i], "client_build", 17)
 		}
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, eight, wide, vocabulary, &report)
@@ -625,11 +628,16 @@ func TestTheFiveAnswers(t *testing.T) {
 		if !report.Refused || report.Unknown != 0 || report.Widened != 0 {
 			t.Errorf("256 into 8: the refusal moved a counter: %+v", report)
 		}
-		if count != 256 {
-			t.Errorf("256 into 8: the returned count reads %d, not the wire's 256", count)
+		if count != 0 {
+			t.Errorf("256 into 8: a refused batch returns a count of 0 (§3.3), and the returned count reads %d", count)
 		}
-		if instU64(t, eight[0], "client_build") != 0 {
-			t.Error("256 into 8: a body was decoded before the refusal")
+		if n, err := tablewire.MessageCount(wide, vocabulary); err != nil || n != 256 {
+			t.Errorf("256 into 8: MessageCount reads %d (%v), not the wire's 256 a caller sizes its storage from", n, err)
+		}
+		for i := range eight {
+			if got := instU64(t, eight[i], "client_build"); got != 17 {
+				t.Errorf("256 into 8: slot %d holds %d after the refusal, not the 17 it held: the storage was touched", i, got)
+			}
 		}
 		// and the recovery is one call with capacity at or above it
 		room := make([]*tabletext.Instance, 256)

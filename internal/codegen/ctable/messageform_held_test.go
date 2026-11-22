@@ -236,9 +236,9 @@ int main(void)
 
 // "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `MeasureMessages`
 // and `SaveMessages` both refuse and return `-1`" and "`M` ABOVE THE CALLER'S
-// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
-// returned count to the wire's `M` before it returns the refusal."
-// (docs/SPEC-TABLES.md §3.3).
+// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... A refused batch returns a
+// count of `0`" (docs/SPEC-TABLES.md §3.3). The Go-written fixture is
+// TestCMessageLoadCapacityFixture's.
 const cMsgBatchTooLargeProbe = cMsgShared + `
 int main(void)
 {
@@ -259,12 +259,12 @@ int main(void)
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
     uint8_t wire[] = { 2, 1, 0 }; /* count minus one is 1: M is two */
-    Root storage[1]; root_reset(storage);
+    Root storage[1]; root_reset(storage); storage[0].c = 17;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 2 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
-    CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 0);
+    CHECK(count == 0 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
+    CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 17);
     return 0;
 }
 `
