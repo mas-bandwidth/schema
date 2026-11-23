@@ -9080,8 +9080,8 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
 		}
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-			// a counted [A..B] is born with A elements and elides there (SPEC-TABLES §2.3)
-			fmt.Fprintf(&b, ", min_count: %d", f.ArrayMin)
+			// A counted [A..B] is born with A elements and elides there
+			// (SPEC-TABLES §2.3). writeCookLayout emits the shared minimum.
 			elem := *f
 			elem.Array = ir.ArrayNone
 			elem.ArrayBound = 0

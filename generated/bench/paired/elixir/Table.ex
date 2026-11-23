@@ -241,7 +241,6 @@ defmodule Bench.Table do
           t: :list,
           elem_kind: 13,
           array_bound: 8,
-          min_count: 1,
           elem_default: %{},
           elem: "MixedEntity",
           elem_size: 64,
