@@ -33,6 +33,7 @@ package namebuild
 import (
 	"bufio"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -169,9 +170,11 @@ func put(dir, name, body string) error {
 }
 
 func glob(dir, pat string) []string {
-	m, _ := filepath.Glob(filepath.Join(dir, pat))
-	sort.Strings(m)
-	return m
+	matches, _ := fs.Glob(os.DirFS(dir), pat) // errdiscard: callers supply valid, fixed filename patterns; fs.Glob only returns ErrBadPattern.
+	for i, name := range matches {
+		matches[i] = filepath.Join(dir, name)
+	}
+	return matches
 }
 
 func names(paths []string) []string {
