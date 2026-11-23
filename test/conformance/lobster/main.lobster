@@ -42,6 +42,13 @@ let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]
 
+// The line that opens the answers. lobster prints its compiler warnings and
+// errors on stdout, beside the answers; the driver sends everything before this
+// line to stderr and refuses any later line that is not an answer
+// (test/conformance/lobster/driver, test/conformance/answer-lines.pl).
+let answer_marker = "%%answers-begin%%"
+print(answer_marker)
+
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
 assert argument_count >= 4
