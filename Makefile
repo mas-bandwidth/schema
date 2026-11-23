@@ -8207,7 +8207,6 @@ pins-conformance: bin/schema build/conformance-harness
 
 
 define tables_run_arm
-	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	set -eu; \
 	tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
@@ -8238,7 +8237,7 @@ define tables_run_arm
 		echo "ZERO-COST GATE FAILED: $(2) expanded to no generate commands"; \
 		exit 1; \
 	fi; \
-	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if ! procs=$$(nproc 2>/dev/null); then if ! procs=$$(sysctl -n hw.ncpu 2>/dev/null); then procs=4; fi; fi; \
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
 	slot=0; pids=''; fail=0; \
 	for b in "$$tmp"/b.*; do \
