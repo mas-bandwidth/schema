@@ -13,9 +13,9 @@ import (
 // fire, so a check that misses one of the body's counts would let an
 // out-of-range value through uncounted. This pins, over every committed C++
 // table golden, that each check (1) stores nothing — no assignment but its own
-// `bad` — (2) carries exactly one `bad |=` per count site of its body (a
-// `oor_count +=`, a `oor_count++` or a `damaged++`), and that (3) every root calls
-// its body only behind its check.
+// `bad` — (2) carries exactly one `bad |=` per counted, delegated, or
+// zero-normalizing clamp site, and (3) every root calls its body only behind
+// its check.
 func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	t.Parallel()
 	files, err := filepath.Glob(filepath.Join("..", "..", "..", "testdata", "golden", "tables", "*", "*Table.h"))
@@ -25,6 +25,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	check := regexp.MustCompile(`(?s)TABLE_FIXED_INLINE bool (\w+)FixedInRange\( const \w+ & value \)\n\{\n(.*?)\n\}\n`)
 	body := regexp.MustCompile(`(?s)\ninline void (\w+)FixedClampBody\( \w+ & value, [^)]*\)\n\{\n(.*?)\n\}\n`)
 	root := regexp.MustCompile(`(?m)^    (.*?)(\w+)FixedClampBody\( value, oor_count, damaged \);`)
+	zeroStore := regexp.MustCompile(`(?m)^\s*if \( !\( (.+?) < (0\.0f?) \) && !\( (.+?) > (0\.0f?) \) \) \{ (.+?) = (0\.0f?); \}$`)
 	store := regexp.MustCompile(`[^=!<>|&+\-*/]=[^=]`)
 	types := 0
 	roots := 0
@@ -48,9 +49,25 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 			types++
 			counts := strings.Count(b, "oor_count +=") + strings.Count(b, "oor_count++") + strings.Count(b, "damaged++") +
 				strings.Count(b, "FixedClampBody(")
+			for _, m := range zeroStore.FindAllStringSubmatch(b, -1) {
+				counts++
+				expr, zero := m[1], m[2]
+				if m[3] != expr || m[4] != zero || m[5] != expr || m[6] != zero {
+					t.Errorf("%s: %sFixedClampBody has inconsistent zero normalization: %s", f, name, strings.TrimSpace(m[0]))
+					continue
+				}
+				bits, sign := "table_double_to_bits", "0x8000000000000000ull"
+				if zero == "0.0f" {
+					bits, sign = "table_float_to_bits", "0x80000000u"
+				}
+				want := "bad |= (int) ( " + bits + "( " + expr + " ) == " + sign + " );"
+				if !strings.Contains(c, want) {
+					t.Errorf("%s: %sFixedInRange has no negative-zero check for %s", f, name, expr)
+				}
+			}
 			ors := strings.Count(c, "bad |=")
 			if counts != ors {
-				t.Errorf("%s: %s: the body has %d count sites and the check %d `bad |=`", f, name, counts, ors)
+				t.Errorf("%s: %s: the body has %d clamp sites and the check %d `bad |=`", f, name, counts, ors)
 			}
 			for line := range strings.SplitSeq(c, "\n") {
 				l := strings.TrimSpace(line)
