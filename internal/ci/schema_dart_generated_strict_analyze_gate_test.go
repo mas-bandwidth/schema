@@ -151,7 +151,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"schema-dart-generated-strict-analyze-gate-all DART=dart",
 		"workflow_dispatch:",
 		"schedule:",
-		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
+		"dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b",
 		"sdk: 3.13.2",
 		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 	} {

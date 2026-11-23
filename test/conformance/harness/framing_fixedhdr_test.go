@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
+	"runtime"
 )
 
 // THE FIXED-FORM HEADER AND COUNT VECTORS (docs/SPEC-TABLES.md §3.4, the load
@@ -13,7 +15,8 @@ import (
 // array's count and a text's length are read SIGNED (below 0 or above the
 // bound refuses), and a non-zero byte in a dead slot is damage.
 func init() {
-	full, err := os.ReadFile("../../../testdata/conformance/tables/wire/fixedevo_v3_full.bin")
+	_, selfFile, _, _ := runtime.Caller(0)
+	full, err := os.ReadFile(filepath.Join(filepath.Dir(selfFile), "../../../testdata/conformance/tables/wire/fixedevo_v3_full.bin"))
 	if err != nil {
 		panic(err)
 	}
