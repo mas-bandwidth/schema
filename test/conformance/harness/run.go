@@ -941,13 +941,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			close(jobs)
 			var wg sync.WaitGroup
 			for range min(workers, len(active)) {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					for sr := range jobs {
 						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
 					}
-				}()
+				})
 			}
 			wg.Wait()
 		}
@@ -1644,12 +1642,20 @@ func nonProtocolLine(line string) error {
 }
 
 // parseSurfaceList reads a driver's `list` output strictly: every non-blank
-// line is a surface name, or the whole list is refused naming the line.
+// line is a surface name or an opt-in unit declaration (`unit <key>`, optin.go),
+// or the whole list is refused naming the line.
 func parseSurfaceList(stdout string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for line := range strings.SplitSeq(stdout, "\n") {
 		s := strings.TrimSpace(line)
 		if s == "" {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(s, "unit "); ok {
+			if !surfaceName.MatchString(rest) {
+				return nil, nonProtocolLine(s)
+			}
+			out[s] = true
 			continue
 		}
 		if !surfaceName.MatchString(s) {
@@ -1689,7 +1695,12 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 	}
 	out := map[string]bool{}
 	var unknown, retired []string
+	surfaceCount := 0
 	for s := range parsed {
+		if strings.HasPrefix(s, "unit ") {
+			out[s] = true
+			continue
+		}
 		if slices.Contains(retiredSurfaces, s) {
 			retired = append(retired, s)
 			continue
@@ -1699,6 +1710,7 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 			continue
 		}
 		out[s] = true
+		surfaceCount++
 	}
 	sort.Strings(unknown)
 	sort.Strings(retired)
@@ -1706,7 +1718,7 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 		return nil, nil, fmt.Errorf("`%s` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
 			strings.Join(argv, " "), len(unknown), strings.Join(unknown, ", "), strings.Join(surfaces, ","))
 	}
-	if len(out) == 0 {
+	if surfaceCount == 0 {
 		return nil, nil, fmt.Errorf("`%s` exited 0 and named no surface: a driver that answers nothing is not a pass",
 			strings.Join(argv, " "))
 	}

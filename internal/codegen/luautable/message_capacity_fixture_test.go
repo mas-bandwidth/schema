@@ -25,6 +25,11 @@ import (
 // owes both bodies, and saving them reproduces the fixture. A caller's
 // capacity is a resource limit (§6.5), so this row runs here, in the leg's own
 // tests, never in the shared suites.
+//
+// EVERY REFUSAL ANSWERS THE SAME SHAPE (ruling R4): the fixture with its form
+// byte changed (a framing refusal) and with its last byte dropped (a body or
+// close refusal) each answer 0 and an empty list, from the walk read and the
+// plain read alike; the walk once answered false for newer_form.
 func TestLuauMessageLoadCapacityFixture(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile(filepath.Join("testdata", "batch_capacity_two.bin"))
@@ -69,6 +74,15 @@ local rep2 = { malformed = false, verdict = 0, reason = "", unknown = 0 }
 local m, two = M.LoadMessages(v, "LoginRequest", inputs.wire, 2, rep2)
 local out = M.SaveMessages(v, "LoginRequest", two, { malformed = false, verdict = 0, reason = "", unknown = 0 })
 print("two " .. tostring(m) .. " " .. tostring(#two) .. " " .. (if out ~= nil then hex(out) else "nil"))
+local function shape(n, b) return tostring(n) .. ":" .. type(b) .. ":" .. (if type(b) == "table" then tostring(#b) else "-") end
+local framing = buffer.create(buffer.len(inputs.wire))
+buffer.copy(framing, 0, inputs.wire)
+buffer.writeu8(framing, 0, 3)
+local body = buffer.create(buffer.len(inputs.wire) - 1)
+buffer.copy(body, 0, inputs.wire, 0, buffer.len(body))
+local fresh = { malformed = false, verdict = 0, reason = "", unknown = 0 }
+print("walk framing " .. shape(M.loadMessagesWalk(v, "LoginRequest", framing, 2, table.clone(fresh))) .. " body " .. shape(M.loadMessagesWalk(v, "LoginRequest", body, 2, table.clone(fresh))))
+print("plain framing " .. shape(M.LoadMessages(v, "LoginRequest", framing, 2, table.clone(fresh))) .. " body " .. shape(M.LoadMessages(v, "LoginRequest", body, 2, table.clone(fresh))))
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
@@ -78,7 +92,7 @@ print("two " .. tostring(m) .. " " .. tostring(#two) .. " " .. (if out ~= nil th
 		t.Fatal(err)
 	}
 	out := strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", map[string][]byte{"conn": conn, "wire": fixture})))
-	want := "one 0 0 batch_too_large\ntwo 2 2 " + hex.EncodeToString(fixture)
+	want := "one 0 0 batch_too_large\ntwo 2 2 " + hex.EncodeToString(fixture) + "\nwalk framing 0:table:0 body 0:table:0\nplain framing 0:table:0 body 0:table:0"
 	if out != want {
 		t.Fatalf("capacity fixture:\n got  %s\n want %s", out, want)
 	}

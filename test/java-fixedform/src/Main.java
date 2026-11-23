@@ -766,8 +766,8 @@ public final class Main {
     //
     // Each probe runs the reader on the EXACT input, asserts the report's two
     // halves jointly (the named answer and nothing else claiming a read), and
-    // asserts the destination was NOT written: it is pre-poisoned first and
-    // compared unchanged after the refusal.
+    // asserts (ruling R4) the destination is back at its declared default: it
+    // is pre-poisoned first and compared with a fresh value after the refusal.
     static void expectHeaderOutcome(byte[] file, tblfx1.TableFixed.Reason want,
                                     boolean wantMalformed, String what) {
         final tblfx1.FxRootFixed.Value v = new tblfx1.FxRootFixed.Value();
@@ -791,8 +791,9 @@ public final class Main {
         check(r.unknown == 0 && r.widened == 0
                         && r.layoutHash == 0,
                 what + ": no counter claims a read happened");
-        check(v.keep == 0x5EED && v.nested.a == 0x1234 && v.nested.b == 0x4321,
-                what + ": the destination record was not written");
+        final tblfx1.FxRootFixed.Value d = new tblfx1.FxRootFixed.Value();
+        check(v.keep == d.keep && v.nested.a == d.nested.a && v.nested.b == d.nested.b,
+                what + ": the destination record is back at its declared default (R4)");
     }
 
     static void formHeaderProbes(String dir) {

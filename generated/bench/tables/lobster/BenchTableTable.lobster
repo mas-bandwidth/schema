@@ -3244,6 +3244,12 @@ def TableEntityFixedSaveChecked(values·:[TableEntity], buffer·:string) -> int,
     return need·, out·, ""
 
 def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TableEntityFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TableEntityReset(refused·)
+    return n·
+
+def TableEntityFixedLoadWalk(values·:[TableEntity], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -3324,12 +3330,10 @@ def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schem
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(51), TableEntityFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TableEntityReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TableEntityFixedScatter(img·, 0, values·[k·])
         if not TableEntityFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableEntityReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·
@@ -3414,6 +3418,12 @@ def TableStatFixedSaveChecked(values·:[TableStat], buffer·:string) -> int, str
     return need·, out·, ""
 
 def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TableStatFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TableStatReset(refused·)
+    return n·
+
+def TableStatFixedLoadWalk(values·:[TableStat], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -3494,12 +3504,10 @@ def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableStatFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TableStatReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TableStatFixedScatter(img·, 0, values·[k·])
         if not TableStatFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableStatReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·
@@ -3600,6 +3608,12 @@ def TableHitEventFixedSaveChecked(values·:[TableHitEvent], buffer·:string) -> 
     return need·, out·, ""
 
 def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TableHitEventFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TableHitEventReset(refused·)
+    return n·
+
+def TableHitEventFixedLoadWalk(values·:[TableHitEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -3680,12 +3694,10 @@ def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[s
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(13), TableHitEventFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TableHitEventReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TableHitEventFixedScatter(img·, 0, values·[k·])
         if not TableHitEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableHitEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·
@@ -3770,6 +3782,12 @@ def TableChatEventFixedSaveChecked(values·:[TableChatEvent], buffer·:string) -
     return need·, out·, ""
 
 def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TableChatEventFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TableChatEventReset(refused·)
+    return n·
+
+def TableChatEventFixedLoadWalk(values·:[TableChatEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -3850,12 +3868,10 @@ def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableChatEventFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TableChatEventReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TableChatEventFixedScatter(img·, 0, values·[k·])
         if not TableChatEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableChatEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·
@@ -3940,6 +3956,12 @@ def TablePickupEventFixedSaveChecked(values·:[TablePickupEvent], buffer·:strin
     return need·, out·, ""
 
 def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TablePickupEventFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TablePickupEventReset(refused·)
+    return n·
+
+def TablePickupEventFixedLoadWalk(values·:[TablePickupEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -4020,12 +4042,10 @@ def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, pla
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TablePickupEventFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TablePickupEventReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TablePickupEventFixedScatter(img·, 0, values·[k·])
         if not TablePickupEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TablePickupEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·
@@ -4506,6 +4526,12 @@ def TableMixedFixedSaveChecked(values·:[TableMixed], buffer·:string) -> int, s
     return need·, out·, ""
 
 def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
+    let n· = TableMixedFixedLoadWalk(values·, data_in·, plan·, report_in·)
+    if n· < 0:
+        for(values·) refused·: TableMixedReset(refused·)
+    return n·
+
+def TableMixedFixedLoadWalk(values·:[TableMixed], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
     let report· = if report_in·: report_in· else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report·)
     let data· = data_in·
@@ -4586,16 +4612,13 @@ def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_
         var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(1224), TableMixedFixedResetImage, holes·)
         let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
         if why· != "":
-            for(values·) failed·: TableMixedReset(failed·)
             return schema_rt.fixed_refuse(report·, why·)
         img· = img2·
         TableMixedFixedScatter(img·, 0, values·[k·])
         let nf· = TableMixedFixedFiniteBody(values·[k·])
         if nf· != "":
-            for(values·) failed·: TableMixedReset(failed·)
             return schema_rt.fixed_refuse_non_finite(report·, nf·)
         if not TableMixedFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableMixedReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
     report·.kind_mismatch += census_kind·

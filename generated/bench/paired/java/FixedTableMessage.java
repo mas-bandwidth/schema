@@ -219,9 +219,26 @@ public final class FixedTableMessage {
             TableVocabulary.Report report) {
         if (report == null) {
             report = new TableVocabulary.Report();
-        } else {
-            report.zero();
         }
+        int n = loadMessagesWalk(values, capacity, vocab, data, report);
+        if (n == 0 && values != null) {
+            int given = java.lang.Math.max(0, java.lang.Math.min(capacity, values.length));
+            for (int j = 0; j < given; j++) {
+                if (values[j] != null) {
+                    reset(values[j]);
+                }
+            }
+        }
+        return n;
+    }
+
+    private static int loadMessagesWalk(
+            FixedTableFixed.Value[] values,
+            int capacity,
+            TableVocabulary vocab,
+            byte[] data,
+            TableVocabulary.Report report) {
+        report.zero();
         if (data == null || data.length == 0) {
             report.damaged = true;
             return 0;
@@ -254,24 +271,15 @@ public final class FixedTableMessage {
             }
             boolean read = loadMessageBody(r, values[i]);
             if (report.refused) {
-                for (int j = 0; j <= i; j++) {
-                    reset(values[j]);
-                }
                 return 0;
             }
             if (!read || report.damaged) {
                 report.damaged = true;
-                for (int j = 0; j <= i; j++) {
-                    reset(values[j]);
-                }
                 return 0;
             }
         }
         if (!r.align() || r.at != r.totalBits) {
             report.damaged = true;
-            for (int j = 0; j < count; j++) {
-                reset(values[j]);
-            }
             return 0;
         }
         return count;
