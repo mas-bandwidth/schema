@@ -259,3 +259,16 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 	}
 	return out
 }
+
+// RuboCopAll runs the pinned RuboCop, with the generator's rubocop.yml, once
+// over every path in dir: the strict gate's pull-request form lints all its
+// units in one process instead of one process per unit.
+func RuboCopAll(t testing.TB, dir string, paths ...string) (string, error) {
+	t.Helper()
+	root, rerr := RepoRoot()
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml")}, paths...)
+	return runTool(t, dir, RuboCop(t), args...)
+}

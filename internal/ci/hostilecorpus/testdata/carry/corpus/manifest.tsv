@@ -1,0 +1,5 @@
+# THE CARRY CONTROLS' CORPUS (docs/HOSTILE-CORPUS.md; make/checks/hostile-carry-controls.sh).
+# The stock wire-valid case with a digest no reader computes, so every port that reads it
+# disagrees with this manifest by giving its true digest, and a carried finding decides the run.
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+wire-valid	wire	tables/examples	ShipEntry	inputs/wire-valid.bin	the stock wire-valid input; the digest below is no reader's (carry controls, F-079)	accept	-	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
