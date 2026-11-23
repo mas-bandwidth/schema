@@ -16,7 +16,6 @@ from .descriptor import FieldDesc, by_name, new_union_by_name
 from .json_scan import Number, parse
 from .kind_map import _entry_fields
 
-_MAX_DEPTH = 128
 _WIDE_INTEGER_KINDS = frozenset((5, 9, 18, 19))
 _FIXED_KINDS = frozenset(range(20, 30))
 _WIDE_FIXED_KINDS = frozenset((23, 24, 28, 29))
@@ -235,18 +234,18 @@ def _read_integer(field: FieldDesc, token: Any) -> int:
     return value
 
 
-def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int], depth: int = 0) -> Any:
+def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> Any:
     if field.codec in ("string_blob", "bytes_blob"):
         if value is None:
             return None
         blob = copy.copy(field)
         blob.codec = "string" if field.codec == "string_blob" else "bytes"
         blob.size = 0xFFFFFFFF
-        return _read_field(blob, value, graph, unknown, depth)
+        return _read_field(blob, value, graph, unknown)
     if field.codec == "optional":
         if value is None:
             return None
-        return _read_field(_inner(field), value, graph, unknown, depth)
+        return _read_field(_inner(field), value, graph, unknown)
     if field.kind in (10, 11) and field.codec not in ("array", "keyed", "map"):
         return _read_float(field, value)
     if field.codec == "union":
@@ -260,14 +259,14 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
             arm = next((arm for arm in union.descriptor.arms if arm.name == name), None)
             if arm is None:
                 unknown[0] += 1
-                _skip(item, graph, depth + 1)
+                _skip(item, graph)
             elif arm.field is None:
                 if item is not None:
                     raise Refused("kind_mismatch", field.name)
                 union.type = arm.tag
             else:
                 union.type = arm.tag
-                setattr(union, arm.name, _read_field(arm.field, item, graph, unknown, depth + 1))
+                setattr(union, arm.name, _read_field(arm.field, item, graph, unknown))
         return union
     if field.json_flags and field.codec not in ("array", "pointer_array", "union_array", "map", "keyed"):
         if type(value) is not list:
@@ -321,10 +320,10 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
                 if entry_cls is None:
                     raise Refused("unsupported", field.name)
                 container = getattr(entry_cls(), value_field.name)
-                _read_keyed(value_field, item, container, graph, unknown, depth)
+                _read_keyed(value_field, item, container, graph, unknown)
                 mapping[parsed_key] = container
             else:
-                mapping[parsed_key] = _read_field(value_field, item, graph, unknown, depth)
+                mapping[parsed_key] = _read_field(value_field, item, graph, unknown)
         return mapping
     if field.codec in ("array", "pointer_array", "union_array"):
         if type(value) is not list:
@@ -340,14 +339,14 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
             result = []
             spent = 0
             for item in value:
-                text = None if element.codec == "text_optional" and item is None else _read_field(inner, item, graph, unknown, depth + 1)
+                text = None if element.codec == "text_optional" and item is None else _read_field(inner, item, graph, unknown)
                 if text is not None:
                     spent += len(text.encode("utf-8"))
                 if field.text_total and spent > field.text_total:
                     raise Refused("length_over_bound", field.name)
                 result.append(text)
         else:
-            result = [_read_field(element, item, graph, unknown, depth + 1) for item in value]
+            result = [_read_field(element, item, graph, unknown) for item in value]
         if field.array_kind == 1:
             while len(result) < field.bound:
                 if element.codec == "table":
@@ -375,15 +374,13 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
     if field.codec in ("pointer", "table"):
         if field.codec == "pointer" and value is None:
             return None
-        if depth + 1 > _MAX_DEPTH:
-            raise Refused("malformed")
         cls = by_name(field.target)
         if cls is None:
             raise Refused("kind_mismatch", field.name)
         if cls.descriptor.json_array and field.codec == "table":
             obj = cls()
             inner = obj.descriptor.fields[0]
-            setattr(obj, inner.name, _read_field(inner, value, graph, unknown, depth + 1))
+            setattr(obj, inner.name, _read_field(inner, value, graph, unknown))
             return obj
         if type(value) is not dict:
             raise Refused("kind_mismatch", field.name)
@@ -405,11 +402,11 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
                 raise Refused("malformed")
             obj = cls()
             graph[number] = (obj, True)
-            _fill(obj, {k: v for k, v in value.items() if k != "&node"}, graph, unknown, depth + 1)
+            _fill(obj, {k: v for k, v in value.items() if k != "&node"}, graph, unknown)
             graph[number] = (obj, False)
             return obj
         obj = cls()
-        _fill(obj, value, graph, unknown, depth + 1)
+        _fill(obj, value, graph, unknown)
         return obj
     if field.codec == "bool":
         if type(value) is not bool:
@@ -486,7 +483,7 @@ def from_json_into(cls: type[_T], target: _T, text: str | bytes | bytearray | me
     return True
 
 
-def _read_keyed(field: FieldDesc, item: Any, container: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int], depth: int = 0) -> None:
+def _read_keyed(field: FieldDesc, item: Any, container: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> None:
     if type(item) is not dict or field.elem is None:
         raise Refused("kind_mismatch", field.name)
     slots = container if getattr(field, "keyed_list", False) else container._values
@@ -495,15 +492,13 @@ def _read_keyed(field: FieldDesc, item: Any, container: Any, graph: dict[int, tu
             raise Refused("malformed", field.name)
         if slot in field.json_keys:
             index = field.json_keys.index(slot)
-            slots[index] = _read_field(field.elem, current, graph, unknown, depth + 1)
+            slots[index] = _read_field(field.elem, current, graph, unknown)
         else:
             unknown[0] += 1
-            _skip(current, graph, depth + 1)
+            _skip(current, graph)
 
 
-def _fill(value: Any, data: dict[str, Any], graph: dict[int, tuple[Any, bool]] | None, unknown: list[int], depth: int = 0) -> None:
-    if depth > _MAX_DEPTH:
-        raise Refused("malformed")
+def _fill(value: Any, data: dict[str, Any], graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> None:
     fields = {field.json_key: field for field in value.descriptor.fields}
     for key, item in data.items():
         if "\x00" in key or len(key.encode("utf-8")) > 255 or key.startswith("&"):
@@ -511,29 +506,25 @@ def _fill(value: Any, data: dict[str, Any], graph: dict[int, tuple[Any, bool]] |
         field = fields.get(key)
         if field is not None:
             if field.codec == "keyed":
-                _read_keyed(field, item, getattr(value, field.name), graph, unknown, depth)
+                _read_keyed(field, item, getattr(value, field.name), graph, unknown)
             else:
-                setattr(value, field.name, _read_field(field, item, graph, unknown, depth))
+                setattr(value, field.name, _read_field(field, item, graph, unknown))
         else:
             unknown[0] += 1
-            _skip(item, graph, depth + 1)
+            _skip(item, graph)
     for field in value.descriptor.fields:
         if field.required and field.json_key not in data and _guard_holds(field, value):
             raise Refused("missing_required", field.name)
 
 
-def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None, depth: int = 1) -> None:
+def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None) -> None:
     if type(value) is str:
         if "\x00" in value:
             raise Refused("malformed")
     elif type(value) is list:
-        if depth > _MAX_DEPTH:
-            raise Refused("malformed")
         for item in value:
-            _skip(item, graph, depth + 1)
+            _skip(item, graph)
     elif type(value) is dict:
-        if depth > _MAX_DEPTH:
-            raise Refused("malformed")
         defined = None
         for index, (key, item) in enumerate(value.items()):
             if "\x00" in key or len(key.encode("utf-8")) > 255:
@@ -561,7 +552,7 @@ def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None, depth: int = 1)
                     graph[number] = (None, True)
                     defined = number
             else:
-                _skip(item, graph, depth + 1)
+                _skip(item, graph)
         if defined is not None and graph is not None:
             graph[defined] = (None, False)
 
