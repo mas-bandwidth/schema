@@ -1532,7 +1532,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
