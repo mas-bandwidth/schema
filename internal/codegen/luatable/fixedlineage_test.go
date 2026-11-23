@@ -61,6 +61,17 @@ assert(v.vals[4] == nil, "the reader's grown tail is not its declared default")
 assert(v.trail == 2, "the field behind the grown array moved")`,
 		},
 		{
+			row:   "keyed_array_enum_append",
+			root:  "Lineage",
+			setup: `v.slots[1].n = 11; v.slots[2].n = 22; v.slots[3].n = 33; v.seq = 9`,
+			check: `assert(v.slots[1].n == 11 and v.slots[2].n == 22 and v.slots[3].n == 33 and v.seq == 9)
+assert(#v.slots == 4 and v.slots[4].n == 7, "the appended key did not get the element's declared default")
+local want = T.NewLineage()
+want.slots[1].n = 11; want.slots[2].n = 22; want.slots[3].n = 33; want.seq = 9
+local got = assert(T.FixedSave("Lineage", {v}))
+assert(got == assert(T.FixedSave("Lineage", {want})), "the evolved value did not save as the current layout")`,
+		},
+		{
 			row:   "nested_append",
 			root:  "Lineage",
 			setup: `v.v.x = 1; v.v.y = 2; v.v.z = 3; v.seq = 4`,

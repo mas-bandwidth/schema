@@ -392,7 +392,8 @@ func emitFixedForm(m *Module) error {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
 			ranges, rangeParts := fixedWriterRangesParts(st, e, hash)
-			if len(e.Layout) > 1024 {
+			tail := fmt.Sprintf("}), record = %d%s },", e.Record, ranges)
+			if len(e.Layout) > 1024 || len(tail) > lua.MaxLineLength {
 				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
 				for i := 0; i < len(e.Layout); i += 20 {
 					end := min(i+20, len(e.Layout))
@@ -401,7 +402,7 @@ func emitFixedForm(m *Module) error {
 				m.Printf("    }),\n    record = %d,\n", e.Record)
 				if len(rangeParts) > 0 {
 					one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
-					if 4+len(one)+1 <= 120 {
+					if 4+len(one)+1 <= lua.MaxLineLength {
 						m.Printf("    %s,\n", one)
 					} else {
 						m.Printf("    ranges = {\n")

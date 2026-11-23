@@ -35,6 +35,7 @@ pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;
 /// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body
 /// carries the build version at kind 9 and the vocabulary at kind 14 over
 /// element kind 6, and whose trailer is those two reserved ids.
+#[allow(clippy::large_const_arrays)]
 pub const TABLE_ANNOUNCEMENT: [u8; 887] = [
     0x01,0x01,0x09,0xf0,0xff,0xdb,0xeb,0x78,0xad,0x2d,0xba,0x02,
     0x0e,0xcf,0x06,0x06,0xcc,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,

@@ -49,5 +49,13 @@ print("announce-cap-ok")
 		}
 		dir := review1121Modules(t, review1121Unit(t, src), probe)
 		luaurun.Run(t, dir, "main.luau", nil)
+		modules, err := filepath.Glob(filepath.Join(dir, "*.luau"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, module := range modules {
+			modules[i] = filepath.Base(module)
+		}
+		luaurun.Analyze(t, dir, append([]string{"--mode=strict"}, modules...)...)
 	}
 }

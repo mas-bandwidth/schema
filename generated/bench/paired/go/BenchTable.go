@@ -471,10 +471,12 @@ func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
 		return 0
 	}
 	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
+		const sign = uint64(1) << 63
+		ar, br := a.raw^sign, b.raw^sign
+		if ar < br {
 			return -1
 		}
-		if int64(a.raw) > int64(b.raw) {
+		if ar > br {
 			return 1
 		}
 		return 0

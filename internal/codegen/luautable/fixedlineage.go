@@ -246,15 +246,16 @@ func emitLineage(g *luau.Gen, root *ir.Struct, own FixedLineageEntry) {
 		if e.Retired {
 			g.Pf("\t-- RETIRED: %s\n", e.Reason)
 		}
-		g.Pf("\ttable.freeze({ hash = 0x%016xi, layout = %s.fixed_layout({\n", e.Wire, fx)
 		n := int(binary.LittleEndian.Uint32(e.Layout))
+		open, close := fixedLayoutLiteral(n)
+		g.Pf("\ttable.freeze({ hash = 0x%016xi, layout = %s.fixed_layout(%s\n", e.Wire, fx, open)
 		for i := range n {
 			p := 4 + i*ir.TableFixedEntryBytes
 			g.Pf("\t\t{ id = 0x%016xi, kind = %d, size = %d, children = %d },\n",
 				binary.LittleEndian.Uint64(e.Layout[p:]), e.Layout[p+8],
 				binary.LittleEndian.Uint32(e.Layout[p+9:]), binary.LittleEndian.Uint32(e.Layout[p+13:]))
 		}
-		g.Pf("\t}), layoutBytes = %d, recordBytes = %d%s }),\n", len(e.Layout), e.Record, fixedWriterRanges(root, e, own.Wire))
+		g.Pf("\t%s), layoutBytes = %d, recordBytes = %d%s }),\n", close, len(e.Layout), e.Record, fixedWriterRanges(root, e, own.Wire))
 	}
 	g.Pf("})\n")
 	g.Pf("%s.%sFixedFloor = %d\n\n", g.Self, name, floor)
