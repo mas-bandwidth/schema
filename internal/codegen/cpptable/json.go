@@ -2193,7 +2193,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         {
             // R10: a counted [A..B] arm holds its minimum, and the write
             // contract is debug-only on this leg (docs/SPEC.md §5.1)
+#ifdef schema_assert
             schema_assert( TableJsonCountMeetsMin( storage, arms->arms[tag].field ) );
+#endif
             if ( !TableJsonWriteField( out, storage, arms->arms[tag].field, depth + 1 ) )
             {
                 return false;
