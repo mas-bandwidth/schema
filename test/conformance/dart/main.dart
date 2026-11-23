@@ -7408,8 +7408,10 @@ void _mutateWriteBounds(writebounds.TortureVarWref value, String path, String ki
   final n = int.parse(text);
   switch ('$path $kind') {
     case 'opt_arr count':
+      final original = value.optArr;
+      final fill = original.isEmpty ? 0 : original.first;
       value.hasOptArr = true;
-      value.optArr = List<int>.filled(n, 0);
+      value.optArr = List<int>.generate(n, (i) => i < original.length ? original[i] : fill);
       break;
     case 'arm_bits.a_bits int':
       value.armBits.aBits = n;
@@ -7566,7 +7568,15 @@ int surfaceWriteRefusal(String outDir, String surface) {
       if (rep.refused) return 1;
       _mutateWriteBounds(value, path, vkind, text);
       answer = _catchWrite(() {
-        writebounds.tortureVarWrefWireSave(value);
+        final saved = writebounds.tortureVarWrefWireSave(value);
+        if (name == 'sfw_opt_arr_ok') {
+          final wanted = File('testdata/conformance/table-write-bounds/torture_var_wref_resized.bin').readAsBytesSync();
+          if (saved.length != wanted.length ||
+              Iterable<int>.generate(saved.length).any((i) => saved[i] != wanted[i])) {
+            stderr.writeln('$name: saved bytes differ from the canonical resized array');
+            return -1;
+          }
+        }
         return 0;
       });
     } else if ('$unit $root' == 'tabledemo RootConfig') {

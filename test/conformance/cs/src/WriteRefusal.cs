@@ -454,6 +454,11 @@ static partial class Program
                 int cap = WriteRefusalCapacity(buf);
                 for (int i = oldCount; i < Math.Min(n, cap); i++)
                 {
+                    if (holderType.Namespace == "Writebounds" && member == "OptArr" && oldCount > 0)
+                    {
+                        WriteRefusalElementSet(buf, i, WriteRefusalElementGet(buf, 0));
+                        continue;
+                    }
                     object freshRoot = WriteRefusalFreshRoot(codec, wire);
                     object freshBuf = f.GetValue(freshRoot);
                     WriteRefusalElementSet(buf, i, WriteRefusalElementGet(freshBuf, 0));
@@ -573,7 +578,18 @@ static partial class Program
                     case "write-refusal-json": verdict = WriteRefusalJson(codec, value, f[6], f[7]); break;
                     case "write-refusal-cook": verdict = WriteRefusalCook(codec, value, f[1]); break;
                     case "write-refusal-block": verdict = WriteRefusalBlock(value, f[1]); break;
-                    default: verdict = WriteRefusalSave(() => codec.Save(value, buffer)); break;
+                    default:
+                        verdict = WriteRefusalSave(() =>
+                        {
+                            long written = codec.Save(value, buffer);
+                            if (written >= 0 && f[1] == "sfw_opt_arr_ok" &&
+                                !buffer.AsSpan(0, (int)written).SequenceEqual(File.ReadAllBytes("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin")))
+                            {
+                                throw new InvalidDataException("saved bytes differ from the canonical resized array");
+                            }
+                            return written;
+                        });
+                        break;
                 }
             }
             File.WriteAllText(Path.Combine(outDir, f[1]), verdict + "\n");

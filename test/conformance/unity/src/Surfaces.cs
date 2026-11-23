@@ -404,6 +404,11 @@ namespace SchemaUnityConformance
                     int cap = BufferCapacity(buf);
                     for (int i = oldCount; i < Math.Min(n, cap); i++)
                     {
+                        if (holderType.Namespace == "Writebounds" && member == "OptArr" && oldCount > 0)
+                        {
+                            BufferSet(buf, i, BufferGet(buf, 0));
+                            continue;
+                        }
                         object freshRoot = FreshRoot(codec, wire);
                         object freshBuf = f.GetValue(freshRoot);
                         BufferSet(buf, i, BufferGet(freshBuf, 0));
@@ -537,7 +542,16 @@ namespace SchemaUnityConformance
                             verdict = WriteRefusalBlockVerdict(codec, value, f[1]);
                             break;
                         default:
-                            verdict = WriteRefusalBinaryVerdict(() => codec.VariableSave(value, buffer));
+                            verdict = WriteRefusalBinaryVerdict(() =>
+                            {
+                                long written = codec.VariableSave(value, buffer);
+                                if (written >= 0 && f[1] == "sfw_opt_arr_ok" &&
+                                    !buffer.AsSpan(0, (int)written).SequenceEqual(File.ReadAllBytes("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin")))
+                                {
+                                    throw new InvalidDataException("saved bytes differ from the canonical resized array");
+                                }
+                                return written;
+                            });
                             break;
                     }
                 }

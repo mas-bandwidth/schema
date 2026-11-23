@@ -184,7 +184,7 @@ function armOf(ctx, cur, n) {
 // setVariable sets the one field a row names in the variable value, where the
 // text writer reads it: a text is a string, so `bytes` must be UTF-8 this leg's
 // string can hold, and bytes it cannot are `unrepresentable`.
-function decodeVariableLeaf(cur, kind, text, ctx) {
+function decodeVariableLeaf(cur, kind, text, ctx, copyFirst = false) {
   switch (kind) {
     case "bytes": {
       const raw = hexBytes(text);
@@ -221,7 +221,9 @@ function decodeVariableLeaf(cur, kind, text, ctx) {
       while (arr.length < n) {
         if (ctx === null) { throw new Error("count " + n + ": no View to make a new element from"); }
         const vocab = ctx.field.vocabulary;
-        arr.push(vocab !== null && vocab.kind !== "flags" ? null : defaultOfType(ctx.field.typeName, ctx.field.table, ctx.m));
+        arr.push(copyFirst && cur?.length > 0
+          ? structuredClone(cur[0])
+          : vocab !== null && vocab.kind !== "flags" ? null : defaultOfType(ctx.field.typeName, ctx.field.table, ctx.m));
       }
       return { ok: true, v: arr };
     }
@@ -339,7 +341,7 @@ export function setVariable(value, path, kind, text, unit = null, root = "") {
   const p = own(cur, last.name, path);
   const slot = last.index < 0 ? cur[p] : cur[p][last.index];
   const isTextListBox = last.index >= 0 && slot !== null && typeof slot === "object" && !(slot instanceof Uint8Array) && "value" in slot && Object.keys(slot).length === 1;
-  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text, ctx);
+  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text, ctx, root === "TortureVarWref");
   if (!leaf.ok) { return false; }
   if (isTextListBox) {
     slot.value = leaf.v;
@@ -437,7 +439,14 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
           return typeof size === "number" && size >= 1 && codec.cook.from(v, new Uint8Array(size), 1) === true;
         });
       } else {
-        answer = writes(name, () => codec.save(v) !== null);
+        answer = writes(name, () => {
+          const saved = codec.save(v);
+          if (saved !== null && name === "sfw_opt_arr_ok"
+              && !Buffer.from(saved).equals(readFileSync("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin"))) {
+            throw new Error("saved bytes differ from the canonical resized array");
+          }
+          return saved !== null;
+        });
       }
     } else {
       if (codec.fixedValue === undefined) { absent(outDir, name, unit + "." + root + " is not a fixed root"); continue; }

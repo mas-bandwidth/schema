@@ -2936,6 +2936,13 @@ static int surface_write_refusal( const std::string & surface, const std::string
                     const int64_t sz = var_codec->measure( mval );
                     if ( sz < 0 ) _exit( kRefusedExit );
                     const int64_t wr = var_codec->save( mval, scratch.data(), (int64_t) scratch.size() );
+                    if ( wr >= 0 && f[1] == "sfw_opt_arr_ok" )
+                    {
+                        std::vector<uint8_t> expected;
+                        if ( !slurp( "testdata/conformance/table-write-bounds/torture_var_wref_resized.bin", expected ) ||
+                             wr != (int64_t) expected.size() || !std::equal( expected.begin(), expected.end(), scratch.begin() ) )
+                            _exit( kRefusedExit );
+                    }
                     _exit( wr < 0 ? kRefusedExit : kWroteExit );
                 }
                 if ( surface == "write-refusal-json" )
