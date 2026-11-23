@@ -6748,7 +6748,7 @@ conformance-port: build/conformance-harness
 		--work build/conformance-port-$(NAME)/work --complete
 	./build/conformance-harness run --drivers build/conformance-port-$(NAME)/drivers.txt \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
-		--json testdata/conformance/table-write-bounds --surfaces write-refusal \
+		--json testdata/conformance/table-write-bounds --surfaces write-refusal,wire,json-read,json-write \
 		--work build/conformance-port-$(NAME)/write-bounds --complete
 	$(if $(CARDS_DRIVER),./build/conformance-harness cards --corpus tables/cards/conformance --driver '$(CARDS_DRIVER)' --require $(CARDS_REQUIRE))
 
