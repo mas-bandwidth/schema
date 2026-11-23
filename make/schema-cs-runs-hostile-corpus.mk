@@ -43,7 +43,7 @@ $(CS_HOSTILE_BUILD)/bin/.stamp: $(CS_HOSTILE_BUILD)/generated/.stamp test/cs-hos
 # is every case the port answered (a SKIP is not run), and build/mustrun holds N
 # to this number, so a manifest that loses cases or a case that starts skipping
 # is red. A commit that adds a hostile case changes it.
-CS_HOSTILE_CASES ?= 192
+CS_HOSTILE_CASES ?= $(shell grep -vc '^#' $(CS_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-cs-runs-hostile-corpus
 schema-cs-runs-hostile-corpus: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv

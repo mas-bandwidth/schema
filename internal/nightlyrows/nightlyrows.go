@@ -59,7 +59,7 @@ func Parse(r io.Reader) ([]Row, error) {
 		seen[f[0]] = n
 		re, err := regexp.Compile(f[2])
 		if err != nil {
-			return nil, fmt.Errorf("%s:%d: paths of %q: %v", RegistryPath, n, f[0], err)
+			return nil, fmt.Errorf("%s:%d: paths of %q: %w", RegistryPath, n, f[0], err)
 		}
 		rows = append(rows, Row{Name: f[0], Leg: f[1], Paths: re, Run: f[3], Line: n})
 	}

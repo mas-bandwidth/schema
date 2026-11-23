@@ -272,7 +272,7 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	// runtime is linted once and the schema files of every unit each time.
 	var rcPaths []string
 	queued := map[string]bool{}
-	modLine := regexp.MustCompile("(?m)^module (\\w+)")
+	modLine := regexp.MustCompile(`(?m)^module (\w+)`)
 	type unit struct{ label, dir, pkg string }
 	var all []unit
 	for _, label := range slices.Sorted(maps.Keys(units)) {

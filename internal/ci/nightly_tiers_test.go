@@ -216,7 +216,7 @@ func TestNightlyFastRowsNameDefinedTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	legs := map[string]bool{"-": true}
-	for _, l := range strings.Fields("c cpp cs unity rust js java dart elixir go lua luau lobster moo python ruby squirrel goose") {
+	for l := range strings.FieldsSeq("c cpp cs unity rust js java dart elixir go lua luau lobster moo python ruby squirrel goose") {
 		legs[l] = true
 	}
 	for _, r := range rows {

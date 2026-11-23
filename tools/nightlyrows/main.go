@@ -41,7 +41,7 @@ func main() {
 		os.Exit(1)
 	}
 	var files []string
-	for _, l := range strings.Split(string(raw), "\n") {
+	for l := range strings.SplitSeq(string(raw), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			files = append(files, l)
 		}
