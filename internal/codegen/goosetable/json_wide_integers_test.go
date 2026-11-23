@@ -317,11 +317,12 @@ fn main() {
 			p.want = []byte(row.want)
 		}
 		probes = append(probes, p)
-		if row.root == "Typed128" {
+		switch {
+		case row.root == "Typed128":
 			fmt.Fprintf(&b, "    typed128(%q);\n", name)
-		} else if row.class == "typed" {
+		case row.class == "typed":
 			fmt.Fprintf(&b, "    typed(%q);\n", name)
-		} else {
+		default:
 			fmt.Fprintf(&b, "    variable(%q, %q);\n", name, row.root)
 		}
 	}
