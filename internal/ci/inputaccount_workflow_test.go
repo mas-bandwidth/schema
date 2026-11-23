@@ -17,14 +17,14 @@ func TestDartConformanceHandoffIncludesGeneratedImports(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	driver := readCI(t, root, "test/conformance/dart/main.dart")
-	helper := readCI(t, root, "make/dart-aot-handoff.py")
-	_, paths, ok := strings.Cut(helper, "\nBUILD_PATHS = tuple(\n")
+	helper := readCI(t, root, "make/conformance-handoff.py")
+	_, paths, ok := strings.Cut(helper, "\nDART_PATHS = tuple(\n")
 	if !ok {
-		t.Fatal("handoff helper has no BUILD_PATHS manifest")
+		t.Fatal("handoff helper has no DART_PATHS manifest")
 	}
 	paths, _, ok = strings.Cut(paths, "\n)\n")
 	if !ok {
-		t.Fatal("handoff helper has no end to its BUILD_PATHS manifest")
+		t.Fatal("handoff helper has no end to its DART_PATHS manifest")
 	}
 	imports := regexp.MustCompile(`(?m)^import '\.\./\.\./\.\./build/([^/]+)/`).FindAllStringSubmatch(driver, -1)
 	if len(imports) == 0 {
@@ -121,7 +121,7 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 	}
 }
 
-func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
+func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
@@ -145,13 +145,14 @@ func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 		t.Fatal("the end of the input-family selector is missing")
 	}
 	for _, tc := range []struct {
-		name, files, want, wantPackage string
+		name, files, dart, cpp, wantPackage string
 	}{
-		{"handoff helper", "make/dart-aot-handoff.py\n.github/workflows/ci-fast.yml\n", "true", ""},
-		{"Dart driver build", "make/dart.mk\n", "true", ""},
-		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "./test/conformance/harness"},
-		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true", ""},
-		{"accounting test only", "tools/inputaccount/watch_linux_test.go\n", "false", ""},
+		{"handoff helper", "make/conformance-handoff.py\n.github/workflows/ci-fast.yml\n", "true", "true", ""},
+		{"C++ driver", "test/conformance/cpp/main.cpp\n", "false", "true", ""},
+		{"Dart driver build", "make/dart.mk\n", "true", "false", ""},
+		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "false", "./test/conformance/harness"},
+		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true", "true", ""},
+		{"accounting test only", "tools/inputaccount/watch_linux_test.go\n", "false", "false", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -169,10 +170,10 @@ func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			packages, ok := strings.CutPrefix(string(got), "dart_corpus_account="+tc.want+"\npackages=")
+			packages, ok := strings.CutPrefix(string(got), "dart_corpus_account="+tc.dart+"\ncpp_corpus_account="+tc.cpp+"\npackages=")
 			packages, rowsOK := strings.CutSuffix(packages, "\ninput_rows=[]\n")
 			if !ok || !rowsOK {
-				t.Fatalf("input-family plan = %q, want account=%s and no generic rows", got, tc.want)
+				t.Fatalf("input-family plan = %q, want dart=%s cpp=%s and no generic rows", got, tc.dart, tc.cpp)
 			}
 			if tc.wantPackage == "" && packages != "" {
 				t.Errorf("input-family plan added packages %q", packages)
