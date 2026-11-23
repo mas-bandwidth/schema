@@ -744,9 +744,19 @@ func main() {
 		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
-	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook":
 		surface := surface
 		run = func(lines []line, out string) error { return surfaceWriteRefusal(surface, lines, out) }
+	case "write-refusal-block":
+		// ABSENT: no Go call builds a block from a value (surfaces1122.go)
+		fmt.Fprintln(os.Stderr, "driver: "+blockBuilderAbsent)
+		os.Exit(2)
+	case "announce":
+		run = surfaceAnnounce
+	case "read-into":
+		run = surfaceReadInto
+	case "json-write-into":
+		run = surfaceJSONWriteInto
 	default:
 		os.Exit(2)
 	}

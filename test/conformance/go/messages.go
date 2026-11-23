@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"scalardemo"
+	tblsurf "surfaces"
 	"tabledemo"
 	"tbla1"
 	"tbla2"
@@ -33,6 +34,9 @@ type messageCodec struct {
 	// the byte length, or -1 refused. The write-refusal surface takes it after
 	// loading and mutating the row's value (docs/SPEC.md §5.1).
 	saveOne func(value any) int64
+	// saveBytes is saveOne's batch of one itself, or ok false refused: the
+	// `announce` surface's `send` mode answers its bytes (FL-18)
+	saveBytes func(value any) ([]byte, bool)
 	// batch answers one `message-batch` row (docs/SPEC-TABLES.md §3.3): load
 	// the wire with room for every body and answer the count the loader
 	// reported.
@@ -119,6 +123,22 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 				return -1
 			}
 			return n
+		},
+		saveBytes: func(value any) ([]byte, bool) {
+			v, ok := value.(*T)
+			if !ok {
+				panic(fmt.Sprintf("%s.%s: saveBytes handed a %T", unit, root, value))
+			}
+			var r R
+			n := measure([]*T{v}, &r)
+			if n < 0 {
+				return nil, false
+			}
+			buffer := make([]byte, n)
+			if save([]*T{v}, buffer, &r) != n {
+				return nil, false
+			}
+			return buffer, true
 		},
 	}
 }
@@ -391,4 +411,24 @@ var messageCodecs = []messageCodec{
 	}, tblscalars2.AnnounceMeasure, tblscalars2.Announce, tblscalars2.AnnounceRead, tblscalars2.SimStateLoadMessages, tblscalars2.SimStateMeasureMessages, tblscalars2.SimStateSaveMessages, func(r *tblscalars2.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	messageRow("tblsurf", "Narrow", tblsurf.NarrowReset, func() *tblsurf.TableVocabulary {
+		v := new(tblsurf.TableVocabulary)
+		v.Init(make([]tblsurf.TableMessageEntry, max(4096, tblsurf.TableMessageEntriesHere)))
+		return v
+	}, tblsurf.AnnounceMeasure, tblsurf.Announce, tblsurf.AnnounceRead, tblsurf.NarrowLoadMessages, tblsurf.NarrowMeasureMessages, tblsurf.NarrowSaveMessages, snapSurf),
+	messageRow("tblsurf", "Wide", tblsurf.WideReset, func() *tblsurf.TableVocabulary {
+		v := new(tblsurf.TableVocabulary)
+		v.Init(make([]tblsurf.TableMessageEntry, max(4096, tblsurf.TableMessageEntriesHere)))
+		return v
+	}, tblsurf.AnnounceMeasure, tblsurf.Announce, tblsurf.AnnounceRead, tblsurf.WideLoadMessages, tblsurf.WideMeasureMessages, tblsurf.WideSaveMessages, snapSurf),
+	messageRow("tblsurf", "Arrays", tblsurf.ArraysReset, func() *tblsurf.TableVocabulary {
+		v := new(tblsurf.TableVocabulary)
+		v.Init(make([]tblsurf.TableMessageEntry, max(4096, tblsurf.TableMessageEntriesHere)))
+		return v
+	}, tblsurf.AnnounceMeasure, tblsurf.Announce, tblsurf.AnnounceRead, tblsurf.ArraysLoadMessages, tblsurf.ArraysMeasureMessages, tblsurf.ArraysSaveMessages, snapSurf),
+	messageRow("tblsurf", "Big", tblsurf.BigReset, func() *tblsurf.TableVocabulary {
+		v := new(tblsurf.TableVocabulary)
+		v.Init(make([]tblsurf.TableMessageEntry, max(4096, tblsurf.TableMessageEntriesHere)))
+		return v
+	}, tblsurf.AnnounceMeasure, tblsurf.Announce, tblsurf.AnnounceRead, tblsurf.BigLoadMessages, tblsurf.BigMeasureMessages, tblsurf.BigSaveMessages, snapSurf),
 }

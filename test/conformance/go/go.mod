@@ -176,3 +176,16 @@ replace cooktorture => ../../../build/tables-generated-go/cooktorture
 require cooktorturewide v0.0.0
 
 replace cooktorturewide => ../../../build/tables-generated-go/cooktorturewide
+
+// the 2026-11-22 surfaces' units (make/go.mk)
+require surfaces v0.0.0
+
+replace surfaces => ../../../build/tables-generated-go/surfaces
+
+require announce4096 v0.0.0
+
+replace announce4096 => ../../../build/tables-generated-go-announce/4096
+
+require announce4097 v0.0.0
+
+replace announce4097 => ../../../build/tables-generated-go-announce/4097

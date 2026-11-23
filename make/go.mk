@@ -143,7 +143,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -190,6 +190,9 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/vocab tables/vocab' \
 		'build/tables-generated-go/vocab9 tables/vocab9' \
 		'build/tables-generated-go/rt1 test/tables/RT1.schema' \
+		'build/tables-generated-go/surfaces test/tables/surfaces' \
+		'build/tables-generated-go-announce/4096 test/tables/announce4096' \
+		'build/tables-generated-go-announce/4097 test/tables/announce4097' \
 		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
 	$(call go_table_module,p2,tblp2)
 	$(call go_table_module,w1,tblw1)
@@ -205,6 +208,13 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,vocab,vocabdemo)
 	$(call go_table_module,vocab9,vocab9demo)
 	$(call go_table_module,rt1,tblrt1)
+	# THE 2026-11-22 SURFACES' UNITS (test/conformance/README.md): tblsurf in
+	# the tree like every unit; the two announcement units (a vocabulary of
+	# 4096 and 4097 entries, megabytes of generated Go each) beside it, like
+	# r19, so the per-unit gates over the tree do not compile and lint them.
+	$(call go_table_module,surfaces,surfaces)
+	$(call go_table_module_in,build/tables-generated-go-announce/4096,announce4096)
+	$(call go_table_module_in,build/tables-generated-go-announce/4097,announce4097)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)

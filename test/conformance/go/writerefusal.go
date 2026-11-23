@@ -7,9 +7,19 @@
 // returned its refusal, `wrote` when the lawful twin or the text writer's
 // zero-byte spelling completed, and `unrepresentable` when the value cannot be
 // held in this leg's storage at all.
+//
+// The 2026-11-22 kinds (test/conformance/README.md): `elems` sets a fixed
+// `[N]T` or keyed `[E]T` array's element count, which a Go array of exactly N
+// cannot hold at any count but N (`unrepresentable`); `mask` a flags field's
+// raw bits; `dupkey 1` a map holding its first key twice; `point` a pointer
+// slot aimed at another slot's node. A `<wire>` of `-` is the root's fresh
+// value. `write-refusal-cook` writes through CookMeasure then CookFrom.
 package main
 
 import (
+	"graphdemo"
+	tblsurf "surfaces"
+
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -19,6 +29,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unsafe"
 )
 
 var (
@@ -51,14 +62,18 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 		// instance is form 3, read by c.load. variableLoad is the form-1 read
 		// the framing surface keeps to itself (fixed.go).
 		read := c.load
-		wire, err := os.ReadFile(wirePath)
-		if err != nil {
-			return err
-		}
 		value := c.fresh()
-		var rep report
-		if !read(value, wire, &rep) {
-			return fmt.Errorf("%s: load refused %s", name, wirePath)
+		if wirePath != "-" {
+			// `-` is the root's fresh value: a root with no file form (Big,
+			// SF-05) has no instance to load
+			wire, err := os.ReadFile(wirePath)
+			if err != nil {
+				return err
+			}
+			var rep report
+			if !read(value, wire, &rep) {
+				return fmt.Errorf("%s: load refused %s", name, wirePath)
+			}
 		}
 		if err := mutateWriteRefusalGo(value, path, kind, text); err != nil {
 			if err == errWriteRefusalUnrepresentable {
@@ -94,6 +109,15 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			if mc.saveOne(value) < 0 {
 				answer = "refused"
 			}
+		case "write-refusal-cook":
+			// THE COOK WRITER (SPEC-TABLES §7.6): CookMeasure, then CookFrom
+			// in little-endian order; `wrote` when both complete
+			if c.cookMeasure == nil || c.cook == nil {
+				return fmt.Errorf("%s: the %s.%s row has no cook writer bound", name, actualUnit, root)
+			}
+			if n := c.cookMeasure(value); n < 1 || !c.cook(value, make([]byte, n), false) {
+				answer = "refused"
+			}
 		case "write-refusal-json":
 			if n := c.toJsonMeasure(value); n < 0 {
 				answer = "refused"
@@ -123,6 +147,9 @@ func connectionUnit(lines []line, connection string) string {
 func mutateWriteRefusalGo(value any, path, kind, text string) error {
 	if mr, ok := value.(mutableRootProvider); ok {
 		value = mr.mutableRoot()
+	}
+	if kind == "point" {
+		return writeRefusalGoPoint(value, path, text)
 	}
 	segments := strings.Split(path, ".")
 	cur := reflect.ValueOf(value).Elem()
@@ -248,16 +275,22 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		}
 		companion.SetInt(int64(len(units)))
 		return nil
-	case "int":
+	case "int", "mask":
+		// `mask` is a flags field's raw bits in decimal (FL-06); both are
+		// held only where the field's own Go width holds them (FL-04: an
+		// int8 cannot hold 128, so the row is unrepresentable here)
 		n, ok := new(big.Int).SetString(text, 10)
 		if !ok {
 			return fmt.Errorf("%s: %q is not an integer", name, text)
 		}
 		switch fv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if !n.IsInt64() || fv.OverflowInt(n.Int64()) {
+				return errWriteRefusalUnrepresentable
+			}
 			fv.SetInt(n.Int64())
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if n.Sign() < 0 {
+			if n.Sign() < 0 || !n.IsUint64() || fv.OverflowUint(n.Uint64()) {
 				return errWriteRefusalUnrepresentable
 			}
 			fv.SetUint(n.Uint64())
@@ -265,6 +298,28 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 			return fmt.Errorf("%s: %s is not an integer", name, fv.Type())
 		}
 		return nil
+	case "elems":
+		// a fixed [N]T or keyed [E]T is a Go array of exactly N: it holds
+		// N elements and no other count (SF-34, SF-35)
+		n, err := strconv.Atoi(text)
+		if err != nil {
+			return err
+		}
+		if fv.Kind() != reflect.Array {
+			return fmt.Errorf("%s: %s is not a fixed or keyed array", name, fv.Type())
+		}
+		if n != fv.Len() {
+			return errWriteRefusalUnrepresentable
+		}
+		return nil
+	case "dupkey":
+		switch text {
+		case "0":
+			return nil
+		case "1":
+			return writeRefusalGoDupKey(fv, name)
+		}
+		return fmt.Errorf("%s: dupkey takes 0 or 1, not %q", name, text)
 	case "ordinal":
 		n, err := strconv.ParseUint(text, 10, 64)
 		if err != nil {
@@ -403,4 +458,110 @@ func writeRefusalGoName(name string) string {
 
 func writeRefusalGoFold(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, "_", ""))
+}
+
+// writeRefusalGoKeep holds the storage a mutation points region slots into, so
+// the collector keeps it for the life of the process (Go never moves a heap
+// object, so a self-relative delta into it stays good).
+var writeRefusalGoKeep [][]byte
+
+// writeRefusalGoDupKey appends a copy of a region map's first entry (FL-22): the
+// entries are copied, with the first again at the end, into storage of the
+// driver's own, and the map's self-relative Ref and Count are pointed at it.
+// A map entry whose storage holds a self-relative slot of its own could not
+// be moved this way; the corpus's dupkey rows name maps of inline entries.
+func writeRefusalGoDupKey(fv reflect.Value, name string) error {
+	ref, count := fv.FieldByName("Ref"), fv.FieldByName("Count")
+	at := fv.Addr().MethodByName("At")
+	if !ref.IsValid() || !count.IsValid() || !at.IsValid() || ref.Kind() != reflect.Int64 {
+		return fmt.Errorf("%s: %s is not a region map", name, fv.Type())
+	}
+	n := count.Int()
+	if n < 1 || ref.Int() == 0 {
+		return fmt.Errorf("%s: the map holds no entry to repeat", name)
+	}
+	size := int64(at.Type().Out(0).Elem().Size())
+	head := unsafe.Pointer(fv.UnsafeAddr())
+	from := unsafe.Slice((*byte)(unsafe.Add(head, ref.Int())), n*size)
+	raw := make([]byte, (n+1)*size+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	to := raw[off : off+uintptr((n+1)*size)]
+	copy(to, from)
+	copy(to[n*size:], from[:size])
+	writeRefusalGoKeep = append(writeRefusalGoKeep, raw)
+	ref.SetInt(int64(uintptr(unsafe.Pointer(&to[0])) - uintptr(head)))
+	count.SetInt(n + 1)
+	return nil
+}
+
+// writeRefusalGoPointees names the record type a region pointer slot points
+// at: reflection sees the slot as an int64 (a signed self-relative delta,
+// §6.3), and the generated comment that names its type is not reflected. A
+// `point` row walking through a slot this table does not name fails loudly.
+var writeRefusalGoPointees = map[reflect.Type]map[string]reflect.Type{
+	reflect.TypeFor[graphdemo.SceneRow]():    {"Head": reflect.TypeFor[graphdemo.ListNodeRow](), "Alias": reflect.TypeFor[graphdemo.ListNodeRow]()},
+	reflect.TypeFor[graphdemo.ListNodeRow](): {"Next": reflect.TypeFor[graphdemo.ListNodeRow]()},
+	reflect.TypeFor[tblsurf.ChainRow]():      {"Head": reflect.TypeFor[tblsurf.LinkRow]()},
+	reflect.TypeFor[tblsurf.LinkRow]():       {"Next": reflect.TypeFor[tblsurf.LinkRow]()},
+	reflect.TypeFor[tblsurf.HolderRow]():     {"Must": reflect.TypeFor[tblsurf.LeafRow]()},
+}
+
+// writeRefusalGoSlot walks a dotted path through a region value to the int64
+// pointer slot it ends at, following each pointer slot it passes through.
+func writeRefusalGoSlot(value any, path string) (*int64, error) {
+	cur := reflect.ValueOf(value).Elem()
+	segments := strings.Split(path, ".")
+	for i, segment := range segments {
+		name, index, indexed, err := writeRefusalGoSegmentOf(segment)
+		if err != nil {
+			return nil, err
+		}
+		fv, ok := writeRefusalGoField(cur, name)
+		if !ok {
+			return nil, fmt.Errorf("%s: no field %q in %s", path, name, cur.Type())
+		}
+		if indexed {
+			if fv, err = writeRefusalGoIndex(fv, index, path); err != nil {
+				return nil, err
+			}
+		}
+		if i == len(segments)-1 {
+			if fv.Kind() != reflect.Int64 {
+				return nil, fmt.Errorf("%s: %s is not a pointer slot", path, fv.Type())
+			}
+			return (*int64)(unsafe.Pointer(fv.UnsafeAddr())), nil
+		}
+		if fv.Kind() == reflect.Int64 {
+			field, _ := cur.Type().FieldByNameFunc(func(n string) bool { return writeRefusalGoFold(n) == writeRefusalGoFold(name) })
+			target := writeRefusalGoPointees[cur.Type()][field.Name]
+			if target == nil {
+				return nil, fmt.Errorf("%s: the driver names no pointee for %s.%s", path, cur.Type(), field.Name)
+			}
+			if fv.Int() == 0 {
+				return nil, fmt.Errorf("%s: %s is null", path, segment)
+			}
+			fv = reflect.NewAt(target, unsafe.Add(unsafe.Pointer(fv.UnsafeAddr()), fv.Int())).Elem()
+		}
+		cur = fv
+	}
+	return nil, fmt.Errorf("%q names no slot", path)
+}
+
+// writeRefusalGoPoint aims the pointer slot at path at the node the slot at
+// from points at (FL-28): pointed at an enclosing node it makes a cycle.
+func writeRefusalGoPoint(value any, path, from string) error {
+	slot, err := writeRefusalGoSlot(value, path)
+	if err != nil {
+		return err
+	}
+	source, err := writeRefusalGoSlot(value, from)
+	if err != nil {
+		return err
+	}
+	if *source == 0 {
+		return fmt.Errorf("%s: the slot %s is null", path, from)
+	}
+	target := uintptr(unsafe.Pointer(source)) + uintptr(*source)
+	*slot = int64(target - uintptr(unsafe.Pointer(slot)))
+	return nil
 }
