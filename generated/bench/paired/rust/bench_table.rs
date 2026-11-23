@@ -3809,6 +3809,7 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
         }
     }
     mixed_event_cook_union(&v.game_event, w, at + 1224);
+    if v.loadout.len() != 4 { w.fail(); }
     for i in 0..4_usize {
         let ea = at + 1244 + i as i64 * 1;
         if let Some(e) = v.loadout.get(i) {
