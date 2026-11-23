@@ -45,6 +45,13 @@ conformance:
   gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
+- **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
+  the shared table cases `chain_value` and `chain_optional` pin identical
+  nondefault encodings. `chain_value_empty` elides the default plain field,
+  while `chain_optional_empty` encodes a present optional with default
+  contents. When the plain field widens to optional, the newer reader
+  observes the elided field as absent. The cross-version report cases are
+  `p1_empty_as_p3` and `p3_empty_as_p1`.
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
