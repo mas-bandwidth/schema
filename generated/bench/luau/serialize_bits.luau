@@ -2,15 +2,15 @@
 -- serialize_bits.luau — the bits family (DESIGN.md (a), (b), (c), (g) and
 -- (h)): serializeBits, serializeBits64, bool and the fixed-width unsigned
 -- helpers uint8/16/32/64, plus bitsRequired, bitsRequired64 and the zig-zag
--- helpers, wire compatible with serialize (STANDARD.md, format version 2.0)
--- and serialize.go v2.0.0 write_stream.go, read_stream.go and measure_stream.go.
+-- helpers, wire compatible with mas-bandwidth/serialize (C++) v2.1.4
+-- (STANDARD.md, format version 2.0).
 --
--- The writer is STRICT: it emits exactly serialize.go's bytes. Write misuse
+-- The writer is STRICT: it emits exactly the reference's bytes. Write misuse
 -- (bits outside their range, a value too wide for its bits, a write that does
 -- not fit the room left) traps on write and measure, naming the rule, writes
 -- nothing for that call and latches nothing (IMPLEMENTING.md U9, U6); on read
 -- the same misuse refuses ValueOutOfRange (IMPLEMENTING.md U7). Reads refuse
--- where serialize.go refuses; a refusal leaves the caller's destination
+-- where the reference refuses; a refusal leaves the caller's destination
 -- untouched and the stream terminal (STANDARD.md, Reader Obligations).
 --
 -- The number model (DESIGN.md (c)): a value of 32 bits or fewer is a number,
@@ -26,8 +26,8 @@ local PAST_END = "past_end"
 -- buffer (IMPLEMENTING.md U9, U10): write misuse, never a latched past_end.
 local RAISE_ROOM = "serialize: the write does not fit the room left in the buffer"
 
--- Raise messages for API misuse: serialize.go's panic strings (serialize.go
--- v2.0.0 serialize.go; DESIGN.md (g)), and the value-width rule of
+-- Raise messages for API misuse: serialize.go's panic strings (serialize.go;
+-- DESIGN.md (g)), and the value-width rule of
 -- IMPLEMENTING.md U8 (this port is always checked, so a value too wide for
 -- its bits is caught on write, never masked).
 local RAISE_BITS_RANGE = "serialize: bits must be in [1,32]"
@@ -39,6 +39,8 @@ local RAISE_INTEGER_UINT64 = "serialize: serializeUint64 value must be an intege
 local RAISE_UINT8 = "serialize: serializeUint8 value must be an integer in [0,2^8)"
 local RAISE_UINT16 = "serialize: serializeUint16 value must be an integer in [0,2^16)"
 local RAISE_UINT32 = "serialize: serializeUint32 value must be an integer in [0,2^32)"
+local RAISE_BOOL = "serialize: serializeBool value must be a boolean"
+local RAISE_BITS_REQUIRED = "serialize: bitsRequired min and max must be integers and 0 <= max - min <= 4294967295"
 
 -- POW2[n] is 2^n for n in [1,32], the exclusive top of an n-bit value.
 local POW2: { number } = {}
@@ -167,6 +169,9 @@ end
 -- last.
 
 function M.writeBool(s: any, h: any): boolean
+	if type(h.value) ~= "boolean" then
+		return s:_misuse(RAISE_BOOL)
+	end
 	if s:_latched() then
 		return false
 	end
@@ -267,9 +272,16 @@ end
 
 -- bitsRequired(min, max) is the bits the range [min,max] takes (STANDARD.md
 -- int (ranged)): 0 when the range is degenerate, else the bit length of
--- max - min.
+-- max - min. bit32.countlz truncates modulo 2^32, so a non-integer bound or
+-- a span outside [0, 4294967295] is misuse, not a wrapped width.
 function M.bitsRequired(min: number, max: number): number
+	if type(min) ~= "number" or min % 1 ~= 0 or type(max) ~= "number" or max % 1 ~= 0 then
+		error(RAISE_BITS_REQUIRED, 2)
+	end
 	local diff = max - min
+	if not (diff >= 0 and diff <= 4294967295) then
+		error(RAISE_BITS_REQUIRED, 2)
+	end
 	if diff == 0 then
 		return 0
 	end

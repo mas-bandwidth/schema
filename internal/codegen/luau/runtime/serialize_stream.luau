@@ -1,7 +1,7 @@
 --!strict
 -- serialize_stream.luau — the three streams, WriteStream, ReadStream and
--- MeasureStream (DESIGN.md (a), (g) and (h)), wire compatible with serialize
--- (STANDARD.md, format version 2.0) and serialize.go v2.0.0.
+-- MeasureStream (DESIGN.md (a), (g) and (h)), wire compatible with
+-- mas-bandwidth/serialize (C++) v2.1.4 (STANDARD.md, format version 2.0).
 --
 -- This file holds what every stream shares and no family decides: the latch,
 -- terminality, the bit accounting, the fixed-width read and measure gates,
@@ -9,8 +9,8 @@
 -- method into its family module. A family module (src/serialize_<name>.luau,
 -- one per card, DESIGN.md (h)) is required LAZILY, on the first call that
 -- needs it, so each family card creates its own file and no two cards edit
--- one file. While a family's file is absent its methods raise
--- `serialize: <name> not implemented`.
+-- one file. While a family's file is absent its methods raise the require
+-- error naming that module.
 --
 -- Copyright © 2016 - 2026, Más Bandwidth LLC. BSD 3-Clause (see LICENSE).
 
@@ -68,6 +68,7 @@ end
 -- (DESIGN.md (g)). Family modules raise their own with the same prefix.
 local RAISE_BUFFER_BYTES = "serialize: bit writer buffer size must be a multiple of 8 bytes"
 local RAISE_NOT_AN_OBJECT = "serialize: serializeObject requires a table with a serialize method"
+local RAISE_HOLDER = "serialize: a holder must be a table"
 local RAISE_REJECT_NOT_READ = "serialize: reject is read only; a write or measure stream has nothing to refuse"
 local RAISE_ROOM = "serialize: the write does not fit the room left in the buffer"
 local RAISE_LATCH = "serialize: internal: a write or measure stream never latches a reason (IMPLEMENTING.md U9)"
@@ -90,16 +91,7 @@ local function family(name: string): any
 	if string.match(name, "^[a-z][a-z0-9_]*$") == nil then
 		error("serialize: family name " .. string.format("%q", name) .. " is not a family module name", 2)
 	end
-	local ok, result = pcall(function()
-		return requireFamily("./serialize_" .. name)
-	end)
-	if not ok then
-		local message = tostring(result)
-		if string.find(message, 'could not resolve child component "serialize_' .. name .. '"', 1, true) then
-			error("serialize: " .. name .. " not implemented (src/serialize_" .. name .. ".luau is absent)", 2)
-		end
-		error(result, 0)
-	end
+	local result = requireFamily("./serialize_" .. name)
 	families[name] = result
 	return result
 end
@@ -235,7 +227,10 @@ end
 -- a trap on write and measure, a ValueOutOfRange refusal on read), refuse
 -- on a latched stream (read only: a write or a measure never latches, U9),
 -- then the refusals (read) or the room check (a trap on write), then the bits.
-local DISPATCH: { { string } } = {
+-- The fourth field is the holder's argument position on a read: 1 when the
+-- holder is first (the default), 2 for int_relative (previous first), 0 for
+-- bytes (a buffer, not a holder).
+local DISPATCH: { { any } } = {
 	{ "serializeBits", "bits", "Bits" },
 	{ "serializeBits64", "bits", "Bits64" },
 	{ "serializeInt", "int", "Int" },
@@ -243,10 +238,10 @@ local DISPATCH: { { string } } = {
 	{ "serializeInt128", "int128", "Int128" },
 	{ "serializeFixed64", "fixed", "Fixed64" },
 	{ "serializeFixed128", "fixed", "Fixed128" },
-	{ "serializeIntRelative", "int_relative", "IntRelative" },
+	{ "serializeIntRelative", "int_relative", "IntRelative", 2 },
 	{ "serializeCompressedFloat", "compressed_float", "CompressedFloat" },
 	{ "serializeCompressedFloatPrecomputed", "compressed_float", "CompressedFloatPrecomputed" },
-	{ "serializeBytes", "bytes", "Bytes" },
+	{ "serializeBytes", "bytes", "Bytes", 0 },
 	{ "serializeString", "bytes", "String" },
 }
 
@@ -275,8 +270,15 @@ local function class(kind: string): any
 	end
 	for _, row in DISPATCH do
 		local method, name, arm = row[1], row[2], kind .. row[3]
-		c[method] = function(self: any, ...: any): boolean
-			return family(name)[arm](self, ...)
+		local holder: number = if row[4] == nil then 1 else row[4]
+		c[method] = function(self: any, first: any, ...: any): boolean
+			if kind == "read" and holder ~= 0 then
+				local h = if holder == 2 then (select(1, ...)) else first
+				if type(h) ~= "table" then
+					return self:_misuse(RAISE_HOLDER)
+				end
+			end
+			return family(name)[arm](self, first, ...)
 		end
 	end
 	return c
@@ -319,7 +321,9 @@ function WriteStream.reset(self: any, buf: buffer)
 	self._data = buf
 	self._numBits = n * 8
 	self._bits = 0
-	self._packer = nil
+	if self._packer ~= nil then
+		self._packer:reset(buf)
+	end
 	self._error = nil
 end
 
@@ -358,11 +362,9 @@ function WriteStream._writeBits64(self: any, value: integer, bits: number)
 end
 
 -- _writeBytes copies count bytes of src from offset into an ALIGNED stream,
--- already checked against _available (STANDARD.md bytes).
+-- already checked against _available (STANDARD.md bytes). A zero count still
+-- reaches the writer, whose check refuses a write after a flush (U11).
 function WriteStream._writeBytes(self: any, src: buffer, offset: number, count: number)
-	if count == 0 then
-		return
-	end
 	writer(self):writeBytes(src, offset, count)
 	self._bits += count * 8
 end
@@ -436,6 +438,9 @@ for _, row in FIXED do
 		if self._error ~= nil then
 			return false
 		end
+		if type(holder) ~= "table" then
+			return self:_misuse(RAISE_HOLDER)
+		end
 		if self._bits + width > self._numBits then
 			return self:_fail(SerializeError.PastEnd)
 		end
@@ -457,7 +462,9 @@ function ReadStream.reset(self: any, data: buffer)
 	self._data = data
 	self._numBits = buffer.len(data) * 8
 	self._bits = 0
-	self._packer = nil
+	if self._packer ~= nil then
+		self._packer:reset(data)
+	end
 	self._error = nil
 end
 
@@ -603,12 +610,8 @@ function MeasureStream.reset(self: any)
 	self._error = nil
 end
 
--- _measure adds bits to the count. A measure never latches (U6), so the
--- latch test is never true here; it is kept for the shared arm shape.
+-- _measure adds bits to the count. A measure never latches (U6).
 function MeasureStream._measure(self: any, bits: number): boolean
-	if self._error ~= nil then
-		return false
-	end
 	self._bits += bits
 	return true
 end

@@ -1,16 +1,15 @@
 --!strict
 -- serialize_int_relative.luau — int_relative (DESIGN.md (a), (c), (g) and
--- (h); STANDARD.md int_relative), wire compatible with serialize (format
--- version 2.0) and serialize.go v2.0.0 write_stream.go, read_stream.go and
--- measure_stream.go: the same values produce the same bytes and the same
--- refusals.
+-- (h); STANDARD.md int_relative), wire compatible with mas-bandwidth/serialize
+-- (C++) v2.1.4 (format version 2.0): the same values produce the same bytes
+-- and the same refusals.
 --
 -- int_relative encodes an increasing sequence compactly: a ladder of one-bit
 -- "does it fit in this tier?" flags, then the difference in the first tier it
 -- fits (or current as 32 raw bits in the absolute tier). Both values live in
 -- the non-negative int32 domain, 0 to 2147483647; previous outside it is API
--- misuse (serialize.go panicIntRelativeDomain), and every reconstruction is
--- checked against the domain and against previous, so no tier can wrap.
+-- misuse (the reference's int_relative domain check), and every reconstruction
+-- is checked against the domain and against previous, so no tier can wrap.
 --
 -- Copyright © 2016 - 2026, Más Bandwidth LLC. BSD 3-Clause (see LICENSE).
 

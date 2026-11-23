@@ -573,7 +573,9 @@ func (g *fixedModule) nextIdxVar() string {
 
 func (g *fixedModule) emitMessageCheckArray(f *ir.Field, mem, ind string, bound int64) {
 	iv := g.nextIdxVar()
-	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length < %d) { return false; }\n",
+	// EXACTLY N, as the variable Save holds it (TableVariableArrayValid): a
+	// longer array is refused, never cut at N (docs/SPEC.md §5.1)
+	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length !== %d) { return false; }\n",
 		ind, mem, mem, mem, mem, bound)
 	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, bound, iv)
 	e := messageElementField(f)
@@ -635,6 +637,14 @@ func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 	switch r := f.Type.Ref.(type) {
 	case *ir.Flags:
 		g.emitMessageCheckInteger(expr, ind, true)
+		// the mask rides at its declared width W (§3.3): a negative value or a
+		// bit at or above W is refused, never masked off by asUintN
+		// (docs/SPEC-TABLES.md §3.3, message-flags-width-is-caller-error)
+		if r.WireBits < 64 {
+			g.pf("%sif (%s < 0n || %s > %dn) { return false; }\n", ind, expr, expr, uint64(1)<<uint(r.WireBits)-1)
+		} else {
+			g.pf("%sif (%s < 0n || %s > 18446744073709551615n) { return false; }\n", ind, expr, expr)
+		}
 	case *ir.Enum:
 		g.emitMessageCheckInteger(expr, ind, false)
 		g.pf("%sif (%s < 0 || %s > %d) { return false; }\n", ind, expr, expr, len(r.Variants))

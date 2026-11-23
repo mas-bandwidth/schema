@@ -12376,6 +12376,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 arm_payload += 4; // uint32
                 w.header( arm_ref, 8 );
                 w.putleb( (uint64_t) arm_payload ); // pid
+                schema_assert( !( value.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.origin.pid ) );
                 break;
             }
@@ -12503,6 +12504,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         arm_payloadu += 4; // uint32
                         w.header( arm_refu, 8 );
                         w.putleb( (uint64_t) arm_payloadu ); // pid
+                        schema_assert( !( value.origins[elem_i].pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                         w.put32( uint32_t( value.origins[elem_i].pid ) );
                         break;
                     }
@@ -14935,6 +14937,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 arm_payload += 4; // int32
                 w.header( arm_ref, 4 );
                 w.putleb( (uint64_t) arm_payload ); // tally
+                schema_assert( !( value.body.tally < 0 || value.body.tally > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -17849,6 +17852,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             arm_payloadu += 4; // int32
                             w.header( arm_refu, 4 );
                             w.putleb( (uint64_t) arm_payloadu ); // tally
+                            schema_assert( !( value.pending[elem_i].tally < 0 || value.pending[elem_i].tally > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.pending[elem_i].tally ) );
                             break;
                         }
@@ -20420,6 +20424,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             arm_payloada += 4; // uint32
                             w.header( arm_refa, 8 );
                             w.putleb( (uint64_t) arm_payloada ); // pid
+                            schema_assert( !( value.body.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
@@ -20795,6 +20800,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     arm_payloadua += 4; // uint32
                                     w.header( arm_refua, 8 );
                                     w.putleb( (uint64_t) arm_payloadua ); // pid
+                                    schema_assert( !( value.history[elem_i].origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                                     w.put32( uint32_t( value.history[elem_i].origin.pid ) );
                                     break;
                                 }
@@ -24399,6 +24405,7 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                             arm_payloada += 4; // uint32
                             w.header( arm_refa, 8 );
                             w.putleb( (uint64_t) arm_payloada ); // pid
+                            schema_assert( !( value.body.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
@@ -38887,6 +38894,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                 arm_payload += 4; // uint32
                 w.header( arm_ref, 8 );
                 w.putleb( (uint64_t) arm_payload ); // pid
+                schema_assert( !( value.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.origin.pid ) );
                 break;
             }
@@ -39014,6 +39022,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                         arm_payloadu += 4; // uint32
                         w.header( arm_refu, 8 );
                         w.putleb( (uint64_t) arm_payloadu ); // pid
+                        schema_assert( !( value.origins[elem_i].pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                         w.put32( uint32_t( value.origins[elem_i].pid ) );
                         break;
                     }
@@ -39972,6 +39981,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBodyRetain( TableWriter & w, TableRetainId
                 arm_payload += 4; // int32
                 w.header( arm_ref, 4 );
                 w.putleb( (uint64_t) arm_payload ); // tally
+                schema_assert( !( value.body.tally < 0 || value.body.tally > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -41157,6 +41167,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableR
                             arm_payloadu += 4; // int32
                             w.header( arm_refu, 4 );
                             w.putleb( (uint64_t) arm_payloadu ); // tally
+                            schema_assert( !( value.pending[elem_i].tally < 0 || value.pending[elem_i].tally > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.pending[elem_i].tally ) );
                             break;
                         }
@@ -42536,6 +42547,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                             arm_payloada += 4; // uint32
                             w.header( arm_refa, 8 );
                             w.putleb( (uint64_t) arm_payloada ); // pid
+                            schema_assert( !( value.body.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
@@ -42911,6 +42923,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     arm_payloadua += 4; // uint32
                                     w.header( arm_refua, 8 );
                                     w.putleb( (uint64_t) arm_payloadua ); // pid
+                                    schema_assert( !( value.history[elem_i].origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                                     w.put32( uint32_t( value.history[elem_i].origin.pid ) );
                                     break;
                                 }
@@ -44546,6 +44559,7 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                             arm_payloada += 4; // uint32
                             w.header( arm_refa, 8 );
                             w.putleb( (uint64_t) arm_payloada ); // pid
+                            schema_assert( !( value.body.origin.pid > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
