@@ -519,8 +519,8 @@ SF-21 below and at the minimum.
 #### Maximum Form 1 payloads
 
 The same manifest pins the accepted maxima for a plain buffer and two
-selected union arms ([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)). The Go and
-JavaScript gates run their wire and JSON surfaces. The harness compares the
+selected union arms ([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)). All eight
+registered writers run the wire and JSON surfaces. The harness compares the
 full Form 1 files written from the JSON inputs, the complete JSON written
 from the pinned files, and the wire bytes after load and save.
 
@@ -530,8 +530,9 @@ from the pinned files, and the wire bytes after load and save.
 | `sfw_arm_raw_payload` | Selected `arm_raw.a_raw bytes(4)`, bytes `01 fe 00 55` |
 | `sfw_arm_arr_payload` | Selected `arm_arr.a_arr [..3]int32`, elements `-7, 0, 2147483647` |
 
-C, C++, C#, Unity, Rust and Dart still owe shared execution of these
-readback goldens. Their writer-argument gates run the cases above.
+Each `make table-write-bounds-<leg>` gate checks 26 outcomes: the fourteen
+writer arguments above and the four instances on each of the three readback
+surfaces. The fourth instance is the original seed.
 
 ### Declared deprecated enum writers
 
