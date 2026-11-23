@@ -6745,7 +6745,11 @@ defmodule Benchtable.Table do
         end)
 
         Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
-        Process.put(:elixir_json_defs, Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped))
+
+        Process.put(
+          :elixir_json_defs,
+          Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+        )
       end
     else
       Enum.each(rest, fn {k, v} ->
