@@ -96,7 +96,7 @@ func TestUnclaimedAbsentIsCoverage(t *testing.T) {
 			if !ok {
 				t.Fatalf("an UNCLAIMED absence turned the run red:\n%s", out)
 			}
-			mustSay(t, out, []string{footer, "pass 0/0 +1a"}, []string{"CLAIMED"})
+			mustSay(t, out, []string{notAllAnswered, "pass 0/1 +1a"}, []string{"CLAIMED", footer})
 			r, found := findRow(rows, "zz", "wire")
 			if !found || r.NotCarried != 1 || r.AbsentClaimed != 0 {
 				t.Errorf("the coverage row does not count the absence as not carried: %+v", r)
