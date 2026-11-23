@@ -194,7 +194,7 @@ values. `None` is one of those values, so an enum whose declared variant
 count is a power of two pays one bit for it: four declared variants are five
 wire values and cost 3 bits, not 2. An enum takes no `| max`: the width
 follows the variant count, and adding a variant that crosses a power of two
-widens the field. Forward compatibility lives elsewhere: on the packet wire
+widens the field. Reading across versions (a newer reader on older data) lives elsewhere: on the packet wire
 both peers share one schema, and on the table wire the field's width is
 recorded per version (the lock file's `width=` line, SPEC-TABLES.md), so a
 newer reader reads the older width.
@@ -1110,6 +1110,8 @@ flags Perks { Shielded, Cloaked, Turbo, Hardened } // RIGHT: appended, nothing m
 ```
 
 Removing a variant frees no bit either — retire the name, keep the position.
+A build that meets a bit past its own last variant refuses the load
+`out_of_range`: the newer reader reads old data, never the other way.
 
 ### Save and load
 
@@ -1878,13 +1880,13 @@ the buffer or exhaustion is damage, and damage discards the whole load
 batch is delivered. An UNKNOWN field does not stop anything, because the announcement
 gave the reader its width.
 
-**One thing behaves differently here than in a file, and it is `flags`.** A file
-carries a mask as a raw `uint64`, so an old build loads bits a newer build
-appended, holds them, and writes them back unharmed. A message carries a mask at
-its DECLARED width, which is what makes a three-variant mask cost three bits
-instead of eight bytes, and appended bits do not fit in a width that does not
-know about them. If you ferry masks from files onto messages across a mixed
-fleet, keep the bits inside your own variant count, or carry that mask in a file.
+**`flags` rides narrower here than in a file, and means the same.** A file
+carries a mask as a raw `uint64`; a message carries it at its DECLARED width,
+which is what makes a three-variant mask cost three bits instead of eight bytes.
+Both hold a mask to that width: a load refuses a bit at or above it
+`out_of_range`, and a save refuses to write one, so a mask that loads from a
+file always fits a message. An old build that meets a bit a newer build appended
+refuses the load by name: the newer reader reads old data, never the other way.
 
 A stateless request-response transport is out of scope. An HTTP request that
 shares no state with the last one has nowhere to put an announcement, so the

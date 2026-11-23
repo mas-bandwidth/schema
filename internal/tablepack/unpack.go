@@ -258,17 +258,22 @@ func writeTree(txn *atomicfile.Txn, m *tabletext.Model, inst *tabletext.Instance
 	if err := preflight(out, dir, st, root, oneFile, owned); err != nil {
 		return err
 	}
+	// the other spellings claimEntry took for a written name: on a
+	// case-insensitive filesystem each IS that name, already replaced in the
+	// transaction, so prune never deletes it again (that would delete the new
+	// entry it now names)
+	claimed := map[string]bool{}
 	if oneFile {
 		text, err := m.Write(inst)
 		if err != nil {
 			return err
 		}
 		name := root + ".json"
-		if _, err := claimEntry(view, out, dir, name, false, owned); err != nil {
+		if err := claim(claimed, view, out, dir, name, false, owned); err != nil {
 			return err
 		}
 		view.Write(name, append(text, '\n'), 0o644)
-		return prune(view, out, owned, map[string]bool{name: true})
+		return prune(view, out, owned, map[string]bool{name: true}, claimed)
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}
@@ -283,7 +288,7 @@ func writeTree(txn *atomicfile.Txn, m *tabletext.Model, inst *tabletext.Instance
 			continue
 		}
 		if f.KeyEnum != "" {
-			if err := unpackKeyed(m, fv, view, out, dir, key, owned); err != nil {
+			if err := unpackKeyed(m, fv, view, out, dir, key, owned, claimed); err != nil {
 				return err
 			}
 			written[key] = true
@@ -293,13 +298,13 @@ func writeTree(txn *atomicfile.Txn, m *tabletext.Model, inst *tabletext.Instance
 		if err != nil {
 			return err
 		}
-		if _, err := claimEntry(view, out, dir, key+".json", false, owned); err != nil {
+		if err := claim(claimed, view, out, dir, key+".json", false, owned); err != nil {
 			return err
 		}
 		view.Write(key+".json", append(text, '\n'), 0o644)
 		written[key+".json"] = true
 	}
-	return prune(view, out, owned, written)
+	return prune(view, out, owned, written, claimed)
 }
 
 // treeNamesOverlap reports whether the expanded tree's entries at the root
@@ -371,10 +376,13 @@ func portableName(name string) bool {
 	return true
 }
 
-func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.View, parent *os.Root, where, dir string, parentOwned map[string]bool) error {
+func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.View, parent *os.Root, where, dir string, parentOwned, parentClaimed map[string]bool) error {
 	alias, err := claimEntry(parentView, parent, where, dir, true, parentOwned)
 	if err != nil {
 		return err
+	}
+	if alias != "" {
+		parentClaimed[alias] = true
 	}
 	// the directory as it stands now, under the spelling it has: read for
 	// what is in the way and what is stale. One that is not there yet holds
@@ -396,6 +404,7 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.
 	f := fv.Def
 	written := map[string]bool{}
 	owned := map[string]bool{}
+	claimed := map[string]bool{}
 	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 		name := tabletext.EnumName(f.KeyEnumRef, tabletext.KeyedSlotValue(f, slot))
 		if name == "" {
@@ -407,7 +416,7 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.
 			return err
 		}
 		if out != nil {
-			if _, err := claimEntry(view, out, filepath.Join(where, dir), name+".json", false, owned); err != nil {
+			if err := claim(claimed, view, out, filepath.Join(where, dir), name+".json", false, owned); err != nil {
 				return err
 			}
 		}
@@ -417,7 +426,7 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.
 	if out == nil {
 		return nil
 	}
-	return prune(view, out, owned, written)
+	return prune(view, out, owned, written, claimed)
 }
 
 // prune removes the entries at one level that NAME something this level owns —
@@ -425,13 +434,16 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parentView atomicfile.
 // write. Both spellings of a value are pruned, so a stale `<field>/` directory
 // left beside a fresh `<field>.json` cannot become "two entries claim one
 // value" on the next pack. Anything the level does not own is left alone.
-func prune(view atomicfile.View, out *os.Root, owned, written map[string]bool) error {
+func prune(view atomicfile.View, out *os.Root, owned, written, claimed map[string]bool) error {
 	entries, err := fs.ReadDir(out.FS(), ".")
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
-		if written[e.Name()] {
+		// a written name, or another spelling of one that claimEntry already
+		// replaced: on a case-insensitive filesystem deleting it would delete
+		// the entry just written
+		if written[e.Name()] || claimed[e.Name()] {
 			continue
 		}
 		// exactly what the entry names: claimEntry has already given every
@@ -536,6 +548,19 @@ func claimEntry(view atomicfile.View, out *os.Root, where, name string, dir bool
 	// rename onto itself.
 	view.Respell(alias, name)
 	return alias, nil
+}
+
+// claim is claimEntry that records the other spelling it took, if any, in
+// claimed, for prune to pass over.
+func claim(claimed map[string]bool, view atomicfile.View, out *os.Root, where, name string, dir bool, owned map[string]bool) error {
+	alias, err := claimEntry(view, out, where, name, dir, owned)
+	if err != nil {
+		return err
+	}
+	if alias != "" {
+		claimed[alias] = true
+	}
+	return nil
 }
 
 // preflight refuses, before anything is written, an entry that stands where
