@@ -16,9 +16,9 @@ import (
 // TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters holds the
 // conformance driver's one absence path: a case this leg cannot answer is
 // written by spillAbsent or its named sibling spillAbsentReason, and no
-// surface writes a `.absent` marker itself. The strict blob_shared refusal
-// (docs/SPEC-TABLES.md §2.5) is no absence: ruling R13 answers it `refused`
-// in <case>, gated on the runtime's own refusal reason.
+// surface writes an absence marker itself. On the wire surface, fixed and
+// variable codecs emit the explicit R13 answer when the public read refuses.
+// A missing codec writes an empty absence marker.
 func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -41,8 +41,17 @@ func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 	if strings.Contains(body, ".absent") {
 		t.Error("surfaceWire writes an absence marker itself instead of calling an absence writer")
 	}
-	if !regexp.MustCompile(`reason != null && reason\.startsWith\("blob_shared"\)\) \{\s*spill\(out, f\[1\], "refused\\n"`).MatchString(body) {
-		t.Error("surfaceWire does not answer the runtime's strict blob_shared refusal `refused`")
+	for _, guard := range []string{
+		`read < 0 || fixed.flag(report, "refused")`,
+		`value == null || codec.flag(report, "refused")`,
+	} {
+		answer := regexp.MustCompile(`if \(` + regexp.QuoteMeta(guard) + `\) \{\s*(?://[^\n]*\n\s*)?spill\(out, f\[1\], "refused\\n"\);\s*continue;\s*\}`)
+		if !answer.MatchString(body) {
+			t.Errorf("surfaceWire does not emit the explicit R13 answer when %s", guard)
+		}
+	}
+	if !strings.Contains(body, `if (codec == null) { spillAbsent(out, f[1]); continue; }`) {
+		t.Error("surfaceWire does not declare the missing codec absent")
 	}
 
 	surfaces := regexp.MustCompile(`private static int (surface[A-Za-z]+)\(`).FindAllStringSubmatch(driver, -1)
