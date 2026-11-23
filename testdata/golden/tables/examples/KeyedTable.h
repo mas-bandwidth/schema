@@ -12346,6 +12346,7 @@ inline bool TeamConfigLoadMessages( TeamConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12898,6 +12899,7 @@ inline bool GunnerConfigLoadMessages( GunnerConfig * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -13581,6 +13583,7 @@ inline bool TurretConfigLoadMessages( TurretConfig * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14494,6 +14497,7 @@ inline bool HullConfigLoadMessages( HullConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15612,6 +15616,7 @@ inline bool KeyedConfigLoadMessages( KeyedConfig * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15662,6 +15667,8 @@ inline int64_t ScoreBoardMeasureBody( TableIds & ids, const ScoreBoard & value )
     }
     return bytes;
 }
+
+inline bool ScoreBoardFixedWriteAdmits( const ScoreBoard & value );
 
 inline int64_t ScoreBoardMeasure( const ScoreBoard & value )
 {
@@ -16344,6 +16351,7 @@ inline int64_t ScoreBoardMeasureMessages( const ScoreBoard * values, int64_t cou
     {
         const int64_t body = ScoreBoardMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ScoreBoardFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -16362,6 +16370,7 @@ inline int64_t ScoreBoardSaveMessages( const ScoreBoard * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ScoreBoardSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ScoreBoardFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ScoreBoardMeasureMessages( values, count, report )
@@ -16385,6 +16394,7 @@ inline bool ScoreBoardLoadMessages( ScoreBoard * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;

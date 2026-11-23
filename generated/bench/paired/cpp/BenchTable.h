@@ -7449,6 +7449,8 @@ inline int64_t MixedEntityMeasureBody( TableIds & ids, const MixedEntity & value
     return bytes;
 }
 
+inline bool MixedEntityFixedWriteAdmits( const MixedEntity & value );
+
 inline int64_t MixedEntityMeasure( const MixedEntity & value )
 {
     TableIds ids;
@@ -9960,6 +9962,7 @@ inline int64_t MixedEntityMeasureMessages( const MixedEntity * values, int64_t c
     {
         const int64_t body = MixedEntityMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MixedEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9978,6 +9981,7 @@ inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MixedEntitySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MixedEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MixedEntityMeasureMessages( values, count, report )
@@ -10001,6 +10005,7 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -10036,6 +10041,8 @@ inline int64_t MixedStatMeasureBody( TableIds & ids, const MixedStat & value )
     if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
     return bytes;
 }
+
+inline bool MixedStatFixedWriteAdmits( const MixedStat & value );
 
 inline int64_t MixedStatMeasure( const MixedStat & value )
 {
@@ -10611,6 +10618,7 @@ inline int64_t MixedStatMeasureMessages( const MixedStat * values, int64_t count
     {
         const int64_t body = MixedStatMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MixedStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10629,6 +10637,7 @@ inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, u
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MixedStatSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MixedStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MixedStatMeasureMessages( values, count, report )
@@ -10652,6 +10661,7 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -10692,6 +10702,8 @@ inline int64_t MixedHitEventMeasureBody( TableIds & ids, const MixedHitEvent & v
     if ( value.crit != false ) { bytes += TableLebBytes( ids.ref_at( 6, 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
     return bytes;
 }
+
+inline bool MixedHitEventFixedWriteAdmits( const MixedHitEvent & value );
 
 inline int64_t MixedHitEventMeasure( const MixedHitEvent & value )
 {
@@ -11598,6 +11610,7 @@ inline int64_t MixedHitEventMeasureMessages( const MixedHitEvent * values, int64
     {
         const int64_t body = MixedHitEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MixedHitEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11616,6 +11629,7 @@ inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MixedHitEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MixedHitEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MixedHitEventMeasureMessages( values, count, report )
@@ -11639,6 +11653,7 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -11675,6 +11690,8 @@ inline int64_t MixedChatEventMeasureBody( TableIds & ids, const MixedChatEvent &
     if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
     return bytes;
 }
+
+inline bool MixedChatEventFixedWriteAdmits( const MixedChatEvent & value );
 
 inline int64_t MixedChatEventMeasure( const MixedChatEvent & value )
 {
@@ -12320,6 +12337,7 @@ inline int64_t MixedChatEventMeasureMessages( const MixedChatEvent * values, int
     {
         const int64_t body = MixedChatEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MixedChatEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12338,6 +12356,7 @@ inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MixedChatEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MixedChatEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MixedChatEventMeasureMessages( values, count, report )
@@ -12361,6 +12380,7 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12397,6 +12417,8 @@ inline int64_t MixedPickupEventMeasureBody( TableIds & ids, const MixedPickupEve
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
+
+inline bool MixedPickupEventFixedWriteAdmits( const MixedPickupEvent & value );
 
 inline int64_t MixedPickupEventMeasure( const MixedPickupEvent & value )
 {
@@ -13042,6 +13064,7 @@ inline int64_t MixedPickupEventMeasureMessages( const MixedPickupEvent * values,
     {
         const int64_t body = MixedPickupEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MixedPickupEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13060,6 +13083,7 @@ inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, in
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MixedPickupEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MixedPickupEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MixedPickupEventMeasureMessages( values, count, report )
@@ -13083,6 +13107,7 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -13262,6 +13287,8 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     return bytes;
 }
+
+inline bool BenchMixedFixedWriteAdmits( const BenchMixed & value );
 
 inline int64_t BenchMixedMeasure( const BenchMixed & value )
 {
@@ -17915,6 +17942,7 @@ inline int64_t BenchMixedMeasureMessages( const BenchMixed * values, int64_t cou
     {
         const int64_t body = BenchMixedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( BenchMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -17933,6 +17961,7 @@ inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !BenchMixedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( BenchMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == BenchMixedMeasureMessages( values, count, report )
@@ -17956,6 +17985,7 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -18931,6 +18961,7 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 56, (uint64_t) value.server_time, 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    if ( value.entities_count < 1 || value.entities_count > 8 ) { return false; }
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }
@@ -18938,6 +18969,7 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 576, (uint64_t) (uint32_t) value.entities_count, 4, order );
     // 80 slots of storage, value.stats_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; }
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {
         if ( !MixedStatCookBody( at + 580 + i * 8, value.stats[i], order ) ) { return false; }

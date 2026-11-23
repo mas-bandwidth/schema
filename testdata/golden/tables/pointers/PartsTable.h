@@ -10233,6 +10233,7 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;

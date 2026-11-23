@@ -587,19 +587,6 @@ func csFixedBoundsNeededField(f *ir.Field) bool {
 	return ir.TableFixedBoundsNeededField(f) || csFlagsBoundField(f, map[string]bool{})
 }
 
-func csFixedElementBoundsNeeded(f *ir.Field) bool {
-	return ir.TableFixedElementBoundsNeeded(f) || csFlagsBoundField(f, map[string]bool{})
-}
-
-func csFixedBoundsNeededUnionArm(r *ir.Union) bool {
-	for _, v := range r.Variants {
-		if v.F != nil && csFixedBoundsNeededField(v.F) {
-			return true
-		}
-	}
-	return false
-}
-
 func csFlagsBoundIn(st *ir.Struct, seen map[string]bool) bool {
 	if seen[st.Name] {
 		return false

@@ -14377,6 +14377,7 @@ static SCHEMA_UNUSED int tabledemo_score_board_save_body( tabledemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_score_board_write_admits_( const tabledemo_score_board_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_score_board_measure( const tabledemo_score_board_t * value )
 {
     tabledemo_table_write_ids_t vocabulary;
@@ -14724,7 +14725,11 @@ static SCHEMA_UNUSED int64_t tabledemo_score_board_measure_messages( const table
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_score_board_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_score_board_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -14747,7 +14752,11 @@ static SCHEMA_UNUSED int64_t tabledemo_score_board_save_messages( const tabledem
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_score_board_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_score_board_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -15210,6 +15219,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
         }
     }
     schema_tabledemo_score_board_fixed_write_check_body_( &value->scores, out_of_range, damaged );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value ScoreBoard holds is
+   one its declaration admits. Every writer of ScoreBoard asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_score_board_write_admits_( const tabledemo_score_board_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_score_board_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TeamConfig holds is

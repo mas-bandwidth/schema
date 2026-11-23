@@ -1186,6 +1186,11 @@ defmodule Benchtable.TableMessage do
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def measure_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: measure_messages(own, values)
+  end
+
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
 
   @doc """
@@ -1210,7 +1215,29 @@ defmodule Benchtable.TableMessage do
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def save_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: save_messages(own, values)
+  end
+
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  defp own_vocab(root) do
+    case :persistent_term.get({__MODULE__, :own_vocab}, nil) do
+      nil ->
+        case announce_read(@announcement) do
+          {:ok, vocab} ->
+            :persistent_term.put({__MODULE__, :own_vocab}, vocab)
+            for_root(vocab, root)
+
+          _ ->
+            {:error, :no_vocabulary}
+        end
+
+      vocab ->
+        for_root(vocab, root)
+    end
+  end
 
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)

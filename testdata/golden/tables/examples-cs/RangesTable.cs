@@ -1623,6 +1623,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RangedSignedFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -2402,6 +2403,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RangedUnsignedFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -3077,6 +3079,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RangedWidthsFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

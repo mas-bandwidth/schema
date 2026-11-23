@@ -14558,6 +14558,7 @@ inline bool RangedSignedLoadMessages( RangedSigned * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -17569,6 +17570,7 @@ inline bool RangedUnsignedLoadMessages( RangedUnsigned * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -18766,6 +18768,7 @@ inline bool RangedWidthsLoadMessages( RangedWidths * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -23679,6 +23682,7 @@ inline bool RangedSignedCookBody( uint8_t * at, const RangedSigned & value, Tabl
     table_cook_put( at + 56, (uint64_t) value.i64_inside, 8, order );
     // 4 slots of storage, value.edges_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.edges_count; i++ )
     {
         table_cook_put( at + 64 + i * 2, (uint64_t) value.edges[i], 2, order );
@@ -23707,6 +23711,7 @@ inline bool RangedUnsignedCookBody( uint8_t * at, const RangedUnsigned & value, 
     table_cook_put( at + 56, (uint64_t) value.u64_inside, 8, order );
     // 4 slots of storage, value.counts_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.counts_count; i++ )
     {
         table_cook_put( at + 64 + i * 8, (uint64_t) value.counts[i], 8, order );

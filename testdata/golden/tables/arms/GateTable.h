@@ -11031,6 +11031,7 @@ inline bool OnlyLoadMessages( Only * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;

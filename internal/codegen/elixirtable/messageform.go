@@ -97,10 +97,6 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 		batch = strings.Replace(batch, messageArmSubUnion, "", 1)
 		batch = strings.Replace(batch, messageArmRawUnion, "", 1)
 		batch = strings.Replace(batch, messageArmKnownUnion, "", 1)
-		batch = strings.Replace(batch, messageUnionOwner, "", 1)
-	}
-	if len(vocab) > 4096 {
-		runtime = strings.Replace(runtime, "  def announce_measure, do: byte_size(@announcement)\n", "  def announce_measure, do: -1\n", 1)
 	}
 	b.WriteString(messageIntegrity(u, runtime+batch))
 	b.WriteString(messageBinding(u))
@@ -1002,11 +998,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
             Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
           end)
 
-        rules =
-          Enum.reduce(write_owner_rule_rows(), rules, fn {owner, id, kind, what, v}, acc ->
-            Map.update(acc, {owner, id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
-          end)
-
         :persistent_term.put({__MODULE__, :write_rules}, rules)
         rules
 
@@ -1044,11 +1035,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # mask and never a byte-order question.
   # ---------------------------------------------------------------------------
 
-  defp read_bodies(_vocab, r, 0, acc, _rec_name), do: {:ok, Enum.reverse(acc), r}
+  defp read_bodies(_vocab, r, 0, acc, _rec), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_bodies(vocab, r, n, acc, rec_name) do
-    case read_body(vocab, r, [], MapSet.new(), 0, rec_name, record(rec_name), -1) do
-      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec_name)
+  defp read_bodies(vocab, r, n, acc, rec) do
+    case read_body(vocab, r, [], MapSet.new(), 0, rec, -1) do
+      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec)
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
@@ -1070,10 +1061,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   #     (§3.3 (a)) are damage;
   #   * under another build version an undeclared field is stepped over by its
   #     announced shape and omitted, never appended to the body.
-  defp read_body(_vocab, _r, _acc, _seen, depth, _rec_name, _rec, _last) when depth > 128,
-    do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth, _rec, _last) when depth > 128, do: :malformed
 
-  defp read_body(vocab, r, acc, seen, depth, rec_name, rec, last) do
+  defp read_body(vocab, r, acc, seen, depth, rec, last) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
@@ -1089,16 +1079,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
                 :skip ->
                   case skip_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
                     {:ok, rest2} ->
-                      read_body(
-                        vocab,
-                        rest2,
-                        acc,
-                        MapSet.put(seen, entry.id),
-                        depth,
-                        rec_name,
-                        rec,
-                        last
-                      )
+                      read_body(vocab, rest2, acc, MapSet.put(seen, entry.id), depth, rec, last)
 
                     :malformed ->
                       :malformed
@@ -1126,7 +1107,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
                         do: acc,
                         else: [{ref, value} | acc]
 
-                    read_body(vocab, rest2, acc2, seen, depth, rec_name, rec, last)
+                    read_body(vocab, rest2, acc2, seen, depth, rec, last)
                   else
                     _ -> :malformed
                   end
@@ -1228,27 +1209,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp sub_of({_index, _exact, _rule, sub}), do: sub
   defp sub_of(nil), do: nil
-
-  defp read_in_range?(owner, {_index, true, _rule, _sub}, entry, value) do
-    rules = write_rules()
-
-    rule =
-      Map.get(rules, {owner, entry.id, entry.kind}) ||
-        Map.get(rules, {entry.id, entry.kind})
-
-    case rule do
-      %{min: lo, max: hi} when is_integer(value) ->
-        value >= lo and value <= hi
-
-      %{each_min: lo, each_max: hi} when is_list(value) ->
-        Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
-
-      _ ->
-        true
-    end
-  end
-
-  defp read_in_range?(_owner, _decl, _entry, _value), do: true
 
   defp stored_at_default?(_vocab, {_index, true, {:keyed, _keys, _elem_rule}, _sub}, []),
     do: true
@@ -1367,30 +1327,1559 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp own_scope(%{root: root}) when is_binary(root), do: root
   defp own_scope(_vocab), do: nil
 
+  defp own_build?(%{build_version: @build_version}), do: true
+  defp own_build?(_vocab), do: false
+
+  defp record(name) when is_binary(name), do: Map.get(@message_records, name)
+  defp record(_sub), do: nil
+
+  defp arm_sub({:union, name}, id) do
+    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do
+      {_raw, sub} -> sub
+      _ -> nil
+    end
+  end
+
+  defp arm_sub(_sub, _id), do: nil
+
+  defp arm_raw({:union, name}, id) do
+    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do
+      {raw, _sub} -> raw
+      _ -> nil
+    end
+  end
+
+  defp arm_raw(_sub, id), do: if(id < 0, do: 0, else: nil)
+
+  defp arm_known?({:union, name}, id),
+    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+
+  defp arm_known?(_sub, id), do: id >= 0
+
+  # An undeclared field under another build version is stepped over by its
+  # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
+  # read exactly as a kept value would be, so damage stays damage, but nothing
+  # lands in the body; a union field at arm 0 is still refused where the walk
+  # meets it, whatever the build.
+  defp skip_value(vocab, kind, shape, elem, r, depth) do
+    case read_value(vocab, kind, shape, elem, r, depth, nil) do
+      {:ok, :none, _rest} when kind == 15 -> :malformed
+      {:ok, _value, rest} -> {:ok, rest}
+      :malformed -> :malformed
+    end
+  end
+
+  defp read_value(_vocab, _kind, _shape, _elem, _r, depth, _sub) when depth > 128,
+    do: :malformed
+
+  defp read_value(vocab, 13, _shape, _elem, r, depth, sub),
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1, record(sub), -1)
+
+  defp read_value(vocab, 14, shape, elem, r, depth, sub),
+    do: read_array(vocab, shape, elem, r, depth, sub)
+
+  defp read_value(vocab, 15, _shape, _elem, r, depth, sub), do: read_union(vocab, r, depth, sub)
+
+  defp read_value(vocab, 16, shape, elem, r, depth, sub),
+    do: read_keyed(vocab, shape, elem, r, depth, sub)
+
+  defp read_value(vocab, kind, shape, elem, r, _depth, _sub),
+    do: read_value(vocab, kind, shape, elem, r)
+
+  defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}
+  defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}
+
+  defp read_value(_vocab, 1, _shape, _elem, r), do: get_bits(r, 1)
+
+  defp read_value(_vocab, kind, shape, _elem, r)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
+       do: read_scalar(kind, shape, r)
+
+  defp read_value(_vocab, 10, shape, _elem, r), do: read_float(shape, r)
+
+  defp read_value(_vocab, 11, _shape, _elem, r) do
+    case get_bits(r, 64) do
+      {:ok, v, rest} -> {:ok, f64_from_bits(v), rest}
+      :error -> :malformed
+    end
+  end
+
+  defp read_value(_vocab, 12, shape, _elem, r), do: read_string(shape, r)
+
+  defp read_value(vocab, 30, _shape, _elem, r), do: read_enum(vocab, r)
+
+  defp read_value(_vocab, _kind, _shape, _elem, _r), do: :malformed
+
+  defp read_scalar(kind, shape, r) do
+    n = scalar_bits(kind, shape)
+
+    case get_bits(r, n) do
+      {:ok, raw, rest} ->
+        case scalar_value(kind, shape, raw) do
+          :malformed -> :malformed
+          value -> {:ok, value, rest}
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  defp read_float(%{packing: 0}, r) do
+    case get_bits(r, 32) do
+      {:ok, v, rest} -> {:ok, f32_from_bits(v), rest}
+      :error -> :malformed
+    end
+  end
+
+  # A QUANTIZED INDEX ABOVE ITS COUNT IS DAMAGE (§3.3, SPEC.md §4.3), a
+  # skipped field's too: the width spells such an index whenever the count is
+  # not one less than a power of two, and the value it names is held to the
+  # finite rule a raw payload is held to.
+  defp read_float(%{packing: 2} = shape, r) do
+    {delta, count} = quant_facts(shape)
+
+    case get_bits(r, bit_length(count)) do
+      {:ok, index, rest} when index <= count ->
+        bits = dequantize_bits(index, shape.qmin, delta, count)
+
+        if (bits >>> 23 &&& 0xFF) == 0xFF do
+          :malformed
+        else
+          <<v::little-float-32>> = <<bits::little-32>>
+          {:ok, v, rest}
+        end
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_float(_shape, _r), do: :malformed
+
+  # The step count and delta derive from the announced triple exactly as
+  # ir.TableMessageQuantization derives them, in float32.
+  defp quant_facts(%{qmin: lo, qmax: hi, qres: res}) do
+    delta = round_f32(hi - lo)
+    values = round_f32(delta / res)
+
+    values =
+      cond do
+        values == :nonfinite -> 1.0
+        not (values >= 1) -> 1.0
+        values > 4_294_967_040.0 -> 4_294_967_040.0
+        true -> values
+      end
+
+    {delta, trunc(Float.ceil(values))}
+  end
+
+  # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
+  # number at most the declared max and are well-formed UTF-8 with no NUL, or
+  # the batch refuses
+  defp read_string(shape, r) do
+    with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
+         {:ok, rest2} <- align(rest),
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- n <= shape.max,
+         true <- text_ok?(bytes) do
+      {:ok, bytes, rest3}
+    else
+      _ -> :malformed
+    end
+  end
+
+  # THE COUNT'S BITS CAN SPELL MORE THAN max - min (§3.3), so a count above
+  # the announced maximum is damage, a skipped field's too.
+  defp read_array(vocab, shape, elem, r, depth, sub) do
+    with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
+         n = shape.min + offset,
+         true <- n <= shape.max,
+         {:ok, rest2} <- maybe_align(elem, rest),
+         next_depth = elem_depth(elem, depth),
+         {:ok, list, rest3} <- read_elements(vocab, shape, elem, n, rest2, [], next_depth, sub) do
+      {:ok, Enum.map(list, &if(&1 == :unknown_arm, do: :none, else: &1)), rest3}
+    else
+      _ -> :malformed
+    end
+  end
+
+  # AN ENUM-KEYED ARRAY (§3.2): the number of present slots, then one
+  # (key reference, element) pair per slot. A key that names no declared
+  # no-payload entry, and one that names the same entry twice, is damage
+  # (§3.3), a skipped field's too.
+  defp read_keyed(vocab, shape, elem, r, depth, sub) do
+    case get_bits(r, bit_length(shape.max)) do
+      {:ok, n, rest} when n <= shape.max ->
+        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth), sub)
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth, _sub),
+    do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth, sub) do
+    with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
+         {:ok, entry} <- entry_at(vocab, ref),
+         true <- entry.kind == 0,
+         true <- entry.id < 0xFFFFFFFFFFFFFFFD,
+         false <- MapSet.member?(seen, entry.id) do
+      seen = MapSet.put(seen, entry.id)
+      inner = Map.get(elem, :element)
+
+      case read_value(vocab, elem.kind, elem.shape, inner, rest, depth, sub) do
+        {:ok, value, rest2} ->
+          v2 = if value == :unknown_arm, do: :none, else: value
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, v2} | acc], seen, depth, sub)
+
+        :malformed ->
+          :malformed
+      end
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp elem_depth(%{kind: kind}, depth) when kind in [12, 13, 14, 15, 16, 17, 30], do: depth + 1
+  defp elem_depth(_elem, depth), do: depth
+
+  defp maybe_align(%{kind: 6}, r), do: align(r)
+  defp maybe_align(_elem, r), do: {:ok, r}
+
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth, _sub),
+    do: {:ok, Enum.reverse(acc), r}
+
+  # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
+  # ranged scalar whose bit width is 0, or a nested run of those. Looping on
+  # the count would allocate a list in proportion to the announcement and
+  # consume no input. This reader returns the list, so zero_width_run holds
+  # every fixed-width zero run to the bits the batch still holds
+  # (internal/tablewire/messagedecode.go) before any cell is allocated. A
+  # WALKED element that consumes no bits is damage, even where the remaining
+  # count could fit in the batch's padding.
+  defp read_elements(vocab, shape, elem, n, r, acc, depth, sub) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth, sub) do
+      {:ok, v, ^r} ->
+        if element_run_bits(elem) < 0 do
+          :malformed
+        else
+          zero_width_run(vocab, shape, n, r, acc, v)
+        end
+
+      {:ok, v, rest} ->
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth, sub)
+
+      :malformed ->
+        :malformed
+    end
+  end
+
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth, _sub) when n > 0,
+    do: :malformed
+
+  defp zero_width_run(_vocab, _shape, n, r, acc, v) do
+    # The shape is the writer's announcement, whatever its minimum and maximum:
+    # a run the batch's bits cannot back is damage
+    # (internal/tablewire/messagedecode.go). A run the bits back is
+    # materialized, and the uint32 ceiling on the announced shape is untouched.
+    if n > bits_left(r) do
+      :malformed
+    else
+      {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  # THE ELEMENT'S FIXED WIDTH WHERE IT IS ONE THIS READER CAN MULTIPLY, and -1
+  # where it must be walked (§3.3): a table, union, enum, pointer or nested
+  # array resolves something, a string finds a length, and a float or a
+  # ranged/quantized scalar carries a value condition the wire decides. A fixed
+  # width is stepped by its width, including zero, and is not walked; a walked
+  # element must move the cursor on every step.
+  defp element_run_bits(%{kind: kind, shape: shape}) do
+    cond do
+      kind in [0, 32] ->
+        0
+
+      kind in [10, 11, 12, 13, 14, 15, 16, 17, 30] ->
+        -1
+
+      kind in [1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36] ->
+        width = scalar_bits(kind, shape)
+        if width > 0 and shape.packing in [1, 2], do: -1, else: width
+
+      true ->
+        -1
+    end
+  end
+
+  defp bits_left({_bin, off, total}) when total > off, do: total - off
+  defp bits_left({_bin, _off, _total}), do: 0
+
+  defp read_union(vocab, r, depth, sub) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, 0, rest} ->
+        {:ok, :none, rest}
+
+      {:ok, ref, rest} ->
+        case entry_at(vocab, ref) do
+          {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+            elem = Map.get(entry, :element)
+            known = arm_known?(sub, entry.id)
+            arm = if known, do: arm_sub(sub, entry.id), else: nil
+
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do
+              {:ok, value, rest2} ->
+                if not known,
+                  do: {:ok, :unknown_arm, rest2},
+                  else:
+                    {:ok,
+                     {ref,
+                      if(entry.kind == 15 and value == :unknown_arm, do: :none, else: value)},
+                     rest2}
+
+              :malformed ->
+                :malformed
+            end
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  defp read_enum(vocab, r) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, 0, rest} ->
+        {:ok, 0, rest}
+
+      {:ok, ref, rest} ->
+        case entry_at(vocab, ref) do
+          {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+            {:ok, ref, rest}
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
+
+  # ---- the shared bit helpers --------------------------------------------------
+
+  defp scalar_bits(kind, %{packing: 1, bits: b})
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       do: b
+
+  defp scalar_bits(kind, _shape), do: kind_bits(kind)
+
+  # A RANGED VALUE'S OFFSET CAN SPELL A VALUE PAST ITS KIND (§3.3), a skipped
+  # field's too: base + offset must land in the domain the kind declares.
+  defp scalar_value(kind, %{packing: 1, base: base}, raw) do
+    value = base + raw
+    if kind_holds?(kind, value), do: value, else: :malformed
+  end
+
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36],
+    do: sign_extend(raw, kind_bits(kind))
+
+  defp scalar_value(_kind, _shape, raw), do: raw
+
+  defp kind_holds?(kind, value) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] do
+    bits = kind_bits(kind)
+    value >= -(1 <<< (bits - 1)) and value <= (1 <<< (bits - 1)) - 1
+  end
+
+  defp kind_holds?(kind, value) do
+    bits = kind_bits(kind)
+    bits > 0 and value >= 0 and value <= (1 <<< bits) - 1
+  end
+
+  defp sign_extend(raw, bits) do
+    if (raw >>> (bits - 1) &&& 1) == 1 do
+      raw - (1 <<< bits)
+    else
+      raw
+    end
+  end
+
+  defp mask_bits(value, bits), do: value &&& bit_mask(bits)
+
+  defp bit_mask(0), do: 0
+  defp bit_mask(n), do: (1 <<< n) - 1
+
+  # THE READER'S STATE is {batch, bit offset, bit count}: the batch binary
+  # itself, never an integer made of it. Bit i of the stream is bit i rem 8 of
+  # byte i div 8 (low bit first, docs/SPEC-TABLES.md §3.3), so n bits at off
+  # are the little-endian integer of the bytes they span, shifted down by
+  # off rem 8: a sub-binary match and a decode of those bytes alone.
+  defp get_bits({bin, off, total}, n) do
+    if off + n > total do
+      :error
+    else
+      {:ok, peek_bits(bin, off, n), {bin, off + n, total}}
+    end
+  end
+
+  defp peek_bits(_bin, _off, 0), do: 0
+
+  defp peek_bits(bin, off, n) do
+    first = div(off, 8)
+    shift = rem(off, 8)
+    span = div(shift + n + 7, 8)
+    <<_::binary-size(^first), window::binary-size(^span), _::binary>> = bin
+    :binary.decode_unsigned(window, :little) >>> shift &&& bit_mask(n)
+  end
+
+  defp align({bin, off, total}) do
+    pad = rem(8 - rem(off, 8), 8)
+
+    if off + pad > total or peek_bits(bin, off, pad) != 0 do
+      :error
+    else
+      {:ok, {bin, off + pad, total}}
+    end
+  end
+
+  # r is byte-aligned here (align precedes the call), so read n bytes whole.
+  # A legal zero-length text is an exact empty binary and the cursor unchanged.
+  # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
+  # range walks two bytes. Positive lengths step //1. A run past the batch
+  # stays :error.
+  defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}
+
+  # The bytes are copied out of the batch, so a delivered text never holds
+  # the whole batch alive.
+  defp take_bytes({bin, off, total}, n) when is_integer(n) and n > 0 do
+    need = n * 8
+
+    if off + need > total do
+      :error
+    else
+      bytes = :binary.copy(binary_part(bin, div(off, 8), n))
+      {:ok, bytes, {bin, off + need, total}}
+    end
+  end
+
+  defp entry_at(vocab, ref) do
+    if ref >= 1 and ref <= length(vocab.entries) do
+      {:ok, Enum.at(vocab.entries, ref - 1)}
+    else
+      :error
+    end
+  end
+
+  # The batch ends at the pad to the byte boundary: no more than seven bits left,
+  # and all of them zero (docs/SPEC-TABLES.md §3.3).
+  defp batch_ends_clean?({bin, off, total}) do
+    rem_bits = total - off
+    rem_bits < 8 and peek_bits(bin, off, rem_bits) == 0
+  end
+
+  defp int_to_bytes(_int, 0), do: <<>>
+
+  defp int_to_bytes(int, nbytes) do
+    for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
+  end
+
+  defp bit_length(0), do: 0
+  defp bit_length(n), do: bit_length(n, 0)
+  defp bit_length(n, b) when n > 0, do: bit_length(n >>> 1, b + 1)
+  defp bit_length(_n, b), do: b
+
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a read tests the raw bits for
+  # an all-ones exponent before they become a float and refuses the batch, and
+  # a write refuses a float64 that narrows past float32's range to an infinity
+  # (a BEAM float holds no NaN and no infinity of its own).
+  defp f64_from_bits(v) when (v >>> 52 &&& 0x7FF) == 0x7FF, do: throw(:non_finite_float)
+
+  defp f64_from_bits(v) do
+    <<f::little-float-64>> = <<v::little-64>>
+    f
+  end
+
+  defp f64_to_bits(f) do
+    <<v::little-64>> = <<f::little-float-64>>
+    v
+  end
+
+  defp f32_from_bits(v) when (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float)
+
+  defp f32_from_bits(v) do
+    <<f::little-float-32>> = <<v::little-32>>
+    f
+  end
+
+  defp f32_to_bits(f) do
+    <<v::little-32>> = <<f::little-float-32>>
+    if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
+  end
+`
+
+// elixirBytes spells a byte run as the segments of an Elixir binary literal,
+// low byte first.
+func elixirBytes(bytes []byte) []string {
+	segs := make([]string, len(bytes))
+	for i, v := range bytes {
+		segs[i] = fmt.Sprintf("0x%02X", v)
+	}
+	return segs
+}
+
+// exAttrBinary writes `<prefix><<a, b, ...>>` the way `mix format` writes a
+// module attribute's binary: one line when it fits, and otherwise FILLED to
+// the line limit, every continuation aligned under the first segment.
+func exAttrBinary(prefix string, segs []string) string {
+	if one := prefix + "<<" + strings.Join(segs, ", ") + ">>"; exWidth(one) <= exLineLimit {
+		return one + "\n"
+	}
+	cont := strings.Repeat(" ", exWidth(prefix)+2)
+	var b strings.Builder
+	b.WriteString(prefix + "<<" + segs[0])
+	col := exWidth(prefix) + 2 + exWidth(segs[0])
+	for i := 1; i < len(segs); i++ {
+		after := 1 // the comma that follows it
+		if i == len(segs)-1 {
+			after = 2 // the closing >>
+		}
+		if col+2+exWidth(segs[i])+after > exLineLimit {
+			b.WriteString(",\n" + cont + segs[i])
+			col = exWidth(cont) + exWidth(segs[i])
+			continue
+		}
+		b.WriteString(", " + segs[i])
+		col += 2 + exWidth(segs[i])
+	}
+	return b.String() + ">>\n"
+}
+
+const messageRuntimeBody = `  defstruct announced: false,
+            integrity: false,
+            root: nil,
+            refused: false,
+            build_version: 0,
+            entries: [],
+            count: 0,
+            ref_bits: 0,
+            max_bytes: 65536,
+            max_entries: 4096,
+            strict: false,
+            remote: nil,
+            own: nil
+
+  # ---------------------------------------------------------------------------
+  # THE CONSTANT, and nothing but the constant
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
+  §3.3): a form-` + "`" + `1` + "`" + ` file whose body carries the build version and the vocabulary.
+  """
+  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
+
+  @doc "The announcement's byte count, a constant of the unit."
+  def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
+
+  @doc "This unit's own entry count: the capacity a receiver that talks only to its own build declares."
+  def entries_here, do: @entries_here
+
+  def new, do: %__MODULE__{}
+
+  # ---------------------------------------------------------------------------
+  # THE READER
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Read an announcement into the caller's vocabulary.
+
+  ` + "`" + `{:ok, vocab}` + "`" + ` on a clean read; ` + "`" + `{:error, reason, vocab}` + "`" + ` otherwise, the
+  reason by name. The build version is kept the moment it is read, refusal or
+  not. A REFUSAL IS TERMINAL (docs/SPEC-TABLES.md §3.3): once refused — or once
+  malformed — every later announcement is ` + "`" + `:second_announcement` + "`" + `.
+  """
+  def announce_read(data), do: announce_read(data, new())
+
+  def announce_read(_data, %__MODULE__{announced: true} = vocab),
+    do: {:error, :second_announcement, vocab}
+
+  def announce_read(_data, %__MODULE__{refused: true} = vocab),
+    do: {:error, :second_announcement, vocab}
+
+  def announce_read(data, vocab) do
+    case open_file(data) do
+      {:ok, body, ids} ->
+        # an id table out of first-use order is the whole wire malformed (§3),
+        # judged before the build version is read, as the engine does
+        if first_use_order?(body, ids),
+          do: walk_body(body, ids, vocab),
+          else: {:error, :malformed, %{vocab | refused: true}}
+
+      {:error, reason} ->
+        {:error, reason, %{vocab | refused: true}}
+    end
+  end
+
+  defp walk_body(body, ids, vocab) do
+    case walk(body, ids, 0, 0, 0, nil, vocab.max_bytes, MapSet.new()) do
+      # STRICT MODE IS OPT-IN (§3.3): with strict set, an announcement whose
+      # build version is not this unit's own is refused :build_version_mismatch,
+      # sets no vocabulary, keeps the writer's build version and names both
+      # versions in the vocabulary's remote and own.
+      {:ok, build_version, _words} when vocab.strict and build_version != @build_version ->
+        {:error, :build_version_mismatch,
+         %{
+           vocab
+           | refused: true,
+             build_version: build_version,
+             remote: build_version,
+             own: @build_version
+         }}
+
+      {:ok, build_version, words} ->
+        parse_words(words, %{vocab | build_version: build_version})
+
+      {:refuse, reason} ->
+        {:error, reason, %{vocab | refused: true}}
+
+      {:malformed, build_version} ->
+        {:error, :malformed, %{vocab | refused: true, build_version: build_version}}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # THE FORM-` + "`" + `1` + "`" + ` FILE, read whole
+  # ---------------------------------------------------------------------------
+
+  # THE FORM BYTE IS READ FIRST (§3.3): a byte this reader does not carry is a
+  # refusal by name and never damage.
+  defp open_file(<<>>), do: {:error, :malformed}
+  defp open_file(<<2, _::binary>>), do: {:error, :message_form_as_file}
+  defp open_file(<<form, _::binary>>) when form != 1, do: {:error, :newer_form}
+  defp open_file(data) when byte_size(data) < 9, do: {:error, :malformed}
+
+  defp open_file(data) do
+    size = byte_size(data)
+    count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
+
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
+    cond do
+      count > 4096 or count > div(size - 9, 8) ->
+        {:error, :malformed}
+
+      true ->
+        start = size - 8 - count * 8
+        body = binary_part(data, 1, start - 1)
+        ids = binary_part(data, start, count * 8)
+
+        if unique_ids?(ids) do
+          {:ok, body, ids}
+        else
+          {:error, :malformed}
+        end
+    end
+  end
+
+  # A table carrying one id twice is the whole wire malformed (§3).
+  defp unique_ids?(<<>>), do: true
+
+  defp unique_ids?(<<id::little-unsigned-64, rest::binary>>) do
+    not member_id?(rest, id) and unique_ids?(rest)
+  end
+
+  defp member_id?(<<>>, _id), do: false
+  defp member_id?(<<x::little-unsigned-64, _::binary>>, id) when x == id, do: true
+  defp member_id?(<<_::little-unsigned-64, rest::binary>>, id), do: member_id?(rest, id)
+
+  # ---------------------------------------------------------------------------
+  # THE BODY WALK: the two strict checks, and tolerance for everything else
+  # ---------------------------------------------------------------------------
+
+  # THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS (§3.3):
+  # the build version present exactly once at kind 9 eight bytes wide, and the
+  # vocabulary present exactly once at kind 14 element kind 6. A failed strict
+  # check is malformed; an unknown field is skipped and counted, never fatal.
+  defp walk(bin, ids, versions, words_count, build_version, words, max_bytes, seen) do
+    case leb(bin) do
+      :error ->
+        {:malformed, build_version}
+
+      {:ok, 0, rest} ->
+        # BYTES BETWEEN THE BODY'S TERMINATOR AND THE FIRST ENTRY ARE MALFORMED (§3).
+        if rest == <<>> and versions == 1 and words_count == 1 do
+          {:ok, build_version, words}
+        else
+          {:malformed, build_version}
+        end
+
+      {:ok, ref, rest} ->
+        case resolve(ids, ref) do
+          :error ->
+            {:malformed, build_version}
+
+          {:ok, id} ->
+            if MapSet.member?(seen, id) do
+              {:malformed, build_version}
+            else
+              seen = MapSet.put(seen, id)
+
+              case rest do
+                <<kind, rest2::binary>> ->
+                  cond do
+                    id == 0xFFFFFFFFFFFFFFFE ->
+                      case rest2 do
+                        <<bv::little-unsigned-64, rest3::binary>> when kind == 9 ->
+                          walk(rest3, ids, versions + 1, words_count, bv, words, max_bytes, seen)
+
+                        _ ->
+                          {:malformed, build_version}
+                      end
+
+                    id == 0xFFFFFFFFFFFFFFFD ->
+                      if kind != 14 do
+                        {:malformed, build_version}
+                      else
+                        case read_vocab(rest2, max_bytes) do
+                          {:ok, words, rest3} ->
+                            walk(
+                              rest3,
+                              ids,
+                              versions,
+                              words_count + 1,
+                              build_version,
+                              words,
+                              max_bytes,
+                              seen
+                            )
+
+                          {:refuse, reason} ->
+                            {:refuse, reason}
+
+                          :error ->
+                            {:malformed, build_version}
+                        end
+                      end
+
+                    true ->
+                      case skip(kind, rest2) do
+                        {:ok, rest3} ->
+                          walk(
+                            rest3,
+                            ids,
+                            versions,
+                            words_count,
+                            build_version,
+                            words,
+                            max_bytes,
+                            seen
+                          )
+
+                        :error ->
+                          {:malformed, build_version}
+                      end
+                  end
+
+                _ ->
+                  {:malformed, build_version}
+              end
+            end
+        end
+    end
+  end
+
+  # The vocabulary field: kind 14, element kind 6, a length and the bytes. The
+  # BYTE BOUND is checked from the field's own length before an entry is touched
+  # (docs/SPEC-TABLES.md §3.3).
+  defp read_vocab(bin, max_bytes) do
+    case leb(bin) do
+      {:ok, l, sub} when byte_size(sub) >= l ->
+        body = binary_part(sub, 0, l)
+        rest = binary_part(sub, l, byte_size(sub) - l)
+
+        case body do
+          <<6, count_rest::binary>> ->
+            case leb(count_rest) do
+              {:ok, n, words} when n == byte_size(words) ->
+                if n > max_bytes do
+                  {:refuse, :vocabulary_too_large}
+                else
+                  {:ok, words, rest}
+                end
+
+              _ ->
+                :error
+            end
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  # Skip an unknown field by its declared kind (§3's closed set).
+  defp skip(kind, bin) do
+    cond do
+      kind in [1, 2, 6, 20, 25] ->
+        take(1, bin)
+
+      kind in [3, 7, 21, 26] ->
+        take(2, bin)
+
+      kind in [4, 8, 10, 22, 27] ->
+        take(4, bin)
+
+      kind in [5, 9, 11, 23, 28, 36] ->
+        take(8, bin)
+
+      kind in [18, 19, 24, 29] ->
+        take(16, bin)
+
+      kind in [17, 30] ->
+        leb_rest(bin)
+
+      kind in [12, 13, 14, 16, 32] ->
+        body(bin)
+
+      kind == 15 ->
+        case leb(bin) do
+          {:ok, 0, rest} -> {:ok, rest}
+          {:ok, _ref, <<_k, rest::binary>>} -> body(rest)
+          _ -> :error
+        end
+
+      true ->
+        :error
+    end
+  end
+
+  defp take(n, bin) when byte_size(bin) >= n,
+    do: {:ok, binary_part(bin, n, byte_size(bin) - n)}
+
+  defp take(_n, _bin), do: :error
+
+  defp leb_rest(bin) do
+    case leb(bin) do
+      {:ok, _v, rest} -> {:ok, rest}
+      :error -> :error
+    end
+  end
+
+  defp body(bin) do
+    case leb(bin) do
+      {:ok, l, rest} when byte_size(rest) >= l ->
+        {:ok, binary_part(rest, l, byte_size(rest) - l)}
+
+      _ ->
+        :error
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # THE VOCABULARY: one entry is an id, a kind and a shape
+  # ---------------------------------------------------------------------------
+
+  defp parse_words(words, vocab) do
+    case parse_entries(words, vocab.max_entries, [], 0, false) do
+      {:ok, entries, count} ->
+        {:ok,
+         %{
+           vocab
+           | announced: true,
+             entries: Enum.reverse(entries),
+             count: count,
+             ref_bits: ref_bits(count)
+         }}
+
+      {:error, :vocabulary_too_large} ->
+        {:error, :vocabulary_too_large, %{vocab | refused: true}}
+
+      :error ->
+        {:error, :malformed, %{vocab | refused: true}}
+    end
+  end
+
+  # THE ENTRY BOUND IS THE CAPACITY THE CALLER DECLARED (§3.3), refused by name
+  # before an entry is touched.
+  defp parse_entries(<<>>, _max, acc, count, _node), do: {:ok, acc, count}
+
+  defp parse_entries(_bin, max, _acc, count, _node) when count >= max,
+    do: {:error, :vocabulary_too_large}
+
+  defp parse_entries(bin, max, acc, count, node) do
+    case entry(bin) do
+      {:ok, e, rest} ->
+        cond do
+          e.id == 0xFFFFFFFFFFFFFFFE or e.id == 0xFFFFFFFFFFFFFFFD ->
+            :error
+
+          e.id == 0xFFFFFFFFFFFFFFFF and node ->
+            :error
+
+          duplicate?(e, acc) ->
+            :error
+
+          true ->
+            parse_entries(rest, max, [e | acc], count + 1, node or e.id == 0xFFFFFFFFFFFFFFFF)
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp duplicate?(_e, []), do: false
+  # one entry twice, by everything the entry decodes to
+  defp duplicate?(e, [x | rest]), do: same_entry?(e, x) or duplicate?(e, rest)
+
+  defp same_entry?(e, x) do
+    e.id == x.id and e.kind == x.kind and e.shape == x.shape and
+      Map.get(e, :element) == Map.get(x, :element)
+  end
+
+  defp ref_bits(0), do: 1
+  defp ref_bits(n), do: ref_bits(n, 1)
+  defp ref_bits(n, b) when n >= 2, do: ref_bits(n >>> 1, b + 1)
+  defp ref_bits(_n, b), do: b
+
+  # ---- one entry -----------------------------------------------------------------
+
+  # An entry keeps its own bytes as :raw, behind a leading 1 as one integer:
+  # the bound read judges a field's order and default only where its announced
+  # entry is this reader's own, byte for byte (§3.3).
+  defp entry(bin) do
+    case entry_shape(bin) do
+      {:ok, e, rest} ->
+        bytes = binary_part(bin, 0, byte_size(bin) - byte_size(rest))
+        {:ok, Map.put(e, :raw, :binary.decode_unsigned(<<1, bytes::binary>>)), rest}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp entry_shape(<<id::little-unsigned-64, kind, rest::binary>>) do
+    if not known_kind?(kind) do
+      :error
+    else
+      case shape(kind, rest) do
+        {:ok, s, rest2} ->
+          if kind in [14, 16] do
+            read_element(kind, id, s, rest2)
+          else
+            {:ok, %{id: id, kind: kind, shape: s}, rest2}
+          end
+
+        :error ->
+          :error
+      end
+    end
+  end
+
+  defp entry_shape(_), do: :error
+
+  defp read_element(kind, id, s, <<elem, rest::binary>>) do
+    if not known_kind?(elem) or elem in [14, 16] do
+      :error
+    else
+      case shape(elem, rest) do
+        {:ok, es, rest2} ->
+          {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest2}
+
+        :error ->
+          :error
+      end
+    end
+  end
+
+  defp read_element(_kind, _id, _s, _), do: :error
+
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
+
+  defp base_inside_kind?(kind, base) do
+    dom = kind_bits(kind)
+
+    if kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24] do
+      mn = -(1 <<< (dom - 1))
+      mx = (1 <<< (dom - 1)) - 1
+      base >= mn and base <= mx
+    else
+      base >= 0 and base <= (1 <<< dom) - 1
+    end
+  end
+
+  defp kind_bits(kind) do
+    case kind do
+      1 -> 1
+      2 -> 8
+      3 -> 16
+      4 -> 32
+      5 -> 64
+      6 -> 8
+      7 -> 16
+      8 -> 32
+      9 -> 64
+      10 -> 32
+      11 -> 64
+      18 -> 128
+      19 -> 128
+      20 -> 8
+      21 -> 16
+      22 -> 32
+      23 -> 64
+      24 -> 128
+      25 -> 8
+      26 -> 16
+      27 -> 32
+      28 -> 64
+      29 -> 128
+      36 -> 64
+      _ -> 0
+    end
+  end
+
+  # ---- one shape -----------------------------------------------------------------
+
+  defp shape(kind, bin) when (kind >= 2 and kind <= 10) or (kind >= 18 and kind <= 29) do
+    case bin do
+      <<packing, rest::binary>> ->
+        cond do
+          packing == 0 ->
+            {:ok, %{kind: kind, packing: 0}, rest}
+
+          packing == 1 and kind != 10 ->
+            case leb(rest) do
+              {:ok, n, rest2} ->
+                if n <= kind_bits(kind) do
+                  if kind >= 18 do
+                    case rest2 do
+                      <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
+                        # A signed kind's sixteen-byte base is two's complement
+                        # (docs/SPEC-TABLES.md §3.3): int128 and the signed
+                        # fixed-point widths announce a base below zero.
+                        base = hi <<< 64 ||| lo
+
+                        base =
+                          if kind in [18, 20, 21, 22, 23, 24],
+                            do: sign_extend(base, 128),
+                            else: base
+
+                        if base_inside_kind?(kind, base) do
+                          {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        else
+                          :error
+                        end
+
+                      _ ->
+                        :error
+                    end
+                  else
+                    case leb(rest2) do
+                      {:ok, raw, rest3} ->
+                        base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
+
+                        if base_inside_kind?(kind, base) do
+                          {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        else
+                          :error
+                        end
+
+                      :error ->
+                        :error
+                    end
+                  end
+                else
+                  :error
+                end
+
+              :error ->
+                :error
+            end
+
+          packing == 2 and kind == 10 ->
+            case rest do
+              <<lo::little-unsigned-32, hi::little-unsigned-32, res::little-unsigned-32,
+                rest2::binary>> ->
+                lof = f32(lo)
+                hif = f32(hi)
+                resf = f32(res)
+
+                # A quantized triple whose delta or delta/res is not finite in
+                # float32 is a hostile width (docs/SPEC-TABLES.md §3.3).
+                if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
+                  delta = round_f32(hif - lof)
+
+                  if delta != :nonfinite do
+                    values = round_f32(delta / resf)
+
+                    if values != :nonfinite do
+                      # the step count and the index width derive from the
+                      # triple exactly as the packet wire derives them (SPEC.md
+                      # §4.3): the count clamps to [1, 2^32 - 256]
+                      values = if values < 1.0, do: 1.0, else: values
+                      values = if values > 4_294_967_040.0, do: 4_294_967_040.0, else: values
+                      count = ceil(values)
+
+                      {:ok,
+                       %{
+                         kind: kind,
+                         packing: 2,
+                         qmin: lof,
+                         qmax: hif,
+                         qres: resf,
+                         count: count,
+                         bits: bit_length(count)
+                       }, rest2}
+                    else
+                      :error
+                    end
+                  else
+                    :error
+                  end
+                else
+                  :error
+                end
+
+              _ ->
+                :error
+            end
+
+          true ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp shape(kind, bin) when kind == 12 do
+    case leb(bin) do
+      {:ok, n, rest} when n <= 0x7FFFFFFF -> {:ok, %{kind: kind, max: n}, rest}
+      _ -> :error
+    end
+  end
+
+  # An array's shape is min, max, then the element kind (u8) after them, two
+  # numbers (§3.3's shape table).
+  defp shape(kind, bin) when kind == 14 do
+    case leb(bin) do
+      {:ok, min, rest} ->
+        case leb(rest) do
+          {:ok, max, rest2} ->
+            if min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min do
+              :error
+            else
+              {:ok, %{kind: kind, min: min, max: max}, rest2}
+            end
+
+          :error ->
+            :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  # An enum-keyed array's shape is slots, then the element kind (u8) after it,
+  # ONE number and no min (§3.3's shape table): the row spells slots and the
+  # element byte follows it.
+  defp shape(kind, bin) when kind == 16 do
+    case leb(bin) do
+      {:ok, slots, rest} ->
+        if slots > 0xFFFFFFFF do
+          :error
+        else
+          {:ok, %{kind: kind, max: slots}, rest}
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  defp shape(kind, bin), do: {:ok, %{kind: kind}, bin}
+
+  # ---- LEB128 and friends -------------------------------------------------------
+
+  # Canonical unsigned LEB128: minimal, at most ten bytes, one value bit in the
+  # tenth. Returns {:ok, value, rest} or :error.
+  defp leb(<<b, rest::binary>>) when b < 0x80, do: {:ok, b, rest}
+
+  defp leb(bin), do: leb(bin, 0, 0)
+
+  defp leb(<<b, rest::binary>>, i, acc) do
+    cond do
+      i == 9 and b > 1 ->
+        :error
+
+      (b &&& 0x80) == 0 ->
+        if i > 0 and b == 0, do: :error, else: {:ok, acc + ((b &&& 0x7F) <<< (7 * i)), rest}
+
+      true ->
+        leb(rest, i + 1, acc + ((b &&& 0x7F) <<< (7 * i)))
+    end
+  end
+
+  defp leb(_bin, _i, _acc), do: :error
+
+  defp resolve(ids, ref) do
+    if ref == 0 or ref > div(byte_size(ids), 8) do
+      :error
+    else
+      {:ok, :binary.decode_unsigned(binary_part(ids, (ref - 1) * 8, 8), :little)}
+    end
+  end
+
+  defp zigzag(raw), do: bxor(raw >>> 1, -band(raw, 1))
+
+  # A float32, read bit-transparent (docs/SPEC-TABLES.md §3.3's float32 facts).
+  # A non-finite pattern — an infinity or a NaN — is a hostile width on the
+  # announcement and reads back as :nonfinite, because the BEAM's arithmetic
+  # refuses to hold one as a float term (fixedRuntime's f32_value does the same).
+  defp f32(bits) do
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      :nonfinite
+    else
+      <<f::little-float-32>> = <<bits::little-32>>
+      f
+    end
+  end
+
+  # docs/SPEC.md Floating-point discipline and docs/FIXED-FORM-ALGORITHM.md §5.1.
+  # The product rounds to float32 before the add. Elixir does not contract.
+  def dequantize_bits(index, qmin, delta, count)
+      when is_integer(index) and is_integer(count) and count > 0 do
+    index = if index < 0, do: 0, else: index
+    index = if index > count, do: count, else: index
+    normalized = round_f32(index / count)
+    scaled = round_f32(normalized * delta)
+    <<bits::little-unsigned-32>> = <<round_f32(scaled + qmin)::little-float-32>>
+    bits
+  end
+
+  # A finite float rounded to float32, or :nonfinite where it overflows the
+  # width: the page's "not finite in float32" (docs/SPEC-TABLES.md §3.3), which
+  # a ranged float's delta or delta/res reaches by overflow alone.
+  defp round_f32(x) do
+    <<bits::little-32>> = <<x::little-float-32>>
+
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      :nonfinite
+    else
+      <<f::little-float-32>> = <<bits::little-32>>
+      f
+    end
+  end
+
+  # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): the index a value takes, in float32 at every step, never
+  # fused, never widened. The announcement already held the triple to the
+  # packet wire's own rule, so an in-range value quantizes without overflow;
+  # the clamp to [0, 1] absorbs only the float32 rounding at the ends.
+  defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(value - qmin) / delta)
+    normalized = if normalized < 0.0, do: 0.0, else: normalized
+    normalized = if normalized > 1.0, do: 1.0, else: normalized
+    min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
+  end
+
+`
+
+// messageRecords emits THE RECORDS THE BOUND BATCH HOLDS (docs/SPEC-TABLES.md
+// §3.3 (a), (b)): this unit's build version, and per record of the message
+// closure its declared fields by id, each {declaration index, the field's
+// encoded vocabulary entry, the writer's elision rule, what a body under it
+// is read against}; and per union the same last fact for each arm. The rule
+// is internal/tablewire's messageElides spelled over the batch's own values:
+//
+//	:never                the field is never judged at a default (a `?T`, a
+//	                      `| required`, a union, whose None is refused where it
+//	                      is read, a fixed array of tables)
+//	:empty                a nested table or an enum-keyed array: elides empty
+//	{:same, v}            an integer, a bool, a text or a bytes at its default
+//	{:f32, bits} {:f64, bits}      a plain float, compared by bit pattern
+//	{:f32eq, bits} {:f64eq, bits}  a ranged float, compared by value
+//	{:enum, id | :none}   an enum naming its default variant
+//	{:counted, born, e}   no element, or the born count all at e
+//	{:fixed, e}           every element at e
+//	:zero_ref             an enum or a union element at reference 0
+//
+// A field's entry is {index, raw, rule, sub, range}; range is the declared
+// integer range the read holds the field's value to (messageReadRange), or nil.
+func messageRecords(u *ir.Unit) (string, bool) {
+	closure := tablewire.MessageClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	unions := map[string]*ir.Union{}
+	var records []string
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		var fields []string
+		for i, f := range st.Fields {
+			e := ir.TableFieldEntry(f)
+			// the entry's bytes behind a leading 1, as one integer (entry/1's :raw)
+			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions), messageReadRange(f)))
+		}
+		records = append(records, fmt.Sprintf("%q => %%{%s}", name, strings.Join(fields, ", ")))
+	}
+	// every union a record or an arm reaches, its arms' bodies too
+	done := map[string]bool{}
+	var unionRows []string
+	for len(done) < len(unions) {
+		var pending []string
+		for name := range unions {
+			if !done[name] {
+				pending = append(pending, name)
+			}
+		}
+		sort.Strings(pending)
+		for _, name := range pending {
+			done[name] = true
+			var arms []string
+			for _, v := range unions[name].Variants {
+				sub := "nil"
+				if v.F != nil {
+					sub = messageSub(v.F, unions)
+				}
+				ae := ir.TableArmEntry(v)
+				arms = append(arms, fmt.Sprintf("0x%016X => {0x01%X, %s}", ae.Id, ae.Encode(nil), sub))
+			}
+			unionRows = append(unionRows, fmt.Sprintf("%q => %%{%s}", name, strings.Join(arms, ", ")))
+		}
+	}
+	sort.Strings(unionRows)
+	var b strings.Builder
+	b.WriteString("\n  # this unit's own build version and records, as its message writer lays\n")
+	b.WriteString("  # them out (docs/SPEC-TABLES.md §3.3 (a), (b)): the bound batch's rules\n")
+	fmt.Fprintf(&b, "  @build_version 0x%016X\n", ir.BuildVersion(u))
+	b.WriteString(exAttribute("message_records", "%{"+strings.Join(records, ", ")+"}"))
+	// a unit no union reaches carries no union table and no union clause of
+	// arm_sub/2: an empty map literal there is a type warning on the BEAM
+	if len(unionRows) > 0 {
+		b.WriteString(exAttribute("message_unions", "%{"+strings.Join(unionRows, ", ")+"}"))
+	}
+	return b.String(), len(unionRows) > 0
+}
+
+// messageArmSubUnion is arm_sub/2's union clause in messageBatchRuntimeBody,
+// dropped from a unit no union reaches (messageRecords).
+const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n\n"
+const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n\n"
+const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
+
+// messageReadRange is the declared integer range a message read holds field
+// f's value to (held?/3): `{lo, hi}` on the raw scale for a ranged integer,
+// bits(N) or fixed-point leaf, `{:each, lo, hi}` for a counted or fixed array
+// of them, and nil for every other field, an enum-keyed array included. Only a
+// DECLARED range is held here, as the Go engine's message read holds it.
+func messageReadRange(f *ir.Field) string {
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 && !f.IsMap() && !f.Type.Pointer && f.KeyEnum == "" {
+		// A MASK HOLDS TO W, the reader's own width (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+		// wider mask, and a bit at or above W refuses the batch
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1))
+		if f.Array != ir.ArrayNone {
+			return fmt.Sprintf("{:each, 0, %s}", hi.String())
+		}
+		return fmt.Sprintf("{0, %s}", hi.String())
+	}
+	if !f.HasIntRange || f.IsMap() || f.Type.Pointer || f.KeyEnum != "" {
+		return "nil"
+	}
+	lo, hi, ok := messageIntBounds(f)
+	if !ok {
+		return "nil"
+	}
+	if f.Array != ir.ArrayNone {
+		return fmt.Sprintf("{:each, %s, %s}", lo.String(), hi.String())
+	}
+	return fmt.Sprintf("{%s, %s}", lo.String(), hi.String())
+}
+
+// messageSub is what a body under field f is read against: a record's name, a
+// union's arms by name, or nil.
+func messageSub(f *ir.Field, unions map[string]*ir.Union) string {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer || f.IsMap() {
+		return "nil"
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fmt.Sprintf("%q", ref.Name)
+	case *ir.Union:
+		unions[ref.Name] = ref
+		return fmt.Sprintf("{:union, %q}", ref.Name)
+	}
+	return "nil"
+}
+
+// messageFieldRule is one field's elision rule, in internal/tablewire
+// messageElides's order (see messageRecords for the spellings).
+func messageFieldRule(f *ir.Field) string {
+	if f.Required || f.Type.Optional || f.Type.Pointer || f.IsMap() {
+		if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && f.KeyEnum == "" && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" && slices.Contains(en.Variants, f.DefVariant) {
+			return fmt.Sprintf("{:never_enum, 0x%016X}", ir.TableWireId(en.VariantWireNameOf(f.DefVariant)))
+		}
+		return ":never"
+	}
+	kind := ir.TableWireScalarKind(f)
+	switch {
+	case f.KeyEnum != "":
+		var keyIDs []string
+		for ki := range f.KeyEnumRef.Variants {
+			keyIDs = append(keyIDs, fmt.Sprintf("0x%016X", ir.TableWireId(f.KeyEnumRef.VariantWireName(ki))))
+		}
+		elemRule := messageScalarRule(f)
+		switch kind {
+		case ir.TableKindTable:
+			elemRule = ":empty"
+		case ir.TableKindEnum, ir.TableKindUnion:
+			elemRule = ":zero_ref"
+		}
+		return fmt.Sprintf("{:keyed, [%s], %s}", strings.Join(keyIDs, ", "), elemRule)
+	case f.Type.Kind == ir.TString:
+		return "{:same, <<" + strings.Join(elixirBytes(f.DefBytes), ", ") + ">>}"
+	case f.Type.Kind == ir.TBytes:
+		return "{:same, [" + strings.Join(elixirBytes(f.DefBytes), ", ") + "]}"
+	case f.CountedOnWire():
+		// the born slots all at their defaults elide too, except a compressed
+		// float's (internal/tablewire array's allBirth)
+		born := f.BornCount()
+		if f.HasFloatRange {
+			born = 0
+		}
+		elem := messageScalarRule(f)
+		switch kind {
+		case ir.TableKindTable:
+			elem = ":empty"
+		case ir.TableKindEnum, ir.TableKindUnion:
+			elem = ":zero_ref"
+		}
+		return fmt.Sprintf("{:counted, %d, %s}", born, elem)
+	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
+		return ":fixed_table"
+	case f.Array == ir.ArrayFixed:
+		if kind == ir.TableKindUnion {
+			return "{:fixed, :zero_ref}"
+		}
+		return "{:fixed, " + messageScalarRule(f) + "}"
+	case kind == ir.TableKindUnion:
+		return ":never"
+	case kind == ir.TableKindTable:
+		return ":empty"
+	}
+	return messageScalarRule(f)
+}
+
+// messageScalarRule is internal/tablewire cellIsDefault over one value of f,
+// against the declared default the engine's model would place in the field
+// (internal/tabletext fieldDefault), read from the declaration itself.
+func messageScalarRule(f *ir.Field) string {
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+		if !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" || !slices.Contains(en.Variants, f.DefVariant) {
+			return "{:enum, :none}"
+		}
+		return fmt.Sprintf("{:enum, 0x%016X}", ir.TableWireId(en.VariantWireNameOf(f.DefVariant)))
+	}
+	var defFloat float64
+	if f.HasDefault {
+		defFloat = f.DefFloat
+	}
+	switch {
+	case f.Type.Kind == ir.TBool:
+		if f.HasDefault && f.DefBool {
+			return "{:same, 1}"
+		}
+		return "{:same, 0}"
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		return fmt.Sprintf("{:f32eq, 0x%08X}", math.Float32bits(float32(defFloat)))
+	case f.Type.Kind == ir.TFloat32:
+		return fmt.Sprintf("{:f32, 0x%08X}", math.Float32bits(float32(defFloat)))
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		return fmt.Sprintf("{:f64eq, 0x%016X}", math.Float64bits(defFloat))
+	case f.Type.Kind == ir.TFloat64:
+		return fmt.Sprintf("{:f64, 0x%016X}", math.Float64bits(defFloat))
+	}
+	i, u := messageDefaultInt(f)
+	switch {
+	case ir.TableKindWide(ir.TableScalarKind(f)):
+		wide := new(big.Int)
+		if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.HasDefault && f.DefInt != nil {
+			wide.Set(f.DefInt)
+		}
+		return "{:same, " + wide.String() + "}"
+	case f.Type.Kind == ir.TInt && f.Type.Signed:
+		return fmt.Sprintf("{:same, %d}", i)
+	}
+	return fmt.Sprintf("{:same, %d}", u)
+}
+
+// messageDefaultInt is an integer-like field's declared default as the
+// engine's model holds it: a signed reading for a signed int or fixed-point
+// field or a negative value, the flags mask, and zero where nothing is
+// declared (internal/tabletext fieldDefault and intCell).
+func messageDefaultInt(f *ir.Field) (int64, uint64) {
+	if !f.HasDefault || f.DefInt == nil {
+		return 0, 0
+	}
+	v := f.DefInt
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+		if (f.Type.Kind != ir.TBits && f.Type.Signed) || v.Sign() < 0 {
+			return v.Int64(), uint64(v.Int64())
+		}
+		return int64(v.Uint64()), v.Uint64()
+	case ir.TNamed:
+		if _, ok := f.Type.Ref.(*ir.Flags); ok {
+			return 0, v.Uint64()
+		}
+	}
+	return 0, 0
+}
+
+// messageWriteRuleRows emits write_rule_rows/0: the write contract
+// (docs/SPEC.md §5.1) of every declaration the message closure reaches, one
+// row per {id, kind, rule, value}, which save_messages folds into one rule per
+// vocabulary entry. An integer leaf is held to its declared range, else its
+// bits(N), else its storage; an integer array's elements the same; a bounded
+// string to its N; an enum to its members' ids and a union to its arms' ids.
+// Declarations sharing an id and a kind share one entry on the wire, so their
+// rules merge to the looser, and a pair whose rules disagree in shape carries
+// none rather than refusing a lawful value of either.
+func messageWriteRuleRows(u *ir.Unit) string {
+	type key struct {
+		id   uint64
+		kind uint8
+	}
+	rules := map[key]*messageRule{}
+	add := func(k key, r *messageRule) {
 		old := rules[k]
 		if old == nil {
-			cp := *r
-			if r.lo != nil {
-				cp.lo = new(big.Int).Set(r.lo)
-				cp.hi = new(big.Int).Set(r.hi)
-			}
-			if r.ids != nil {
-				cp.ids = map[uint64]bool{}
-				for id := range r.ids {
-					cp.ids[id] = true
-				}
-			}
-			if r.retired != nil {
-				cp.retired = map[uint64]bool{}
-				for id := range r.retired {
-					cp.retired[id] = true
-				}
-			}
-			rules[k] = &cp
+			rules[k] = r
 			return
-		}
-		if !ruleEq(old, r) {
-			disagrees[k] = true
 		}
 		if old.conflict || old.what != r.what {
 			old.conflict = true
@@ -1420,11 +2909,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
 	}
 	fieldRule := messageRuleOf
 	seenUnion := map[*ir.Union]bool{}
-	fields := func(owner string, fs []*ir.Field) {
+	fields := func(fs []*ir.Field) {
 		for _, f := range fs {
 			e := ir.TableFieldEntry(f)
 			if r := fieldRule(f); r != nil {
-				add(owner, key{e.Id, e.Kind}, r)
+				add(key{e.Id, e.Kind}, r)
 			}
 			un, ok := f.Type.Ref.(*ir.Union)
 			if f.Type.Kind != ir.TNamed || !ok || seenUnion[un] {
@@ -1437,7 +2926,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 				}
 				arm := ir.TableArmEntry(v)
 				if r := fieldRule(v.F); r != nil {
-					add(un.Name, key{arm.Id, arm.Kind}, r)
+					add(key{arm.Id, arm.Kind}, r)
 				}
 			}
 		}
@@ -1454,7 +2943,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 			st = u.Structs[name]
 		}
 		if st != nil {
-			fields(name, st.Fields)
+			fields(st.Fields)
 		}
 	}
 
@@ -1477,84 +2966,21 @@ const messageBatchRuntimeBody = `  @batch_max 256
 		rows = append(rows, messageRuleRows(head, r)...)
 	}
 
-	var okeys []ownerKey
-	for ok := range ownerRules {
-		if disagrees[key{ok.id, ok.kind}] {
-			okeys = append(okeys, ok)
-		}
-	}
-	sort.Slice(okeys, func(i, j int) bool {
-		if okeys[i].owner != okeys[j].owner {
-			return okeys[i].owner < okeys[j].owner
-		}
-		if okeys[i].id != okeys[j].id {
-			return okeys[i].id < okeys[j].id
-		}
-		return okeys[i].kind < okeys[j].kind
-	})
-	var ownerRows []string
-	for _, ok := range okeys {
-		r := ownerRules[ok]
-		head := fmt.Sprintf("{%q, 0x%016X, %d, ", ok.owner, ok.id, ok.kind)
-		switch r.what {
-		case "int":
-			ownerRows = append(ownerRows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
-		case "each":
-			ownerRows = append(ownerRows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
-		case "keyed_each":
-			ownerRows = append(ownerRows, head+":keyed_each_min, "+fixedIntLiteral(r.lo)+"}", head+":keyed_each_max, "+fixedIntLiteral(r.hi)+"}")
-		case "text":
-			ownerRows = append(ownerRows, fmt.Sprintf("%s:text, %d}", head, r.text))
-		default:
-			ids := make([]uint64, 0, len(r.ids))
-			for id := range r.ids {
-				ids = append(ids, id)
-			}
-			slices.Sort(ids)
-			for _, id := range ids {
-				ownerRows = append(ownerRows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
-			}
-			if r.whatRet != "" && len(r.retired) > 0 {
-				rids := make([]uint64, 0, len(r.retired))
-				for id := range r.retired {
-					rids = append(rids, id)
-				}
-				slices.Sort(rids)
-				for _, id := range rids {
-					ownerRows = append(ownerRows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.whatRet, id))
-				}
-			}
-		}
-	}
-
 	var b strings.Builder
 	b.WriteString("\n  # this unit's own write rules, one {id, kind, rule, value} row each\n")
 	if len(rows) == 0 {
 		b.WriteString("  defp write_rule_rows, do: []\n")
-	} else {
-		b.WriteString("  defp write_rule_rows do\n    [\n")
-		for i, row := range rows {
-			b.WriteString("      " + row)
-			if i < len(rows)-1 {
-				b.WriteString(",")
-			}
-			b.WriteString("\n")
-		}
-		b.WriteString("    ]\n  end\n")
+		return b.String()
 	}
-	if len(ownerRows) == 0 {
-		b.WriteString("\n  defp write_owner_rule_rows, do: []\n")
-	} else {
-		b.WriteString("\n  defp write_owner_rule_rows do\n    [\n")
-		for i, row := range ownerRows {
-			b.WriteString("      " + row)
-			if i < len(ownerRows)-1 {
-				b.WriteString(",")
-			}
-			b.WriteString("\n")
+	b.WriteString("  defp write_rule_rows do\n    [\n")
+	for i, row := range rows {
+		b.WriteString("      " + row)
+		if i < len(rows)-1 {
+			b.WriteString(",")
 		}
-		b.WriteString("    ]\n  end\n")
+		b.WriteString("\n")
 	}
+	b.WriteString("    ]\n  end\n")
 	return b.String()
 }
 

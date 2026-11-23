@@ -2296,6 +2296,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = ArchiveConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

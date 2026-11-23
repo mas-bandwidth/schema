@@ -12894,6 +12894,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_body_pack_( struct blockd
     (void) order;
     blockdemo_table_cook_put( at + 0, (uint64_t) value->marker, 1, order );
     blockdemo_table_cook_put( at + 8, (uint64_t) value->stamp, 8, order );
+    if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->rows_count && cook_i1 < 64; cook_i1++ )

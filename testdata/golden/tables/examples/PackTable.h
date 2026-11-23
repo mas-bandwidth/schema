@@ -12207,6 +12207,7 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -13386,6 +13387,7 @@ inline bool ShipEntryLoadMessages( ShipEntry * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14429,6 +14431,7 @@ inline bool GlobalSettingsLoadMessages( GlobalSettings * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -16000,6 +16003,7 @@ inline bool PackConfigLoadMessages( PackConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -20858,6 +20862,7 @@ inline bool ShipEntryCookBody( uint8_t * at, const ShipEntry & value, TableByteO
     { uint32_t bits = 0; memcpy( &bits, &value.mass, 4 ); table_cook_put( at + 44, (uint64_t) bits, 4, order ); }
     // 4 slots of storage, value.hardpoints_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.hardpoints_count; i++ )
     {
         table_cook_put( at + 48 + i * 4, (uint64_t) value.hardpoints[i], 4, order );
@@ -20901,6 +20906,7 @@ inline bool PackConfigCookBody( uint8_t * at, const PackConfig & value, TableByt
     }
     // 3 slots of storage, value.reserves_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
+    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; }
     for ( int32_t i = 0; i < value.reserves_count; i++ )
     {
         if ( !ShipEntryCookBody( at + 412 + i * 108, value.reserves[i], order ) ) { return false; }

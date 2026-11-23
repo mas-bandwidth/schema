@@ -914,13 +914,15 @@ public final class TableVocabulary {
     private static final long tableBuildVersion = 0xba2dad78ebdbfff0L;
 
     public static int announceMeasure() {
-        return false ? -1 : tableAnnouncement.length;
+        return tableAnnouncement.length == 0 ? -1 : tableAnnouncement.length;
     }
 
     // Copy the announcement into the caller's buffer and answer its length, or
     // -1 when the buffer is too small (the C++ reference's `-1`, §3.3).
     public static int announce(byte[] buffer) {
-        if (false || buffer == null || buffer.length < tableAnnouncement.length) {
+        if (tableAnnouncement.length == 0
+                || buffer == null
+                || buffer.length < tableAnnouncement.length) {
             return -1;
         }
         java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
@@ -1149,8 +1151,7 @@ public final class TableVocabulary {
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
                 // ALLOCATED: the BYTE bound is 64 KiB, checked from the field's
                 // own L before an entry is touched (§3.3).
-                // 0 refuses, never the default (R9)
-                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;
+                long limit = v.maxBytes > 0 ? v.maxBytes : 65536L;
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
                     report.reason = "vocabulary_too_large";
@@ -1318,9 +1319,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        // 31 is held by name, never written (R17): an announcement naming it is
-        // refused, as one naming 33 or 34 is
-        return kind <= 30 || kind == 32 || kind == 36;
+        return kind <= 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {

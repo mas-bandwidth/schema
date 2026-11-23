@@ -2080,6 +2080,7 @@ namespace Bench
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = FixedTableFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

@@ -10041,6 +10041,7 @@ inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -10696,6 +10697,7 @@ inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15826,6 +15828,7 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15866,6 +15869,8 @@ inline int64_t TableHitEventMeasureBody( TableIds & ids, const TableHitEvent & v
     if ( value.crit != false ) { bytes += TableLebBytes( ids.ref_at( 6, 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
     return bytes;
 }
+
+inline bool TableHitEventFixedWriteAdmits( const TableHitEvent & value );
 
 inline int64_t TableHitEventMeasure( const TableHitEvent & value )
 {
@@ -16772,6 +16777,7 @@ inline int64_t TableHitEventMeasureMessages( const TableHitEvent * values, int64
     {
         const int64_t body = TableHitEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableHitEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -16790,6 +16796,7 @@ inline int64_t TableHitEventSaveMessages( const TableHitEvent * values, int64_t 
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TableHitEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableHitEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableHitEventMeasureMessages( values, count, report )
@@ -16813,6 +16820,7 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -16849,6 +16857,8 @@ inline int64_t TableChatEventMeasureBody( TableIds & ids, const TableChatEvent &
     if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref_at( 75, 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
     return bytes;
 }
+
+inline bool TableChatEventFixedWriteAdmits( const TableChatEvent & value );
 
 inline int64_t TableChatEventMeasure( const TableChatEvent & value )
 {
@@ -17494,6 +17504,7 @@ inline int64_t TableChatEventMeasureMessages( const TableChatEvent * values, int
     {
         const int64_t body = TableChatEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableChatEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -17512,6 +17523,7 @@ inline int64_t TableChatEventSaveMessages( const TableChatEvent * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TableChatEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableChatEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableChatEventMeasureMessages( values, count, report )
@@ -17535,6 +17547,7 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -17571,6 +17584,8 @@ inline int64_t TablePickupEventMeasureBody( TableIds & ids, const TablePickupEve
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
+
+inline bool TablePickupEventFixedWriteAdmits( const TablePickupEvent & value );
 
 inline int64_t TablePickupEventMeasure( const TablePickupEvent & value )
 {
@@ -18216,6 +18231,7 @@ inline int64_t TablePickupEventMeasureMessages( const TablePickupEvent * values,
     {
         const int64_t body = TablePickupEventMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TablePickupEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -18234,6 +18250,7 @@ inline int64_t TablePickupEventSaveMessages( const TablePickupEvent * values, in
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TablePickupEventSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TablePickupEventFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TablePickupEventMeasureMessages( values, count, report )
@@ -18257,6 +18274,7 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -21622,6 +21640,7 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     table_cook_put( at + 56, (uint64_t) TableStoredFloatBits( value.server_time ), 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
+    if ( value.entities_count < 1 || value.entities_count > 8 ) { return false; }
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !TableEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }
@@ -21629,6 +21648,7 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     table_cook_put( at + 576, (uint64_t) (uint32_t) value.entities_count, 4, order );
     // 80 slots of storage, value.stats_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
+    if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; }
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {
         if ( !TableStatCookBody( at + 580 + i * 8, value.stats[i], order ) ) { return false; }

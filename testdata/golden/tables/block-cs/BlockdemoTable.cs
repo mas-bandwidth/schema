@@ -691,7 +691,7 @@ namespace Blockdemo
     // one slice per generated file.
     public static partial class Schema
     {
-        public static int AnnounceMeasure() { return tableAnnouncement.Length == 0 ? -1 : tableAnnouncement.Length; }
+        public static int AnnounceMeasure() { return tableAnnouncement.Length; }
         public static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }
         public static TableWire.Verdict AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, TableReport report) { return TableWire.AnnounceRead(vocabulary, bytes, report); }
         // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -4975,11 +4975,6 @@ namespace Blockdemo
                     return;
                 }
                 UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
-                if (f.EnumName != null && f.VariantId == null)
-                {
-                    ulong mask = f.EnumMax >= 63 ? ulong.MaxValue : f.EnumMax < 0 ? 0UL : ((1UL << (int)(f.EnumMax + 1)) - 1UL);
-                    System.Diagnostics.Debug.Assert(((ulong)bits & ~mask) == 0);
-                }
                 if (f.Kind == 10 && shape.Packing == 2)
                 {
                     float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;

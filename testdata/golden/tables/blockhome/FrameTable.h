@@ -7175,6 +7175,7 @@ inline bool PartRowLoadMessages( PartRow * values, int64_t * count, const TableV
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -7892,6 +7893,7 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12320,6 +12322,7 @@ inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteO
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
     // 32 slots of storage, value.parts_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
+    if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; }
     for ( int32_t i = 0; i < value.parts_count; i++ )
     {
         if ( !PartRowCookBody( at + 8 + i * 352, value.parts[i], order ) ) { return false; }

@@ -339,6 +339,7 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         out.extend_from_slice(&payload);
     }
     }
+    debug_assert!(v.loadout.len() == 4, "loadout length != 4");
     debug_assert!(v.loadout.len() == 4, "loadout length is not 4");
     if v.loadout.iter().take(4).any(|e| (*e) != 0u8) {
         let r = ids.id_ref(0x5759ce7586bbb5a3);
@@ -2211,6 +2212,7 @@ pub fn bench_mixed_json_write(v: &BenchMixed, w: &mut Jw, depth: usize, label: u
     json_newline(&mut w.out, depth + 1);
     json_escape("loadout", &mut w.out);
     w.out.push_str(": ");
+    if v.loadout.len() != 4 { w.refused = true; }
     if v.loadout.is_empty() {
         w.out.push_str("[]");
     } else {

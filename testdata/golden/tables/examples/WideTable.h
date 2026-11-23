@@ -11249,6 +11249,8 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
     return bytes;
 }
 
+inline bool WideBlobFixedWriteAdmits( const WideBlob & value );
+
 inline int64_t WideBlobMeasure( const WideBlob & value )
 {
     TableIds ids;
@@ -12138,6 +12140,7 @@ inline int64_t WideBlobMeasureMessages( const WideBlob * values, int64_t count, 
     {
         const int64_t body = WideBlobMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( WideBlobFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12156,6 +12159,7 @@ inline int64_t WideBlobSaveMessages( const WideBlob * values, int64_t count, uin
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !WideBlobSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( WideBlobFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == WideBlobMeasureMessages( values, count, report )
@@ -12179,6 +12183,7 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12220,6 +12225,38 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 // schema compiler rather than folded by this one, because they are the same
 // offsets every other port needs; these are that arithmetic checked against
 // this compiler's own, at build time, one line per fact the plans rest on.
+
+// WideBlob's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool WideBlobFixedInRange( const WideBlob & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
+// WideBlob's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool WideBlobFixedWriteAdmits( const WideBlob & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.label_length >= 0 && value.label_length <= 70000 && !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) );
+    return bad == 0;
+}
+
+// WideBlob's read-side bounds.
+inline void WideBlobFixedClampBody( WideBlob & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
+{
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) )
+    {
+        damaged++;
+    }
+}
 
 inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
@@ -12689,6 +12726,7 @@ inline bool WideBlobCookBody( uint8_t * at, const WideBlob & value, TableByteOrd
     table_cook_put( at + 140008, (uint64_t) (uint32_t) value.payload_length, 4, order );
     // 70000 slots of storage, value.samples_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; }
     for ( int32_t i = 0; i < value.samples_count; i++ )
     {
         table_cook_put( at + 140012 + i * 2, (uint64_t) value.samples[i], 2, order );

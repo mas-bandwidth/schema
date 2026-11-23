@@ -736,7 +736,7 @@ public final class MixedEntityMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffL, true, 0);
+                    long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
