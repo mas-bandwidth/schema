@@ -83,6 +83,13 @@ func runRecipes(name, text string) []runRecipe {
 
 	var recipes []runRecipe
 	for _, ll := range logicals {
+		// A make comment (first non-blank #, tab-led or not) never runs: make
+		// drops an unindented one and the shell ignores a tab-led one, so a go
+		// test -run quoted in prose is not a recipe (the test-run comment in
+		// the Makefile was read as one, with no package, and broke the listing).
+		if strings.HasPrefix(strings.TrimSpace(ll.text), "#") {
+			continue
+		}
 		for _, m := range goInvocation.FindAllStringIndex(ll.text, -1) {
 			inv := ll.text[m[0]:m[1]]
 			fields := strings.Fields(inv)
@@ -574,6 +581,20 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 	}
 	t.Logf("scanned %d -run recipes, listed %d distinct (pattern, package) pairs", scanned, listed)
 	return offenders
+}
+
+// TestRunPatternGateSkipsMakeComments: a go test -run spelled inside a make
+// comment is prose, not a recipe; only the rule line below is one.
+func TestRunPatternGateSkipsMakeComments(t *testing.T) {
+	t.Parallel()
+	const fixture = "# A bare go test -run Typo\x60 matches no test.\n" +
+		"\t# go test ./internal/ci -run '^TestNoSuchTest$$'\n" +
+		"all:\n" +
+		"\tgo test ./internal/ci -run '^TestRunPatternGateSkipsMakeComments$$' -count=1\n"
+	recipes := runRecipes("fixture.mk", fixture)
+	if len(recipes) != 1 || recipes[0].pattern != "^TestRunPatternGateSkipsMakeComments$" || recipes[0].pkg != "./internal/ci" {
+		t.Fatalf("want the one rule recipe alone, got %+v", recipes)
+	}
 }
 
 func TestRunPatternGateRefusesAZeroMatchPattern(t *testing.T) {
