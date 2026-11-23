@@ -545,8 +545,7 @@ fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "1.5" { return 0x3fc00000; }
     if s == "2.5" { return 0x40200000; }
     if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f32_bits(n as f32) as u64;
+    return schema_rt::fixed_f32_bits(wref_loaded_dec(s) as f32) as u64;
 }
 
 fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
@@ -556,8 +555,7 @@ fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
     if s == "1.5" { return 0x3ff8000000000000; }
     if s == "2.5" { return 0x4004000000000000; }
     if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f64_bits(n as f64);
+    return schema_rt::fixed_f64_bits(wref_loaded_dec(s));
 }
 
 fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: schema_rt::FieldDesc, kind: const u8[:], text: const u8[:]) -> i64 {
@@ -592,25 +590,51 @@ fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: s
     }
     if kind == "count" {
         let n, ok = parse_int(text);
-        if !ok || n < 0 { return 2; }
-        if n > vals[s].count {
-            let old_first = vals[s].first;
-            let old_count = vals[s].count;
-            let new_first = schema_rt::value_reserve(vals, n);
-            var k: i64 = 0;
-            while k < n {
-                if k < old_count { vals[new_first + k] = vals[old_first + k]; }
-                else if old_count > 0 { vals[new_first + k] = vals[old_first]; }
-                k += 1;
-            }
-            vals[s].first = new_first;
-            vals[s].count = n;
+        if !ok { return 0; }
+        if n < 0 {
+            // SF-28: the flat value table's array is a count beside its
+            // slots, not a native list, so `count -1` is held as it is (a
+            // negative count) and handed to the writer, which refuses it in
+            // every build
+            vals[s].len = n;
+            vals[s].made = true;
+            return 1;
         }
-        vals[s].len = n;
-        vals[s].made = true;
+        wref_loaded_resize(vals, s, n);
+        return 1;
+    }
+    if kind == "dupkey" {
+        // FL-22: `dupkey 1` appends a copy of the map's first entry, so one
+        // key is held twice; the flat value table holds it, and the writer
+        // judges it. `dupkey 0` leaves the map as loaded.
+        let n, ok = parse_int(text);
+        if !ok || n < 0 || d.shape != schema_rt::ShapeMap { return 0; }
+        if n == 0 { return 1; }
+        if vals[s].len < 1 { return 0; }
+        wref_loaded_resize(vals, s, vals[s].len + n);
         return 1;
     }
     return 0;
+}
+
+// wref_loaded_resize sets an array's or a map's element count to n; slots
+// past the loaded ones are copies of element 0.
+fn wref_loaded_resize(vals: schema_rt::LoadVal[>..]&, s: i64, n: i64) {
+    if n > vals[s].count {
+        let old_first = vals[s].first;
+        let old_count = vals[s].count;
+        let new_first = schema_rt::value_reserve(vals, n);
+        var k: i64 = 0;
+        while k < n {
+            if k < old_count { vals[new_first + k] = vals[old_first + k]; }
+            else if old_count > 0 { vals[new_first + k] = vals[old_first]; }
+            k += 1;
+        }
+        vals[s].first = new_first;
+        vals[s].count = n;
+    }
+    vals[s].len = n;
+    vals[s].made = true;
 }
 
 recursive fn wref_loaded_set(unit: schema_rt::LoadUnit, data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: const schema_rt::LoadNode[:], rec: i64, path: const u8[:], kind: const u8[:], text: const u8[:]) -> i64 {
@@ -704,7 +728,18 @@ fn wref_loaded_run(surf: const u8[:], root_name: const u8[:], wire: const u8[:],
     var nodes: schema_rt::LoadNode[>..] = [];
     let root = load_instance(root_name, data, vals, nodes);
     if root < 0 { return "!load-failed"; }
-    let st = wref_loaded_set(u, data, vals, nodes, root, path, kind, text);
+    var st: i64 = 0;
+    if kind == "point" {
+        // FL-28: the pointer at `path` is set to the node the pointer at
+        // `text` points at (pointed at an enclosing node it makes a cycle)
+        let dst = wref_loaded_slot(u, vals, nodes, root, path);
+        let src = wref_loaded_slot(u, vals, nodes, root, text);
+        if dst < 0 || src < 0 { return "!set-failed"; }
+        vals[dst] = vals[src];
+        st = 1;
+    } else {
+        st = wref_loaded_set(u, data, vals, nodes, root, path, kind, text);
+    }
     if st == 0 { return "!set-failed"; }
     if st == 2 { return "unrepresentable\n"; }
     if surf == "write-refusal" {
@@ -712,6 +747,14 @@ fn wref_loaded_run(surf: const u8[:], root_name: const u8[:], wire: const u8[:],
         if schema_rt::save_table(u, root_name, data, vals, nodes, root, out) != 0 { return "refused\n"; }
         return "wrote\n";
     }
+    if surf == "write-refusal-cook" {
+        // the cook writer over the loaded value: <Root>CookMeasure, then
+        // <Root>Cook into a buffer of that size, little-endian
+        let c = conformance_cook_var(root_name, data, vals, nodes, root);
+        if c == -1 { return "!absent"; }
+        return if c == 0 { "wrote\n" } else { "refused\n" };
+    }
+    if surf != "write-refusal-json" { return "!absent"; }
     if conformance_json_measure(root_name, data, vals, nodes, root) < 0 { return "refused\n"; }
     var jout: u8[>..] = [];
     if conformance_json_write(root_name, data, vals, nodes, root, jout) < 0 { return "refused\n"; }
@@ -742,11 +785,14 @@ fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:])
         } else {
             if f[2] != unit { continue; }
         }
+        // a wire of `-` is the root's fresh value (SF-05, SF-06: a root with
+        // no file form)
         var data: u8[>..] = [];
-        load_file(f[4], data);
-        let res = conformance_wref(surf, f[3], ann, data, f[5], f[6], f[7]);
+        let fresh = f[4] == "-";
+        if !fresh { load_file(f[4], data); }
+        let res = conformance_wref(surf, f[3], ann, data, fresh, f[5], f[6], f[7]);
         if res == "!absent" {
-            if surf == "write-refusal" || surf == "write-refusal-json" {
+            if !fresh && (surf == "write-refusal" || surf == "write-refusal-json" || surf == "write-refusal-cook") {
                 let vres = wref_loaded_run(surf, f[3], data, f[5], f[6], f[7]);
                 if vres != "!absent" {
                     if vres.len > 0 && vres[0] == '!' {
@@ -768,6 +814,224 @@ fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:])
     }
 }
 
+// wref_loaded_dec reads a row's decimal number (`1.5`, `-0.25`, `1`) for a
+// `float` kind.
+fn wref_loaded_dec(s: const u8[:]) -> f64 {
+    var neg = false;
+    var i: i64 = 0;
+    if s.len > 0 && s[0] == '-' { neg = true; i = 1; }
+    var whole: f64 = 0.0;
+    while i < s.len && s[i] != '.' {
+        whole = whole * 10.0 + ((s[i] - '0') as f64);
+        i += 1;
+    }
+    var frac: f64 = 0.0;
+    var scale: f64 = 0.1;
+    if i < s.len { i += 1; }
+    while i < s.len {
+        frac += ((s[i] - '0') as f64) * scale;
+        scale *= 0.1;
+        i += 1;
+    }
+    let r = whole + frac;
+    return if neg { -r } else { r };
+}
+
+// wref_loaded_slot is the value-table slot a row's path names (a `point`
+// row's two pointers): fields by name, `[i]` into an array or a map, and a
+// pointer followed to its node. -1 for a path that names nothing.
+recursive fn wref_loaded_slot(unit: schema_rt::LoadUnit, vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], rec: i64, path: const u8[:]) -> i64 {
+    if rec < 0 || rec >= vals.len { return -1; }
+    var dot: i64 = 0;
+    while dot < path.len && path[dot] != '.' { dot += 1; }
+    let seg_raw = path[0..dot];
+    let rest = if dot < path.len { path[dot + 1..path.len] } else { "" };
+    var br: i64 = 0;
+    while br < seg_raw.len && seg_raw[br] != '[' { br += 1; }
+    let seg = seg_raw[0..br];
+    var idx: i64 = -1;
+    if br < seg_raw.len && seg_raw[seg_raw.len - 1] == ']' {
+        let parsed, ok = parse_int(seg_raw[br + 1..seg_raw.len - 1]);
+        if !ok { return -1; }
+        idx = parsed;
+    }
+    let t = unit.tables[vals[rec].tab];
+    var fi: i64 = 0;
+    while fi < t.fields.len {
+        let d = t.fields[fi];
+        if d.name == seg {
+            let s = vals[rec].first + fi;
+            var at = s;
+            if idx >= 0 {
+                if idx >= vals[s].len { return -1; }
+                at = vals[s].first + idx;
+                if rest.len == 0 { return at; }
+                let e = d.elem;
+                guard e else { return -1; }
+                if e.shape == schema_rt::ShapeTab { return wref_loaded_slot(unit, vals, nodes, at, rest); }
+                if e.shape != schema_rt::ShapePtr { return -1; }
+            } else {
+                if rest.len == 0 { return s; }
+                if d.shape == schema_rt::ShapeTab { return wref_loaded_slot(unit, vals, nodes, s, rest); }
+                if d.shape != schema_rt::ShapePtr { return -1; }
+            }
+            let widx = vals[at].bits.lo as! i64;
+            if widx < 2 || widx - 2 >= nodes.len { return -1; }
+            return wref_loaded_slot(unit, vals, nodes, nodes[widx - 2].val, rest);
+        }
+        fi += 1;
+    }
+    return -1;
+}
+
+// surface_announce: THE ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3;
+// test/conformance/README.md, `announce`). `write`: the unit's announcement
+// writer; `strict` and `lenient`: a fresh vocabulary of the unit reads the
+// announcement file, its strict flag set or left at its default; `send`:
+// SaveMessages of one value with no announcement read or written. The glue
+// (conformance_announce_*) appends the answer; -1 is a unit with no message
+// form.
+fn surface_announce(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 6 || f[0] != "announce" || f[2] != unit { continue; }
+        var out: u8[>..] = [];
+        var r: i64 = -1;
+        if f[4] == "write" {
+            r = conformance_announce_write(out);
+        } else if f[4] == "strict" || f[4] == "lenient" {
+            var ann: u8[>..] = [];
+            load_file(f[5], ann);
+            r = conformance_announce_read(f[4] == "strict", ann, out);
+        } else if f[4] == "send" {
+            var data: u8[>..] = [];
+            let fresh = f[5] == "-";
+            if !fresh { load_file(f[5], data); }
+            r = conformance_announce_send(f[3], data, fresh, out);
+        } else {
+            write_stderr(str("driver: ", f[1], ": announce mode ", f[4], " is not one this driver knows\n"));
+            exit(1);
+        }
+        if r == -1 { absent(f[1], "no message form for this unit or root (SPEC-TABLES §3.3)"); continue; }
+        if r < 0 { write_stderr(str("driver: ", f[1], ": the row's input does not load (", r, ")\n")); exit(1); }
+        answer(f[1], out);
+    }
+}
+
+// read_into_variable: THE VARIABLE FORM's read-into row. Its read,
+// schema_rt::load_table, takes the caller's stores and ONE report, and
+// RETURNS the root's index into them: the value is returned, not read into
+// caller values (shared ruling 3). So the driver holds the value it was last
+// handed back — the index and the bytes it points into — and a read that
+// returns one replaces it. A refused read returns none (load_table puts the
+// stores back as they were), and the value printed after it is the one the
+// driver holds then. No value is reset here to make the row pass.
+fn read_into_variable(root: const u8[:], lawful: const u8[:], damaged: const u8[:], out: u8[>..]&) -> i64 {
+    let u = conformance_unit();
+    if schema_rt::value_table(u, root) < 0 { return -1; }
+    var vals: schema_rt::LoadVal[>..] = [];
+    var nodes: schema_rt::LoadNode[>..] = [];
+    var report = schema_rt::LoadReport { .. };
+    var held: u8[>..] = [];
+    var at: i64 = -1;
+    for step in 3 {
+        var input: u8[>..] = [];
+        if step == 1 { input.append(damaged); } else { input.append(lawful); }
+        let r = schema_rt::load_table(u, root, input, vals, nodes, report);
+        conformance_ri_verdict(out, r >= 0 && !report.refused && schema_rt::load_error(report, r) == schema_rt::LoadRefuseOk);
+        if r >= 0 {
+            at = r;
+            held.clear();
+            held.append(input);
+        }
+        if step == 1 {
+            var t: u8[>..] = [];
+            if at < 0 {
+                if conformance_fresh_json(root, t) < 0 { return -2; }
+            } else if conformance_json_write(root, held, vals, nodes, at, t) < 0 {
+                return -2;
+            }
+            out.append(t);
+        }
+    }
+    return 0;
+}
+
+// surface_read_into: ONE report and ONE set of caller values through a
+// lawful read, a refused read and the lawful read again (docs/SPEC-TABLES.md
+// §6.5; test/conformance/README.md, `read-into`). The glue's
+// conformance_read_into calls the fixed load, LoadMessages and the text read,
+// each of which takes the caller's values and report.
+fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 9 || f[0] != "read-into" || f[2] != unit { continue; }
+        if f[4] == "fixed-nocap" {
+            // FL-17: <Root>FixedLoad's capacity is the length of the values
+            // slice the caller hands it; no call omits it (shared ruling 5)
+            answer(f[1], "unrepresentable\n");
+            continue;
+        }
+        var lawful: u8[>..] = [];
+        load_file(f[5], lawful);
+        var damaged: u8[>..] = [];
+        load_file(f[6], damaged);
+        let count, cok = parse_int(f[7]);
+        if !cok || count < 1 { write_stderr(str("driver: ", f[1], ": count ", f[7], "\n")); exit(1); }
+        var ann: u8[>..] = [];
+        if f[4] == "message" { load_file(f[8], ann); }
+        var out: u8[>..] = [];
+        var r: i64 = -1;
+        if f[4] == "variable" {
+            r = read_into_variable(f[3], lawful, damaged, out);
+        } else {
+            r = conformance_read_into(f[3], f[4], lawful, damaged, count, ann, out);
+        }
+        if r == -1 { absent(f[1], str("no ", f[4], " read for ", f[3])); continue; }
+        if r < 0 { write_stderr(str("driver: ", f[1], ": read-into failed (", r, ")\n")); exit(1); }
+        answer(f[1], out);
+    }
+}
+
+// surface_json_write_into: the text writer under a comma-decimal process
+// locale into a caller buffer (FL-14, FL-15; test/conformance/README.md,
+// `json-write-into`).
+//
+// THE LOCALE: Goose has no process-locale call. Its standard library binds
+// no setlocale, and an `extern fn` cannot hand C the NUL-terminated string
+// setlocale takes (docs/goose_spec.md §7.10: a slice crosses as {data, len}),
+// so this driver cannot make SCHEMA_COMMA_LOCALE the process's locale; it
+// says so here and runs the rest (shared ruling 1). The harness's locale
+// name must still arrive: a run without it is an error.
+//
+// THE BUFFER: the text writer (<Root>ToJson, json_save_table) appends to the
+// caller's growable buffer and returns the length it wrote; there is no
+// fixed-length caller buffer for it to write past, so the answer is the text
+// it wrote (shared ruling 1: no tail to check).
+fn surface_json_write_into(lines: const u8[:][:], unit: const u8[:]) {
+    var loc: u8[>..] = [];
+    if !env("SCHEMA_COMMA_LOCALE", loc) || loc.len == 0 {
+        write_stderr("driver: json-write-into: SCHEMA_COMMA_LOCALE is not set (the harness names the comma-decimal locale)\n");
+        exit(1);
+    }
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "json-write-into" || f[2] != unit { continue; }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        let at = load_instance(f[3], data, vals, nodes);
+        if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
+        var json: u8[>..] = [];
+        if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
+            answer(f[1], "refused\n");
+            continue;
+        }
+        answer(f[1], json);
+    }
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -775,7 +1039,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
         return;
     }
     if argv.len != 4 {
@@ -799,7 +1063,10 @@ fn main() {
         return;
     }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
-    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" {
+    if argv[1] == "announce" { surface_announce(lines, unit); return; }
+    if argv[1] == "read-into" { surface_read_into(lines, unit); return; }
+    if argv[1] == "json-write-into" { surface_json_write_into(lines, unit); return; }
+    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" {
         surface_wref_all(lines, unit, argv[1]);
         return;
     }
