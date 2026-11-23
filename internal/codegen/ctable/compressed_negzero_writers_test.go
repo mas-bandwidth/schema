@@ -237,6 +237,10 @@ func TestCCompressedNegZeroCorpus(t *testing.T) {
 // not `pick`.
 var cPlainFloatOperand = regexp.MustCompile(`(\.|->)p\b`)
 
+// The cook copies field bits by their literal width. The shared JSON runtime
+// also copies a local float into bits, but sizes its copy with sizeof.
+var cCookFloatBitsCopy = regexp.MustCompile(`memcpy\( &bits, &[^,]+, [48] \);`)
+
 // TestCCompressedFloatStoresAreGuarded is the fast twin of the corpus run: it
 // reads the generated source rather than compiling it. Every float store of
 // the variable writer, the fixed writer and the cook goes through
@@ -255,7 +259,7 @@ func TestCCompressedFloatStoresAreGuarded(t *testing.T) {
 	raw := map[string]string{
 		"variable": "table_writer_put32( w, table_float_to_bits(",
 		"fixed":    "table_fixed_putf32( b",
-		"cook":     "memcpy(&bits,&",
+		"cook":     "", // matched by cCookFloatBitsCopy
 	}
 	guarded := map[string]string{
 		"variable": "table_writer_put32( w, table_stored_float_bits(",
@@ -270,6 +274,9 @@ func TestCCompressedFloatStoresAreGuarded(t *testing.T) {
 			for writer, spelling := range raw {
 				isGuarded := strings.Contains(line, guarded[writer]) && strings.Contains(line, "table_stored_float_bits(")
 				isRaw := strings.Contains(line, spelling)
+				if writer == "cook" {
+					isRaw = cCookFloatBitsCopy.MatchString(line)
+				}
 				if !isGuarded && !isRaw {
 					continue
 				}

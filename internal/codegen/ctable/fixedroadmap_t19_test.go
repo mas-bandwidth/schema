@@ -82,7 +82,7 @@ func TestFixedCT19PayloadFreeLines(t *testing.T) {
 	if !strings.Contains(header, "(uint32_t) value->pick.type > 3u") {
 		t.Fatalf("the fixed clamp does not compare Pick's tag to the arm set:\n%s", header)
 	}
-	if !strings.Contains(header, "(*out_of_range)++") {
+	if !strings.Contains(header, "( *out_of_range )++") {
 		t.Fatalf("the fixed bounds pass does not refuse a tag past the arm set:\n%s", header)
 	}
 

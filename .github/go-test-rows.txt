@@ -38,6 +38,7 @@ weight ./internal/ci 120 120
 weight ./internal/ci/hostilecorpus 12 1
 weight ./internal/codegen/c 1 0
 weight ./internal/codegen/ccommon 0 0
+weight ./internal/codegen/cfmt 0 0
 weight ./internal/codegen/cpp 3 1
 weight ./internal/codegen/cpptable 55 229
 weight ./internal/codegen/cqualify 2 0

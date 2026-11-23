@@ -102,7 +102,7 @@ func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	body := extractFn(without, "cfg_fixed_clamp_body_")
 	// strict-only: a tag past the arm count is out_of_range and the read
 	// refuses; nothing is remapped to None
-	if !strings.Contains(body, "if ( (uint32_t) value->effect.type > 2u ) { (*out_of_range)++; }") {
+	if !strings.Contains(body, "if ( (uint32_t) value->effect.type > 2u ) { ( *out_of_range )++; }") {
 		t.Error("a union tag past the arm count must count out_of_range, so the read refuses")
 	}
 	if strings.Contains(body, "EFFECT_TYPE_NONE") {
@@ -153,7 +153,7 @@ func TestCNoPlanClamps(t *testing.T) {
 	if strings.Contains(src, "kTableFixedClamp") {
 		t.Error("no plan op clamps: the clamp op must not exist")
 	}
-	if !strings.Contains(src, "kTableFixedWidenF  = 6") {
+	if !strings.Contains(strings.Join(strings.Fields(src), " "), "kTableFixedWidenF = 6") {
 		t.Error("the op set is the seven, and widenf is the last of them")
 	}
 	if !strings.Contains(src, "cfg_fixed_clamp_body_") {

@@ -80,7 +80,7 @@ func TestCVariableWriteRangeAssert(t *testing.T) {
 	for _, want := range []string{
 		"schema_assert( !( value->p < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */",
 		"schema_assert( !( value->p > 10 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */",
-		"schema_assert( (uint64_t)( value->b ) <= 0x3full ); /* bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2) */",
+		"schema_assert( (uint64_t) ( value->b ) <= 0x3full ); /* bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2) */",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the variable Save does not hold:\n%s", want)

@@ -217,7 +217,7 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	if !strings.Contains(header, "int overflow, id_checkpoint, check_default;") {
 		t.Errorf("expected TableWriter with check_default")
 	}
-	if !strings.Contains(header, "int overflow,check_default;") {
+	if !strings.Contains(header, "int overflow, check_default;") {
 		t.Errorf("expected TableBitWriter with check_default")
 	}
 
@@ -241,7 +241,7 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	}
 
 	// leaf_save_body CAN be reached by a probe: it MUST have check_default early exit.
-	if !strings.Contains(leafBody, "if ( w->check_default ) { w->offset = 2; return 1; }") {
+	if !strings.Contains(strings.Join(strings.Fields(leafBody), " "), "if ( w->check_default ) { w->offset = 2; return 1; }") {
 		t.Errorf("leaf_save_body is probed but missing check_default check:\n%s", leafBody)
 	}
 	if !strings.Contains(leafBody, "if ( w->buffer == NULL && !w->check_default )") {
@@ -254,8 +254,8 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	}
 
 	// 3. Message save: leaf_save_message_body must have check_default; outer must not.
-	defMsgLeaf := "int leaf_save_message_body(TableBitWriter * w,const Leaf * value)\n{"
-	defMsgOuter := "int outer_save_message_body(TableBitWriter * w,const Outer * value)\n{"
+	defMsgLeaf := "int leaf_save_message_body( TableBitWriter * w, const Leaf * value )\n{"
+	defMsgOuter := "int outer_save_message_body( TableBitWriter * w, const Outer * value )\n{"
 	leafMsgIdx := strings.Index(header, defMsgLeaf)
 	outerMsgIdx := strings.Index(header, defMsgOuter)
 	if leafMsgIdx < 0 || outerMsgIdx < 0 {
@@ -271,11 +271,11 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 		outerMsgBody = outerMsgBody[:end]
 	}
 
-	if !strings.Contains(leafMsgBody, "if(w->check_default)") {
+	if !strings.Contains(leafMsgBody, "if ( w->check_default )") {
 		t.Errorf("leaf_save_message_body is probed but missing check_default check:\n%s", leafMsgBody)
 	}
-	if strings.Contains(outerMsgBody, "if(w->check_default)") {
-		t.Errorf("outer_save_message_body is not probed but contains dead if(w->check_default):\n%s", outerMsgBody)
+	if strings.Contains(outerMsgBody, "if ( w->check_default )") {
+		t.Errorf("outer_save_message_body is not probed but contains dead if ( w->check_default ):\n%s", outerMsgBody)
 	}
 
 	// 4. Compile and verify default elision and roundtrip execution.

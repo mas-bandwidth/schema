@@ -56,11 +56,11 @@ func TestCFixedFormHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 	for _, c := range []struct{ head, want string }{
 		{"schema_nested_loose_fixed_clamp_body_( Loose * value", "schema_nested_child_fixed_clamp_body_( &value->nest[i], out_of_range, damaged );"},
 		{"schema_nested_tight_fixed_clamp_body_( Tight * value", "schema_nested_child_fixed_clamp_body_( &value->nest[i], out_of_range, damaged );"},
-		{"schema_nested_tight_fixed_clamp_body_( Tight * value", "if ( value->nest_count < 1 ) { (*out_of_range)++; }"},
+		{"schema_nested_tight_fixed_clamp_body_( Tight * value", "if ( value->nest_count < 1 ) { ( *out_of_range )++; }"},
 		{"schema_nested_loose_fixed_write_check_body_( const Loose * value", "schema_nested_child_fixed_write_check_body_( &value->nest[i], out_of_range, damaged );"},
 		{"schema_nested_tight_fixed_write_check_body_( const Tight * value", "schema_nested_child_fixed_write_check_body_( &value->nest[i], out_of_range, damaged );"},
-		{"schema_nested_tight_fixed_write_check_body_( const Tight * value", "if ( value->nest_count < 1 ) { (*out_of_range)++; }"},
-		{"schema_nested_child_fixed_clamp_body_( Child * value", "if ( value->vals_count < 2 ) { (*out_of_range)++; }"},
+		{"schema_nested_tight_fixed_write_check_body_( const Tight * value", "if ( value->nest_count < 1 ) { ( *out_of_range )++; }"},
+		{"schema_nested_child_fixed_clamp_body_( Child * value", "if ( value->vals_count < 2 ) { ( *out_of_range )++; }"},
 	} {
 		if body := cFunctionBody(t, h, c.head); !strings.Contains(body, c.want) {
 			t.Errorf("%s does not hold the bound: no %q in\n%s", c.head, c.want, body)

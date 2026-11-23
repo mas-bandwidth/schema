@@ -23,7 +23,7 @@ typedef struct bench_view_constant_t
     int64_t int_value;       // the folded value; float_value when is_float
     double float_value;
     const char * doc;        // the `///` block above it, verbatim (SPEC §4.1);
-                             // "" when there is none, never NULL (§8.1)
+    // "" when there is none, never NULL (§8.1)
     int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
     const char * const * tags;    // DECLARED order; 0 and NULL when there are none
 } bench_view_constant_t;
@@ -33,28 +33,28 @@ typedef struct bench_view_variant_t          // one enum variant, one flags bit,
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
     uint64_t id;            // the table-wire id (§5). It is 0 for a flags bit,
-                            // and throughout a vocabulary no table closure
-                            // reaches (§8.2)
+    // and throughout a vocabulary no table closure
+    // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
-                                    // name, or a general arm's spelling
-                                    // ("int32", "string(64)", "*Chunk"); NULL on
-                                    // a payload-free arm and on every other row
+    // name, or a general arm's spelling
+    // ("int32", "string(64)", "*Chunk"); NULL on
+    // a payload-free arm and on every other row
     const bench_table_type_info_t * payload;  // that payload's descriptor — never NULL for
-                                    // an arm naming a `type` or a `table` (§8.2);
-                                    // NULL on a general arm, on a payload-free
-                                    // arm, on tag 0, and on an enum or flags row
+    // an arm naming a `type` or a `table` (§8.2);
+    // NULL on a general arm, on a payload-free
+    // arm, on tag 0, and on an enum or flags row
     const bench_table_field_info_t * field;   // a general arm's FIELD descriptor: its kind,
-                                    // width, bounds, capacity, companions and the
-                                    // offsets §8.1 takes within the union's
-                                    // storage. NULL on an arm naming a `type` or
-                                    // a `table`, on a payload-free arm, on tag 0,
-                                    // and on an enum or flags row
+    // width, bounds, capacity, companions and the
+    // offsets §8.1 takes within the union's
+    // storage. NULL on an arm naming a `type` or
+    // a `table`, on a payload-free arm, on tag 0,
+    // and on an enum or flags row
     const char * doc;               // the `///` block above this variant, bit or
-                                    // arm, verbatim; "" when there is none (§8.1)
+    // arm, verbatim; "" when there is none (§8.1)
     int32_t num_tags;               // this row's own tags, in DECLARED order;
     const char * const * tags;      // 0 and NULL when there are none. On a general
-                                    // arm the `field` descriptor above carries the
-                                    // same two values (§8.1)
+    // arm the `field` descriptor above carries the
+    // same two values (§8.1)
 } bench_view_variant_t;
 
 typedef struct bench_view_vocabulary_t       // an enum, a flags or a union declaration
@@ -76,9 +76,9 @@ typedef struct bench_view_type_t             // one declaration: a type, or a ta
     const char * file;
     int table;                     // declared `table`
     const bench_table_type_info_t * type;     // §8.1's descriptor: the properties, and this
-                                    // declaration's own doc and tags beside them
+    // declaration's own doc and tags beside them
     const char * doc;               // the `///` block above it; "" when none. The
-                                    // same text `type->doc` carries (§8.1)
+    // same text `type->doc` carries (§8.1)
     int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
     const char * const * tags;      // DECLARED order; the same list `type` carries
 } bench_view_type_t;
@@ -87,12 +87,18 @@ typedef struct bench_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const bench_view_type_t * types;
-    int32_t num_tables;     const bench_view_type_t * tables;
-    int32_t num_enums;      const bench_view_vocabulary_t * enums;
-    int32_t num_flags;      const bench_view_vocabulary_t * flags;
-    int32_t num_unions;     const bench_view_vocabulary_t * unions;
-    int32_t num_constants;  const bench_view_constant_t * constants;
+    int32_t num_types;
+    const bench_view_type_t * types;
+    int32_t num_tables;
+    const bench_view_type_t * tables;
+    int32_t num_enums;
+    const bench_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const bench_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const bench_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const bench_view_constant_t * constants;
 } bench_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -119,7 +125,7 @@ static SCHEMA_UNUSED void bench_bench_bits_reset( bench_bench_bits_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_bits_reset_raw_( void * storage ) { bench_bench_bits_reset( (bench_bench_bits_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_bits_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type(void) { return &schema_bench_bench_bits_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type( void ) { return &schema_bench_bench_bits_info_; }
 static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 {
     value->f0 = 0;
@@ -137,7 +143,7 @@ static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_ints_reset_raw_( void * storage ) { bench_bench_ints_reset( (bench_bench_ints_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_ints_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type(void) { return &schema_bench_bench_ints_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type( void ) { return &schema_bench_bench_ints_info_; }
 static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value )
 {
     value->a = 0;
@@ -157,9 +163,9 @@ static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value
 static SCHEMA_UNUSED void schema_bench_bench_packet_reset_raw_( void * storage ) { bench_bench_packet_reset( (bench_bench_packet_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_packet_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type(void) { return &schema_bench_bench_packet_info_; }
-const bench_unit_view_info_t * schema_bench_unit_view_(void);
-static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view(void) { return schema_bench_unit_view_(); }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type( void ) { return &schema_bench_bench_packet_info_; }
+const bench_unit_view_info_t * schema_bench_unit_view_( void );
+static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view( void ) { return schema_bench_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

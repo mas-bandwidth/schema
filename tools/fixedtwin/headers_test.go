@@ -135,8 +135,8 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		},
 		{
 			"the C compiled plan lands the present flag as a plain bool",
-			"e.op = kTableFixedPresentDefaults; e.arg = arg;",
-			"e.op = kTableFixedBool; e.arg = arg;",
+			"e.op = kTableFixedPresentDefaults;",
+			"e.op = kTableFixedBool;",
 		},
 	}
 	for _, fault := range absentFaults {
@@ -230,13 +230,13 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	cFaults := []struct{ name, from, to string }{
 		{
 			"the C count refusal loses its count",
-			"else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*out_of_range)++; }",
-			"else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; }",
+			"v = (int32_t) p->size;\n                ( *out_of_range )++;",
+			"v = (int32_t) p->size;",
 		},
 		{
 			"the C text refusal loses its count",
-			"else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }",
-			"else if ( (uint32_t) v > cap ) { v = (int32_t) cap; }",
+			"v = (int32_t) cap;\n                ( *out_of_range )++;",
+			"v = (int32_t) cap;",
 		},
 	}
 	for _, fault := range cFaults {

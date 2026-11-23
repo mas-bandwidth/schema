@@ -8,7 +8,7 @@ static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_fe
 static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_other_[] = {
     { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
-const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_(void)
+const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
 {
     static const tabledemo_view_variant_t Difficulty_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -16,8 +16,8 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_(void)
         { 2, "Normal", 0x9ff3121d30f88d52ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 3, "Hard", 0x58c7b5d87587287cull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-static const char * const Grade_view_variant2_tags[] = { "celebrate", "rare", "announce" };
-static const char * const Grade_view_tags[] = { "progression" };
+    static const char * const Grade_view_variant2_tags[] = { "celebrate", "rare", "announce" };
+    static const char * const Grade_view_tags[] = { "progression" };
     static const tabledemo_view_variant_t Grade_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 1, "Bronze", 0xc4927739aac4c591ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -30,7 +30,7 @@ static const char * const Grade_view_tags[] = { "progression" };
         { 2, "Gunship", 0x334d24e1420dbc1full, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 3, "Freighter", 0x6c2321a3d00e23dbull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-static const char * const Mood_view_variant1_tags[] = { "deprecated" };
+    static const char * const Mood_view_variant1_tags[] = { "deprecated" };
     static const tabledemo_view_variant_t Mood_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 1, "Calm", 0xdfa47a9ce9ac16d6ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -60,8 +60,8 @@ static const char * const Mood_view_variant1_tags[] = { "deprecated" };
         { 1, "Cloaked", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 2, "Turbo", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-static const char * const Effect_view_variant0_tags[] = { "positive" };
-static const char * const Effect_view_tags[] = { "gameplay" };
+    static const char * const Effect_view_variant0_tags[] = { "positive" };
+    static const char * const Effect_view_tags[] = { "gameplay" };
     static const tabledemo_view_variant_t Effect_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 1, "buff", 0xffb5be9be2e469ccull, "Buff", &schema_tabledemo_buff_info_, NULL, "A multiplier that rides while the effect is live.", 1, Effect_view_variant0_tags },
@@ -94,7 +94,7 @@ static const char * const Effect_view_tags[] = { "gameplay" };
         { "Debuff", "Tables.schema", 0, &schema_tabledemo_debuff_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "ScoreBoard", "Keyed.schema", 0, &schema_tabledemo_score_board_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
+    static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
     static const tabledemo_view_type_t tables[] = {
         { "ArchiveConfig", "Nested.schema", 1, &schema_tabledemo_archive_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "CountedMin", "Tables.schema", 1, &schema_tabledemo_counted_min_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -122,11 +122,11 @@ static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
         { "WeaponConfig", "Tables.schema", 1, &schema_tabledemo_weapon_config_info_, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_view_tags },
         { "WideBlob", "Wide.schema", 1, &schema_tabledemo_wide_blob_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-static const char * const MaxLoadoutSlots_view_tags[] = { "tuning" };
+    static const char * const MaxLoadoutSlots_view_tags[] = { "tuning" };
     static const tabledemo_view_constant_t constants[] = {
-        { "MaxBlobBytes", "Wide.schema", "int64", 0, INT64_C(70000), 0.0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
-        { "MaxLoadoutSlots", "Tables.schema", "int64", 0, INT64_C(8), 0.0, "The slots a loadout admits. Raising it is a free edit on the wire: a\nbound sizes storage, and it is not an id.", 1, MaxLoadoutSlots_view_tags },
-        { "MaxProfileName", "Tables.schema", "int64", 0, INT64_C(32), 0.0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MaxBlobBytes", "Wide.schema", "int64", 0, INT64_C( 70000 ), 0.0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MaxLoadoutSlots", "Tables.schema", "int64", 0, INT64_C( 8 ), 0.0, "The slots a loadout admits. Raising it is a free edit on the wire: a\nbound sizes storage, and it is not an id.", 1, MaxLoadoutSlots_view_tags },
+        { "MaxProfileName", "Tables.schema", "int64", 0, INT64_C( 32 ), 0.0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
