@@ -603,6 +603,7 @@ type ciEvent struct {
 	Labels         []string // pull_request labels
 	PlanPkgs       string   // needs.plan.outputs.packages
 	PlanLegs       string   // needs.plan.outputs.legs
+	PlanVerifyLegs string   // needs.plan.outputs.verify_legs
 	PlanRows       string   // needs.plan.outputs.rows
 	PlanResult     string   // needs.plan.result, success when omitted
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
@@ -829,10 +830,11 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 			}
 			return strings.Contains(rows, want), nil
 		}
-		if lhs == "needs.plan.outputs.legs" {
+		if lhs == "needs.plan.outputs.legs" || lhs == "needs.plan.outputs.verify_legs" {
 			// the plan's legs are a JSON array of strings; a leg is in it
 			// when its quoted name is
-			return strings.Contains(ev.PlanLegs, `"`+want+`"`), nil
+			legs, err := resolveCIToken(lhs, ev)
+			return strings.Contains(legs, `"`+want+`"`), err
 		}
 		if lhs != "github.event.pull_request.labels.*.name" {
 			return false, fmt.Errorf("unsupported contains() collection %q", lhs)
@@ -1000,6 +1002,8 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
+	case "needs.plan.outputs.verify_legs":
+		return ev.PlanVerifyLegs, nil
 	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
@@ -1382,11 +1386,12 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// leg-gate-squirrel, leg-gate-cpp and leg-gate-rust are gated the same way
 	// on theirs.
 	dispatchEv := ciEvent{
-		Name:     "workflow_dispatch",
-		Branch:   "main",
-		Repo:     repo,
-		PlanPkgs: planPkgs,
-		PlanLegs: `["cpp","go","lobster","rust","squirrel"]`,
+		Name:           "workflow_dispatch",
+		Branch:         "main",
+		Repo:           repo,
+		PlanPkgs:       planPkgs,
+		PlanLegs:       `["cpp","go","lobster","rust","squirrel"]`,
+		PlanVerifyLegs: `["elixir"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1456,6 +1461,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:verdict",
+		"ci-fast.yml:verify-elixir-conformance",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",

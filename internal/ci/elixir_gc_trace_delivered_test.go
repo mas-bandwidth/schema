@@ -140,11 +140,11 @@ func TestCIFastLangCleanElixirAgreementRowsMatchShards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "elixir-offsets"
+	var want strings.Builder
 	for k := 1; k <= n; k++ {
-		want += fmt.Sprintf(" elixir-agreement-%d", k)
+		fmt.Fprintf(&want, " elixir-agreement-%d", k)
 	}
-	line := `clean_legs="$clean_legs ` + want + `"`
+	line := `clean_legs="$clean_legs` + want.String() + `"`
 	if !strings.Contains(string(raw), line) {
 		t.Fatalf("ci-fast.yml plan must add the elixir rows as %s (ELIXIR_AGREEMENT_SHARDS=%d)", line, n)
 	}
