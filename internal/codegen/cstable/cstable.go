@@ -819,6 +819,7 @@ public sealed class TableFieldInfo
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
     public byte[] DefaultBytes;
+    public Func<object, int> GetArrayLength;
     public Action<object> ResetField;
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 

@@ -747,7 +747,9 @@ public final class Driver {
         }
         Object report() throws ReflectiveOperationException { return reportType.getConstructor().newInstance(); }
         Object load(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("load", byte[].class, reportType).invoke(null, data, report); }
+        boolean loadInto(Object target, byte[] data, Object report) throws ReflectiveOperationException { return (boolean) codec.getMethod("loadInto", valueType, byte[].class, reportType).invoke(null, target, data, report); }
         Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
+        boolean fromJsonInto(Object target, byte[] data, Object report) throws ReflectiveOperationException { return (boolean) codec.getMethod("fromJsonInto", valueType, byte[].class, reportType).invoke(null, target, data, report); }
         byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
         byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
         // fromFixed carries a fixed-form value into this value (the emitter's
@@ -994,6 +996,8 @@ public final class Driver {
             case "widelist": return "widelistdemo";
             case "tblscalars2": return "scalardemo2";
             case "tblsurf": return "surfaces";
+            case "tblann4096": return "announce4096";
+            case "tblann4097": return "announce4097";
             default: return unit;
         }
     }
@@ -1417,6 +1421,14 @@ public final class Driver {
                     if (fixed != null) {
                         fixedValue = java.lang.reflect.Array.get(fixed.newValues(), 0);
                         value = fixedValue;
+                    } else if (surface.equals("write-refusal-message")) {
+                        MessageCodec mc = messageCodec(actualUnit, root);
+                        if (mc != null) {
+                            fixedValue = mc.valueType.getConstructor().newInstance();
+                            value = fixedValue;
+                        } else {
+                            value = variable.valueType.getConstructor().newInstance();
+                        }
                     } else {
                         value = variable.valueType.getConstructor().newInstance();
                     }
@@ -2441,7 +2453,13 @@ public final class Driver {
         MessageCodec(String pkg, String root) throws ReflectiveOperationException {
             vocabType = Class.forName(pkg + ".TableVocabulary");
             reportType = Class.forName(pkg + ".TableVocabulary$Report");
-            valueType = Class.forName(pkg + "." + root + "Fixed$Value");
+            Class<?> vt;
+            try {
+                vt = Class.forName(pkg + "." + root + "Fixed$Value");
+            } catch (ClassNotFoundException noFixed) {
+                vt = Class.forName(pkg + "." + root + "Message$Value");
+            }
+            valueType = vt;
             valueArrayType = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
             Class<?> msgType = Class.forName(pkg + "." + root + "Message");
             reset = vocabType.getMethod("reset", int.class);
@@ -2753,17 +2771,6 @@ public final class Driver {
     // surfaces ask what no surface asked before"). Every answer below is what
     // the generated runtime did; the driver only reports it.
 
-    // The announcement-cap units are not on this classpath (make/java.mk): the
-    // Java emitter's output for a 4095-variant enum does not compile.
-    private static final String ANNOUNCE_CAP_ABSENT =
-            "the Java emitter's RootFixed for tblann4096/4097 (a 4095-variant enum) does not compile: javac 'code too large'";
-
-    // Java's variable-form load and text read take no caller value: they
-    // return a new one (or null), so there is no value a refused read could
-    // leave at its defaults.
-    private static final String READ_INTO_RETURNS =
-            "Java's <Root>Variable.load and fromJson take no caller value: they return a new value or null";
-
     private static Throwable rootCause(Throwable thrown) {
         Throwable cause = thrown;
         while (cause instanceof java.lang.reflect.InvocationTargetException invoked && invoked.getCause() != null) {
@@ -2935,10 +2942,6 @@ public final class Driver {
                 vocabType = Class.forName(pkg + ".TableVocabulary");
                 reportType = Class.forName(pkg + ".TableVocabulary$Report");
             } catch (ClassNotFoundException missing) {
-                if (unit.equals("tblann4096") || unit.equals("tblann4097")) {
-                    spillAbsentReason(out, name, ANNOUNCE_CAP_ABSENT);
-                    continue;
-                }
                 return failInt(name + ": unit " + unit + " has no TableVocabulary on this classpath");
             }
             try {
@@ -3042,6 +3045,59 @@ public final class Driver {
         }
     }
 
+    private static String readIntoVariableLine(VariableCodec variable, String form, Object target, String path, Object report) throws IOException, ReflectiveOperationException {
+        try {
+            byte[] bytes = Files.readAllBytes(Paths.get(path));
+            boolean ok = form.equals("json") ? variable.fromJsonInto(target, bytes, report) : variable.loadInto(target, bytes, report);
+            return ok && !variable.flag(report, "refused") && !variable.flag(report, "damaged") ? "read\n" : "refused\n";
+        } catch (java.lang.reflect.InvocationTargetException thrown) {
+            return "threw\n";
+        }
+    }
+
+    private static int surfaceWriteRefusalBlock(String out) throws IOException {
+        for (String[] f : kind("write-refusal-block")) {
+            String name = f[1];
+            String unit = f[2];
+            String root = f[3];
+            String wirePath = f[4];
+            try {
+                FixedCodec fixed = fixedCodec(unit, root);
+                if (fixed == null) {
+                    spillAbsent(out, name);
+                    continue;
+                }
+                String pkg = variableUnitPackage(unit);
+                Class<?> blockType = Class.forName(pkg + "." + root + "Block");
+                Class<?> refusalType = Class.forName(pkg + "." + root + "Block$Refusal");
+                java.lang.reflect.Method begin = blockType.getMethod("begin", byte[].class, fixed.valueType, refusalType);
+                int maxBytes = (int) blockType.getField("blockMaxBytes").getLong(null);
+                Object values = fixed.newValues();
+                Object report = fixed.report();
+                int read = fixed.load(values, Files.readAllBytes(Paths.get(wirePath)), report);
+                if (!fixedReadSucceeded(fixed, report, read)) {
+                    return failInt(name + ": load refused " + wirePath);
+                }
+                Object value = java.lang.reflect.Array.get(values, 0);
+                if (!mutateWriteRefusal(value, f[5], f[6], f[7])) {
+                    spill(out, name, "unrepresentable\n");
+                    continue;
+                }
+                String answer;
+                try {
+                    Object built = begin.invoke(null, new byte[maxBytes], value, refusalType.getConstructor().newInstance());
+                    answer = built != null ? "wrote" : "refused";
+                } catch (java.lang.reflect.InvocationTargetException invoked) {
+                    answer = writeRefusalAssertion(invoked) ? "refused" : "threw " + rootCause(invoked);
+                }
+                spill(out, name, answer + "\n");
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": write-refusal-block codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     // READ INTO THE CALLER'S VALUES (read-into): one report and one set of
     // values through a lawful read, a refused read and the lawful read again.
     private static int surfaceReadInto(String out) throws IOException {
@@ -3056,8 +3112,7 @@ public final class Driver {
                 switch (form) {
                     case "variable":
                     case "json":
-                        spillAbsentReason(out, name, READ_INTO_RETURNS);
-                        continue;
+                        break;
                     case "fixed-nocap":
                         // NO CALL TO HOLD: <Root>Fixed.load always takes a capacity
                         spill(out, name, "unrepresentable\n");
@@ -3075,7 +3130,18 @@ public final class Driver {
                 }
                 StringBuilder answer = new StringBuilder();
                 Object values;
-                if (form.equals("fixed")) {
+                if (form.equals("variable") || form.equals("json")) {
+                    Object target = variable.valueType.getConstructor().newInstance();
+                    Object report = variable.report();
+                    answer.append(readIntoVariableLine(variable, form, target, lawful, report));
+                    answer.append(readIntoVariableLine(variable, form, target, damaged, report));
+                    byte[] json = variable.toJson(target);
+                    if (json == null) {
+                        throw new ReflectiveOperationException("toJson refused target");
+                    }
+                    answer.append(new String(json, StandardCharsets.UTF_8));
+                    answer.append(readIntoVariableLine(variable, form, target, lawful, report));
+                } else if (form.equals("fixed")) {
                     FixedCodec fixed = fixedCodec(unit, root);
                     if (fixed == null) {
                         return failInt(name + ": " + unit + "." + root + " has no fixed codec");
@@ -3230,12 +3296,7 @@ public final class Driver {
             case "write-refusal-message": return surfaceWriteRefusal(out, surface);
             case "write-refusal-json": return surfaceWriteRefusal(out, surface);
             case "write-refusal-cook": return surfaceWriteRefusalCook(out);
-            case "write-refusal-block":
-                // ABSENT, the whole surface: Java's <Root>Block.begin takes only the
-                // root's Counts and writes the prologue (rows are the caller's
-                // bytes), so no block builder is handed the row's value
-                System.err.println("write-refusal-block: the Java leg has no block builder that takes a value (<Root>Block.begin takes Counts alone)");
-                return 2;
+            case "write-refusal-block": return surfaceWriteRefusalBlock(out);
             case "announce": return surfaceAnnounce(out);
             case "read-into": return surfaceReadInto(out);
             case "json-write-into": return surfaceJsonWriteInto(out);

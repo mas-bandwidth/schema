@@ -18,6 +18,7 @@ public final class MixedEventVariable {
         public MixedHitEventVariable.Value hit = new MixedHitEventVariable.Value();
         public MixedChatEventVariable.Value chat = new MixedChatEventVariable.Value();
         public MixedPickupEventVariable.Value pickup = new MixedPickupEventVariable.Value();
+        public Value() {}
     }
 
     static boolean graphEnter(TableVariable.NodeGraph g, Value v) {

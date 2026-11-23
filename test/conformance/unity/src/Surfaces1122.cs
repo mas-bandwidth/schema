@@ -142,19 +142,19 @@ namespace SchemaUnityConformance
         // of the value: a root with none (StorePurchase, MatchResult) is
         // handed no count, no used length and no value, which the caller then
         // writes into the block with no check.
-        private static string WriteRefusalBlockVerdict(ICodec codec, string name)
+        private static string WriteRefusalBlockVerdict(ICodec codec, object value, string name)
         {
             Type schema = FindSchemaType(codec.UnitAssembly);
             Type blockType = codec.UnitAssembly.GetType(schema.Namespace + "." + codec.Root + "Block");
             Type refusalType = schema.GetNestedType("TableBlockRefusal", BindingFlags.Public);
-            MethodInfo begin = blockType?.GetMethod("Begin", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(byte[]), typeof(int), refusalType }, null);
+            MethodInfo build = blockType?.GetMethod("Begin", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(byte[]), typeof(int), value.GetType(), refusalType }, null);
             FieldInfo maxBytes = blockType?.GetField("BlockMaxBytes", BindingFlags.Public | BindingFlags.Static);
-            if (begin == null || maxBytes == null)
+            if (build == null || maxBytes == null)
             {
-                throw new InvalidOperationException("write-refusal-block " + name + ": " + codec.Unit + "." + codec.Root + " has no block builder Begin(byte[], int, TableBlockRefusal)");
+                throw new InvalidOperationException("write-refusal-block " + name + ": " + codec.Unit + "." + codec.Root + " has no block builder Begin(byte[], int, " + value.GetType().Name + ", TableBlockRefusal)");
             }
             int bytes = (int)maxBytes.GetRawConstantValue();
-            return WriteRefusalBinaryVerdict(() => begin.Invoke(null, new object[] { new byte[bytes], 0, Activator.CreateInstance(refusalType) }) == null ? -1 : 1);
+            return WriteRefusalBinaryVerdict(() => build.Invoke(null, new object[] { new byte[bytes], 0, value, Activator.CreateInstance(refusalType) }) == null ? -1 : 1);
         }
 
         // ---- announce <case> <unit> <root> <mode> <input>

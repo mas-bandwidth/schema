@@ -176,6 +176,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 				g.pf("            if (!%sCollectTyped(v.%s[i_%d], ref ids)) return false;\n", childName, prop, i)
 				g.pf("        }\n    }\n")
 			} else {
+				g.pf("    System.Diagnostics.Debug.Assert(v.%s != null && v.%s.Length == %d);\n", prop, prop, f.ArrayBound)
 				g.pf("    if (!ids.Add(0x%016xul)) return false;\n", id)
 				g.pf("    for (int i_%d = 0; i_%d < %d; i_%d++)\n    {\n", i, i, f.ArrayBound, i)
 				g.pf("        if (!%sCollectTyped(v.%s[i_%d], ref ids)) return false;\n", childName, prop, i)
@@ -985,6 +986,7 @@ public static partial class TableWire
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
             if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+            if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;
@@ -1173,7 +1175,8 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+        if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
         return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
     }
     public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)

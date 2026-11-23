@@ -1309,6 +1309,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 		fmt.Fprintf(&load, "int why = TableWire.FixedOpen(data, %sFixedLanes, %sFixedFloor, values.Length, planCapacity, out int pick, out int n, out ulong hash);\n", name, name)
 	}
 	load.WriteString("if (why != TableReport.Accepted)\n{\n")
+	fmt.Fprintf(&load, "    for (int k = 0; k < values.Length; k++) { Init%s(ref values[k]); }\n", name)
 	load.WriteString("    report.Refused = true;\n    report.Reason = why;\n")
 	load.WriteString("    if (why == TableReport.LayoutUnknown || why == TableReport.LayoutUnsupported) { report.LayoutHash = hash; }\n")
 	load.WriteString("    return -1;\n}\n")

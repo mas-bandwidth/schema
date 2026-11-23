@@ -491,7 +491,136 @@ func (g *blockGen) emitBuild() {
 	g.f("        return new %sBlock(storage, base, used);\n    }\n\n", name)
 	g.f("    public static %sBlock begin(byte[] storage, Counts counts, Refusal refusal) {\n", name)
 	g.f("        return begin(storage, 0, counts, refusal);\n    }\n\n")
+	if hasFixedFile(g.unit, g.bl.Table) {
+		g.emitBlockBeginFromValue()
+	}
 	g.f("    public long blockBytes() { return bytes; }\n\n")
+}
+
+func (g *blockGen) emitBlockBeginFromValue() {
+	name := g.bl.Table.Name
+	valType := fixedValue(name)
+	g.f("    public static %sBlock begin(byte[] storage, int base, %s value, Refusal refusal) {\n", name, valType)
+	g.f("        if (refusal != null) { refusal.array = null; refusal.count = 0; refusal.maximum = 0; }\n")
+	g.f("        if (value == null) { return null; }\n")
+	var checks strings.Builder
+	emitJavaBlockValidateStruct(&checks, g.bl.Table, "value", g.bl, 8, 0)
+	g.b.WriteString(checks.String())
+	g.f("        Counts counts = new Counts();\n")
+	for _, a := range g.bl.Arrays {
+		g.f("        counts.%s = value.%sCount;\n", member(a.Field), javaName(a.Field.Name))
+	}
+	g.f("        return begin(storage, base, counts, refusal);\n    }\n\n")
+	g.f("    public static %sBlock begin(byte[] storage, %s value, Refusal refusal) {\n", name, valType)
+	g.f("        return begin(storage, 0, value, refusal);\n    }\n\n")
+}
+
+func emitJavaBlockValidateStruct(b *strings.Builder, st *ir.Struct, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	for _, f := range st.Fields {
+		emitJavaBlockValidateField(b, f, val, rootBl, indent, depth)
+	}
+}
+
+func emitJavaBlockValidateField(b *strings.Builder, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	name := javaName(f.Name)
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%sif (%s.%sPresent) {\n", ind, val, name)
+		emitJavaBlockValidatePayload(b, f, val, rootBl, indent+4, depth)
+		fmt.Fprintf(b, "%s}\n", ind)
+		return
+	}
+	emitJavaBlockValidatePayload(b, f, val, rootBl, indent, depth)
+}
+
+func emitJavaBlockValidatePayload(b *strings.Builder, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	name := javaName(f.Name)
+	expr := val + "." + name
+	switch {
+	case f.Type.Kind == ir.TString:
+		fmt.Fprintf(b, "%sif (%s == null || %sLength < 0 || %sLength > %d || %sLength > %s.length || !TableFixed.textOk(TableFixed.textUtf8, %s, 0, %sLength)) { return null; }\n",
+			ind, expr, expr, expr, f.Type.Size, expr, expr, expr, expr)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "%sif (%s == null || %sLength < 0 || %sLength > %d || %sLength > %s.length) { return null; }\n",
+			ind, expr, expr, expr, f.Type.Size, expr, expr)
+	case f.KeyEnum != "":
+		iv := fmt.Sprintf("i%d", depth)
+		fmt.Fprintf(b, "%sif (%s == null || %s.length != %d) { return null; }\n", ind, expr, expr, f.KeyEnumRef.Max)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.KeyEnumRef.Max, iv)
+		emitJavaBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", expr, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		iv := fmt.Sprintf("i%d", depth)
+		fmt.Fprintf(b, "%sif (%s == null || %s.length != %d) { return null; }\n", ind, expr, expr, f.ArrayBound)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
+		emitJavaBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", expr, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		iv := fmt.Sprintf("i%d", depth)
+		if rootBl != nil && rootBl.ArrayByName(f.Name) != nil {
+			fmt.Fprintf(b, "%sif (%sCount < %d || %sCount > %d) { if (refusal != null) { refusal.array = %q; refusal.count = %sCount; refusal.maximum = %d; } return null; }\n",
+				ind, expr, f.ArrayMin, expr, f.ArrayBound, f.Name, expr, f.ArrayBound)
+		} else {
+			fmt.Fprintf(b, "%sif (%sCount < %d || %sCount > %d) { return null; }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+		}
+		fmt.Fprintf(b, "%sif (%s == null || %sCount > %s.length) { return null; }\n", ind, expr, expr, expr)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %sCount; %s++) {\n", ind, iv, iv, expr, iv)
+		emitJavaBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", expr, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	default:
+		emitJavaBlockValidateElem(b, f, expr, indent, depth)
+	}
+}
+
+func emitJavaBlockValidateElem(b *strings.Builder, f *ir.Field, expr string, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			fmt.Fprintf(b, "%sif (%s == null) { return null; }\n", ind, expr)
+			emitJavaBlockValidateStruct(b, r, expr, nil, indent, depth+1)
+		case *ir.Enum:
+			width := ir.TableFixedStorageBytes(f.Type)
+			mask := ^uint64(0)
+			if width < 8 {
+				mask = (uint64(1) << (8 * uint(width))) - 1
+			}
+			fmt.Fprintf(b, "%sif (java.lang.Long.compareUnsigned((%s) & %sL, %dL) > 0) { return null; }\n", ind, expr, fixedHexLong(mask), r.Max)
+		case *ir.Flags:
+			if len(r.Variants) < 64 {
+				mask := (uint64(1) << uint(len(r.Variants))) - 1
+				fmt.Fprintf(b, "%sif ((%s & ~0x%xL) != 0L) { return null; }\n", ind, expr, mask)
+			}
+		}
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		fmt.Fprintf(b, "%sif (!java.lang.Float.isFinite(%s)) { return null; }\n", ind, expr)
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, lo, expr, hi)
+		}
+	case ir.TFloat64:
+		fmt.Fprintf(b, "%sif (!java.lang.Double.isFinite(%s)) { return null; }\n", ind, expr)
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, lo, expr, hi)
+		}
+	default:
+		if f.HasIntRange {
+			if lo, hi, ok := ir.TableRawRange(f); ok {
+				for _, cond := range messageScalarRange(f, expr, lo, hi) {
+					fmt.Fprintf(b, "%sif (!(%s)) { return null; }\n", ind, cond)
+				}
+			}
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			maxv := uint64(1)<<uint(f.Type.Width) - 1
+			fmt.Fprintf(b, "%sif (%s < 0 || %s > %dL) { return null; }\n", ind, expr, expr, maxv)
+		}
+	}
 }
 
 // emitProjectionAccessors spells the table's own inline fields where they lie

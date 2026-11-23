@@ -333,6 +333,7 @@ public final class TableCookFieldInfo {
     public int size; // its whole storage there, companions included
     public int elemSize; // one element's size, for an array; the field's own otherwise
     public boolean isArray;
+    public int arrayMin; // the DECLARED minimum: a [M..N] counted array's M
     public int arrayBound; // the DECLARED bound: a counted array's N, a string's or bytes' length
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
     public int countOffset; // the count companion's offset, or -1 when the field has none
@@ -355,6 +356,12 @@ public final class TableCookFieldInfo {
     /** this field as a union ARM: the tag value that selects it. */
     public TableCookFieldInfo arm(int armTag) {
         this.tag = armTag;
+        return this;
+    }
+
+    /** a [M..N] counted array's declared minimum element count. */
+    public TableCookFieldInfo minCount(int min) {
+        this.arrayMin = min;
         return this;
     }
 

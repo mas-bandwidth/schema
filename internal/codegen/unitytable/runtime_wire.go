@@ -1532,6 +1532,11 @@ internal static partial class TableWire
             return;
         }
         UInt128Value bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
+        if (f.EnumName != null && f.VariantId == null)
+        {
+            ulong mask = f.EnumMax >= 63 ? ulong.MaxValue : f.EnumMax < 0 ? 0UL : ((1UL << (int)(f.EnumMax + 1)) - 1UL);
+            System.Diagnostics.Debug.Assert(((ulong)bits & ~mask) == 0);
+        }
         if (f.Kind == 10 && shape.Packing == 2)
         {
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;

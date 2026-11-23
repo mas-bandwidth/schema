@@ -328,18 +328,19 @@ public final class BenchMixedRow {
                             null);
             fields[9] =
                     TableCookFieldInfo.of(
-                            "entities",
-                            "entities",
-                            64,
-                            516,
-                            64,
-                            true,
-                            8,
-                            false,
-                            576,
-                            -1,
-                            TableCookStorage.RECORD,
-                            () -> MixedEntityRow.cookInfo());
+                                    "entities",
+                                    "entities",
+                                    64,
+                                    516,
+                                    64,
+                                    true,
+                                    8,
+                                    false,
+                                    576,
+                                    -1,
+                                    TableCookStorage.RECORD,
+                                    () -> MixedEntityRow.cookInfo())
+                            .minCount(1);
             fields[10] =
                     TableCookFieldInfo.of(
                             "stats",

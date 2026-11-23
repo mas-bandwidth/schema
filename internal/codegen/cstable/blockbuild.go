@@ -1,6 +1,12 @@
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import (
+	"fmt"
+	"math/big"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name
@@ -23,10 +29,148 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	}
 	g.hf("        block = new %sBlock((byte*)pointer, at); return true;\n    }\n\n", n)
 	g.hf("    public static bool Begin(out %sBlock block, %sBlockStorage storage, in %sCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }\n", n, n, n)
+	g.emitBlockBuildValue(bl)
 	g.hf("    public ref %sBlockProjection WritableProjection { get { return ref *(%sBlockProjection*)basePointer; } }\n", n, n)
 	for _, a := range bl.Arrays {
 		name := member(a.Field)
 		g.hf("    public Span<%sRow> %sWritableSpan { get { var p = (%sBlockProjection*)basePointer; return new Span<%sRow>(basePointer + p->%s.OffsetOf, (int)p->%s.Count); } }\n", a.ElemName, name, n, a.ElemName, name, name)
+	}
+}
+
+func (g *blockGen) emitBlockBuildValue(bl *ir.BlockLayout) {
+	n := bl.Table.Name
+	g.hf("    public static bool Begin(out %sBlock block, IntPtr pointer, long capacity, %s value, out TableBlockRefusal refusal)\n    {\n", n, n)
+	g.hf("        block = default; refusal = default;\n")
+	g.hf("        if (value == null) { return false; }\n")
+	var checks strings.Builder
+	emitCsBlockValidateStruct(&checks, bl.Table, "value", bl, 8, 0)
+	g.hf("%s", checks.String())
+	g.hf("        var counts = new %sCounts();\n", n)
+	for _, a := range bl.Arrays {
+		name := member(a.Field)
+		g.hf("        counts.%s = value.%sCount;\n", name, name)
+	}
+	g.hf("        return Begin(out block, pointer, capacity, in counts, out refusal);\n    }\n\n")
+	g.hf("    public static bool Begin(out %sBlock block, %sBlockStorage storage, %s value, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, value, out refusal); }\n", n, n, n)
+}
+
+func emitCsBlockValidateStruct(b *strings.Builder, st *ir.Struct, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	for _, f := range st.Fields {
+		emitCsBlockValidateField(b, st, f, val, rootBl, indent, depth)
+	}
+}
+
+func emitCsBlockValidateField(b *strings.Builder, owner *ir.Struct, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	prop := member(f)
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%sif (%s.%sPresent)\n%s{\n", ind, val, prop, ind)
+		emitCsBlockValidatePayload(b, owner, f, val, rootBl, indent+4, depth)
+		fmt.Fprintf(b, "%s}\n", ind)
+		return
+	}
+	emitCsBlockValidatePayload(b, owner, f, val, rootBl, indent, depth)
+}
+
+func emitCsBlockValidatePayload(b *strings.Builder, owner *ir.Struct, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	prop := member(f)
+	expr := val + "." + prop
+	switch {
+	case f.Type.Kind == ir.TString:
+		fmt.Fprintf(b, "%sif (%s == null || %s.%sLength < 0 || %s.%sLength > %d || %s.%sLength > %s.Length || !TableBlockStorage.TextValid(%s, %s.%sLength)) { return false; }\n",
+			ind, expr, val, prop, val, prop, f.Type.Size, val, prop, expr, expr, val, prop)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "%sif (%s == null || %s.%sLength < 0 || %s.%sLength > %d || %s.%sLength > %s.Length) { return false; }\n",
+			ind, expr, val, prop, val, prop, f.Type.Size, val, prop, expr)
+	case f.KeyEnum != "":
+		slots := expr
+		if owner != nil && owner.IsTable {
+			slots = expr + ".Slots"
+		}
+		iv := fmt.Sprintf("i%d", depth)
+		fmt.Fprintf(b, "%sif (%s == null || %s.Length != %d) { return false; }\n", ind, slots, slots, f.KeyEnumRef.Max)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %d; %s++)\n%s{\n", ind, iv, iv, f.KeyEnumRef.Max, iv, ind)
+		emitCsBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", slots, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		iv := fmt.Sprintf("i%d", depth)
+		fmt.Fprintf(b, "%sif (%s == null || %s.Length != %d) { return false; }\n", ind, expr, expr, f.ArrayBound)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %d; %s++)\n%s{\n", ind, iv, iv, f.ArrayBound, iv, ind)
+		emitCsBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", expr, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		iv := fmt.Sprintf("i%d", depth)
+		if rootBl != nil && rootBl.ArrayByName(f.Name) != nil {
+			fmt.Fprintf(b, "%sif (%s.%sCount < %d || %s.%sCount > %d) { refusal = new TableBlockRefusal { Array = %q, Count = %s.%sCount, Maximum = %d }; return false; }\n",
+				ind, val, prop, f.ArrayMin, val, prop, f.ArrayBound, f.Name, val, prop, f.ArrayBound)
+		} else {
+			fmt.Fprintf(b, "%sif (%s.%sCount < %d || %s.%sCount > %d) { return false; }\n", ind, val, prop, f.ArrayMin, val, prop, f.ArrayBound)
+		}
+		fmt.Fprintf(b, "%sif (%s == null || %s.%sCount > %s.Length) { return false; }\n", ind, expr, val, prop, expr)
+		fmt.Fprintf(b, "%sfor (int %s = 0; %s < %s.%sCount; %s++)\n%s{\n", ind, iv, iv, val, prop, iv, ind)
+		emitCsBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", expr, iv), indent+4, depth+1)
+		fmt.Fprintf(b, "%s}\n", ind)
+	default:
+		emitCsBlockValidateElem(b, f, expr, indent, depth)
+	}
+}
+
+func emitCsBlockValidateElem(b *strings.Builder, f *ir.Field, expr string, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			fmt.Fprintf(b, "%sif (%s == null) { return false; }\n", ind, expr)
+			emitCsBlockValidateStruct(b, r, expr, nil, indent, depth+1)
+		case *ir.Enum:
+			if !csOrdinalFillsStorage(r.Max, r.StorageBits) {
+				fmt.Fprintf(b, "%sif ((ulong)%s > %dUL) { return false; }\n", ind, expr, r.Max)
+			}
+		case *ir.Flags:
+			if len(r.Variants) < 64 {
+				mask := (uint64(1) << uint(len(r.Variants))) - 1
+				fmt.Fprintf(b, "%sif (((ulong)%s & ~0x%xUL) != 0) { return false; }\n", ind, expr, mask)
+			}
+		}
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		fmt.Fprintf(b, "%sif (!float.IsFinite(%s)) { return false; }\n", ind, expr)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, formatFloat32(f.FMin), expr, formatFloat32(f.FMax))
+		}
+	case ir.TFloat64:
+		fmt.Fprintf(b, "%sif (!double.IsFinite(%s)) { return false; }\n", ind, expr)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, formatFloat64(f.FMin), expr, formatFloat64(f.FMax))
+		}
+	default:
+		width := int(fixedStorageBytes(f.Type))
+		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
+			low, high := tableClampEnds(f, width)
+			lit := func(v *big.Int) string {
+				if width == 16 {
+					return wideLiteral(v, signed)
+				}
+				return csIntLit(v, signed, width)
+			}
+			cmp := csWideCompare(f, width, expr)
+			switch {
+			case low && high:
+				fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return false; }\n", ind, cmp, lit(rlo), cmp, lit(rhi))
+			case low:
+				fmt.Fprintf(b, "%sif (%s < %s) { return false; }\n", ind, cmp, lit(rlo))
+			case high:
+				fmt.Fprintf(b, "%sif (%s > %s) { return false; }\n", ind, cmp, lit(rhi))
+			}
+		}
+		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+			maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+			fmt.Fprintf(b, "%sif (%s > %s) { return false; }\n", ind, expr, csIntLit(maxv, false, width))
+		}
 	}
 }
 
@@ -77,6 +221,38 @@ public unsafe class TableBlockStorage : IDisposable
         if (allocation == IntPtr.Zero) { return; }
         if (allocator == null) { Marshal.FreeHGlobal(allocation); } else { allocator.Free(allocation); }
         allocation = IntPtr.Zero; Pointer = IntPtr.Zero; Capacity = 0;
+    }
+    internal static bool TextValid(byte[] bytes, int len)
+    {
+        if (bytes == null || len < 0 || len > bytes.Length) { return false; }
+        int i = 0;
+        while (i < len)
+        {
+            byte c = bytes[i];
+            if (c == 0) { return false; }
+            if (c < 0x80) { i++; continue; }
+            if (c >= 0xC2 && c <= 0xDF)
+            {
+                if (i + 1 >= len || (bytes[i + 1] & 0xC0) != 0x80) { return false; }
+                i += 2; continue;
+            }
+            if (c >= 0xE0 && c <= 0xEF)
+            {
+                if (i + 2 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80) { return false; }
+                if (c == 0xE0 && bytes[i + 1] < 0xA0) { return false; }
+                if (c == 0xED && bytes[i + 1] >= 0xA0) { return false; }
+                i += 3; continue;
+            }
+            if (c >= 0xF0 && c <= 0xF4)
+            {
+                if (i + 3 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80 || (bytes[i + 3] & 0xC0) != 0x80) { return false; }
+                if (c == 0xF0 && bytes[i + 1] < 0x90) { return false; }
+                if (c == 0xF4 && bytes[i + 1] >= 0x90) { return false; }
+                i += 4; continue;
+            }
+            return false;
+        }
+        return true;
     }
 }
 `

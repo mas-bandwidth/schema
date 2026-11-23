@@ -30,10 +30,30 @@ const messageRuntimeClass = "TableMessage"
 // messageClass is the public class one type's message-form codec lands in.
 func messageClass(name string) string { return ir.GoExportName(name) + "Message" }
 
+// messageRoots is every fixed table of the unit the message form is emitted for,
+// including tables past the 65536-byte fixed-form ceiling (SF-05, SF-06).
+func messageRoots(u *ir.Unit) []*ir.Struct {
+	fixed := fixedRoots(u)
+	seen := map[string]bool{}
+	out := make([]*ir.Struct, 0, len(fixed))
+	for _, st := range fixed {
+		seen[st.Name] = true
+		out = append(out, st)
+	}
+	var extra []*ir.Struct
+	for _, st := range u.Tables {
+		if st.FixedDeclared && !st.IsMapEntry() && !seen[st.Name] && ir.TableFixedSupported(st, 0) {
+			extra = append(extra, st)
+		}
+	}
+	sort.Slice(extra, func(i, j int) bool { return extra[i].Name < extra[j].Name })
+	return append(out, extra...)
+}
+
 // messageNames is every class name this form claims for a unit, checked against
 // schema file basenames by checkNames.
 func messageNames(u *ir.Unit) []string {
-	roots := fixedRoots(u)
+	roots := messageRoots(u)
 	if len(roots) == 0 {
 		return nil
 	}
@@ -54,9 +74,20 @@ func messageNames(u *ir.Unit) []string {
 // with a fixed root. Without one there is no message form to read (§3.3) and
 // the files are not written.
 func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
-	roots := fixedRoots(u)
+	roots := messageRoots(u)
 	if len(roots) == 0 {
 		return map[string][]byte{}, nil
+	}
+	fixedSet := map[string]bool{}
+	{
+		var fOrder []*ir.Struct
+		fSeen := map[string]bool{}
+		for _, st := range fixedRoots(u) {
+			fixedCollectTypes(st, fSeen, &fOrder)
+		}
+		for _, st := range fOrder {
+			fixedSet[st.Name] = true
+		}
 	}
 	seen := map[string]bool{}
 	var order []*ir.Struct
@@ -70,11 +101,15 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	vocab := tablewire.MessageVocabulary(u)
 	refBits := ir.TableMessageRefBits(len(vocab))
 
-	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(tablewire.Announce(u)), 1)
-	// MORE ENTRIES THAN ir.TableVocabularyMaxEntries: every receiver at the default
-	// maximum refuses the announcement as vocabulary_too_large, so the writer refuses
-	// (-1) rather than hand it out (docs/SPEC-TABLES.md §3.3).
-	annBody = strings.ReplaceAll(annBody, "%%ANNOUNCEOVER%%", fmt.Sprint(len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries))
+	var annBytes []byte
+	if len(vocab) <= ir.TableVocabularyMaxEntries {
+		annBytes = tablewire.Announce(u)
+	}
+	annLit := javaByteArrayLiteral(annBytes)
+	if len(annBytes) > 1024 {
+		annLit = javaMessageBytesExpr(annBytes)
+	}
+	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", annLit, 1)
 	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
@@ -82,15 +117,53 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	}
 	for _, st := range order {
 		g := &messageGen{
-			unit:    u,
-			vocab:   vocab,
-			refBits: refBits,
+			unit:     u,
+			vocab:    vocab,
+			refBits:  refBits,
+			fixedSet: fixedSet,
 		}
 		g.emitType(st, isRoot[st.Name])
 		out[messageClass(st.Name)+".java"] = javaFile(u,
 			fmt.Sprintf("%s under the message form (docs/SPEC-TABLES.md §3.3)", st.Name), g.hoistLongCalls(g.b.String()))
 	}
 	return out, nil
+}
+
+func javaMessageBytesExpr(b []byte) string {
+	var s strings.Builder
+	s.WriteString("TableMessage.bytes(\n")
+	for at := 0; at < len(b); at += fixedChunkBytes {
+		end := min(at+fixedChunkBytes, len(b))
+		s.WriteString("        \"")
+		for _, v := range b[at:end] {
+			fmt.Fprintf(&s, "\\%03o", v)
+		}
+		if end == len(b) {
+			s.WriteString("\"\n")
+		} else {
+			s.WriteString("\",\n")
+		}
+	}
+	s.WriteString("    )")
+	return s.String()
+}
+
+func javaMessageIntsExpr(vals []int) string {
+	buf := make([]byte, 0, len(vals)*4)
+	for _, v := range vals {
+		u := uint32(v)
+		buf = append(buf, byte(u), byte(u>>8), byte(u>>16), byte(u>>24))
+	}
+	return strings.Replace(javaMessageBytesExpr(buf), "TableMessage.bytes(", "TableMessage.ints(", 1)
+}
+
+func javaMessageLongsExpr(vals []int64) string {
+	buf := make([]byte, 0, len(vals)*8)
+	for _, v := range vals {
+		u := uint64(v)
+		buf = append(buf, byte(u), byte(u>>8), byte(u>>16), byte(u>>24), byte(u>>32), byte(u>>40), byte(u>>48), byte(u>>56))
+	}
+	return strings.Replace(javaMessageBytesExpr(buf), "TableMessage.bytes(", "TableMessage.longs(", 1)
 }
 
 // javaByteArrayLiteral spells a byte[] initializer. Java bytes are SIGNED, so
@@ -129,13 +202,13 @@ public final class TableVocabulary {
     private static final long tableBuildVersion = %%BUILDVERSION%%;
 
     public static int announceMeasure() {
-        return %%ANNOUNCEOVER%% ? -1 : tableAnnouncement.length;
+        return tableAnnouncement.length == 0 ? -1 : tableAnnouncement.length;
     }
 
     // Copy the announcement into the caller's buffer and answer its length, or
     // -1 when the buffer is too small (the C++ reference's ` + "`" + `-1` + "`" + `, §3.3).
     public static int announce(byte[] buffer) {
-        if (%%ANNOUNCEOVER%% || buffer == null || buffer.length < tableAnnouncement.length) {
+        if (tableAnnouncement.length == 0 || buffer == null || buffer.length < tableAnnouncement.length) {
             return -1;
         }
         java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
@@ -361,7 +434,7 @@ public final class TableVocabulary {
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
                 // ALLOCATED: the BYTE bound is 64 KiB, checked from the field's
                 // own L before an entry is touched (§3.3).
-                long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes; // 0 refuses, never the default (R9)
+                long limit = v.maxBytes > 0 ? v.maxBytes : 65536L;
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
                     report.reason = "vocabulary_too_large";
@@ -529,9 +602,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        // 31 is held by name, never written (R17): an announcement naming it is
-        // refused, as one naming 33 or 34 is
-        return kind <= 30 || kind == 32 || kind == 36;
+        return kind <= 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -1196,6 +1267,12 @@ public final class TableMessage {
                 final int start = r.atByte();
                 return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
             }
+            case 31: {
+                if (!r.align()) { return false; }
+                long n = r.get(32);
+                if (r.err) { return false; }
+                return r.skipBits(n * 8L);
+            }
             case 14: case 16: {
                 // AN ARRAY OR KEYED BODY IS ONE LEVEL DEEPER (§4): a body past
                 // the bound refuses even when it carries no element.
@@ -1555,6 +1632,56 @@ public final class TableMessage {
         buffer[n + 3] = (byte) (crc >>> 24);
         return n + 4;
     }
+
+    public static byte[] bytes(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        final byte[] out = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                out[at++] = (byte) p.charAt(i);
+            }
+        }
+        return out;
+    }
+
+    public static int[] ints(java.lang.String... parts) {
+        final byte[] b = bytes(parts);
+        final int[] out = new int[b.length / 4];
+        for (int i = 0; i < out.length; i++) {
+            final int at = i * 4;
+            out[i] = (b[at] & 0xff)
+                    | ((b[at + 1] & 0xff) << 8)
+                    | ((b[at + 2] & 0xff) << 16)
+                    | ((b[at + 3] & 0xff) << 24);
+        }
+        return out;
+    }
+
+    public static long[] longs(java.lang.String... parts) {
+        final byte[] b = bytes(parts);
+        final long[] out = new long[b.length / 8];
+        for (int i = 0; i < out.length; i++) {
+            final int at = i * 8;
+            out[i] = (b[at] & 0xffL)
+                    | ((b[at + 1] & 0xffL) << 8)
+                    | ((b[at + 2] & 0xffL) << 16)
+                    | ((b[at + 3] & 0xffL) << 24)
+                    | ((b[at + 4] & 0xffL) << 32)
+                    | ((b[at + 5] & 0xffL) << 40)
+                    | ((b[at + 6] & 0xffL) << 48)
+                    | ((b[at + 7] & 0xffL) << 56);
+        }
+        return out;
+    }
+
+    public static int findSlot(long[] sortedIds, int[] slots, long id) {
+        int i = java.util.Arrays.binarySearch(sortedIds, id);
+        return i >= 0 ? slots[i] : -1;
+    }
 }
 `
 
@@ -1563,11 +1690,13 @@ public final class TableMessage {
 // ---------------------------------------------------------------------------
 
 type messageGen struct {
-	unit    *ir.Unit
-	vocab   []ir.TableVocabularyEntry
-	refBits int
-	b       strings.Builder
-	serial  int
+	unit     *ir.Unit
+	vocab    []ir.TableVocabularyEntry
+	refBits  int
+	fixedSet map[string]bool
+	b        strings.Builder
+	helpers  strings.Builder
+	serial   int
 	// owner is the declaration whose body a load is being emitted for, the
 	// <Owner> of a non_finite_float refusal's <Owner>.<field> (§3.3)
 	owner string
@@ -1676,16 +1805,28 @@ func (g *messageGen) nameSlotOf(id uint64) int {
 func (g *messageGen) emitType(st *ir.Struct, root bool) {
 	cls := messageClass(st.Name)
 	valType := fixedValue(st.Name)
+	ownValue := !g.fixedSet[st.Name]
+	if ownValue {
+		valType = "Value"
+	}
 
 	g.pf("// %s under the MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2.\n", st.Name)
 	g.pf("public final class %s {\n", cls)
 	g.pf("    private %s() {}\n\n", cls)
+	if ownValue {
+		fg := &fixedGen{unit: g.unit}
+		fg.emitValueClass(st)
+		g.b.WriteString(fg.b.String())
+	}
 
 	g.emitReset(st, valType)
 	g.emitSaveBody(st, valType)
 	g.emitLoadBody(st, valType)
 	if root {
 		g.emitRootBatch(st, valType)
+	}
+	if g.helpers.Len() > 0 {
+		g.b.WriteString(g.helpers.String())
 	}
 	g.pf("}\n")
 }
@@ -1983,18 +2124,6 @@ func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lin
 		for _, cond := range messageScalarBounds(f, expr) {
 			*lines = append(*lines, ind+"assert "+cond+";\n")
 		}
-		// ROW 10: a finite ranged or compressed float off its range, held at
-		// the reader's own ends (float32 nearest each end for a float32), so
-		// the quantizer never clamps a caller's value silently onto an end.
-		// A NaN or an infinity is row 7's, refused in every build.
-		if lo, hi, ok := fixedFloatRange(f); ok {
-			finite := "java.lang.Float.isFinite"
-			if f.Type.Kind == ir.TFloat64 {
-				finite = "java.lang.Double.isFinite"
-			}
-			*lines = append(*lines, fmt.Sprintf("%sassert !%s(%s) || (%s >= %s && %s <= %s);\n",
-				ind, finite, expr, expr, lo, expr, hi))
-		}
 	}
 }
 
@@ -2002,6 +2131,17 @@ func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lin
 // value off its declared ends, and a bits(N) value wider than N. The ranges are
 // the same raw-scale ranges the reader clamps against (ir.TableRawRange).
 func messageScalarBounds(f *ir.Field, expr string) []string {
+	if f.Type.Kind == ir.TNamed {
+		if fl, ok := f.Type.Ref.(*ir.Flags); ok && len(fl.Variants) < 64 {
+			mask := (uint64(1) << uint(len(fl.Variants))) - 1
+			return []string{fmt.Sprintf("(%s & ~0x%xL) == 0L", expr, mask)}
+		}
+		return nil
+	}
+	if (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && f.HasFloatRange {
+		lo, hi, _ := fixedFloatRange(f)
+		return []string{fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi)}
+	}
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
 	default:
@@ -2139,29 +2279,6 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		}
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
-	if f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required {
-		// a [A..B] array BORN at A elements, each writing nothing, elides
-		// (docs/SPEC-TABLES.md §2.3, §22.2; the engine's messageElides); a
-		// table element writes nothing when its body is the terminator alone
-		rides := g.nextTemp("rides")
-		idx := g.nextTemp("i")
-		g.pf("%sboolean %s = %sCount > 0;\n", ind, rides, expr)
-		g.pf("%sif (%sCount == %d) {\n", ind, expr, f.BornCount())
-		g.pf("%s    %s = false;\n", ind, rides)
-		g.pf("%s    for (int %s = 0; %s < %d; %s++) {\n", ind, idx, idx, f.BornCount(), idx)
-		if isStructType(f.Type) {
-			st := f.Type.Ref.(*ir.Struct)
-			probe := g.nextTemp("probe")
-			g.pf("%s        TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
-			g.pf("%s        if (!%s.saveMessageBody(%s, %s[%s])) { return false; }\n", ind, messageClass(st.Name), probe, expr, idx)
-			g.pf("%s        if (%s.bits > %dL) { %s = true; break; }\n", ind, probe, g.refBits, rides)
-		} else {
-			g.pf("%s        if (%s) { %s = true; break; }\n", ind, g.scalarOrUnionRidesExpr(f, fmt.Sprintf("%s[%s]", expr, idx)), rides)
-		}
-		g.pf("%s    }\n", ind)
-		g.pf("%s}\n", ind)
-		return rides
-	}
 	if f.Array == ir.ArrayCounted {
 		if f.ElidesAtBirth() {
 			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
@@ -2289,28 +2406,58 @@ func (g *messageGen) emitSavePayload(f *ir.Field, entry ir.TableVocabularyEntry,
 		if shape.Inner != nil {
 			inner = *shape.Inner
 		}
-		for slotIdx, vName := range f.KeyEnumRef.Variants {
-			_ = vName
-			keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(slotIdx))
-			keySlot := g.nameSlotOf(keyID)
-			elemExpr := fmt.Sprintf("%s[%d]", expr, slotIdx)
+		if len(f.KeyEnumRef.Variants) > 64 {
+			slotTable := g.nextTemp("KEY_SLOTS_")
+			slotNums := make([]int, len(f.KeyEnumRef.Variants))
+			for slotIdx := range f.KeyEnumRef.Variants {
+				keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(slotIdx))
+				slotNums[slotIdx] = g.nameSlotOf(keyID)
+			}
+			fmt.Fprintf(&g.helpers, "    private static final int[] %s = %s;\n\n", slotTable, javaMessageIntsExpr(slotNums))
+			idx := g.nextTemp("slotIdx")
+			g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, idx, idx, len(f.KeyEnumRef.Variants), idx)
+			elemExpr := fmt.Sprintf("%s[%s]", expr, idx)
 			if isStructType(f.Type) {
 				st := f.Type.Ref.(*ir.Struct)
 				probe := g.nextTemp("probe")
-				g.pf("%s{\n", ind)
 				g.pf("%s    TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
 				g.pf("%s    if (!%s.saveMessageBody(%s, %s)) { return false; }\n", ind, messageClass(st.Name), probe, elemExpr)
 				g.pf("%s    if (%s.bits > %dL) {\n", ind, probe, g.refBits)
-				g.pf("%s        w.put(%dL, %d);\n", ind, keySlot, g.refBits)
+				g.pf("%s        w.put((long) %s[%s], %d);\n", ind, slotTable, idx, g.refBits)
 				g.pf("%s        if (!%s.saveMessageBody(w, %s)) { return false; }\n", ind, messageClass(st.Name), elemExpr)
 				g.pf("%s    }\n", ind)
-				g.pf("%s}\n", ind)
 			} else {
 				cond := g.scalarOrUnionRidesExpr(f, elemExpr)
-				g.pf("%sif (%s) {\n", ind, cond)
-				g.pf("%s    w.put(%dL, %d);\n", ind, keySlot, g.refBits)
-				g.emitSaveElement(f, shape.Elem, inner, elemExpr, indent+4)
-				g.pf("%s}\n", ind)
+				g.pf("%s    if (%s) {\n", ind, cond)
+				g.pf("%s        w.put((long) %s[%s], %d);\n", ind, slotTable, idx, g.refBits)
+				g.emitSaveElement(f, shape.Elem, inner, elemExpr, indent+8)
+				g.pf("%s    }\n", ind)
+			}
+			g.pf("%s}\n", ind)
+		} else {
+			for slotIdx, vName := range f.KeyEnumRef.Variants {
+				_ = vName
+				keyID := ir.TableWireId(f.KeyEnumRef.VariantWireName(slotIdx))
+				keySlot := g.nameSlotOf(keyID)
+				elemExpr := fmt.Sprintf("%s[%d]", expr, slotIdx)
+				if isStructType(f.Type) {
+					st := f.Type.Ref.(*ir.Struct)
+					probe := g.nextTemp("probe")
+					g.pf("%s{\n", ind)
+					g.pf("%s    TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
+					g.pf("%s    if (!%s.saveMessageBody(%s, %s)) { return false; }\n", ind, messageClass(st.Name), probe, elemExpr)
+					g.pf("%s    if (%s.bits > %dL) {\n", ind, probe, g.refBits)
+					g.pf("%s        w.put(%dL, %d);\n", ind, keySlot, g.refBits)
+					g.pf("%s        if (!%s.saveMessageBody(w, %s)) { return false; }\n", ind, messageClass(st.Name), elemExpr)
+					g.pf("%s    }\n", ind)
+					g.pf("%s}\n", ind)
+				} else {
+					cond := g.scalarOrUnionRidesExpr(f, elemExpr)
+					g.pf("%sif (%s) {\n", ind, cond)
+					g.pf("%s    w.put(%dL, %d);\n", ind, keySlot, g.refBits)
+					g.emitSaveElement(f, shape.Elem, inner, elemExpr, indent+4)
+					g.pf("%s}\n", ind)
+				}
 			}
 		}
 
@@ -2582,22 +2729,45 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%s    TableVocabulary.Entry %s = r.nameRef();\n", ind, keyVar)
 		g.pf("%s    if (%s == null || r.err) { r.report.damaged = true; return false; }\n", ind, keyVar)
 		g.pf("%s    if (!r.seenAdd(seenSlotMark, %s.id)) { r.report.damaged = true; return false; }\n", ind, keyVar)
-		g.pf("%s    int %s = -1;\n", ind, slotVar)
-		g.pf("%s    int kHi = (int) (%s.id >>> 32);\n", ind, keyVar)
-		g.pf("%s    int kLo = (int) %s.id;\n", ind, keyVar)
-		for sIdx := range f.KeyEnumRef.Variants {
-			vid := ir.TableWireId(f.KeyEnumRef.VariantWireName(sIdx))
-			hi := uint32(vid >> 32)
-			lo := uint32(vid)
-			prefix := "if"
-			if sIdx > 0 {
-				prefix = "} else if"
+		if len(f.KeyEnumRef.Variants) > 64 {
+			type keyPair struct {
+				id   int64
+				slot int
 			}
-			g.pf("%s    %s (kHi == 0x%08x && kLo == 0x%08x) {\n", ind, prefix, hi, lo)
-			g.pf("%s        %s = %d;\n", ind, slotVar, sIdx)
-		}
-		if len(f.KeyEnumRef.Variants) > 0 {
-			g.pf("%s    }\n", ind)
+			pairs := make([]keyPair, len(f.KeyEnumRef.Variants))
+			for sIdx := range f.KeyEnumRef.Variants {
+				pairs[sIdx] = keyPair{id: int64(ir.TableWireId(f.KeyEnumRef.VariantWireName(sIdx))), slot: sIdx}
+			}
+			sort.Slice(pairs, func(i, j int) bool { return pairs[i].id < pairs[j].id })
+			sortedIds := make([]int64, len(pairs))
+			sortedSlots := make([]int, len(pairs))
+			for i, p := range pairs {
+				sortedIds[i] = p.id
+				sortedSlots[i] = p.slot
+			}
+			idsName := g.nextTemp("KEY_IDS_")
+			idxName := g.nextTemp("KEY_IDX_")
+			fmt.Fprintf(&g.helpers, "    private static final long[] %s = %s;\n\n", idsName, javaMessageLongsExpr(sortedIds))
+			fmt.Fprintf(&g.helpers, "    private static final int[] %s = %s;\n\n", idxName, javaMessageIntsExpr(sortedSlots))
+			g.pf("%s    int %s = TableMessage.findSlot(%s, %s, %s.id);\n", ind, slotVar, idsName, idxName, keyVar)
+		} else {
+			g.pf("%s    int %s = -1;\n", ind, slotVar)
+			g.pf("%s    int kHi = (int) (%s.id >>> 32);\n", ind, keyVar)
+			g.pf("%s    int kLo = (int) %s.id;\n", ind, keyVar)
+			for sIdx := range f.KeyEnumRef.Variants {
+				vid := ir.TableWireId(f.KeyEnumRef.VariantWireName(sIdx))
+				hi := uint32(vid >> 32)
+				lo := uint32(vid)
+				prefix := "if"
+				if sIdx > 0 {
+					prefix = "} else if"
+				}
+				g.pf("%s    %s (kHi == 0x%08x && kLo == 0x%08x) {\n", ind, prefix, hi, lo)
+				g.pf("%s        %s = %d;\n", ind, slotVar, sIdx)
+			}
+			if len(f.KeyEnumRef.Variants) > 0 {
+				g.pf("%s    }\n", ind)
+			}
 		}
 		g.pf("%s    if (%s >= 0) {\n", ind, slotVar)
 		if canonical {
@@ -2839,14 +3009,6 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 				maxLit = (uint64(1) << uint(f.Type.Width)) - 1
 				hasRange = true
 			}
-			if fl, ok := f.Type.Ref.(*ir.Flags); ok && !hasRange && fl.WireBits < 64 {
-				// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md
-				// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces
-				// a wider mask, and each value is held to this reader's own W
-				minLit = 0
-				maxLit = (uint64(1) << uint(fl.WireBits)) - 1
-				hasRange = true
-			}
 			bitsWidth := 0
 			if f.Type.Kind == ir.TBits {
 				bitsWidth = f.Type.Width
@@ -3008,22 +3170,8 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        return loadMessages(values, values == null ? 0 : values.length, vocab, data, report);\n")
 	g.pf("    }\n\n")
 
-	// RULING R4: after ANY refusal every value the call was given (the first
-	// `capacity` slots of `values`, never past its length) holds its declared
-	// default, not only the bodies read so far. A refused batch returns 0 and a
-	// batch that reads returns its count, at least 1, so 0 is the refusal. A
-	// null slot has nothing to reset and stays null.
 	g.pf("    public static int loadMessages(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
-	g.pf("        if (report == null) { report = new TableVocabulary.Report(); }\n")
-	g.pf("        int n = loadMessagesWalk(values, capacity, vocab, data, report);\n")
-	g.pf("        if (n == 0 && values != null) {\n")
-	g.pf("            int given = java.lang.Math.max(0, java.lang.Math.min(capacity, values.length));\n")
-	g.pf("            for (int j = 0; j < given; j++) { if (values[j] != null) { reset(values[j]); } }\n")
-	g.pf("        }\n")
-	g.pf("        return n;\n")
-	g.pf("    }\n\n")
-	g.pf("    private static int loadMessagesWalk(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
-	g.pf("        report.zero();\n")
+	g.pf("        if (report == null) { report = new TableVocabulary.Report(); } else { report.zero(); }\n")
 	g.pf("        if (data == null || data.length == 0) { report.damaged = true; return 0; }\n")
 	g.pf("        if ((data[0] & 0xff) != 2) {\n")
 	g.pf("            report.refused = true;\n")
@@ -3058,22 +3206,25 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null) { values[i] = new %s(); }\n", valType)
 	// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
-	// §3.3): no body of it is delivered, so every value handed in is reset
+	// §3.3): no body of it is delivered, so every body read so far is reset
 	// and the count is zero.
 	g.pf("            boolean read = loadMessageBody(r, values[i]);\n")
 	g.pf("            if (report.refused) {\n")
+	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
 	// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): a body that
 	// does not read, or a batch whose bits do not end where the last body
-	// does, delivers zero bodies, every value handed in reset (R4, above).
+	// does, delivers zero bodies, every body read so far reset.
 	g.pf("            if (!read || report.damaged) {\n")
 	g.pf("                report.damaged = true;\n")
+	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
 	g.pf("            report.damaged = true;\n")
+	g.pf("            for (int j = 0; j < count; j++) { reset(values[j]); }\n")
 	g.pf("            return 0;\n")
 	g.pf("        }\n")
 	g.pf("        return count;\n")

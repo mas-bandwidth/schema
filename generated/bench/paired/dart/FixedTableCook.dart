@@ -1289,7 +1289,7 @@ final class FixedTableCookWire {
     if (out != null) {
       out.setUint32(
         at + 1288,
-        TableCookWriteReport.float32Bits((value.aimX == 0 ? 0.0 : value.aimX)),
+        TableCookWriteReport.float32Bits(value.aimX == 0 ? 0.0 : value.aimX),
         order,
       );
     }
@@ -1297,7 +1297,7 @@ final class FixedTableCookWire {
     if (out != null) {
       out.setUint32(
         at + 1292,
-        TableCookWriteReport.float32Bits((value.aimY == 0 ? 0.0 : value.aimY)),
+        TableCookWriteReport.float32Bits(value.aimY == 0 ? 0.0 : value.aimY),
         order,
       );
     }
@@ -1305,7 +1305,7 @@ final class FixedTableCookWire {
     if (out != null) {
       out.setUint32(
         at + 1296,
-        TableCookWriteReport.float32Bits((value.aimZ == 0 ? 0.0 : value.aimZ)),
+        TableCookWriteReport.float32Bits(value.aimZ == 0 ? 0.0 : value.aimZ),
         order,
       );
     }

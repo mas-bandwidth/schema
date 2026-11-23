@@ -2,6 +2,7 @@ package unitytable
 
 import (
 	"fmt"
+	"math/big"
 	"math/bits"
 	"sort"
 	"strings"
@@ -153,6 +154,38 @@ public static ulong TableBlockRead64(ReadOnlySpan<byte> bytes, int at)
 public static ulong TableCookRead64(ReadOnlySpan<byte> bytes, int at)
 {
     return TableBlockRead64(bytes, at);
+}
+
+internal static bool _BlockTextValid(ReadOnlySpan<byte> bytes)
+{
+    int i = 0, len = bytes.Length;
+    while (i < len)
+    {
+        byte c = bytes[i];
+        if (c == 0) { return false; }
+        if (c < 0x80) { i++; continue; }
+        if (c >= 0xC2 && c <= 0xDF)
+        {
+            if (i + 1 >= len || (bytes[i + 1] & 0xC0) != 0x80) { return false; }
+            i += 2; continue;
+        }
+        if (c >= 0xE0 && c <= 0xEF)
+        {
+            if (i + 2 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80) { return false; }
+            if (c == 0xE0 && bytes[i + 1] < 0xA0) { return false; }
+            if (c == 0xED && bytes[i + 1] >= 0xA0) { return false; }
+            i += 3; continue;
+        }
+        if (c >= 0xF0 && c <= 0xF4)
+        {
+            if (i + 3 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80 || (bytes[i + 3] & 0xC0) != 0x80) { return false; }
+            if (c == 0xF0 && bytes[i + 1] < 0x90) { return false; }
+            if (c == 0xF4 && bytes[i + 1] >= 0x90) { return false; }
+            i += 4; continue;
+        }
+        return false;
+    }
+    return true;
 }
 
 internal static int _CookTextStart(byte[] bytes, int regionEnd, int slot)
@@ -634,6 +667,20 @@ func emitBlockClass(b *strings.Builder, u *ir.Unit, pkg string, blocks *ir.Block
 	fmt.Fprintf(b, "        int used = checked((int)((offset + %dL) & ~%dL));\n", ir.BlockAlign-1, ir.BlockAlign-1)
 	fmt.Fprintf(b, "        return new %sBlock(bytes, baseOffset, used);\n    }\n\n", name)
 
+	// Begin (validated value-to-block build)
+	fmt.Fprintf(b, "    public static %sBlock Begin(byte[] bytes, int baseOffset, global::%s.%s value, Schema.TableBlockRefusal refusal = null)\n    {\n", name, pkg, name)
+	b.WriteString("        if (refusal != null) { refusal.Array = \"\"; refusal.Count = 0; refusal.Maximum = 0; }\n")
+	var vchecks strings.Builder
+	emitUnityBlockValidateStruct(&vchecks, bl.Table, "value", bl, 8, 0)
+	b.WriteString(vchecks.String())
+	var beginArgs []string
+	beginArgs = append(beginArgs, "bytes", "baseOffset")
+	for _, a := range bl.Arrays {
+		beginArgs = append(beginArgs, fmt.Sprintf("value.%sCount", member(a.Field)))
+	}
+	beginArgs = append(beginArgs, "refusal")
+	fmt.Fprintf(b, "        return Begin(%s);\n    }\n\n", strings.Join(beginArgs, ", "))
+
 	// Open & OpenWithReason
 	fmt.Fprintf(b, "    public static bool Open(out %sBlock block, byte[] bytes, int baseOffset, long extent)\n    {\n        return Open(out block, bytes, baseOffset, extent, out _);\n    }\n\n", name)
 	fmt.Fprintf(b, "    public static bool Open(out %sBlock block, byte[] bytes, int baseOffset, long extent, out Schema.TableRefuseReason reason)\n    {\n        block = null;\n", name)
@@ -669,6 +716,142 @@ func emitBlockClass(b *strings.Builder, u *ir.Unit, pkg string, blocks *ir.Block
 	}
 	emitBlockRecordDesc(b, u, "", &bl.Projection, bl)
 	b.WriteString("}\n\n")
+}
+
+func emitUnityBlockValidateStruct(b *strings.Builder, st *ir.Struct, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	for _, f := range st.Fields {
+		emitUnityBlockValidateField(b, f, val, rootBl, indent, depth)
+	}
+}
+
+func emitUnityBlockValidateField(b *strings.Builder, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	prop := member(f)
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%sif (%s.%sPresent)\n%s{\n", ind, val, prop, ind)
+		emitUnityBlockValidatePayload(b, f, val, rootBl, indent+4, depth)
+		fmt.Fprintf(b, "%s}\n", ind)
+		return
+	}
+	emitUnityBlockValidatePayload(b, f, val, rootBl, indent, depth)
+}
+
+func emitUnityBlockValidatePayload(b *strings.Builder, f *ir.Field, val string, rootBl *ir.BlockLayout, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	prop := member(f)
+	expr := val + "." + prop
+	switch {
+	case f.Type.Kind == ir.TString:
+		fmt.Fprintf(b, "%sif (%s.%sLength < 0 || %s.%sLength > %d || !Schema._BlockTextValid(%s.AsSpan().Slice(0, %s.%sLength))) { return null; }\n",
+			ind, val, prop, val, prop, f.Type.Size, expr, val, prop)
+	case f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "%sif (%s.%sLength < 0 || %s.%sLength > %d) { return null; }\n",
+			ind, val, prop, val, prop, f.Type.Size)
+	case f.KeyEnum != "":
+		iv := fmt.Sprintf("i%d", depth)
+		sp := fmt.Sprintf("sp%d", depth)
+		fmt.Fprintf(b, "%s{\n%s    var %s = %s.AsSpan();\n", ind, ind, sp, expr)
+		fmt.Fprintf(b, "%s    for (int %s = 0; %s < %d; %s++)\n%s    {\n", ind, iv, iv, f.KeyEnumRef.Max, iv, ind)
+		emitUnityBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", sp, iv), indent+8, depth+1)
+		fmt.Fprintf(b, "%s    }\n%s}\n", ind, ind)
+	case f.Array == ir.ArrayFixed:
+		iv := fmt.Sprintf("i%d", depth)
+		sp := fmt.Sprintf("sp%d", depth)
+		fmt.Fprintf(b, "%s{\n%s    var %s = %s.AsSpan();\n", ind, ind, sp, expr)
+		fmt.Fprintf(b, "%s    for (int %s = 0; %s < %d; %s++)\n%s    {\n", ind, iv, iv, f.ArrayBound, iv, ind)
+		emitUnityBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", sp, iv), indent+8, depth+1)
+		fmt.Fprintf(b, "%s    }\n%s}\n", ind, ind)
+	case f.Array == ir.ArrayCounted:
+		iv := fmt.Sprintf("i%d", depth)
+		sp := fmt.Sprintf("sp%d", depth)
+		if rootBl != nil && rootBl.ArrayByName(f.Name) != nil {
+			fmt.Fprintf(b, "%sif (%s.%sCount < %d || %s.%sCount > %d) { if (refusal != null) { refusal.Array = %q; refusal.Count = %s.%sCount; refusal.Maximum = %d; } return null; }\n",
+				ind, val, prop, f.ArrayMin, val, prop, f.ArrayBound, f.Name, val, prop, f.ArrayBound)
+		} else {
+			fmt.Fprintf(b, "%sif (%s.%sCount < %d || %s.%sCount > %d) { return null; }\n", ind, val, prop, f.ArrayMin, val, prop, f.ArrayBound)
+		}
+		fmt.Fprintf(b, "%s{\n%s    var %s = %s.AsSpan();\n", ind, ind, sp, expr)
+		fmt.Fprintf(b, "%s    for (int %s = 0; %s < %s.%sCount; %s++)\n%s    {\n", ind, iv, iv, val, prop, iv, ind)
+		emitUnityBlockValidateElem(b, f, fmt.Sprintf("%s[%s]", sp, iv), indent+8, depth+1)
+		fmt.Fprintf(b, "%s    }\n%s}\n", ind, ind)
+	default:
+		emitUnityBlockValidateElem(b, f, expr, indent, depth)
+	}
+}
+
+func emitUnityBlockValidateElem(b *strings.Builder, f *ir.Field, expr string, indent, depth int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			emitUnityBlockValidateStruct(b, r, expr, nil, indent, depth+1)
+		case *ir.Enum:
+			if r.StorageBits > 0 && r.StorageBits < 64 && uint64(r.Max) < (uint64(1)<<uint(r.StorageBits))-1 {
+				fmt.Fprintf(b, "%sif ((ulong)%s > %dUL) { return null; }\n", ind, expr, r.Max)
+			}
+		case *ir.Flags:
+			if len(r.Variants) < 64 {
+				mask := (uint64(1) << uint(len(r.Variants))) - 1
+				fmt.Fprintf(b, "%sif (((ulong)%s & ~0x%xUL) != 0) { return null; }\n", ind, expr, mask)
+			}
+		}
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		fmt.Fprintf(b, "%sif (!float.IsFinite(%s)) { return null; }\n", ind, expr)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, formatFloat32Lit(f.FMin), expr, formatFloat32Lit(f.FMax))
+		}
+	case ir.TFloat64:
+		fmt.Fprintf(b, "%sif (!double.IsFinite(%s)) { return null; }\n", ind, expr)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, formatFloat64Lit(f.FMin), expr, formatFloat64Lit(f.FMax))
+		}
+	default:
+		width := csElemWidth(f.Type)
+		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		if rlo, rhi, ok := ir.TableRawRange(f); ok && width > 0 {
+			low, high := tableClampEnds(f, width)
+			if width == 16 {
+				lit := func(v *big.Int) string {
+					lo, hi := splitWide128(v)
+					if signed {
+						return fmt.Sprintf("new Int128Value(0x%016xUL, 0x%016xUL)", hi, lo)
+					}
+					return fmt.Sprintf("new UInt128Value(0x%016xUL, 0x%016xUL)", hi, lo)
+				}
+				switch {
+				case low && high:
+					fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, lit(rlo), expr, lit(rhi))
+				case low:
+					fmt.Fprintf(b, "%sif (%s < %s) { return null; }\n", ind, expr, lit(rlo))
+				case high:
+					fmt.Fprintf(b, "%sif (%s > %s) { return null; }\n", ind, expr, lit(rhi))
+				}
+			} else {
+				switch {
+				case low && high:
+					fmt.Fprintf(b, "%sif (%s < %s || %s > %s) { return null; }\n", ind, expr, csIntLit(rlo, signed, width), expr, csIntLit(rhi, signed, width))
+				case low:
+					fmt.Fprintf(b, "%sif (%s < %s) { return null; }\n", ind, expr, csIntLit(rlo, signed, width))
+				case high:
+					fmt.Fprintf(b, "%sif (%s > %s) { return null; }\n", ind, expr, csIntLit(rhi, signed, width))
+				}
+			}
+		}
+		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+			maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+			fmt.Fprintf(b, "%sif (%s > %s) { return null; }\n", ind, expr, csIntLit(maxv, false, width))
+		}
+	}
+}
+
+func splitWide128(v *big.Int) (lo, hi uint64) {
+	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+	lo = new(big.Int).And(v, mask).Uint64()
+	hi = new(big.Int).And(new(big.Int).Rsh(v, 64), mask).Uint64()
+	return lo, hi
 }
 
 type unityCookUnit struct {

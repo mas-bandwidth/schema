@@ -841,10 +841,10 @@ String _jsonPrepare(String text, TableTextReport r) {
       stripped.add(0x20);
       continue;
     }
-    // the root container is the first: one at count 130 sits at depth 129,
-    // past the cap (§16.14 W2)
+    // stack guard for raw bracket nesting; semantic table/skip depth 128 is
+    // enforced by the typed reader and _jsonSkipValue (FL-11, SPEC-TABLES §16.14 W2)
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 129) throw const FormatException('JSON nesting past 128');
+      if (++depth > 256) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -1102,7 +1102,8 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 // table's storage defaults survive any key the text does not carry.
 func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJsonFields"
-	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
+	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {\n", fn, st.Name)
+	g.pf("\tif (depth > 128) throw const FormatException('nested past the depth cap of 128');\n")
 	if st.JsonArray {
 		g.pf("\tif (obj is! List) return;\n")
 		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", viewDartString(ir.TableFieldJsonKey(st.Fields[0])))
@@ -1127,7 +1128,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	// an unknown key is skipped and counted, and its repeat is damage like a
 	// known key's (§2.8). Its VALUE is held to the grammar and text rules a
 	// placed value is held to (§16.3, §4), so damage inside it refuses.
-	g.pf("\t\t\tdefault:\n\t\t\t\tif (key.startsWith('&')) {\n\t\t\t\t\tthrow const FormatException('reserved ampersand prefix');\n\t\t\t\t}\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r);\n\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (key.startsWith('&')) {\n\t\t\t\t\tthrow const FormatException('reserved ampersand prefix');\n\t\t\t\t}\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r, depth + 1);\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")
@@ -1163,11 +1164,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case isPointerTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tv.%s = _readPtr(val, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }, v.%s) as %s?;\n", name, ref.Name, dartName(ref.Name), ref.Name, name, ref.Name)
+		g.pf("\t\t\t\tv.%s = _readPtr(val, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true, depth + 1); }, v.%s) as %s?;\n", name, ref.Name, dartName(ref.Name), ref.Name, name, ref.Name)
 		g.pf("\t\t\t\tbreak;\n")
 	case isByValueTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tif (%s) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", jsonTableShape(ref, "val"), name, ref.Name, dartName(ref.Name), name)
+		g.pf("\t\t\t\tif (%s) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh, false, depth + 1); }\n", jsonTableShape(ref, "val"), name, ref.Name, dartName(ref.Name), name)
 		g.pf("\t\t\t\telse { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
@@ -1183,14 +1184,14 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		case wireKindTable:
 			g.pf("\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
 			g.pf("\t\t\t\t\tif (%s) {\n", jsonTableShape(tableRef(f), "item"))
-			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh);\n", dartName(f.Type.Name))
+			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh, false, depth + 1);\n", dartName(f.Type.Name))
 			g.pf("\t\t\t\t\t} else {\n")
 			g.pf("\t\t\t\t\t\tr.refuse('kind_mismatch');\n")
 			g.pf("\t\t\t\t\t}\n")
 			g.pf("\t\t\t\t\tv.%s.add(e);\n", name)
 		case wireKindPtr:
 			ref := tableRef(f)
-			g.pf("\t\t\t\t\tv.%s.add(_readPtr(item, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?);\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
+			g.pf("\t\t\t\t\tv.%s.add(_readPtr(item, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true, depth + 1); }) as %s?);\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
 		default:
 			switch listElementKind(f) {
 			case wireKindBool:
@@ -1360,6 +1361,13 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\t\treturn %s();\n", st.Name)
 	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
+	g.pf("}\n\n")
+	g.pf("bool %sInto(%s target, String text, [TableTextReport? report]) {\n", fn, st.Name)
+	g.pf("\tfinal r = report ?? TableTextReport();\n")
+	g.pf("\tfinal v = %s(text, r);\n", fn)
+	g.pf("\t_copy%s(target, r.refused ? %s() : v);\n", st.Name, st.Name)
+	g.pf("\tif (r.refused && report == null) throw FormatException(r.reason);\n")
+	g.pf("\treturn !r.refused;\n")
 	g.pf("}\n\n")
 }
 

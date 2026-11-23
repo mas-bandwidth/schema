@@ -2092,6 +2092,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> data,\n")
 	g.pf("    Span<TableFixedEntry> plan,\n")
 	g.pf("    TableReport report = null)\n{\n")
+	g.pf("    if (report != null) { report.Zero(); }\n")
 	g.pf("    long loaded = %sFixedLoadWalk(values, data, plan, report);\n", name)
 	g.pf("    if (loaded < 0)\n    {\n")
 	g.pf("        for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }\n")

@@ -107,8 +107,9 @@ const tableNativeSource = `
         long at = record + f.NativeOffset;
         if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
         if (f.Optional && !f.GetPresent(value)) { return true; }
+        if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
         int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-        System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
+        System.Diagnostics.Debug.Assert(live >= (f.Counted ? f.ArrayMin : 0) && (!f.Counted || live <= f.ArrayBound));
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
         if (f.Unbounded)
         {
@@ -216,8 +217,9 @@ const tableNativeSource = `
             int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
             at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
         }
+        if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
         int n = f.IsArray ? Count(value, f) : 1;
-        System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
+        System.Diagnostics.Debug.Assert(n >= (f.Counted ? f.ArrayMin : 0) && (!f.IsArray || n <= f.ArrayBound));
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
