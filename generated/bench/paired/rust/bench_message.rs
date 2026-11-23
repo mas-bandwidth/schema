@@ -1055,9 +1055,10 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
 /// BenchMixed at its declared defaults (SPEC §4.2): the value a body that carries
 /// no field of it decodes to (§3.3).
 pub fn bench_mixed_message_default() -> BenchMixedRow {
-    let mut value = BenchMixedRow::default();
-    value.has_extra = 1;
-    value
+    BenchMixedRow {
+        has_extra: true,
+        ..Default::default()
+    }
 }
 
 /// One BenchMixed body (§3.3): each field off its declared default, then the zero

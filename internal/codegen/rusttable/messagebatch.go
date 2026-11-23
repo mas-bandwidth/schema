@@ -147,15 +147,15 @@ func (m *msgGen) emitDefaults(st *ir.Struct) {
 				switch f.Type.Kind {
 				case ir.TBool:
 					if f.DefBool {
-						assigns = append(assigns, fmt.Sprintf("    value.%s = 1;\n", f.Name))
+						assigns = append(assigns, fmt.Sprintf("        %s: true,\n", f.Name))
 					}
 				case ir.TInt:
 					if f.DefInt != nil && f.DefInt.Sign() != 0 && f.Type.Width <= 64 {
-						assigns = append(assigns, fmt.Sprintf("    value.%s = %s;\n", f.Name, f.DefInt.String()))
+						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, f.DefInt.String()))
 					}
 				case ir.TFloat32, ir.TFloat64:
 					if f.DefFloat != 0 {
-						assigns = append(assigns, fmt.Sprintf("    value.%s = %s;\n", f.Name, fixedFloatLit(f.DefFloat)))
+						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, fixedFloatLit(f.DefFloat)))
 					}
 				}
 			}
@@ -164,15 +164,17 @@ func (m *msgGen) emitDefaults(st *ir.Struct) {
 			m.pf("    %sRow::default()\n}\n\n", st.Name)
 			return
 		}
-		m.pf("    let mut value = %sRow::default();\n", st.Name)
+		m.pf("    %sRow {\n", st.Name)
 		for _, line := range assigns {
 			m.pf("%s", line)
 		}
-		m.pf("    value\n}\n\n")
+		m.pf("        ..Default::default()\n    }\n}\n\n")
 		return
 	}
 	up := strings.ToUpper(snake)
 	img := fixedDefaultImage(st)
+	m.pf("// This wire image is a compile-time constant of the form (§3.3).\n")
+	m.pf("#[allow(clippy::large_const_arrays)]\n")
 	m.pf("const %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
 	for i, v := range img {
 		if i%16 == 0 {
