@@ -462,10 +462,14 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 
 # ---- 8. goose ----
 
-.PHONY: _verify-goose-conformance _verify-goose-bench _verify-goose-fuzz
-_verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-packet/.stamp
-	cd build/goose-packet/normal && "$(GOOSE)" run main.goose
-	cd build/goose-packet/ludicrous && "$(GOOSE)" run main.goose
+.PHONY: _verify-goose-conformance _verify-goose-packet-normal _verify-goose-packet-ludicrous _verify-goose-bench _verify-goose-fuzz
+_verify-goose-packet-normal: verify-toolchain-goose build/goose-packet/.stamp
+	cd build/goose-packet/normal && "$(GOOSE)" run -O0 main.goose
+
+_verify-goose-packet-ludicrous: verify-toolchain-goose build/goose-packet/.stamp
+	cd build/goose-packet/ludicrous && "$(GOOSE)" run -O0 main.goose
+
+_verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose _verify-goose-packet-normal _verify-goose-packet-ludicrous
 	@rm -rf build/verify/conformance-goose && mkdir -p build/verify/conformance-goose $(VERIFY_RESULTS_DIR)
 	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-goose --results $(VERIFY_RESULTS_DIR)/goose.json
 
@@ -486,27 +490,42 @@ build/goose-messagefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCH
 # Wire-fuzz and message-fuzz share the unified 41-leg build (wirefuzz.goose
 # handles form 5 framed message batches alongside forms 1/2/3), avoiding 36
 # duplicate `goose build -O2` compiles and 2x parallel sub-make contention.
-# The five independent fuzz/test commands then run concurrently.
-_verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-wirefuzz-legs/.verify-stamp
+# The five independent checks share no state, so they run side by side under
+# verify-goose-fuzz; the race test and json-fuzz need no fuzz legs, so they
+# run while the 41 unified legs build.
+GOOSE_FUZZ_BASE := verify-toolchain-goose build/conformance-harness-vm build/conformance-goose
+.PHONY: _verify-goose-fuzz-race _verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-json _verify-goose-fuzz-message
+_verify-goose-fuzz: _verify-goose-fuzz-race _verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-json _verify-goose-fuzz-message
+
+_verify-goose-fuzz-race:
 	go test -race -count=1 ./test/conformance/goose/wirefuzzdispatch
+
+_verify-goose-fuzz-plain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
-	@set -e; \
-		./build/conformance-harness-vm wire-fuzz --mixed-builder \
-			--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
-			--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-			--failed build/verify/fuzz-goose-plain.bin & p1=$$!; \
-		./build/conformance-harness-vm wire-fuzz --mixed-builder --retain \
-			--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
-			--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-			--failed build/verify/fuzz-goose-retain.bin & p2=$$!; \
-		GOOSE="$(GOOSE)" ./build/conformance-harness-vm json-fuzz --only goose \
-			--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
-			--failed build/verify/json-fuzz-goose & p3=$$!; \
-		GOOSE="$(GOOSE)" GOOSE_DISPATCH="./$(GOOSE_DISPATCH)" GOOSE_MESSAGEFUZZ_LEGS="$(GOOSE_LEGS_DIR)/legs" \
-			./build/conformance-harness-vm message-fuzz --only goose \
-			--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
-			--failed build/verify/message-fuzz-goose & p4=$$!; \
-		wait $$p1; wait $$p2; wait $$p3; wait $$p4
+	./build/conformance-harness-vm wire-fuzz --mixed-builder \
+		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
+		--failed build/verify/fuzz-goose-plain.bin
+
+_verify-goose-fuzz-retain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
+	@mkdir -p build/verify
+	./build/conformance-harness-vm wire-fuzz --mixed-builder --retain \
+		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
+		--failed build/verify/fuzz-goose-retain.bin
+
+_verify-goose-fuzz-json: $(GOOSE_FUZZ_BASE)
+	@mkdir -p build/verify
+	GOOSE="$(GOOSE)" ./build/conformance-harness-vm json-fuzz --only goose \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-goose
+
+_verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
+	@mkdir -p build/verify
+	GOOSE="$(GOOSE)" GOOSE_DISPATCH="./$(GOOSE_DISPATCH)" GOOSE_MESSAGEFUZZ_LEGS="$(GOOSE_LEGS_DIR)/legs" \
+		./build/conformance-harness-vm message-fuzz --only goose \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-goose
 
 # ---- 9. lobster ----
 

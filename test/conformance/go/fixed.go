@@ -24,6 +24,7 @@ import (
 	"backenddemo"
 	"cooktorture"
 	"listdemo"
+	listdemovariable "listdemovariable"
 	"messagedemo"
 	"scalardemo"
 	"tabledemo"
@@ -130,6 +131,41 @@ func tblr1CfgVariableLoad(value any, wire []byte, rep *report) bool {
 	return true
 }
 
+// listdemoBoundedVariableLoad is tblr1CfgVariableLoad for the battery's other
+// fixed root, listdemo Bounded, read through its generated variable-class twin
+// (listdemovariable, make/go.mk). Before it, the framing surface read these
+// vectors through the plain BoundedLoad, which refuses every form-1 file at a
+// declared fixed root: array_elem_terminator_early and array_elem_L_past_body
+// passed for the wrong reason, and the lawful twin
+// twin_listdemo_bounded_empty is the row that shows it.
+func listdemoBoundedVariableLoad(value any, wire []byte, rep *report) bool {
+	bounded := value.(*listdemo.Bounded)
+	listdemo.BoundedReset(bounded)
+	n := listdemovariable.BoundedLoadMeasure(wire)
+	if n < 0 {
+		*rep = report{refused: true}
+		return false
+	}
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	var inner listdemovariable.TableReport
+	root := listdemovariable.BoundedLoad(raw[off:off+uintptr(n)], wire, &inner)
+	*rep = snapReport(&inner)
+	rep.err = inner.Err()
+	if root == nil || rep.refused {
+		return false
+	}
+	text := make([]byte, listdemovariable.BoundedToJSONMeasure(root))
+	if listdemovariable.BoundedToJSON(root, text) != int64(len(text)) {
+		panic("listdemo Bounded: the variable twin's ToJSON did not write ToJSONMeasure's answer")
+	}
+	var crossed listdemo.TableReport
+	if !listdemo.BoundedFromJSON(bounded, text, &crossed) {
+		panic("listdemo Bounded: the fixed root refused the variable twin's text: " + string(text))
+	}
+	return true
+}
+
 // noFileForm rebinds a declared fixed root past §3.4's 65536-byte record
 // bound, which has no file form: every file read refuses and nothing is
 // saved, while variableLoad keeps the form-1 read for surfaceFraming alone.
@@ -213,7 +249,9 @@ func init() {
 		return fixedForm(c, tblk2.RootFixedLoad, tblk2.RootFixedMeasure, tblk2.RootFixedSave)
 	})
 	bind("listdemo", "Bounded", func(c codec) codec {
-		return fixedForm(c, listdemo.BoundedFixedLoad, listdemo.BoundedFixedMeasure, listdemo.BoundedFixedSave)
+		c = fixedForm(c, listdemo.BoundedFixedLoad, listdemo.BoundedFixedMeasure, listdemo.BoundedFixedSave)
+		c.variableLoad = listdemoBoundedVariableLoad
+		return c
 	})
 	bind("scalars", "SimState", func(c codec) codec {
 		return fixedForm(c, scalardemo.SimStateFixedLoad, scalardemo.SimStateFixedMeasure, scalardemo.SimStateFixedSave)

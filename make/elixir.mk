@@ -145,20 +145,27 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 
 build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
-# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
-	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
 	# Elixir 1.20.4 is the formatting authority (issue #424), and every table
 	# emitter writes its shape (issue #547, tables-elixir-emit-format-clean), so
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+ELIXIR_TABLE_UNIT_NAMES = $(sort $(foreach u,$(ELIXIR_TABLE_UNITS),$(firstword $(subst :, ,$(u)))))
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# Compile each generated unit (and driver_impl.ex) in parallel with bounded BEAM
+# schedulers (+S 2:2 per VM, nproc/2 workers): every unit has a distinct package
+# namespace, so splitting avoids single-VM ETS/scheduler lock contention while
+# preserving full ELIXIRC_STRICT warning-as-error checks and byte-identical ebin.
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
-		test/conformance/elixir/driver_impl.ex
+	@if ! cpus=$$(nproc 2>/dev/null); then if ! cpus=$$(sysctl -n hw.ncpu 2>/dev/null); then cpus=4; fi; fi; \
+	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
+	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
+		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
+		xargs -P "$$jobs" -n 1 sh -c 'if [ "$$1" = "__driver_impl__" ]; then $(ELIXIRC_STRICT) -o build/elixir-tables-ebin test/conformance/elixir/driver_impl.ex || exit 255; else $(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/"$$1"/*.ex || exit 255; fi' _
 	@touch $@
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above
