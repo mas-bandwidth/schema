@@ -12,8 +12,14 @@ table Attachment
 table Buff
     field multiplier id=0x9adc623a805c87c6 kind=10 default=1.0
 
+table CountedMin
+    field few id=0xdcc67d18feea8c19 kind=14 elem=8 array=bounded bound=5 mincount=2
+
 table Debuff
     field amount id=0x8113fe7ea2b16969 kind=4 min=0 max=100 default=0
+
+table FloatBound
+    field level id=0xe8ddc90a9d7c709d kind=10 min=0.0 max=0.1 default=0.0
 
 table GlobalSettings
     field tick_rate id=0xa65f859b617deaf3 kind=8 min=1 max=240 default=60
@@ -48,6 +54,19 @@ table LoadoutConfig
     field primary id=0xbf31137ff783e939 kind=13 type=WeaponConfig
     field backups id=0xde28f0f5118acc24 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
     field attachments id=0xf901aa0340249a41 kind=14 elem=13 type=Attachment array=bounded bound=8
+
+table MinArmFix
+    field pick id=0xbf0bc40dc513bbd8 kind=15 union=MinPick
+
+table MinPlainFix
+    field few id=0xdcc67d18feea8c19 kind=14 elem=8 array=bounded bound=4 mincount=2
+
+table MoodField
+    field mood id=0x0d5cfaa2c43877be kind=7 enum=Mood default=Fierce
+    field tail id=0xd94c56ef0798d723 kind=7
+
+table Moods
+    field row id=0x8a0bc1196111ad9b kind=14 elem=7 enum=Mood array=bounded bound=4
 
 table PackConfig
     field version id=0xbb62c62c9808ea37 kind=8 default=1
@@ -177,6 +196,11 @@ enum Hull
     variant Gunship id=0x334d24e1420dbc1f
     variant Freighter id=0x6c2321a3d00e23db
 
+enum Mood
+    variant Calm id=0xdfa47a9ce9ac16d6
+    variant Old id=0x3018cd19bf898cd6 deprecated=true
+    variant Fierce id=0x199c482b49ef9acb
+
 enum ShipType
     variant Fighter id=0xd011f7c3c15285c2
     variant Bomber id=0xa8216aa1c554cb8a
@@ -200,6 +224,10 @@ flags Perks
 union Effect
     arm buff id=0xffb5be9be2e469cc payload=Buff
     arm debuff id=0x13cdc5ede73d2fd7 payload=Debuff
+
+union MinPick
+    arm few id=0xdcc67d18feea8c19 kind=14 elem=8 array=bounded bound=4 mincount=2
+    arm other id=0x0a24ad61c2562a55 kind=4
 
 packet ScoreBoard
     keyed per_team key=Team bound=3 slots=Red,Blue,Green
@@ -240,3 +268,6 @@ packet ScoreBoard
 
 ### 2026-11-21 (UTC) — rendering version 10: an enum-keyed array on the packet wire records its key enum, bound and slot names (packet sections), so a key enum swapped under one protocol id refuses (docs/SPEC-TABLES.md §18.1, SPEC §4 item 4)
 - baseline REGENERATED over an unreadable one (baseline version 9, this compiler writes 10); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-11-23 (UTC) — Record the added tabledemos for counted minimums, float bounds and deprecated enum evolution
+- no compatibility-affecting edits; the wire absorbs the rest
