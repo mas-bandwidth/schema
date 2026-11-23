@@ -119,6 +119,11 @@ static uint8_t * slurp( const char * path, size_t * bytes )
    what the leg did answer (test/conformance/README.md). */
 static int spill_absent( const char * dir, const char * name );
 static int spill_absent_reason( const char * dir, const char * name, const char * reason );
+/* spill_refused answers a must-refuse row whose refusal this leg's runtime
+   made (a strict read refusing a blob two slots name, §2.5) or whose root has
+   no message codec (a variable root, §3.3): `<case>` holding exactly
+   `refused\n`, never an absence (ruling R13). */
+static int spill_refused( const char * dir, const char * name );
 
 /* no_text marks an instance the corpus carries on the WIRE only — past the text
    form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) — so no
@@ -240,7 +245,7 @@ static int surface_wire( const char * out )
                a blob named from two slots (docs/SPEC-TABLES.md §2.5), which no
                writer writes, so its answer is the refusal and no bytes */
             free( wire );
-            if ( report.blob_shared > 0 ) { if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; } continue; }
+            if ( report.blob_shared > 0 ) { if ( !spill_refused( out, f->field[1] ) ) { return 1; } continue; }
             fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] );
             return 1;
         }
@@ -261,6 +266,11 @@ static int spill_absent_reason( const char * dir, const char * name, const char 
     char marker[1024];
     snprintf( marker, sizeof( marker ), "%s.absent", name );
     return spill( dir, marker, reason, strlen( reason ) );
+}
+
+static int spill_refused( const char * dir, const char * name )
+{
+    return spill( dir, name, "refused\n", 8 );
 }
 
 /* The value half of a `report` and `json-hostile` answer
@@ -746,7 +756,7 @@ static int surface_message(const char * out)
   for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
   if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
   /* only a fixed table rides the message form: a variable root has no message codec */
-  if(codec->message==NULL){if(!spill_absent_reason(out,f->field[1],"variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"))return 1;continue;}
+  if(codec->message==NULL){if(!spill_refused(out,f->field[1]))return 1;continue;}
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);

@@ -30,7 +30,9 @@ def run(manifest, outdir):
                     raise
             else:
                 raise RuntimeError(f"{case}: message reader accepted an inapplicable root")
-            absent(outdir, case, "message form is inapplicable to this variable root")
+            # inapplicable to this variable root: a must-refuse row, answered
+            # `refused` (ruling R13: an absence is never credited)
+            write_bytes(outdir, case, b"refused\n")
             continue
         if package is None or cls is None or message is None:
             absent(outdir, case, "message form is not emitted for this root")

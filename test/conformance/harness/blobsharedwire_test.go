@@ -12,16 +12,29 @@ import (
 func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 	t.Parallel()
 	for _, lang := range []string{"go", "cpp", "js", "unported"} {
+		t.Run(lang+"/refused", func(t *testing.T) {
+			out := t.TempDir()
+			if err := os.WriteFile(filepath.Join(out, "blob_shared"), []byte("refused\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			r := &result{total: 1}
+			scoreAnswer(lang, "wire", out, expectation{name: "blob_shared", want: []byte("old bytes")}, Instance{WireRefused: true}, r)
+			if r.pass != 1 || r.missing != 0 || r.named != 0 || len(r.failures) != 0 {
+				t.Fatalf("refusal did not score PASS: %+v", r)
+			}
+		})
+		// RULING R13: an absent answer is never credited. The historical
+		// `<case>.absent` on a must-refuse row is an ABSENCE, whatever its text.
 		for _, diagnostic := range []string{"", "blob_shared", "different local diagnostic"} {
-			t.Run(lang+"/"+diagnostic, func(t *testing.T) {
+			t.Run(lang+"/absent/"+diagnostic, func(t *testing.T) {
 				out := t.TempDir()
 				if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte(diagnostic), 0600); err != nil {
 					t.Fatal(err)
 				}
 				r := &result{total: 1}
 				scoreAnswer(lang, "wire", out, expectation{name: "blob_shared", want: []byte("old bytes")}, Instance{WireRefused: true}, r)
-				if r.pass != 1 || r.missing != 0 || r.named != 0 || len(r.failures) != 0 {
-					t.Fatalf("refusal did not score PASS: %+v", r)
+				if r.pass != 0 || r.missing != 1 || len(r.failures) != 0 {
+					t.Fatalf("an absence on a must-refuse row was not counted absent: %+v", r)
 				}
 			})
 		}
@@ -49,7 +62,7 @@ func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 		}
 		scoreAnswer("go", "wire", out, expectation{name: name, want: want}, Instance{}, r)
 	}
-	if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "blob_shared"), []byte("refused\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	scoreAnswer("go", "wire", out, expectation{name: "blob_shared"}, Instance{WireRefused: true}, r)
@@ -64,9 +77,9 @@ func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 	}
 }
 
-// The README lets a driver spell the wire-refused row `refused` (the shape of
-// every read surface) or the historical `<case>.absent`. Both score PASS; a
-// `refused` without its newline, or any value bytes, is a failure. The Swift
+// The wire-refused row is spelled `refused` and a newline (the shape of every
+// read surface), and only that scores PASS (ruling R13: the historical
+// `<case>.absent` is an absence, never credited); a `refused` without its newline, or any value bytes, is a failure. The Swift
 // spec port's gap 4 (2026-11-22): the harness judged `refused` as bytes, so a
 // port that followed the README could never score the row.
 func TestWireRefusedSpelledRefusedScoresPass(t *testing.T) {

@@ -53,9 +53,9 @@ from _common import root_class, unit_package
 Path('out').mkdir()
 wire.run('manifest', 'out')
 for case in ('blob_shared', 'blob_shared_string'):
-    assert Path('out', case + '.absent').exists(), 'missing observed blob_shared refusal'
-    assert Path('out', case + '.absent').read_bytes() == b'blob_shared'
-    assert not Path('out', case).exists()
+    answer = Path('out', case)
+    assert answer.exists() and answer.read_bytes() == b'refused\n', 'missing observed blob_shared refusal'
+    assert not Path('out', case + '.absent').exists()
 assert Path('out/blob_equal_bytes').read_bytes() == Path('blob_equal_bytes.bin').read_bytes()
 Catalog = root_class('blobdemo', 'Catalog')
 Docs = root_class('mapdemo', 'Docs')
@@ -99,6 +99,7 @@ for exception in (blobs.Refused('wire_damaged'), ValueError('blob_shared')):
     except (AssertionError, ValueError): pass
     else: raise AssertionError('driver accepted wrong public refusal')
     assert not Path('wrong-out/wrong.absent').exists()
+    assert not Path('wrong-out/wrong').exists()
 Catalog.load = original
 Path('missing-manifest').write_text('instance missing missing Root blob_shared.bin\n')
 try: wire.run('missing-manifest', 'out')

@@ -485,6 +485,9 @@ pub struct TableNodeReader {
     /// which blob records a slot has already named (§2.5): each later naming
     /// of the same record counts blob_shared on the strict read
     pub blob_named: Vec<bool>,
+    /// a blob record a second slot named (§2.5): the load refuses by name,
+    /// blob_shared, once the bodies are walked
+    pub blob_twice: bool,
     /// the ROOT's descent is open while its body decodes and closed after:
     /// a slot naming the root while it is open is a cycle (§3.1)
     pub root_open: bool,
@@ -527,7 +530,7 @@ impl TableNodeReader {
     /// well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], declared: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };
+        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };
         let mut seen_node_table = false;
         let mut off = 1usize;
         while off < end {
@@ -789,7 +792,9 @@ impl TableNodeReader {
             let k = target - 1;
             if k < self.recs.len() && matches!(self.recs[k].0, BYTES_TYPE_ID | STRING_TYPE_ID) {
                 self.wire_blob_names[k] += 1;
-                if self.wire_blob_names[k] > 1 { report.damaged = true; }
+                // a blob record two wire slots name, known or not (§2.5): refused
+                // by name, blob_shared, once the bodies are walked
+                if self.wire_blob_names[k] > 1 { self.blob_twice = true; }
             }
         }
     }
@@ -980,16 +985,17 @@ impl TableNodeReader {
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Count a blob record's naming (§2.5): the strict read keeps the ONE
-    /// node every slot names and counts each naming after the first in the
-    /// report's blob_shared counter.
-    fn name_blob(&mut self, index: u64, report: &mut TableReport) {
+    /// Count a blob record's naming (§2.5): a naming after the first is a blob
+    /// two slots name, which the strict read refuses BY NAME, blob_shared, as
+    /// the oracle's graph judgement does (internal/tablewire/wirecheck.go) —
+    /// never as damage. The walk goes on, so framing damage still outranks it.
+    fn name_blob(&mut self, index: u64, _report: &mut TableReport) {
         let k = (index - 2) as usize;
         if self.blob_named.len() < self.slots.len() {
             self.blob_named.resize(self.slots.len(), false);
         }
         if self.blob_named[k] {
-            report.damaged = true;
+            self.blob_twice = true;
         } else {
             self.blob_named[k] = true;
         }

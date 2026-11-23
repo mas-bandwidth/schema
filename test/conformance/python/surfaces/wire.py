@@ -1,6 +1,6 @@
 """The wire surface: observe the public read/save or strict blob refusal."""
 
-from _common import absent, entries, read_bytes, root_class, supported, unit_package, write_bytes
+from _common import entries, read_bytes, root_class, supported, unit_package, write_bytes
 
 
 def observed_wire(outdir, case, unit, root, wire):
@@ -14,9 +14,10 @@ def observed_wire(outdir, case, unit, root, wire):
     except package.Refused as err:
         if err.reason != "blob_shared":
             raise AssertionError(case + ": unexpected public wire refusal: " + err.reason) from err
-        # The shared harness uses this filename for the observed strict blob
-        # refusal (§2.5). It judges whether this particular input owes it.
-        absent(outdir, case, "blob_shared")
+        # The observed strict blob refusal (§2.5) is answered `refused`
+        # (ruling R13: an absence is never credited on a must-refuse row).
+        # The harness judges whether this particular input owes it.
+        write_bytes(outdir, case, b"refused\n")
         return
     write_bytes(outdir, case, value.save())
 

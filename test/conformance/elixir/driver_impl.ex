@@ -778,8 +778,9 @@ defmodule Driver do
 
     for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
       case message_answer(Map.get(connections, connection), root, batch) do
-        {:refused, why} ->
-          File.write!(Path.join(outdir, name <> ".absent"), why)
+        # ruling R13: a must-refuse row is answered `refused`, never absent
+        {:refused, _why} ->
+          File.write!(Path.join(outdir, name), "refused\n")
 
         {:ok, bytes} ->
           write(outdir, name, bytes)
@@ -1073,13 +1074,20 @@ defmodule Driver do
 
               # THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob the
               # tolerant read found named from two slots refuses the save by
-              # name, and the case answers that name beside its absence
+              # name, and the case answers `refused` (ruling R13: an absence
+              # is never credited on a must-refuse row)
               {:error, :blob_shared} ->
-                File.write!(Path.join(outdir, name <> ".absent"), "blob_shared")
+                File.write!(Path.join(outdir, name), "refused\n")
 
               _ ->
                 write_absent(outdir, name)
             end
+
+          # THE STRICT READ REFUSAL (docs/SPEC-TABLES.md §2.5): the one read
+          # refuses a file whose two slots name one blob, by that name; the
+          # case answers `refused` (ruling R13). Any other refusal stays absent.
+          {:error, :blob_shared, _report} ->
+            File.write!(Path.join(outdir, name), "refused\n")
 
           _ ->
             write_absent(outdir, name)

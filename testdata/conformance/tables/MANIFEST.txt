@@ -694,6 +694,12 @@ json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  test
 # key included, because a skipped value has no declaration to tell one apart.
 json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
 json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
+# R7 AT A VARIABLE ROOT (docs/SPEC-TABLES.md §16.7): a stray `&` key in a
+# skipped value refuses at a variable root as at a fixed one, and a variable
+# root holds a skipped value to the definition rules whether or not its unit
+# declares a pointer (listdemo declares none).
+json-hostile skipped-ampersand-key-variable graphdemo Scene       testdata/conformance/tables/json-hostile/skipped-ampersand-key-variable refused
+json-hostile skipped-label-undefined-pointer-free listdemo Army   testdata/conformance/tables/json-hostile/skipped-label-undefined-pointer-free refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -1522,9 +1528,9 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # remains first-use ordered; the current writer emits its own field order.
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
-rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
 rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
 rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin

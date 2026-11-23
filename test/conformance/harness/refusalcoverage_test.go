@@ -18,11 +18,11 @@ func TestRefusalCoverageMatchesScoredVerdicts(t *testing.T) {
 		{"damage refused", "framing", "case", "0,0,0,0,0,true,read\n", outcomePass, true, 1, 0, 0},
 		{"damage accepted", "framing", "case", "0,0,0,0,0,false,read\n", outcomeFail, true, 0, 0, 1},
 		{"damage report invalid", "report", "case", "invalid\n", outcomeFail, true, 0, 0, 1},
-		{"message refusal", "message", "case.absent", VariableMessageRefusal, outcomePass, false, 1, 0, 0},
-		{"message local reason", "message", "case.absent", "different diagnostic", outcomePass, false, 1, 0, 0},
+		{"message refusal", "message", "case", "refused\n", outcomePass, false, 1, 0, 0},
+		{"message refused, any reason", "message", "case", "refused\n", outcomePass, false, 1, 0, 0},
 		{"message writes bytes", "message", "case", "unexpected", outcomeFail, false, 0, 0, 1},
 		{"message no answer", "message", "", "", outcomeFail, false, 0, 0, 1},
-		{"announcement malformed refused", "message", "case.absent", AnnouncementMalformed, outcomePass, false, 1, 0, 0},
+		{"announcement malformed refused", "message", "case", "refused\n", outcomePass, false, 1, 0, 0},
 		{"announcement malformed accepted", "message", "case", "bytes", outcomeFail, false, 0, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

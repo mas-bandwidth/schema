@@ -476,7 +476,7 @@ fn fixed_table_load_walk(wire: &[u8], end: usize, ids: &[u64], mut retain: Optio
         if let Some(t) = term && t != end { report.damaged = true; return Some(FixedTable::default()); }
     }
     // A fixed-class root does not own the node table: §4 reads it as an unknown field.
-    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x85df369cdca746b3, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };
+    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x85df369cdca746b3, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };
     let mut v = FixedTable::default();
     let mut off = 1usize;
     let _ = fixed_table_load_body(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);

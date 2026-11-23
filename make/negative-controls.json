@@ -1577,7 +1577,7 @@
     {
       "name": "cs-absent",
       "when": "pull-request",
-      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
+      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case answers (SpillAbsent, and SpillRefused for the must-refuse blob_shared and variable-root rows, ruling R13) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
       "targets": [
         "conformance-cs-absent-negative-control"
       ],

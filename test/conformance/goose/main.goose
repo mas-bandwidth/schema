@@ -222,7 +222,7 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
         if root < 0 && report.reason == schema_rt::LoadRefuseBlobShared {
-            absent(f[1], "blob_shared");
+            answer(f[1], "refused\n");
             continue;
         }
         if root < 0 {
@@ -459,7 +459,7 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
 // vocabulary and whose unit is the unit under test; the glue's
 // conformance_message carries every root the unit has the message form for,
 // which is a fixed table's (§3.3: only a fixed table rides the message form):
-// a variable table's row is a named absence, as the Go leg answers it.
+// a variable table's row owes the refusal, `refused` and a newline (R13).
 fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -470,20 +470,29 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
             if c.len >= 5 && c[0] == "connection" && c[1] == f[2] && c[2] == unit { conn = i; }
         }
         if conn < 0 { continue; }
-        if f[5] == "-" {
-            // a named refusal row: the root is a variable table (§3.3)
-            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
-            continue;
-        }
         let c = words(lines[conn]);
         var ann: u8[>..] = [];
         load_file(c[4], ann);
+        if f[5] == "-" {
+            // a named refusal row: the root is a variable table (§3.3), so
+            // the generated code carries no message form for it. The refusal
+            // is answered only when the glue truly has no arm for the root
+            // (ruling R13); an arm for a variable root is a defect.
+            var none: u8[>..] = [];
+            var unused: u8[>..] = [];
+            if conformance_message(f[3], ann, none, unused) != -1 {
+                write_stderr(str("driver: ", f[1], " carries a message form for a variable root\n"));
+                exit(1);
+            }
+            answer(f[1], "refused\n");
+            continue;
+        }
         var wire: u8[>..] = [];
         load_file(f[5], wire);
         var out: u8[>..] = [];
         let n = conformance_message(f[3], ann, wire, out);
         if n == -1 {
-            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+            absent(f[1], "no message form for this root (SPEC-TABLES §3.3)");
             continue;
         }
         if n < 0 {
