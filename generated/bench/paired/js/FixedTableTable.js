@@ -620,6 +620,16 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       // declared defaults.
       return refuse();
     }
+    // A KIND MISMATCH MET IN ANY BODY REFUSES THE BATCH BY NAME as
+    // kind_mismatch (docs/SPEC-TABLES.md §3.3, §4), as the Go reference does:
+    // an announced kind this reader declares otherwise is never skipped and
+    // counted into a delivered batch. The count is 0 and every body of the
+    // batch goes back to its declared defaults.
+    if (report.Mismatch > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "kind_mismatch");
+      return 0;
+    }
     // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
     // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
     // reference and the Rust port do: the count is 0 and

@@ -72,7 +72,7 @@ func t12RequireRustToolchain(t *testing.T) {
 	t.Helper()
 	for _, bin := range []string{"rustc", "cargo"} {
 		if _, err := exec.LookPath(bin); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "1" {
+			if slowtest.CorpusRequired() {
 				t.Fatalf("SCHEMA_REQUIRE_CORPUS=1, and %s is not on PATH: %v", bin, err)
 			}
 			t.Skipf("%s is not on PATH: %v", bin, err)

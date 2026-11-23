@@ -445,9 +445,9 @@ end
 -- the vocabulary is made. Set before the first announcement, an announcement
 -- whose build version is not the reader's own (`ownVersion`, the unit's
 -- TableMessageBuildVersion handed to NewVocabulary) is refused
--- `build_version_mismatch`, sets no vocabulary, keeps the peer's build version
+-- `build_version_mismatch`, sets no vocabulary, keeps the writer's build version
 -- and names both versions in report.remote and report.own. A strict
--- vocabulary made without its own version refuses every peer.
+-- vocabulary made without its own version refuses every writer.
 function M.NewVocabulary(own: integer?): any
 	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096, strict = false, ownVersion = own }
 end
