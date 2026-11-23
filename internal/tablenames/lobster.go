@@ -30,7 +30,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"BlockField", "BlockLayout", "BlockRecord", "balign", "block_build", "block_build_all", "block_byte_order",
 		"block_dump", "block_dump_record", "block_float_at", "block_float_put", "block_magic",
 		"block_magic_swapped", "block_non_finite", "block_open", "block_open_reason", "block_read",
-		"block_read_all", "block_read_elem", "block_read_field", "block_read_record", "block_record", "block_used_length",
+		"block_read_all", "block_read_elem", "block_read_field", "block_read_record", "block_record", "block_refusal", "block_refuse", "block_used_length",
 		"block_registry", "block_write_elem", "block_write_field", "block_write_record", "bq", "bread_int",
 		"bscalar", "bscalar_elem", "bu64", "bwrite_int", "bx", "lookup_block", "register_block",
 	},
@@ -202,7 +202,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"save_live_count", "save_raw_width", "save_reasoned", "save_walked", "save_wide_raw", "sg_add_blob",
 		"sg_add_rec", "sg_blob_index", "sg_clear", "sg_map_order", "sg_rec_index", "sg_visit_edges", "sg_visit_union",
 		"sg_visit_value", "sg_walk", "sid_full", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
-		"so_u32", "so_u64", "so_u8", "wc_body", "wc_slot", "wc_value",
+		"so_u32", "so_u64", "so_u8", "wc_body", "wc_non_finite", "wc_slot", "wc_value",
 	},
 	"schema_tables.lobster": {
 		"wire_crc32c", "wire_crc32c_table", "wire_integrity_body",
