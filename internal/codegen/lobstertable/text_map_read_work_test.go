@@ -24,6 +24,7 @@ func TestLobsterTextMapReadWorkIsBounded(t *testing.T) {
 	const (
 		schemaText = "package mapreadwork\ntable Root { m map[string]int32 }\n"
 		small      = 2048
+		textSmall  = 512
 	)
 	schema := filepath.Join(t.TempDir(), "MapReadWork.schema")
 	if err := os.WriteFile(schema, []byte(schemaText), 0644); err != nil {
@@ -47,9 +48,14 @@ func TestLobsterTextMapReadWorkIsBounded(t *testing.T) {
 	c2 := runMapWork(t, g, objectJSONWorkProgram(g), objectJSONInput(n2), "input.json")
 	checkMapWork(t, "JSON object descending keys", small, c1, c2)
 
-	c1 = runMapWork(t, g, textMapWorkProgram(g), textMapInput(n1), "input.txt")
-	c2 = runMapWork(t, g, textMapWorkProgram(g), textMapInput(n2), "input.txt")
-	checkMapWork(t, "text map descending", small, c1, c2)
+	// the text form holds a document to the contract's default limits
+	// (SPEC-TABLES.md section 16.9.4: 8192 tokens, 4096 lists), and a map entry
+	// is one list of four tokens, so 2048 entries are past them and refuse
+	// text_limit; the text map is measured at a quarter of the JSON sizes
+	t1, t2 := textSmall, textSmall*2
+	c1 = runMapWork(t, g, textMapWorkProgram(g), textMapInput(t1), "input.txt")
+	c2 = runMapWork(t, g, textMapWorkProgram(g), textMapInput(t2), "input.txt")
+	checkMapWork(t, "text map descending", textSmall, c1, c2)
 
 	for _, form := range []string{"json", "text"} {
 		if got := runMapWorkVerdict(t, g, form); got != "REFUSED" {
