@@ -1626,14 +1626,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # live count is A and every element writes nothing, a table element when its
   # save body is empty (judged on a scratch walk whose ids are dropped), a union
   # element when it is None, a scalar element when it is the default.
-  defp list_born?(f, elements, idx_map, ids, order) do
-    min = Map.get(f, :min_count, 0)
-
-    min > 0 and Map.get(f, :array) == :counted and not Map.get(f, :optional, false) and
-      not Map.get(f, :required, false) and not Map.get(f, :text_list, false) and
-      length(elements) == min and
+  defp list_born?(%{min_count: min, array: :counted} = f, elements, idx_map, ids, order)
+       when min > 0 do
+    not Map.get(f, :optional, false) and not Map.get(f, :required, false) and
+      not Map.get(f, :text_list, false) and length(elements) == min and
       Enum.all?(elements, &element_writes_nothing?(f, &1, idx_map, ids, order))
   end
+
+  defp list_born?(_f, _elements, _idx_map, _ids, _order), do: false
 
   defp element_writes_nothing?(%{elem_kind: 13} = f, e, idx_map, ids, order) do
     {_idx, _ids, _order, body} =
