@@ -4990,7 +4990,7 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
-	FRAMING_WRITE=1 go test -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
+	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -8195,7 +8195,7 @@ pins-framing:
 	@# the family is aged instead: every file is set to the epoch, the writers run, and a
 	@# file still at the epoch was written by no writer (a hand-written one) and fails.
 	find testdata/wire/tables/framing -type f -exec touch -d @0 {} +
-	FRAMING_WRITE=1 go test -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
+	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 	@stale=$$(find testdata/wire/tables/framing -type f ! -newermt @1); 	if [ -n "$$stale" ]; then echo "$$stale"; echo "pins-framing: the files above are in testdata/wire/tables/framing but no FRAMING_WRITE writer produces them: written by hand. Delete them, or add the vector script."; exit 1; fi
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
