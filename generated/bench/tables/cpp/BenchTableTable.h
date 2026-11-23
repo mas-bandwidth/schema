@@ -18056,6 +18056,7 @@ TABLE_FIXED_INLINE bool TableMixedFixedInRange( const TableMixed & value )
     bad |= (int) ( value.frame_tick > 281474976710655ull );
     bad |= (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
     bad |= (int) ( table_float_to_bits( value.server_time ) == 0x80000000u );
+    bad |= (int) ( value.entities_count < 1 ); // a count below the declared Min (§5.1 row 3)
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         bad |= (int) !TableEntityFixedInRange( value.entities[i] );
@@ -18115,6 +18116,7 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
     // bits(48) width clamp
     bad |= (int) ( value.frame_tick > 281474976710655ull );
     bad |= (int) ( TableFloatFinite( value.server_time ) && ( value.server_time < 0.0f || value.server_time > 65535.0f ) );
+    bad |= (int) ( value.entities_count < 1 ); // a count below the declared Min (§5.1 row 3)
     for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
     {
         bad |= (int) !TableEntityFixedWriteAdmits( value.entities[i] );
@@ -18177,6 +18179,7 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_CLAMP_
     oor_count += (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
     value.server_time = ( value.server_time < 0.0f ) ? 0.0f : ( ( value.server_time > 65535.0f ) ? 65535.0f : value.server_time );
     if ( !( value.server_time < 0.0f ) && !( value.server_time > 0.0f ) ) { value.server_time = 0.0f; }
+    if ( value.entities_count < 1 ) { oor_count++; } // a count below the declared Min (§5.1 row 3)
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         TableEntityFixedClampBody( value.entities[i], oor_count, damaged );

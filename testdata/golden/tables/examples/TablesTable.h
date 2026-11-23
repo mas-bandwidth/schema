@@ -17631,6 +17631,8 @@ inline int64_t CountedMinMeasureBody( TableIds & ids, const CountedMin & value )
     return bytes;
 }
 
+inline bool CountedMinFixedWriteAdmits( const CountedMin & value );
+
 inline int64_t CountedMinMeasure( const CountedMin & value )
 {
     TableIds ids;
@@ -18274,6 +18276,7 @@ inline int64_t CountedMinMeasureMessages( const CountedMin * values, int64_t cou
     {
         const int64_t body = CountedMinMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( CountedMinFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -18292,6 +18295,7 @@ inline int64_t CountedMinSaveMessages( const CountedMin * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !CountedMinSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( CountedMinFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == CountedMinMeasureMessages( values, count, report )
@@ -21012,6 +21016,8 @@ inline int64_t MinPlainFixMeasureBody( TableIds & ids, const MinPlainFix & value
     return bytes;
 }
 
+inline bool MinPlainFixFixedWriteAdmits( const MinPlainFix & value );
+
 inline int64_t MinPlainFixMeasure( const MinPlainFix & value )
 {
     TableIds ids;
@@ -21655,6 +21661,7 @@ inline int64_t MinPlainFixMeasureMessages( const MinPlainFix * values, int64_t c
     {
         const int64_t body = MinPlainFixMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( MinPlainFixFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -21673,6 +21680,7 @@ inline int64_t MinPlainFixSaveMessages( const MinPlainFix * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !MinPlainFixSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( MinPlainFixFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == MinPlainFixMeasureMessages( values, count, report )
@@ -24001,6 +24009,35 @@ inline void RootConfigFixedClampBody( RootConfig & value, int32_t & TABLE_CLAMP_
     }
 }
 
+// CountedMin's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool CountedMinFixedInRange( const CountedMin & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.few_count < 2 ); // a count below the declared Min (§5.1 row 3)
+    return bad == 0;
+}
+
+// CountedMin's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool CountedMinFixedWriteAdmits( const CountedMin & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.few_count < 2 ); // a count below the declared Min (§5.1 row 3)
+    return bad == 0;
+}
+
+// CountedMin's read-side bounds.
+inline void CountedMinFixedClampBody( CountedMin & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
+{
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
+    if ( value.few_count < 2 ) { oor_count++; } // a count below the declared Min (§5.1 row 3)
+}
+
 // FloatBound's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool FloatBoundFixedInRange( const FloatBound & value )
@@ -24107,6 +24144,15 @@ TABLE_FIXED_INLINE bool MinArmFixFixedInRange( const MinArmFix & value )
     (void) value;
     int bad = 0;
     bad |= (int) ( (uint64_t) value.pick.type > 2u );
+    switch ( value.pick.type )
+    {
+        case MinPickType::Few:
+        {
+            bad |= (int) ( value.pick.few.value_count < 2 ); // a count below the declared Min (§5.1 row 3)
+            break;
+        }
+        default: break;
+    }
     return bad == 0;
 }
 
@@ -24117,6 +24163,15 @@ inline bool MinArmFixFixedWriteAdmits( const MinArmFix & value )
     (void) value;
     int bad = 0;
     bad |= (int) ( (uint64_t) value.pick.type > 2u );
+    switch ( value.pick.type )
+    {
+        case MinPickType::Few:
+        {
+            bad |= (int) ( value.pick.few.value_count < 2 ); // a count below the declared Min (§5.1 row 3)
+            break;
+        }
+        default: break;
+    }
     return bad == 0;
 }
 
@@ -24127,6 +24182,44 @@ inline void MinArmFixFixedClampBody( MinArmFix & value, int32_t & TABLE_CLAMP_RE
     (void) oor_count;
     (void) damaged;
     if ( (uint64_t) value.pick.type > 2u ) { value.pick.type = MinPickType::None; oor_count++; }
+    switch ( value.pick.type )
+    {
+        case MinPickType::Few:
+        {
+            if ( value.pick.few.value_count < 2 ) { oor_count++; } // a count below the declared Min (§5.1 row 3)
+            break;
+        }
+        default: break;
+    }
+}
+
+// MinPlainFix's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool MinPlainFixFixedInRange( const MinPlainFix & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.few_count < 2 ); // a count below the declared Min (§5.1 row 3)
+    return bad == 0;
+}
+
+// MinPlainFix's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MinPlainFixFixedWriteAdmits( const MinPlainFix & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.few_count < 2 ); // a count below the declared Min (§5.1 row 3)
+    return bad == 0;
+}
+
+// MinPlainFix's read-side bounds.
+inline void MinPlainFixFixedClampBody( MinPlainFix & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
+{
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
+    if ( value.few_count < 2 ) { oor_count++; } // a count below the declared Min (§5.1 row 3)
 }
 
 // Buff's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
@@ -27856,6 +27949,34 @@ inline int64_t RootConfigFixedLoad( RootConfig * values, int64_t capacity, const
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool CountedMinFixedClamp( CountedMin & value, TableReport * report )
+{
+    int32_t oor_count = 0;
+    int32_t damaged = 0;
+    if ( !CountedMinFixedInRange( value ) ) { CountedMinFixedClampBody( value, oor_count, damaged ); }
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::text_ill_formed;
+        return false;
+    }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
+    return true;
+}
+
 // ---- CountedMin, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -27978,6 +28099,10 @@ inline int64_t CountedMinFixedSave( const CountedMin * values, int64_t count, ui
     const int64_t need = CountedMinFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
     schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( CountedMinFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, CountedMinFixedHash );
@@ -28275,9 +28400,18 @@ inline int64_t CountedMinFixedLoadWalkBody( CountedMin * values, int64_t capacit
             }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, CountedMinFixedGuards, NULL );
         TableFixedClampKnownRanges( CountedMinFixedKnownRanges[lineage_at], CountedMinFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
+        if ( !CountedMinFixedClamp( values[k], report ) )
+        {
+            for ( int64_t j = 0; j <= k; ++j ) { CountedMinReset( values[j] ); }
+            report->widened = batch_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;
@@ -30284,6 +30418,34 @@ inline int64_t MinArmFixFixedLoad( MinArmFix * values, int64_t capacity, const u
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS, and a content rule REFUSES BY NAME.
+inline bool MinPlainFixFixedClamp( MinPlainFix & value, TableReport * report )
+{
+    int32_t oor_count = 0;
+    int32_t damaged = 0;
+    if ( !MinPlainFixFixedInRange( value ) ) { MinPlainFixFixedClampBody( value, oor_count, damaged ); }
+    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
+    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
+    // that carries the verdict is `refused` + the name, never `malformed`.
+    if ( damaged != 0 )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::text_ill_formed;
+        return false;
+    }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
+    return true;
+}
+
 // ---- MinPlainFix, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -30396,6 +30558,10 @@ inline int64_t MinPlainFixFixedSave( const MinPlainFix * values, int64_t count, 
     const int64_t need = MinPlainFixFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
     schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( MinPlainFixFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, MinPlainFixFixedHash );
@@ -30693,9 +30859,18 @@ inline int64_t MinPlainFixFixedLoadWalkBody( MinPlainFix * values, int64_t capac
             }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
+        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, MinPlainFixFixedGuards, NULL );
         TableFixedClampKnownRanges( MinPlainFixFixedKnownRanges[lineage_at], MinPlainFixFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
+        if ( !MinPlainFixFixedClamp( values[k], report ) )
+        {
+            for ( int64_t j = 0; j <= k; ++j ) { MinPlainFixReset( values[j] ); }
+            report->widened = batch_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     return n;

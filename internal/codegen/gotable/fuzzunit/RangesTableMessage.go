@@ -20,13 +20,13 @@ import (
 func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) bool {
 	{
 		if value.I8Span != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(52, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 2, Packing: 1, Bits: 8, Base: [2]uint64{0xffffffffffffff80, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I8Span), uint64(0))
 		}
 	}
 	{
 		if value.I8Low != 0 {
-			w.Put(46, TableMessageRefBitsHere)
+			w.Put(53, TableMessageRefBitsHere)
 			if value.I8Low > 126 {
 				w.Over++
 			}
@@ -35,7 +35,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I8High != 0 {
-			w.Put(47, TableMessageRefBitsHere)
+			w.Put(54, TableMessageRefBitsHere)
 			if value.I8High < -127 {
 				w.Over++
 			}
@@ -44,7 +44,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I8Inside != 0 {
-			w.Put(48, TableMessageRefBitsHere)
+			w.Put(55, TableMessageRefBitsHere)
 			if value.I8Inside < -127 || value.I8Inside > 126 {
 				w.Over++
 			}
@@ -53,13 +53,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16Span != 0 {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(56, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 3, Packing: 1, Bits: 16, Base: [2]uint64{0xffffffffffff8000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I16Span), uint64(0))
 		}
 	}
 	{
 		if value.I16Low != 0 {
-			w.Put(50, TableMessageRefBitsHere)
+			w.Put(57, TableMessageRefBitsHere)
 			if value.I16Low > 32766 {
 				w.Over++
 			}
@@ -68,7 +68,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16High != 0 {
-			w.Put(51, TableMessageRefBitsHere)
+			w.Put(58, TableMessageRefBitsHere)
 			if value.I16High < -32767 {
 				w.Over++
 			}
@@ -77,7 +77,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16Inside != 0 {
-			w.Put(52, TableMessageRefBitsHere)
+			w.Put(59, TableMessageRefBitsHere)
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
 				w.Over++
 			}
@@ -86,13 +86,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32Span != 0 {
-			w.Put(53, TableMessageRefBitsHere)
+			w.Put(60, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 32, Base: [2]uint64{0xffffffff80000000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I32Span), uint64(0))
 		}
 	}
 	{
 		if value.I32Low != 0 {
-			w.Put(54, TableMessageRefBitsHere)
+			w.Put(61, TableMessageRefBitsHere)
 			if value.I32Low > 2147483646 {
 				w.Over++
 			}
@@ -101,7 +101,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32High != 0 {
-			w.Put(55, TableMessageRefBitsHere)
+			w.Put(62, TableMessageRefBitsHere)
 			if value.I32High < -2147483647 {
 				w.Over++
 			}
@@ -110,7 +110,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32Inside != 0 {
-			w.Put(56, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
 				w.Over++
 			}
@@ -119,13 +119,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64Span != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(64, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 5, Packing: 1, Bits: 64, Base: [2]uint64{0x8000000000000000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I64Span), uint64(0))
 		}
 	}
 	{
 		if value.I64Low != 0 {
-			w.Put(58, TableMessageRefBitsHere)
+			w.Put(65, TableMessageRefBitsHere)
 			if value.I64Low > 9223372036854775806 {
 				w.Over++
 			}
@@ -134,7 +134,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64High != 0 {
-			w.Put(59, TableMessageRefBitsHere)
+			w.Put(66, TableMessageRefBitsHere)
 			if value.I64High < -9223372036854775807 {
 				w.Over++
 			}
@@ -143,7 +143,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64Inside != 0 {
-			w.Put(60, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
 				w.Over++
 			}
@@ -155,7 +155,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 			return false
 		}
 		if value.EdgesCount > 0 {
-			w.Put(61, TableMessageRefBitsHere)
+			w.Put(68, TableMessageRefBitsHere)
 			if value.EdgesCount < 0 || value.EdgesCount > 4 {
 				return false
 			}
@@ -248,7 +248,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
-				exact := ownBuild && entry.OwnSlot == 45
+				exact := ownBuild && entry.OwnSlot == 52
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -307,7 +307,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x942bfe3168090f7d:
 			{
-				exact := ownBuild && entry.OwnSlot == 46
+				exact := ownBuild && entry.OwnSlot == 53
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -366,7 +366,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd182acd105b55dd1:
 			{
-				exact := ownBuild && entry.OwnSlot == 47
+				exact := ownBuild && entry.OwnSlot == 54
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -425,7 +425,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xef9ded23c8912a81:
 			{
-				exact := ownBuild && entry.OwnSlot == 48
+				exact := ownBuild && entry.OwnSlot == 55
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -484,7 +484,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xb655574ea23760b4:
 			{
-				exact := ownBuild && entry.OwnSlot == 49
+				exact := ownBuild && entry.OwnSlot == 56
 				if exact {
 					if order >= 4 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -543,7 +543,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd217b3af8d7a2bde:
 			{
-				exact := ownBuild && entry.OwnSlot == 50
+				exact := ownBuild && entry.OwnSlot == 57
 				if exact {
 					if order >= 5 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -602,7 +602,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x90652f70c9127900:
 			{
-				exact := ownBuild && entry.OwnSlot == 51
+				exact := ownBuild && entry.OwnSlot == 58
 				if exact {
 					if order >= 6 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -661,7 +661,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x6a659d7c354db158:
 			{
-				exact := ownBuild && entry.OwnSlot == 52
+				exact := ownBuild && entry.OwnSlot == 59
 				if exact {
 					if order >= 7 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -720,7 +720,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xe693bd88532c91d6:
 			{
-				exact := ownBuild && entry.OwnSlot == 53
+				exact := ownBuild && entry.OwnSlot == 60
 				if exact {
 					if order >= 8 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -779,7 +779,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x065ee827cf99fbb4:
 			{
-				exact := ownBuild && entry.OwnSlot == 54
+				exact := ownBuild && entry.OwnSlot == 61
 				if exact {
 					if order >= 9 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -838,7 +838,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xc9b121c4c2a186ee:
 			{
-				exact := ownBuild && entry.OwnSlot == 55
+				exact := ownBuild && entry.OwnSlot == 62
 				if exact {
 					if order >= 10 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -897,7 +897,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd363dfa465acf27a:
 			{
-				exact := ownBuild && entry.OwnSlot == 56
+				exact := ownBuild && entry.OwnSlot == 63
 				if exact {
 					if order >= 11 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -956,7 +956,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x7549c70700c49d6f:
 			{
-				exact := ownBuild && entry.OwnSlot == 57
+				exact := ownBuild && entry.OwnSlot == 64
 				if exact {
 					if order >= 12 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1015,7 +1015,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x1cce6617419771db:
 			{
-				exact := ownBuild && entry.OwnSlot == 58
+				exact := ownBuild && entry.OwnSlot == 65
 				if exact {
 					if order >= 13 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1074,7 +1074,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x3b54fa60620b5597:
 			{
-				exact := ownBuild && entry.OwnSlot == 59
+				exact := ownBuild && entry.OwnSlot == 66
 				if exact {
 					if order >= 14 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1133,7 +1133,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd308fcb98ece5d23:
 			{
-				exact := ownBuild && entry.OwnSlot == 60
+				exact := ownBuild && entry.OwnSlot == 67
 				if exact {
 					if order >= 15 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1192,7 +1192,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xc70cde6b85b6197d:
 			{
-				exact := ownBuild && entry.OwnSlot == 61
+				exact := ownBuild && entry.OwnSlot == 68
 				if exact {
 					if order >= 16 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1323,13 +1323,13 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned) bool {
 	{
 		if value.U8Span != 0 {
-			w.Put(62, TableMessageRefBitsHere)
+			w.Put(69, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U8Span), uint64(0))
 		}
 	}
 	{
 		if value.U8Low != 0 {
-			w.Put(63, TableMessageRefBitsHere)
+			w.Put(70, TableMessageRefBitsHere)
 			if value.U8Low > 254 {
 				w.Over++
 			}
@@ -1338,7 +1338,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U8High != 1 {
-			w.Put(64, TableMessageRefBitsHere)
+			w.Put(71, TableMessageRefBitsHere)
 			if value.U8High < 1 {
 				w.Over++
 			}
@@ -1347,7 +1347,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U8Inside != 1 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(72, TableMessageRefBitsHere)
 			if value.U8Inside < 1 || value.U8Inside > 254 {
 				w.Over++
 			}
@@ -1356,13 +1356,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16Span != 0 {
-			w.Put(66, TableMessageRefBitsHere)
+			w.Put(73, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U16Span), uint64(0))
 		}
 	}
 	{
 		if value.U16Low != 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(74, TableMessageRefBitsHere)
 			if value.U16Low > 65534 {
 				w.Over++
 			}
@@ -1371,7 +1371,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16High != 1 {
-			w.Put(68, TableMessageRefBitsHere)
+			w.Put(75, TableMessageRefBitsHere)
 			if value.U16High < 1 {
 				w.Over++
 			}
@@ -1380,7 +1380,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16Inside != 1 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(76, TableMessageRefBitsHere)
 			if value.U16Inside < 1 || value.U16Inside > 65534 {
 				w.Over++
 			}
@@ -1389,13 +1389,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32Span != 0 {
-			w.Put(70, TableMessageRefBitsHere)
+			w.Put(77, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U32Span), uint64(0))
 		}
 	}
 	{
 		if value.U32Low != 0 {
-			w.Put(71, TableMessageRefBitsHere)
+			w.Put(78, TableMessageRefBitsHere)
 			if value.U32Low > 4294967294 {
 				w.Over++
 			}
@@ -1404,7 +1404,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32High != 1 {
-			w.Put(72, TableMessageRefBitsHere)
+			w.Put(79, TableMessageRefBitsHere)
 			if value.U32High < 1 {
 				w.Over++
 			}
@@ -1413,7 +1413,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32Inside != 1 {
-			w.Put(73, TableMessageRefBitsHere)
+			w.Put(80, TableMessageRefBitsHere)
 			if value.U32Inside < 1 || value.U32Inside > 4294967294 {
 				w.Over++
 			}
@@ -1422,13 +1422,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64Span != 0 {
-			w.Put(74, TableMessageRefBitsHere)
+			w.Put(81, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U64Span), uint64(0))
 		}
 	}
 	{
 		if value.U64Low != 0 {
-			w.Put(75, TableMessageRefBitsHere)
+			w.Put(82, TableMessageRefBitsHere)
 			if value.U64Low > 18446744073709551614 {
 				w.Over++
 			}
@@ -1437,7 +1437,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64High != 1 {
-			w.Put(76, TableMessageRefBitsHere)
+			w.Put(83, TableMessageRefBitsHere)
 			if value.U64High < 1 {
 				w.Over++
 			}
@@ -1446,7 +1446,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64Inside != 1 {
-			w.Put(77, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			if value.U64Inside < 1 || value.U64Inside > 18446744073709551614 {
 				w.Over++
 			}
@@ -1458,7 +1458,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 			return false
 		}
 		if value.CountsCount > 0 {
-			w.Put(78, TableMessageRefBitsHere)
+			w.Put(85, TableMessageRefBitsHere)
 			if value.CountsCount < 0 || value.CountsCount > 4 {
 				return false
 			}
@@ -1551,7 +1551,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
-				exact := ownBuild && entry.OwnSlot == 62
+				exact := ownBuild && entry.OwnSlot == 69
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1610,7 +1610,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x2e17553f8200a2a1:
 			{
-				exact := ownBuild && entry.OwnSlot == 63
+				exact := ownBuild && entry.OwnSlot == 70
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1669,7 +1669,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xa0e5c60df9301b7d:
 			{
-				exact := ownBuild && entry.OwnSlot == 64
+				exact := ownBuild && entry.OwnSlot == 71
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1728,7 +1728,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x1cb2c073a6f5844d:
 			{
-				exact := ownBuild && entry.OwnSlot == 65
+				exact := ownBuild && entry.OwnSlot == 72
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1787,7 +1787,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x4ca0c150b1790960:
 			{
-				exact := ownBuild && entry.OwnSlot == 66
+				exact := ownBuild && entry.OwnSlot == 73
 				if exact {
 					if order >= 4 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1846,7 +1846,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xf252136836b04cb2:
 			{
-				exact := ownBuild && entry.OwnSlot == 67
+				exact := ownBuild && entry.OwnSlot == 74
 				if exact {
 					if order >= 5 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1905,7 +1905,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x4f37e1f216e7610c:
 			{
-				exact := ownBuild && entry.OwnSlot == 68
+				exact := ownBuild && entry.OwnSlot == 75
 				if exact {
 					if order >= 6 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1964,7 +1964,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xd176b605978f3304:
 			{
-				exact := ownBuild && entry.OwnSlot == 69
+				exact := ownBuild && entry.OwnSlot == 76
 				if exact {
 					if order >= 7 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2023,7 +2023,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x200b924de7479cda:
 			{
-				exact := ownBuild && entry.OwnSlot == 70
+				exact := ownBuild && entry.OwnSlot == 77
 				if exact {
 					if order >= 8 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2082,7 +2082,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xa53d2f2a31b5acb0:
 			{
-				exact := ownBuild && entry.OwnSlot == 71
+				exact := ownBuild && entry.OwnSlot == 78
 				if exact {
 					if order >= 9 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2141,7 +2141,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x9759be8ea1a4e3d2:
 			{
-				exact := ownBuild && entry.OwnSlot == 72
+				exact := ownBuild && entry.OwnSlot == 79
 				if exact {
 					if order >= 10 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2200,7 +2200,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x8dc515fc082e3c0e:
 			{
-				exact := ownBuild && entry.OwnSlot == 73
+				exact := ownBuild && entry.OwnSlot == 80
 				if exact {
 					if order >= 11 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2259,7 +2259,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xbeecef11dbdf8973:
 			{
-				exact := ownBuild && entry.OwnSlot == 74
+				exact := ownBuild && entry.OwnSlot == 81
 				if exact {
 					if order >= 12 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2318,7 +2318,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x0117ad66e0fff227:
 			{
-				exact := ownBuild && entry.OwnSlot == 75
+				exact := ownBuild && entry.OwnSlot == 82
 				if exact {
 					if order >= 13 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2377,7 +2377,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xf2b45af3b50689db:
 			{
-				exact := ownBuild && entry.OwnSlot == 76
+				exact := ownBuild && entry.OwnSlot == 83
 				if exact {
 					if order >= 14 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2436,7 +2436,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x713e12017eebcaf7:
 			{
-				exact := ownBuild && entry.OwnSlot == 77
+				exact := ownBuild && entry.OwnSlot == 84
 				if exact {
 					if order >= 15 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2495,7 +2495,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xc341febe5aae51e5:
 			{
-				exact := ownBuild && entry.OwnSlot == 78
+				exact := ownBuild && entry.OwnSlot == 85
 				if exact {
 					if order >= 16 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2626,7 +2626,7 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) bool {
 	{
 		if value.B8 != 0 {
-			w.Put(79, TableMessageRefBitsHere)
+			w.Put(86, TableMessageRefBitsHere)
 			if value.B8 > 255 {
 				w.Over++
 			}
@@ -2635,7 +2635,7 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B16 != 0 {
-			w.Put(80, TableMessageRefBitsHere)
+			w.Put(87, TableMessageRefBitsHere)
 			if value.B16 > 65535 {
 				w.Over++
 			}
@@ -2644,19 +2644,19 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B32 != 0 {
-			w.Put(81, TableMessageRefBitsHere)
+			w.Put(88, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.B32), uint64(0))
 		}
 	}
 	{
 		if value.B64 != 0 {
-			w.Put(82, TableMessageRefBitsHere)
+			w.Put(89, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.B64), uint64(0))
 		}
 	}
 	{
 		if value.B12 != 0 {
-			w.Put(83, TableMessageRefBitsHere)
+			w.Put(90, TableMessageRefBitsHere)
 			if value.B12 > 4095 {
 				w.Over++
 			}
@@ -2665,7 +2665,7 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B48 != 0 {
-			w.Put(84, TableMessageRefBitsHere)
+			w.Put(91, TableMessageRefBitsHere)
 			if value.B48 > 281474976710655 {
 				w.Over++
 			}
@@ -2755,7 +2755,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
-				exact := ownBuild && entry.OwnSlot == 79
+				exact := ownBuild && entry.OwnSlot == 86
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2814,7 +2814,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff95701912ad97be:
 			{
-				exact := ownBuild && entry.OwnSlot == 80
+				exact := ownBuild && entry.OwnSlot == 87
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2873,7 +2873,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff9c5c1912b39470:
 			{
-				exact := ownBuild && entry.OwnSlot == 81
+				exact := ownBuild && entry.OwnSlot == 88
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2932,7 +2932,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff92701912ab61e7:
 			{
-				exact := ownBuild && entry.OwnSlot == 82
+				exact := ownBuild && entry.OwnSlot == 89
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2986,7 +2986,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff95741912ad9e8a:
 			{
-				exact := ownBuild && entry.OwnSlot == 83
+				exact := ownBuild && entry.OwnSlot == 90
 				if exact {
 					if order >= 4 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -3045,7 +3045,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff8b681912a535a1:
 			{
-				exact := ownBuild && entry.OwnSlot == 84
+				exact := ownBuild && entry.OwnSlot == 91
 				if exact {
 					if order >= 5 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

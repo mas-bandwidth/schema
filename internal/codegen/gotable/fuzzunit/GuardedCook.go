@@ -185,9 +185,15 @@ func init() {
 	tableCookLayoutSize("BuffRow", unsafe.Sizeof(BuffRow{}), 4)
 	tableCookLayoutSize("BuffRow alignment", unsafe.Alignof(BuffRow{}), 4)
 	tableCookLayoutOffset("BuffRow.Multiplier", unsafe.Offsetof(BuffRow{}.Multiplier), 0)
+	tableCookLayoutSize("CountedMinRow", unsafe.Sizeof(CountedMinRow{}), 24)
+	tableCookLayoutSize("CountedMinRow alignment", unsafe.Alignof(CountedMinRow{}), 4)
+	tableCookLayoutOffset("CountedMinRow.Few", unsafe.Offsetof(CountedMinRow{}.Few), 0)
 	tableCookLayoutSize("DebuffRow", unsafe.Sizeof(DebuffRow{}), 4)
 	tableCookLayoutSize("DebuffRow alignment", unsafe.Alignof(DebuffRow{}), 4)
 	tableCookLayoutOffset("DebuffRow.Amount", unsafe.Offsetof(DebuffRow{}.Amount), 0)
+	tableCookLayoutSize("FloatBoundRow", unsafe.Sizeof(FloatBoundRow{}), 4)
+	tableCookLayoutSize("FloatBoundRow alignment", unsafe.Alignof(FloatBoundRow{}), 4)
+	tableCookLayoutOffset("FloatBoundRow.Level", unsafe.Offsetof(FloatBoundRow{}.Level), 0)
 	tableCookLayoutSize("GlobalSettingsRow", unsafe.Sizeof(GlobalSettingsRow{}), 72)
 	tableCookLayoutSize("GlobalSettingsRow alignment", unsafe.Alignof(GlobalSettingsRow{}), 4)
 	tableCookLayoutOffset("GlobalSettingsRow.TickRate", unsafe.Offsetof(GlobalSettingsRow{}.TickRate), 0)
@@ -222,6 +228,19 @@ func init() {
 	tableCookLayoutOffset("LoadoutConfigRow.Primary", unsafe.Offsetof(LoadoutConfigRow{}.Primary), 24)
 	tableCookLayoutOffset("LoadoutConfigRow.Backups", unsafe.Offsetof(LoadoutConfigRow{}.Backups), 52)
 	tableCookLayoutOffset("LoadoutConfigRow.Attachments", unsafe.Offsetof(LoadoutConfigRow{}.Attachments), 108)
+	tableCookLayoutSize("MinArmFixRow", unsafe.Sizeof(MinArmFixRow{}), 24)
+	tableCookLayoutSize("MinArmFixRow alignment", unsafe.Alignof(MinArmFixRow{}), 4)
+	tableCookLayoutOffset("MinArmFixRow.Pick", unsafe.Offsetof(MinArmFixRow{}.Pick), 0)
+	tableCookLayoutSize("MinPlainFixRow", unsafe.Sizeof(MinPlainFixRow{}), 20)
+	tableCookLayoutSize("MinPlainFixRow alignment", unsafe.Alignof(MinPlainFixRow{}), 4)
+	tableCookLayoutOffset("MinPlainFixRow.Few", unsafe.Offsetof(MinPlainFixRow{}.Few), 0)
+	tableCookLayoutSize("MoodFieldRow", unsafe.Sizeof(MoodFieldRow{}), 4)
+	tableCookLayoutSize("MoodFieldRow alignment", unsafe.Alignof(MoodFieldRow{}), 2)
+	tableCookLayoutOffset("MoodFieldRow.Mood", unsafe.Offsetof(MoodFieldRow{}.Mood), 0)
+	tableCookLayoutOffset("MoodFieldRow.Tail", unsafe.Offsetof(MoodFieldRow{}.Tail), 2)
+	tableCookLayoutSize("MoodsRow", unsafe.Sizeof(MoodsRow{}), 8)
+	tableCookLayoutSize("MoodsRow alignment", unsafe.Alignof(MoodsRow{}), 4)
+	tableCookLayoutOffset("MoodsRow.Row", unsafe.Offsetof(MoodsRow{}.Row), 0)
 	tableCookLayoutSize("PackConfigRow", unsafe.Sizeof(PackConfigRow{}), 740)
 	tableCookLayoutSize("PackConfigRow alignment", unsafe.Alignof(PackConfigRow{}), 4)
 	tableCookLayoutOffset("PackConfigRow.Version", unsafe.Offsetof(PackConfigRow{}.Version), 0)
@@ -360,7 +379,7 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 // §11 fact rather than a taste: a name derived from a DECLARATION's own
 // spelling is a name a declaration can collide with, and the checker has no
 // machinery for a prefix-and-name product. One fixed name is one claim.
-var tableCookRecords = make([]TableCookInfo, 23)
+var tableCookRecords = make([]TableCookInfo, 29)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
@@ -393,12 +412,24 @@ func init() {
 		},
 	}
 	tableCookRecords[3] = TableCookInfo{
+		Name: "CountedMin", Size: 24, Align: 4, NumFields: 1,
+		Fields: []TableCookFieldInfo{
+			{Name: "few", Offset: 0, Size: 24, ElemSize: 4, IsArray: true, ArrayBound: 5, IsPointer: false, CountOffset: 20, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[4] = TableCookInfo{
 		Name: "Debuff", Size: 4, Align: 4, NumFields: 1,
 		Fields: []TableCookFieldInfo{
 			{Name: "amount", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[4] = TableCookInfo{
+	tableCookRecords[5] = TableCookInfo{
+		Name: "FloatBound", Size: 4, Align: 4, NumFields: 1,
+		Fields: []TableCookFieldInfo{
+			{Name: "level", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+		},
+	}
+	tableCookRecords[6] = TableCookInfo{
 		Name: "GlobalSettings", Size: 72, Align: 4, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "tick_rate", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -407,14 +438,14 @@ func init() {
 			{Name: "spawn_delays", Offset: 60, Size: 12, ElemSize: 4, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
 		},
 	}
-	tableCookRecords[5] = TableCookInfo{
+	tableCookRecords[7] = TableCookInfo{
 		Name: "GunnerConfig", Size: 8, Align: 4, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "reaction", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
 			{Name: "tracking", Offset: 4, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
 		},
 	}
-	tableCookRecords[6] = TableCookInfo{
+	tableCookRecords[8] = TableCookInfo{
 		Name: "GunnerSettings", Size: 36, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "reaction", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -422,7 +453,7 @@ func init() {
 			{Name: "callsign", Offset: 5, Size: 31, ElemSize: 31, IsArray: false, ArrayBound: 24, IsPointer: false, CountOffset: 32, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
-	tableCookRecords[7] = TableCookInfo{
+	tableCookRecords[9] = TableCookInfo{
 		Name: "HullConfig", Size: 68, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "health", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -430,7 +461,7 @@ func init() {
 			{Name: "turrets", Offset: 8, Size: 60, ElemSize: 20, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[8] = TableCookInfo{
+	tableCookRecords[10] = TableCookInfo{
 		Name: "KeyedConfig", Size: 300, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "teams", Offset: 0, Size: 84, ElemSize: 28, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
@@ -438,7 +469,7 @@ func init() {
 			{Name: "scores", Offset: 288, Size: 12, ElemSize: 12, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[9] = TableCookInfo{
+	tableCookRecords[11] = TableCookInfo{
 		Name: "LoadoutConfig", Size: 176, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
 			{Name: "grade", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -450,7 +481,32 @@ func init() {
 			{Name: "attachments", Offset: 108, Size: 68, ElemSize: 8, IsArray: true, ArrayBound: 8, IsPointer: false, CountOffset: 172, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[10] = TableCookInfo{
+	tableCookRecords[12] = TableCookInfo{
+		Name: "MinArmFix", Size: 24, Align: 4, NumFields: 1,
+		Fields: []TableCookFieldInfo{
+			{Name: "pick", Offset: 0, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+		},
+	}
+	tableCookRecords[13] = TableCookInfo{
+		Name: "MinPlainFix", Size: 20, Align: 4, NumFields: 1,
+		Fields: []TableCookFieldInfo{
+			{Name: "few", Offset: 0, Size: 20, ElemSize: 4, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: 16, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[14] = TableCookInfo{
+		Name: "MoodField", Size: 4, Align: 2, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "mood", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "tail", Offset: 2, Size: 2, ElemSize: 2, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[15] = TableCookInfo{
+		Name: "Moods", Size: 8, Align: 4, NumFields: 1,
+		Fields: []TableCookFieldInfo{
+			{Name: "row", Offset: 0, Size: 8, ElemSize: 1, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: 4, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[16] = TableCookInfo{
 		Name: "PackConfig", Size: 740, Align: 4, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "version", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -460,7 +516,7 @@ func init() {
 			{Name: "reserves", Offset: 412, Size: 328, ElemSize: 108, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: 736, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[11] = TableCookInfo{
+	tableCookRecords[17] = TableCookInfo{
 		Name: "Patrol", Size: 36, Align: 4, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "active", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
@@ -471,7 +527,7 @@ func init() {
 			{Name: "note", Offset: 20, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 8, IsPointer: false, CountOffset: 32, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
-	tableCookRecords[12] = TableCookInfo{
+	tableCookRecords[18] = TableCookInfo{
 		Name: "ProfileConfig", Size: 304, Align: 8, NumFields: 13,
 		Fields: []TableCookFieldInfo{
 			{Name: "name", Offset: 0, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 36, PresentOffset: -1, Storage: TableCookStorageString},
@@ -489,7 +545,7 @@ func init() {
 			{Name: "loadout", Offset: 128, Size: 176, ElemSize: 176, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[13] = TableCookInfo{
+	tableCookRecords[19] = TableCookInfo{
 		Name: "RangedSigned", Size: 80, Align: 8, NumFields: 17,
 		Fields: []TableCookFieldInfo{
 			{Name: "i8_span", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
@@ -511,7 +567,7 @@ func init() {
 			{Name: "edges", Offset: 64, Size: 12, ElemSize: 2, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: 72, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[14] = TableCookInfo{
+	tableCookRecords[20] = TableCookInfo{
 		Name: "RangedUnsigned", Size: 104, Align: 8, NumFields: 17,
 		Fields: []TableCookFieldInfo{
 			{Name: "u8_span", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -533,7 +589,7 @@ func init() {
 			{Name: "counts", Offset: 64, Size: 36, ElemSize: 8, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: 96, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 		},
 	}
-	tableCookRecords[15] = TableCookInfo{
+	tableCookRecords[21] = TableCookInfo{
 		Name: "RangedWidths", Size: 40, Align: 8, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "b8", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -544,7 +600,7 @@ func init() {
 			{Name: "b48", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 		},
 	}
-	tableCookRecords[16] = TableCookInfo{
+	tableCookRecords[22] = TableCookInfo{
 		Name: "RootConfig", Size: 1480, Align: 8, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "version_note", Offset: 0, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 20, PresentOffset: -1, Storage: TableCookStorageString},
@@ -552,13 +608,13 @@ func init() {
 			{Name: "profiles", Offset: 256, Size: 1220, ElemSize: 304, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: 1472, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[17] = TableCookInfo{
+	tableCookRecords[23] = TableCookInfo{
 		Name: "ScoreBoard", Size: 12, Align: 4, NumFields: 1,
 		Fields: []TableCookFieldInfo{
 			{Name: "per_team", Offset: 0, Size: 12, ElemSize: 4, IsArray: true, ArrayBound: 3, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[18] = TableCookInfo{
+	tableCookRecords[24] = TableCookInfo{
 		Name: "ShipEntry", Size: 108, Align: 4, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "display_name", Offset: 0, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 36, PresentOffset: -1, Storage: TableCookStorageString},
@@ -568,14 +624,14 @@ func init() {
 			{Name: "gunner", Offset: 68, Size: 37, ElemSize: 37, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 104, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[19] = TableCookInfo{
+	tableCookRecords[25] = TableCookInfo{
 		Name: "TeamConfig", Size: 28, Align: 4, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "spawn_count", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "banner", Offset: 4, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 24, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
-	tableCookRecords[20] = TableCookInfo{
+	tableCookRecords[26] = TableCookInfo{
 		Name: "TurretConfig", Size: 20, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "damage", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -583,7 +639,7 @@ func init() {
 			{Name: "gunner", Offset: 8, Size: 9, ElemSize: 9, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 16, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[21] = TableCookInfo{
+	tableCookRecords[27] = TableCookInfo{
 		Name: "WeaponConfig", Size: 28, Align: 4, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "damage", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -594,7 +650,7 @@ func init() {
 			{Name: "effect", Offset: 20, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[22] = TableCookInfo{
+	tableCookRecords[28] = TableCookInfo{
 		Name: "WideBlob", Size: 280016, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "label", Offset: 0, Size: 70008, ElemSize: 70008, IsArray: false, ArrayBound: 70000, IsPointer: false, CountOffset: 70004, PresentOffset: -1, Storage: TableCookStorageString},
@@ -602,22 +658,22 @@ func init() {
 			{Name: "samples", Offset: 140012, Size: 140004, ElemSize: 2, IsArray: true, ArrayBound: 70000, IsPointer: false, CountOffset: 280012, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 		},
 	}
-	tableCookRecords[0].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[16] }
-	tableCookRecords[7].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[20] }
-	tableCookRecords[8].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[19] }
-	tableCookRecords[8].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[7] }
-	tableCookRecords[8].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[17] }
-	tableCookRecords[9].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[21] }
-	tableCookRecords[9].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[21] }
-	tableCookRecords[9].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[1] }
-	tableCookRecords[10].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[4] }
-	tableCookRecords[10].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[18] }
-	tableCookRecords[10].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[18] }
-	tableCookRecords[12].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[9] }
-	tableCookRecords[16].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[21] }
-	tableCookRecords[16].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[12] }
-	tableCookRecords[18].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[6] }
-	tableCookRecords[20].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[5] }
+	tableCookRecords[0].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[22] }
+	tableCookRecords[9].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[26] }
+	tableCookRecords[10].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[25] }
+	tableCookRecords[10].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[9] }
+	tableCookRecords[10].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[11].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[11].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[11].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[1] }
+	tableCookRecords[16].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[6] }
+	tableCookRecords[16].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[24] }
+	tableCookRecords[16].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[24] }
+	tableCookRecords[18].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[11] }
+	tableCookRecords[22].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[22].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[18] }
+	tableCookRecords[24].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[8] }
+	tableCookRecords[26].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[7] }
 }
 
 // PatrolCook is Patrol's cook: a pointer and a length, and then the root where it
@@ -684,9 +740,9 @@ func PatrolAt(slot *int64, arena ...*TableArena) *PatrolRow {
 
 // Type is Patrol's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c PatrolCook) Type() *TableCookInfo { return &tableCookRecords[11] }
+func (c PatrolCook) Type() *TableCookInfo { return &tableCookRecords[17] }
 
-const tableCookBuildVersion uint64 = 0x3684616af27a45c9
+const tableCookBuildVersion uint64 = 0x74f8a79e113ca9df
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -751,7 +807,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	used := int32(1)
 	if f.Counted {
 		used = *(*int32)(unsafe.Add(base, f.CountOffset))
-		if used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
+		if used < f.ArrayMin || used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
 			return false
 		}
 		w.put(at+int64(f.CookCountOffset), uint64(used), 4)

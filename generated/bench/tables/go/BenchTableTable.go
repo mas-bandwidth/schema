@@ -3557,7 +3557,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		return -3
 	}
 	if c.unlawful != 0 {
-		return -1 - int(c.unlawful)
+		return -1 - int32(c.unlawful)
 	}
 	if c.overflow {
 		return -1
