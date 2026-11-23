@@ -489,23 +489,26 @@ byte at `H + k*R`, then a ragged tail of `0..R-1` bytes; `rest = len - H`,
 refuses. Record `k` decodes into `scratch[k]`; only after the last record has
 decoded does the commit loop land `out[k] := scratch[k]` for `k < count`. The
 caller hands `N + 1` poisoned rows, so a write past `count` is seen. A record is
-a value (`1`, `2`) or bad (`0`, any body condition). The ORACLE is the file's
-meaning: refused when the tail is ragged or any record is bad, otherwise rows
-`0..n-1` hold the values and every other row its poison.
+a value (`1`, `2`) or bad (`0`, any body condition). Any refusal, of the frame or
+of a record, resets EVERY row the caller handed in to its declared default (R4,
+docs/SPEC-TABLES.md §6.5). The ORACLE is the file's meaning: refused when the
+tail is ragged or any record is bad, with every row at its default; otherwise
+rows `0..n-1` hold the values and every other row its poison.
 
 ## Properties
 
 - **TypeOK** — every variable in its finite domain.
 - **OneVerdict** — the read refuses exactly the files the meaning refuses with
-  every caller row untouched, and otherwise lands exactly the meaning with every
-  row past the batch untouched.
+  every caller row at its declared default, and otherwise lands exactly the
+  meaning with every row past the batch untouched.
 - **ReadsValueBytes** — every byte the decode reads is a record's value byte.
 
 ## Reversed witnesses
 
 | cfg | switch | invariant violated | counterexample |
 |---|---|---|---|
-| `MCFixedBatchLandDuringDecode.cfg` | `LandDuringDecode` | `OneVerdict` | `vals = <<1, 0>>`: record 0 decodes straight into `out[0]`, record 1 refuses, and row 0 keeps the value; the bug the Squirrel reader had at e254a5cba |
+| `MCFixedBatchNoReset.cfg` | `NoReset` | `OneVerdict` | a frame refusal (a ragged tail, or more records than rows) leaves every row at its poison: the retired "untouched" rule, which the Squirrel, JS and C# (unity) readers kept before R4 |
+| `MCFixedBatchResetThroughK.cfg` | `ResetThroughK` | `OneVerdict` | a frame refusal resets no row, and a record refusal at `k` resets only rows `0..k`: the partial reset the Go and C readers had before R4 |
 | `MCFixedBatchCommitShort.cfg` | `CommitShort` | `OneVerdict` | `vals = <<1>>`: the commit loop stops at `count - 1` and the one record never lands |
 | `MCFixedBatchStrideOff.cfg` | `StrideOff` | `ReadsValueBytes` | `vals = <<1, 0>>`: record 1 addressed at `H + 1*(R-1)` reads record 0's filler byte |
 | `MCFixedBatchNoTailCheck.cfg` | `NoTailCheck` | `OneVerdict` | an empty batch with a one-byte ragged tail reads as zero records |

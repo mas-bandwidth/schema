@@ -135,3 +135,61 @@ func TestDerivationOnAHandTree(t *testing.T) {
 		t.Errorf("unread = %v", s.Unread)
 	}
 }
+
+func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+
+	// packet-defaults and packet-end account for *.bin only (not *.bits sidecars).
+	for _, fam := range []string{"packet-defaults", "packet-end"} {
+		files := AccountFilesForLeg(tr, fam, "python")
+		if len(files) == 0 {
+			t.Fatalf("%s: no accounted files", fam)
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f, ".bits") {
+				t.Errorf("%s: unexpected .bits sidecar in accounted files: %s", fam, f)
+			}
+		}
+	}
+
+	// Per-leg schema families resolve each leg to its own schema file.
+	wantSchemas := []struct {
+		fam, leg, schema string
+	}{
+		{"packet-finite", "go", "test/packet-finite/Finite.schema"},
+		{"packet-finite", "java", "test/java/Finite.schema"},
+		{"packet-finite", "dart", "test/packet-finite/dart/Finite.schema"},
+		{"packet-finite", "squirrel", "test/packet-finite/squirrel/Finite.schema"},
+		{"packet-void", "cpp", "test/packet-void/Void.schema"},
+		{"packet-void", "python", "test/packet-void/python/Python.schema"},
+		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
+		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
+		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacket.schema"},
+		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
+		{"packet-write-text", "dart", "test/packet-write-text/dart/PacketText.schema"},
+		{"packet-write-text", "java", "test/packet-write-text/java/PacketText.schema"},
+		{"packet-write-text", "js", "test/packet-write-text/js/Text.schema"},
+	}
+	for _, tc := range wantSchemas {
+		got := AccountFilesForLeg(tr, tc.fam, tc.leg)
+		if !slices.Contains(got, tc.schema) {
+			t.Errorf("%s %s: expected %s in %v", tc.fam, tc.leg, tc.schema, got)
+		}
+	}
+
+	// conformance-corpus excludes the two C++ wire-fuzz-only .bin files not in MANIFEST.txt.
+	cc := AccountFilesForLeg(tr, "conformance-corpus", "go")
+	for _, excl := range []string{
+		"testdata/conformance/tables/wire/array_root_body_short.bin",
+		"testdata/conformance/tables/wire/graph_widened_default.bin",
+		"testdata/conformance/tables/wire/widenbound_msg.bin",
+	} {
+		if slices.Contains(cc, excl) {
+			t.Errorf("conformance-corpus: excluded wire-fuzz file still present: %s", excl)
+		}
+	}
+	if !slices.Contains(cc, "testdata/conformance/tables/MANIFEST.txt") || len(cc) < 100 {
+		t.Errorf("conformance-corpus: unexpected accounted count %d", len(cc))
+	}
+}

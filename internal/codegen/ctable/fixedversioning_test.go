@@ -842,6 +842,11 @@ func cRunVersionProbeRoot(t *testing.T, reader string, older []string, retire in
 #include <string.h>
 #include "%s"
 
+/* PROBE_RESET is the root's reset, for a body that builds the declared-defaults
+   image of a row (ruling R4: a refusal resets every row handed in). */
+#define PROBE_RESET( v ) %s( v )
+typedef %s probe_row_t;
+
 int main( void )
 {
     static uint8_t data[1 << 20];
@@ -878,7 +883,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
+`, header, snake+"_reset", root, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
