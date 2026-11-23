@@ -7497,7 +7497,7 @@ caller's array of values is the whole of its storage.
 
   A new vocabulary takes its construction defaults described above. If
   the caller supplies either limit, use that integer, including zero.
-  Supplying one limit leaves the other at its declared or default value.
+  Changing one limit leaves the other limit in effect.
   A configured entry limit of zero permits only `E = 0`, even when the
   backing storage has room. A configured byte limit of zero permits only
   `L = 0`. A valid empty vocabulary has `E = L = 0` and fits both zero

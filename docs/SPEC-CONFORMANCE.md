@@ -412,8 +412,10 @@ framing. On APIs with separately allocated storage, keep enough storage
 for the nonempty vocabulary even in the explicit-zero tests.
 
 For [§3.4 fixed-file reads](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout),
-use the same valid one-record file in every row. This file format requires
-at least one record.
+use the same [one-record file](../testdata/wire/fixed-empty-batch/one-record.bin)
+in every row. It stores `a = 7` and `name = "hello"` in the
+[Batch declaration](../test/fixed-empty-batch/Batch.schema). This file
+format requires at least one record.
 
 | Fixed reader capacity | Result on one record |
 |---|---|
@@ -423,3 +425,15 @@ at least one record.
 
 An implementation whose fixed reader requires a caller-provided destination
 runs the explicit-capacity cases with room for zero and one record respectively.
+
+The [fixed-capacity cases](../testdata/conformance/feature-witnesses/fixed-load-capacity/cases.txt)
+also exercise the typed empty-save call, which must refuse before emitting a
+file. Python exercises omission and both explicit capacities. Go uses the
+length of the required destination slice and also checks that the empty
+save leaves the supplied buffer intact. Run the generated public APIs with
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
+  ./internal/codegen/gotable ./internal/codegen/pythontable \
+  -run 'Test(Go|Python)FixedLoadCapacityWitness'
+```
