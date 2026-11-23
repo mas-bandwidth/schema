@@ -119,6 +119,7 @@ type tableGen struct {
 	// answerable by asking one question (§2.2).
 	blocks         *ir.BlockUnit
 	owner          *ir.Struct      // the closure member whose codec is being emitted
+	writeChecked   map[string]bool // see messageNeedsWriteAsserts
 	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
 	body           strings.Builder

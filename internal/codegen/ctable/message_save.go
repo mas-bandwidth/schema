@@ -51,6 +51,7 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		// §3.3), a compressed float's too, before it is quantized: the
 		// measure and the save share this body and refuse it at one place
 		g.pf("%sif(!table_float_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
+		g.messageFloatAssert(f, expr, true, ind)
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(shape)
 			g.pf("%stable_bit_put(w,table_message_quantize(%s,%s,%s,%du),%d);\n", ind, expr, formatFloat(float64(shape.QMin), true), formatFloat(float64(delta), true), count, bits)
@@ -64,6 +65,13 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		// where -0 is the index of 0
 		g.pf("%stable_bit_put(w,%s(%s),64);\n", ind, storedFloatBits(f, true), expr)
 	default:
+		if g.messageNeedsWriteAsserts() {
+			width := tableKindWidth(int(kind))
+			if width != 16 {
+				width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
+			}
+			g.emitWriteRowAsserts(f, expr, width, ind, true)
+		}
 		var lo, hi uint64
 		if shape.Base != nil {
 			low, high := wideLanes(shape.Base)
@@ -304,4 +312,30 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n%s table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", each)
 		}
 	}
+}
+
+// messageNeedsWriteAsserts is whether the message body of the member being
+// emitted holds the write contract itself. A table the fixed form is emitted for
+// has its write check (writeAdmits), which every SaveMessages asserts over each
+// value, nested types included. A fixed table PAST THE SIZE CEILING of the fixed
+// form has none, so its body, and the body of each type nested in it, asserts
+// rows 1, 2 and 10 per value (docs/SPEC.md §5.1), debug only.
+func (g *tableGen) messageNeedsWriteAsserts() bool {
+	if g.owner == nil {
+		return true
+	}
+	if g.writeChecked == nil {
+		g.writeChecked = ir.TableWriteChecked(g.unit)
+	}
+	return !g.writeChecked[g.owner.Name]
+}
+
+// messageFloatAssert is row 10 for one float: a ranged float off its range is a
+// debug assert, against the float32 ends for a float32 (docs/SPEC-TABLES.md §3.3).
+func (g *tableGen) messageFloatAssert(f *ir.Field, expr string, single bool, ind string) {
+	if !f.HasFloatRange || !g.messageNeedsWriteAsserts() {
+		return
+	}
+	g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); /* a ranged float off its range, debug only (SPEC.md §5.1 row 10) */\n",
+		ind, expr, formatFloat(f.FMin, single), expr, formatFloat(f.FMax, single))
 }
