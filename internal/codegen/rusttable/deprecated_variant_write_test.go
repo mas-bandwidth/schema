@@ -1,6 +1,7 @@
 package rusttable
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +22,14 @@ func TestRustDeclaredEnumWriteWitness(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	layoutRustUnit(t, dir, "depr", generate(t, string(schema)))
+	files := generate(t, string(schema))
+	layoutRustUnit(t, dir, "depr", files)
+	for _, module := range []string{"probe_cook.rs", "cook_runtime.rs"} {
+		source := bytes.ReplaceAll(files[module], []byte("use crate::*;"), []byte("use super::*;"))
+		if err := os.WriteFile(filepath.Join(dir, "depr", module), source, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(deprecatedEnumWitness), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +47,12 @@ func TestRustDeclaredEnumWriteWitness(t *testing.T) {
 const deprecatedEnumWitness = `
 mod depr;
 use depr::*;
+#[path = "depr/cook_runtime.rs"]
+mod cook_runtime;
+use cook_runtime::*;
+#[path = "depr/probe_cook.rs"]
+mod probe_cook;
+use probe_cook::*;
 
 fn emit(id: &str, bytes: &[u8]) {
     print!("{id} ");
@@ -48,12 +62,16 @@ fn emit(id: &str, bytes: &[u8]) {
     println!();
 }
 
-fn refuse(id: &str, why: &str, write: impl FnOnce()) {
+fn check_refusal(why: &str, write: impl FnOnce()) {
     let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(write))
         .expect_err("deprecated variant must refuse");
     let message = err.downcast_ref::<String>().map(String::as_str)
         .or_else(|| err.downcast_ref::<&str>().copied());
     assert_eq!(message, Some(why));
+}
+
+fn refuse(id: &str, why: &str, write: impl FnOnce()) {
+    check_refusal(why, write);
     println!("{id} refused");
 }
 
@@ -78,11 +96,29 @@ fn main() {
 
     let mut fixed = FixedRoot::default();
     fixed.phase = Phase::Next;
+    row.phase = 3;
     for (id, order) in [("sf26_cook_next_le", 1), ("sf26_cook_next_be", 2)] {
-        emit(id, &fixed_root_cook_write(&fixed, order).unwrap());
+        let bytes = fixed_root_cook_write(&fixed, order).unwrap();
+        let size = fixed_root_cook_measure(&row) as usize;
+        assert_eq!(size, bytes.len());
+        let mut raw = vec![0; size];
+        assert!(fixed_root_cook_from(&row, &mut raw, order));
+        assert_eq!(raw, bytes);
+        emit(id, &bytes);
     }
     fixed.phase = Phase::Old;
+    let size = fixed_root_cook_measure(&row) as usize;
+    row.phase = 2;
+    let why = "invalid_value: FixedRoot.phase holds deprecated variant Phase.Old";
+    check_refusal(why, || {
+        fixed_root_cook_measure(&row);
+    });
     for (id, order) in [("sf26_cook_old_le", 1), ("sf26_cook_old_be", 2)] {
+        let mut raw = vec![0x5a; size];
+        check_refusal(why, || {
+            fixed_root_cook_from(&row, &mut raw, order);
+        });
+        assert_eq!(raw, vec![0x5a; size]);
         refuse(id, "invalid_value: Phase.Old is deprecated", || {
             fixed_root_cook_write(&fixed, order).ok();
         });

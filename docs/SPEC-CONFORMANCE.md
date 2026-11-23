@@ -533,8 +533,9 @@ give each case ID followed by its complete output in hex or `refused`.
 | `sf26_form3_next`, `sf26_form3_old` | Measure room for one `FixedRoot` and save with `Next` or `Old` |
 | `sf26_cook_next_le`, `sf26_cook_next_be`, `sf26_cook_old_le`, `sf26_cook_old_be` | Cook a `FixedRoot` holding `Next` or `Old` in each byte order ([SPEC-TABLES §7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure)) |
 
-The Rust and Dart generator tests run these shared cases with assertions enabled. The Dart probe also checks
-`CookMeasure` and verifies the caller buffer is unchanged when `Cook` refuses.
+The Rust and Dart generator tests run these shared cases with assertions enabled. Both probes check measurement
+and verify the caller buffer is unchanged on refusal. Rust checks both its
+typed writer and its fixed-row caller-buffer API.
 
 ```sh
 SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 \
