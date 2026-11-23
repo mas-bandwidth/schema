@@ -201,7 +201,7 @@ int conformance_write_refusal_write_none( int surface, const char * root, const 
 /* The writer a surface names, over the one value the row set: the child's
    exit code. */
 static int write_refusal_write( int surface, int which, const ConformanceCodec * codec, const char * root, const char * path,
-                                const void * value, const uint8_t * announcement, int64_t announcement_bytes )
+                                const void * value, const uint8_t * announcement, int64_t announcement_bytes, const char * save_wire )
 {
     size_t capacity = (size_t) 1 << 20;
     uint8_t * buffer;
@@ -235,6 +235,13 @@ static int write_refusal_write( int surface, int which, const ConformanceCodec *
     {
         return kNoSetterExit;
     }
+    if ( wrote >= 0 && save_wire != NULL )
+    {
+        FILE * file = fopen( save_wire, "wb" );
+        if ( file == NULL ) { return 1; }
+        const size_t actual = fwrite( buffer, 1, (size_t) wrote, file );
+        if ( fclose( file ) != 0 || actual != (size_t) wrote ) { return 1; }
+    }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
 
@@ -244,7 +251,8 @@ static const unsigned kWrefChildSeconds = 30;
 
 int conformance_write_refusal_case( int surface, const ConformanceCodec * codec, const char * unit, const uint8_t * wire, int64_t bytes,
                                     const uint8_t * announcement, int64_t announcement_bytes,
-                                    const char * root, const char * path, const char * kind, const char * text )
+                                    const char * root, const char * path, const char * kind, const char * text,
+                                    const char * save_wire )
 {
     pid_t child;
     int status = 0, which = -1, i;
@@ -276,7 +284,7 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
         if ( set != 1 ) { _exit( kNoSetterExit ); }
         quiet = open( "/dev/null", O_WRONLY );
         if ( quiet >= 0 ) { dup2( quiet, 2 ); }
-        _exit( write_refusal_write( surface, which, codec, root, path, value, announcement, announcement_bytes ) );
+        _exit( write_refusal_write( surface, which, codec, root, path, value, announcement, announcement_bytes, save_wire ) );
     }
     if ( waitpid( child, &status, 0 ) != child ) { return CONFORMANCE_BROKEN; }
     if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT ) { return CONFORMANCE_REFUSED; }

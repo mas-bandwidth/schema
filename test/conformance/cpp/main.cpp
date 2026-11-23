@@ -2936,6 +2936,8 @@ static int surface_write_refusal( const std::string & surface, const std::string
                     const int64_t sz = var_codec->measure( mval );
                     if ( sz < 0 ) _exit( kRefusedExit );
                     const int64_t wr = var_codec->save( mval, scratch.data(), (int64_t) scratch.size() );
+                    if ( wr >= 0 && f.size() > 8 && f[8] == "save-wire" &&
+                         !spill( out, f[1] + ".wire", scratch.data(), (size_t) wr ) ) _exit( 1 );
                     _exit( wr < 0 ? kRefusedExit : kWroteExit );
                 }
                 if ( surface == "write-refusal-json" )

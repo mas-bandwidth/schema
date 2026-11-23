@@ -3128,8 +3128,9 @@ fn wref_writebounds(v: &mut writebounds::TortureVarWref, path: &str, kind: &str,
     use writebounds::WrefArm;
     match (path, kind) {
         ("opt_arr", "count") => {
-            let first = v.opt_arr.as_ref().and_then(|a| a.first().copied()).unwrap_or(0);
-            v.opt_arr = Some(vec![first; wref_usize(value)]);
+            let array = v.opt_arr.get_or_insert_with(Vec::new);
+            let first = array.first().copied().unwrap_or(0);
+            array.resize(wref_usize(value), first);
             Mutation::Done
         }
         ("arm_bits.a_bits", "int") => {
@@ -3194,7 +3195,15 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let mut report = writebounds::TableReport::default();
                 let Some(mut v) = writebounds::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_writebounds(&mut v, path, kind, value) {
-                    Mutation::Done => wref_save(|| writebounds::torture_var_wref_save_checked(&v)),
+                    Mutation::Done => match wref_run(|| writebounds::torture_var_wref_save_checked(&v)) {
+                        Ok(saved) => {
+                            if f.get(8).map(String::as_str) == Some("save-wire") {
+                                spill(out, &format!("{case}.wire"), &saved);
+                            }
+                            "wrote\n"
+                        }
+                        Err(_) => "refused\n",
+                    },
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }

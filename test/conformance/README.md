@@ -289,7 +289,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
-| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, `Measure` then variable-form `Save`; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
+| `write-refusal` | `write-refusal` | load the row's wire, set its one field to the row's value, variable-form `Save`, using `Measure` where the driver calls it separately; `wrote\n` or `refused\n` | the verdict in the manifest, with a lawful twin at the same boundary |
 | `write-refusal-fixed` | `write-refusal-fixed` | the same through the fixed form's `FixedSave` | the verdict in the manifest |
 | `write-refusal-message` | `write-refusal-message` | the same through `SaveMessages` against the connection's vocabulary | the verdict in the manifest |
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
@@ -342,7 +342,9 @@ leg answers from its DEBUG build, where the check is active — C and C++ fork
 one child per case and read an abort as the refusal, C# installs a throwing
 `TraceListener`, Rust catches the panic, the Java driver runs those surfaces
 under `-ea` and the Dart leg builds a second binary with `--enable-asserts` —
-and every other leg answers from its ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
+and every other leg answers from its ordinary build. A derived `save-wire`
+flag also asks for the actual saved bytes in `<case>.wire`. The harness holds
+the expected file for the byte comparison. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.

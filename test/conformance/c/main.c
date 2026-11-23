@@ -866,8 +866,16 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
            ceiling has no file form to load (FORMAT.md) */
         wire = strcmp( f->field[4], "-" ) == 0 ? NULL : slurp( f->field[4], &bytes );
         if ( wire == NULL && strcmp( f->field[4], "-" ) != 0 ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        char output_path[4096];
+        const char * save_wire = NULL;
+        if ( f->count > 8 && strcmp( f->field[8], "save-wire" ) == 0 )
+        {
+            const int n = snprintf( output_path, sizeof( output_path ), "%s/%s.wire", out, f->field[1] );
+            if ( n < 0 || (size_t) n >= sizeof( output_path ) ) { free( wire ); free( announcement ); return 1; }
+            save_wire = output_path;
+        }
         verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
-                                                  f->field[3], f->field[5], f->field[6], f->field[7] );
+                                                  f->field[3], f->field[5], f->field[6], f->field[7], save_wire );
         free( wire );
         free( announcement );
         if ( verdict == CONFORMANCE_NO_SETTER )
