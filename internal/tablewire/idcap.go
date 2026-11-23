@@ -44,3 +44,27 @@ func IdCapSchema() string {
 	b.WriteString("}\n\ntable Root {\n    keys [K]uint8\n    x uint8\n    y uint8\n}\n")
 	return b.String()
 }
+
+// THE ANNOUNCEMENT'S VOCABULARY, ON THE WRITE SIDE (docs/SPEC-TABLES.md §3.3,
+// ruling R8 follow-up). A receiver refuses an announcement of more than its
+// declared entry maximum, 4096 by default (ir.TableVocabularyMaxEntries), as
+// vocabulary_too_large; so an announcement writer refuses a unit whose
+// ANNOUNCED vocabulary ([MessageVocabulary], the entries Announce writes) has
+// more entries than that, and writes the one with exactly 4096.
+//
+// AnnounceSchema(entries) is the schema every port's announcement test shares:
+// a FIXED root (only fixed tables ride the message form) with an enum K whose
+// variants fill the vocabulary and `fixed table Root { keys [K]uint8 }`. Its
+// announced vocabulary has exactly `entries` entries: the variants and the
+// field `keys`.
+const AnnounceOverhead = 1
+
+func AnnounceSchema(entries int) string {
+	var b strings.Builder
+	b.WriteString("package idcap\n\nenum K {\n")
+	for i := range entries - AnnounceOverhead {
+		fmt.Fprintf(&b, "    V%d\n", i)
+	}
+	b.WriteString("}\n\nfixed table Root {\n    keys [K]uint8\n}\n")
+	return b.String()
+}

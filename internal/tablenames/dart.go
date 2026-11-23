@@ -70,6 +70,7 @@ func init() {
 		// C++ legs register their announcement runtimes' spellings the same
 		// way.
 		Name{Name: "TableAnnouncement", What: "the announced message bit codec: the compiler-settled announcement bytes (§3.3)"},
+		Name{Name: "TableAnnouncementTooLarge", What: "the announced message bit codec: true when the vocabulary is past the readers' entry maximum and the writer refuses (§3.3)"},
 		Name{Name: "TableAnnouncementLength", What: "the announced message bit codec: the announcement's length, emitted beside the bytes (§3.3)"},
 		Name{Name: "TableMessageBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
 		Name{Name: "TableMessageKnownKind", What: "the announced message bit codec: whether a kind is in the closed set"},

@@ -477,6 +477,8 @@ _T.TableMessageAnnouncement = (function()
 	return b
 end)()
 _T.TableMessageAnnouncementLength = 871
+function _T.AnnounceMeasure(): number return _T.TableMessageAnnouncementLength end
+function _T.Announce(): buffer? return _T.TableMessageAnnouncement end
 _T.TableMessageRefBits = 7
 _T.TableMessageEntriesHere = 70
 _T.TableMessageBuildVersion = 4484788518692264406i
