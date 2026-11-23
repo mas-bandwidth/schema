@@ -3,8 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/internal/pathid"
@@ -58,11 +60,25 @@ type entryInfo struct {
 	entry, target os.FileInfo
 }
 
-func infoOf(path string) entryInfo {
+// infoOf answers nil only for a path that reaches no file. Any other lookup
+// failure (a directory it may not search, an I/O error) is an error: read as
+// "no file", it would let an output through the alias check unexamined.
+func infoOf(path string) (entryInfo, error) {
 	var e entryInfo
-	e.entry, _ = os.Lstat(path)
-	e.target, _ = os.Stat(path)
-	return e
+	var err error
+	if e.entry, err = os.Lstat(path); err != nil && !absent(err) {
+		return e, err
+	}
+	if e.target, err = os.Stat(path); err != nil && !absent(err) {
+		return e, err
+	}
+	return e, nil
+}
+
+// absent is a lookup error that means the path reaches no file: nothing by
+// that name, a dangling link, or a parent that is not a directory.
+func absent(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 func sameFile(a, b os.FileInfo) bool {
@@ -76,10 +92,22 @@ func (e entryInfo) one(o entryInfo) bool {
 		sameFile(e.target, o.entry) || sameFile(e.target, o.target)
 }
 
-func aliasError(verb string, outs []outputPath, ins []outputPath) error {
+// infosOf is infoOf for each output, refusing the first it cannot look up.
+func infosOf(verb string, outs []outputPath) ([]entryInfo, error) {
 	infos := make([]entryInfo, len(outs))
 	for i, o := range outs {
-		infos[i] = infoOf(o.path)
+		var err error
+		if infos[i], err = infoOf(o.path); err != nil {
+			return nil, fmt.Errorf("%s: %s %s: %w", verb, o.flag, o.path, err)
+		}
+	}
+	return infos, nil
+}
+
+func aliasError(verb string, outs []outputPath, ins []outputPath) error {
+	infos, err := infosOf(verb, outs)
+	if err != nil {
+		return err
 	}
 	for i := range outs {
 		for j := i + 1; j < len(outs); j++ {
@@ -99,9 +127,9 @@ const sourceInput = "the schema source"
 // outputs with each other, for a command whose outputs are many files under
 // one directory it names (generate, testgen).
 func refuseSourceOutputs(verb string, outs []outputPath, ins []outputPath) error {
-	infos := make([]entryInfo, len(outs))
-	for i, o := range outs {
-		infos[i] = infoOf(o.path)
+	infos, err := infosOf(verb, outs)
+	if err != nil {
+		return err
 	}
 	return inputsError(verb, outs, infos, ins)
 }
@@ -111,7 +139,10 @@ func inputsError(verb string, outs []outputPath, infos []entryInfo, ins []output
 		if in.path == "" {
 			continue
 		}
-		read := infoOf(in.path)
+		read, err := infoOf(in.path)
+		if err != nil {
+			return fmt.Errorf("%s: %s %s: %w", verb, in.flag, in.path, err)
+		}
 		if read.target == nil {
 			// a missing input fails on its own read
 			continue

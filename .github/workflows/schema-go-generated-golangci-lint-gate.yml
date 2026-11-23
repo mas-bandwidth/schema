@@ -38,7 +38,7 @@ jobs:
     runs-on: ["self-hosted", "Linux", "X64", "fleet", "schema"]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: the fleet golangci-lint (presence and pinned version)
@@ -48,7 +48,7 @@ jobs:
             echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
             exit 1
           }
-          golangci-lint version 2>/dev/null | grep -q '2.12.2' || {
+          golangci-lint version 2>&1 | grep '2.12.2' >/dev/null || {
             echo "TOOL-MISSING: golangci-lint 2.12.2 (found: $(golangci-lint version 2>&1 | head -1))"
             exit 1
           }

@@ -46,9 +46,20 @@ toolchain-elixir:
 	@$(call toolchain_probe,elixir,ELIXIR,$(ELIXIR),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIR)))
 	@$(call toolchain_probe,elixir,ELIXIRC,$(ELIXIRC),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIRC)))
 	@$(call toolchain_probe,elixir,MIX,$(MIX),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(MIX)))
-build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/elixir.mk
+build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/elixir.mk
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/plain test/packet-defaults/Plain.schema
+	@# Both constant schemas declare package arithmetic: generate each on its own,
+	@# then rename its modules after the pin so one VM loads both.
+	@for pin in hexadecimal-addition unsigned-subtraction; do \
+		if [ $$pin = hexadecimal-addition ]; then ns=ArithmeticHexadecimalAddition; else ns=ArithmeticUnsignedSubtraction; fi; \
+		./bin/schema generate --lang elixir --out build/packet-defaults/elixir-raw/$$pin test/conformance/packet/testdata/constant-defaults/$$pin/Defaults.schema || exit 1; \
+		mkdir -p build/packet-defaults/elixir/constant-$$pin || exit 1; \
+		for f in build/packet-defaults/elixir-raw/$$pin/*.ex; do \
+			sed "s/Arithmetic\./$$ns./g" $$f > build/packet-defaults/elixir/constant-$$pin/$${f##*/} || exit 1; \
+		done; \
+		grep -q "defmodule $$ns.Value" build/packet-defaults/elixir/constant-$$pin/Defaults.ex || { echo "rename to $$ns failed"; exit 1; }; \
+	done
 	@touch $@
 
 .PHONY: packet-defaults-elixir packet-defaults-elixir-negative-control
@@ -134,19 +145,27 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 
 build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
-	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
 	# Elixir 1.20.4 is the formatting authority (issue #424), and every table
 	# emitter writes its shape (issue #547, tables-elixir-emit-format-clean), so
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+ELIXIR_TABLE_UNIT_NAMES = $(sort $(foreach u,$(ELIXIR_TABLE_UNITS),$(firstword $(subst :, ,$(u)))))
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# Compile each generated unit (and driver_impl.ex) in parallel with bounded BEAM
+# schedulers (+S 2:2 per VM, nproc/2 workers): every unit has a distinct package
+# namespace, so splitting avoids single-VM ETS/scheduler lock contention while
+# preserving full ELIXIRC_STRICT warning-as-error checks and byte-identical ebin.
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
-		test/conformance/elixir/driver_impl.ex
+	@if ! cpus=$$(nproc 2>/dev/null); then if ! cpus=$$(sysctl -n hw.ncpu 2>/dev/null); then cpus=4; fi; fi; \
+	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
+	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
+		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
+		xargs -P "$$jobs" -n 1 sh -c 'if [ "$$1" = "__driver_impl__" ]; then $(ELIXIRC_STRICT) -o build/elixir-tables-ebin test/conformance/elixir/driver_impl.ex || exit 255; else $(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/"$$1"/*.ex || exit 255; fi' _
 	@touch $@
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above
@@ -390,6 +409,7 @@ ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and val
 # $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
 define ELIXIR_WREF_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
+	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
 		--work $(1)/work > $(1)/log 2>&1 || true
 	@got=$$(sed -n 's|^  elixir / $(4): \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \

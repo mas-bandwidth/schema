@@ -76,6 +76,7 @@ $(GOLANGCI_GATE_STAMP): bin/schema $(SCHEMAS) $(SCHEMAS128) $(SERIALIZE_GO_RUNTI
 schema-go-generated-golangci-lint-gate-probe:
 	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
 		echo "tool missing: golangci-lint (pinned $(GOLANGCI_LINT_VERSION); install it with rowan-tools/fleet)"; exit 1; }
+# loud-ok: the version text inside the refusal's own message
 	@$(GOLANGCI_LINT) version 2>/dev/null | grep '$(GOLANGCI_LINT_VERSION)' >/dev/null || { \
 		echo "tool missing: golangci-lint $(GOLANGCI_LINT_VERSION) (found: $$($(GOLANGCI_LINT) version 2>/dev/null || echo none))"; exit 1; }
 
@@ -329,7 +330,9 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 	@rm -f $(GOLANGCI_GATE_DIR)/plant/planted_bad.go
 	@cd $(GOLANGCI_GATE_DIR)/plant && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --allow-parallel-runners --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 		--output.text.colors=false --output.text.print-issued-lines=false ./... \
-		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant-clean.log" 2>&1 || :; \
+		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant-clean.log" 2>&1 || st=$$?; \
+		if [ "$${st:-0}" -gt 1 ]; then cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant-clean.log"; \
+			echo "golangci-lint failed on the clean plant (exit $$st): exit 1 is findings, anything above is the tool"; exit 1; fi; \
 		awk -v corpus="example" '\
 			/\([a-z]+\)$$/ { \
 				n=$$0; sub(/.*\(/,"",n); sub(/\)$$/,"",n); \

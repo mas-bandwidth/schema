@@ -71,6 +71,6 @@ list)
 	"$luau" "$main" -a "$2" >"$dir/$2.out"
 	status=$?
 	[ "$status" -eq 0 ] || exit "$status"
-	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h, $why) = split / /, $_, 3; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; print $f $why if defined $why; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	perl test/conformance/answer-lines.pl "$3" "$dir/$2.out"
 	;;
 esac

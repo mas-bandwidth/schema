@@ -1,0 +1,11 @@
+name: no defaults
+on: [push]
+jobs:
+  plain:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          go test ./... | tee log
+      - shell: bash
+        run: |
+          go test ./... | tee log

@@ -8,7 +8,7 @@
 # directory once. <out-dir>/units.tsv maps every packet schema to the unit
 # directory that carries its code: `schema<TAB>unit`. Run from the repository
 # root, after bin/schema is built.
-set -eu
+set -eu -o pipefail
 
 lang=$1
 out=$2
