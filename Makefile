@@ -8243,7 +8243,7 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	./build/conformance-harness generate
 
-PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 cooktorture cooktorturewide shapes backend vocab vocab9 arms rt1 features
+PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 prior cooktorture cooktorturewide shapes backend vocab vocab9 arms rt1 features
 PINS_CONFORMANCE_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp build/tables-generated/lists/*Table.cpp build/tables-generated/widelist/*Table.cpp) $(filter-out build/tables-generated/maps/% build/tables-generated/lists/% build/tables-generated/widelist/%,$(CONFORMANCE_SOURCES))
 
 .PHONY: pins-conformance
