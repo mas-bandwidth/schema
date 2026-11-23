@@ -593,8 +593,8 @@ CONFORMANCE_NEGATIVE_C_FRAMING := build/conformance-negative-c-framing
 conformance-negative-control-c-framing: build/conformance-harness build/conformance-c
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_FRAMING) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FRAMING)
 	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated
-	@for f in $$(grep -rl 'if ( count > 4096 ) {' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
-		sed 's|if ( count > 4096 ) {[^}]*}|if ( 0 ) { return 0; } /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	@for f in $$(grep -rl 'if ( count > 4096 )$$' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
+		sed 's|if ( count > 4096 )$$|if ( 0 ) /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -rq 'SABOTAGED: the 4096-entry cap' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
@@ -1143,8 +1143,8 @@ test-c: tables-c-json-label-negative-control tables-c-map-sort-negative-control
 tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/.stamp
 	@rm -rf build/c-fuzz-sabotage && mkdir -p build/c-fuzz-sabotage
 	@cp -r build/tables-generated-c/block build/c-fuzz-sabotage/
-	@sed -i.bak -e 's|if(rows>(uint64_t)bytes-offset) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }|/* SABOTAGED */|' \
-	            -e 's|if(padding>bytes-used) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED)!=NULL; }|/* SABOTAGED */|' \
+	@sed -i.bak -e 's|if ( rows > (uint64_t) bytes - offset ) { return blockdemo_table_cook_refuse( reason, SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT ) != NULL; }|/* SABOTAGED */|' \
+	            -e 's|if ( padding > bytes - used ) { return blockdemo_table_cook_refuse( reason, SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED ) != NULL; }|/* SABOTAGED */|' \
 		build/c-fuzz-sabotage/block/RenderBlock.c
 	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
@@ -1767,8 +1767,8 @@ test-c: tables-c-skip-timestamp-kind
 tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf build/c-skip36-sabotage && mkdir -p build/c-skip36-sabotage
 	@cp -R build/tables-generated-c build/c-skip36-sabotage/generated
-	@for f in $$(grep -rl 'case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
-		sed 's|case 23: case 28: case 36: width = 8; break;|case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|g' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	@for f in $$(grep -rl 'case 36:' build/c-skip36-sabotage/generated); do \
+		perl -0pe 's|(case 23:\s*case 28:\s*)case 36:\s*(width = 8;\s*break;)|$${1}$${2} /* SABOTAGED: kind 36 */|g' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -rq 'SABOTAGED: kind 36' build/c-skip36-sabotage/generated || { echo 'NEGATIVE CONTROL FAILED: the sabotage patched nothing'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
@@ -1805,7 +1805,7 @@ test-c tables-c: tables-c-widelist-extent-align16
 tables-c-widelist-extent-align16-negative-control: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf build/c-widelist-sabotage && mkdir -p build/c-widelist-sabotage
 	@cp -R build/tables-generated-c build/c-widelist-sabotage/generated
-	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),8 /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
+	@sed "s|int64_t at = widelistdemo_table_align_up64( (int64_t) sizeof( widelistdemo_wide_t ) );|int64_t at = sizeof( widelistdemo_wide_t ); /* SABOTAGED: unaligned extent start */|; s|sizeof( serialize_uint128_t ), 16|sizeof( serialize_uint128_t ), 8 /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
 	@grep -q "SABOTAGED: unaligned extent start" build/c-widelist-sabotage/generated/widelist/WidesTable.h || { echo "NEGATIVE CONTROL FAILED: the widelist sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-widelist-sabotage/driver -lm
