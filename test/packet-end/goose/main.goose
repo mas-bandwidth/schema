@@ -1,10 +1,10 @@
 // Verify SPEC §5's read termination on the Goose packet target: the public
-// one-packet read of test/packet-end/End.schema accepts the exact packet as
+// one-packet read of test/packet-end/PacketEnd.schema accepts the exact packet as
 // the value 3 and refuses the same packet with a whole trailing byte and the
 // same value with the final byte's unused bits set. The make target generates
-// End.schema beside this file and runs it with `-- <vector-directory>`.
+// PacketEnd.schema beside this file and runs it with `-- <vector-directory>`.
 import os;
-import .End;
+import .PacketEnd;
 import .serialize;
 
 var failed = false;

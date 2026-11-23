@@ -2389,7 +2389,7 @@ test-c: packet-write-cfloat-c packet-write-cfloat-c-negative-control
 # The packet-end corpus (docs/SPEC.md §5, "Read termination"): the generated
 # public read is the one-packet read, so exact.bin is accepted as the value 3
 # and the trailing byte and non-zero final padding are refused.
-PACKET_END_SCHEMA := test/packet-end/End.schema
+PACKET_END_SCHEMA := test/packet-end/PacketEnd.schema
 PACKET_END_C := build/packet-end/c
 
 build/packet-end/c/.stamp: bin/schema $(PACKET_END_SCHEMA) make/c.mk

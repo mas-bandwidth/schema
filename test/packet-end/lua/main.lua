@@ -14,7 +14,7 @@ local vectors = assert(arg[2], usage)
 package.path = dir .. "/?.lua;" .. package.path
 
 local serialize = require("serialize")
-local E = require("End")
+local E = require("PacketEnd")
 
 local failures = 0
 local function fail(name, detail)

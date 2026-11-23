@@ -599,7 +599,7 @@ test: packet-write-cfloat-cpp
 # the final byte's unused bits set (refused). The negative control removes the
 # generated end call and requires the trailing byte to be accepted, which turns
 # this gate red by name.
-PACKET_END_CPP_SCHEMA := test/packet-end/End.schema
+PACKET_END_CPP_SCHEMA := test/packet-end/PacketEnd.schema
 
 build/packet-end/cpp/.stamp: bin/schema $(PACKET_END_CPP_SCHEMA) make/cpp.mk
 	@mkdir -p build/packet-end/cpp

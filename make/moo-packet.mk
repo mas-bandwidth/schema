@@ -117,7 +117,7 @@ test-moo: packet-defaults-moo packet-defaults-moo-negative-control \
 # final byte) are refused. The control drops the end call from the emitted
 # public read and must fail the trailing and padding cases by name, with the
 # exact packet still accepted.
-MOO_PACKET_END_RUN = -analyze -schema test/packet-end/End.schema -inputs testdata/wire/packet-end \
+MOO_PACKET_END_RUN = -analyze -schema test/packet-end/PacketEnd.schema -inputs testdata/wire/packet-end \
 	-main test/packet-end/moo/main.moo
 
 .PHONY: packet-end-moo packet-end-moo-negative-control

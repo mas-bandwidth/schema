@@ -153,7 +153,7 @@ test-luau: luau-ludicrous luau-ludicrous-negative-control
 # source (the interpreter has no io library).
 LUAU_PACKET_END_PINS := $(wildcard testdata/wire/packet-end/*.bin testdata/wire/packet-end/*.bits)
 define luau-packet-end-tree
-	$(call luau-packet-generate,$(1),test/packet-end/End.schema,$(2))
+	$(call luau-packet-generate,$(1),test/packet-end/PacketEnd.schema,$(2))
 	cp test/packet-end/luau/main.luau $(1)/main.luau
 	{ printf 'return {\n'; \
 	  for f in testdata/wire/packet-end/*.bin; do \
@@ -162,7 +162,7 @@ define luau-packet-end-tree
 	  done; printf '}\n'; } > $(1)/pins.luau
 endef
 
-build/packet-end/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-end/End.schema \
+build/packet-end/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-end/PacketEnd.schema \
 	test/packet-end/luau/main.luau $(LUAU_PACKET_END_PINS)
 	$(call luau-packet-end-tree,build/packet-end/luau)
 	@touch $@

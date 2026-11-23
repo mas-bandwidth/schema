@@ -13,7 +13,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../../build/packet-end/dart/End.dart';
+import '../../../build/packet-end/dart/PacketEnd.dart';
 
 var failed = false;
 

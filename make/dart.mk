@@ -1948,8 +1948,8 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 # one-packet read: exact accepted as 3, trailing refused, padding refused. The
 # control removes the emitted end check and requires the trailing and padding
 # verdicts to go red while the exact packet stays accepted.
-build/packet-end/dart/.stamp: bin/schema test/packet-end/End.schema
-	./bin/schema generate --lang dart --out build/packet-end/dart test/packet-end/End.schema
+build/packet-end/dart/.stamp: bin/schema test/packet-end/PacketEnd.schema
+	./bin/schema generate --lang dart --out build/packet-end/dart test/packet-end/PacketEnd.schema
 	@touch $@
 
 .PHONY: packet-end-dart packet-end-dart-negative-control
@@ -1964,7 +1964,7 @@ packet-end-dart-negative-control: packet-end-dart
 	@rm -rf build/packet-end/dart-negative && mkdir -p build/packet-end/dart-negative
 	go run ./tools/sabotage -name packet-end-dart-read -out build/packet-end/dart-negative/functions.gotext internal/codegen/dart/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-end/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/dart-negative/overlay.json
-	go run -overlay=build/packet-end/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-end/dart-negative/generated test/packet-end/End.schema
+	go run -overlay=build/packet-end/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-end/dart-negative/generated test/packet-end/PacketEnd.schema
 	@sed 's|../../../build/packet-end/dart/|$(CURDIR)/build/packet-end/dart-negative/generated/|' test/packet-end/dart/main.dart > build/packet-end/dart-negative/main.dart
 	@if $(DART) --enable-asserts build/packet-end/dart-negative/main.dart testdata/wire/packet-end > build/packet-end/dart-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the packet end check is removed and the driver stayed green'; \

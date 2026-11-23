@@ -477,12 +477,12 @@ test-lua: tables-lua-damage-discard-negative-control
 # ---------------------------------------------------------------- packet end
 # SPEC §5: the generated public Read<T> is the one-packet read and ends with
 # the runtime's end check; a nested type reads through Read<T>Body, which does
-# not end. The shared End.schema vectors are read with ReadEnd: the exact
+# not end. The shared PacketEnd.schema vectors are read with ReadEnd: the exact
 # three-bit packet accepted, one whole trailing byte refused, and the final
 # byte's unused bits set refused.
-build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
+build/packet-end/lua/.stamp: bin/schema test/packet-end/PacketEnd.schema
 	@rm -rf build/packet-end/lua && mkdir -p build/packet-end/lua
-	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/End.schema
+	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/PacketEnd.schema
 	@touch $@
 
 # The vector directory's own listing, handed to the driver: a vector it does
@@ -498,7 +498,7 @@ packet-end-lua-negative-control: packet-end-lua
 	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-end/lua-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/lua-negative/overlay.json
 	go build -overlay=build/packet-end/lua-negative/overlay.json -o build/packet-end/lua-negative/schema ./cmd/schema
-	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/End.schema
+	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/PacketEnd.schema
 	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS) > build/packet-end/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Lua packet end check was removed and the end gate stayed green'; exit 1; fi
 	@grep -Fq 'FAILED: trailing: accepted as 3' build/packet-end/lua-negative/log || \

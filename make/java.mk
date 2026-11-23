@@ -2622,11 +2622,9 @@ conformance-negative-control-java-write-refusal-message: build/conformance-harne
 # refuses a whole byte left after the top-level object and non-zero unused
 # bits in the final byte; the Bits entry stays the composable form and does not
 # end. The driver reads the shared vectors under testdata/wire/packet-end.
-build/packet-end/java/.stamp: bin/schema test/packet-end/End.schema make/java.mk
-	@rm -rf build/packet-end/java/gen build/packet-end/java/source
-	@mkdir -p build/packet-end/java/source
-	cp test/packet-end/End.schema build/packet-end/java/source/PacketEnd.schema
-	./bin/schema generate --lang java --out build/packet-end/java/gen build/packet-end/java/source/PacketEnd.schema
+build/packet-end/java/.stamp: bin/schema test/packet-end/PacketEnd.schema make/java.mk
+	@rm -rf build/packet-end/java/gen
+	./bin/schema generate --lang java --out build/packet-end/java/gen test/packet-end/PacketEnd.schema
 	@touch $@
 
 .PHONY: packet-end-java packet-end-java-negative-control
@@ -2642,10 +2640,8 @@ packet-end-java-negative-control: packet-end-java
 	@printf '{"Replace":{"%s/internal/codegen/java/functions.go":"%s/build/packet-end/java-negative/java.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/java-negative/overlay.json
 	go build -overlay=build/packet-end/java-negative/overlay.json -o build/packet-end/java-negative/schema ./cmd/schema
-	@rm -rf build/packet-end/java-negative/generated build/packet-end/java-negative/source
-	@mkdir -p build/packet-end/java-negative/source
-	cp test/packet-end/End.schema build/packet-end/java-negative/source/PacketEnd.schema
-	./build/packet-end/java-negative/schema generate --lang java --out build/packet-end/java-negative/generated build/packet-end/java-negative/source/PacketEnd.schema
+	@rm -rf build/packet-end/java-negative/generated
+	./build/packet-end/java-negative/schema generate --lang java --out build/packet-end/java-negative/generated test/packet-end/PacketEnd.schema
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-end/java-negative/classes build/packet-end/java-negative/generated/*.java test/packet-end/java/Main.java
 	@if $(JAVA) -cp build/packet-end/java-negative/classes Main testdata/wire/packet-end > build/packet-end/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java packet read with no end check accepted a trailing byte'; exit 1; fi

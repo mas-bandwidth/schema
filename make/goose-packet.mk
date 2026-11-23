@@ -139,7 +139,7 @@ test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 PACKET_END_GOOSE_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 packet-end-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/PacketEnd.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose/
 	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-end-goose -count 3 -- $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS)
 
@@ -149,7 +149,7 @@ packet-end-goose: goose-packet-ready build/mustrun
 packet-end-goose-negative-control: packet-end-goose
 	$(call goose-packet-sabotaged,build/packet-end/goose-negative,packet-end-goose,internal/codegen/goose/wire.go)
 	@rm -rf build/packet-end/goose-negative/generated && mkdir -p build/packet-end/goose-negative/generated
-	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/End.schema
+	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/PacketEnd.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose-negative/generated/
 	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose-negative/generated/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS) > build/packet-end/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the end check was removed and the Goose packet-end driver stayed green'; exit 1; fi

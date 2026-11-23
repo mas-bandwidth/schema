@@ -9,7 +9,7 @@
 -- Each failed case prints one line, "FAILED: <case>: <detail>", and the run
 -- exits nonzero at the end; the negative control greps its exact markers.
 local serialize = require("./serialize")
-local e = require("./End")
+local e = require("./PacketEnd")
 local inputs = require("./inputs") :: any
 
 local failed = 0
