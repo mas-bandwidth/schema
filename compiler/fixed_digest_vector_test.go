@@ -62,7 +62,7 @@ func TestFixedDefinitionsDigestVector(t *testing.T) {
 		t.Fatalf("%v — DIGEST_VECTOR_WRITE=1 writes it", err)
 	}
 	var body []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line != "" && !strings.HasPrefix(line, "#") {
 			body = append(body, line)
 		}
