@@ -5,6 +5,15 @@
    CardTable.c in the card builds; it is the only definition of the generated
    symbols. The wrappers add nothing: they exist so Upgrade can reach the same
    retained round trip the generator already wrote. */
+/* The generated CardTable.c below converts numbers in the "C" locale
+   (newlocale, uselocale: POSIX.1-2008); a strict -std=c11 hides them unless
+   the feature macro precedes the first include of this unit. */
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1 /* keep Darwin extensions visible beside any POSIX feature macro */
+#endif
 #include "cards.h"
 
 #include "CardTable.c"

@@ -92,7 +92,7 @@ func Check(dir string, patterns ...string) ([]Finding, Counts, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, c, fmt.Errorf("go list: %v\n%s", err, stderr.Bytes())
+		return nil, c, fmt.Errorf("go list: %w\n%s", err, stderr.Bytes())
 	}
 	exports := map[string]string{}
 	var targets []listed

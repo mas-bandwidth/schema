@@ -685,7 +685,9 @@ generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
-build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+# the serialize.go runtime is a sibling checkout the module replaces into place:
+# an edit there must rebuild the driver
+build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
 

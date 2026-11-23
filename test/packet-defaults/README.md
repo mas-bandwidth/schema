@@ -5,7 +5,7 @@ to the shared packet examples before every port supports them.
 
 `Defaults.schema` declares the defaults. `Plain.schema` has the same shapes and no
 specified defaults. The C++ checker constructs both at the same explicit values
-and requires identical packet bytes and bit counts. It pins eight cases under
+and requires identical packet bytes and bit counts. It pins ten cases under
 `testdata/wire/packet-defaults`. Later ports consume these same files.
 
 Defaults initialize construction and never elide packet fields. Every union
@@ -45,7 +45,7 @@ Fast PR CI does not invoke these packet runtime checks or controls. Full
 `test-go`; those targets depend on the corresponding positive and negative
 checks here. The C++ oracle is also a direct dependency of `test`.
 
-`make packet-defaults-rust` checks the same eight pins in debug and release,
+`make packet-defaults-rust` checks the same ten pins in debug and release,
 including every constructor, explicit-empty and short literals, 33-bit and
 64-bit masks, a defaultless twin, backing arrays and repeated union selection.
 Rust's `Default` stays the zero form; `new()` applies declared defaults.
@@ -54,7 +54,7 @@ copies through an overlay and requires the compiled consumer to fail the
 constructor-bytes marker. Both targets are dependencies of `test-rust`, and
 table-closure defaults remain refused in Rust.
 
-`make packet-defaults-cs` runs the eight C++ pins in Debug and Release. It
+`make packet-defaults-cs` runs the ten C++ pins in Debug and Release. It
 checks construction, allocation-free in-place `Init`, the distinct `Zero` form,
 backing-array defaults, short and empty literals, unsigned 33/64-bit masks, a
 defaultless twin, reused prefixes and repeated union selection. The reader
@@ -64,7 +64,7 @@ consumer to fail the constructor-bytes marker. Both checks ride `test-cs`;
 table-closure defaults remain refused.
 
 `make packet-defaults-java` compiles with Java 17 warnings treated as errors,
-and runs with assertions enabled and disabled. It checks the eight C++ byte
+and runs with assertions enabled and disabled. It checks the ten C++ byte
 and bit pins, constructors and in-place resets, backing arrays, independent
 33/64-bit masks, a defaultless twin and both kinds of reused storage. Since
 the reader API returns a verdict rather than a cursor, every pin must accept
@@ -76,14 +76,14 @@ ride `test-java`. Table-closure defaults stay refused.
 and production on pinned Node 26.7.0. Runtime reads check the consumed bits;
 flat reads must accept the exact bit bound and refuse one bit less. A
 `ChoiceEnvelope` type places its union at bit zero so the flat API, which
-exposes type codecs, consumes the same standalone union pin. Existing eight
+exposes type codecs, consumes the same standalone union pin. Existing ten
 pins stay unchanged. Constructors, in-place reset, zero forms, unsigned
 33/64-bit masks, defaultless values, counted backing storage and repeated
 selection all run in both tiers. The constructor-byte sabotage syntax-checks
 and imports both modules before failing its marker. Both checks ride `test-js`.
 
 `make packet-defaults-dart` analyzes and format-checks both fixture units,
-then runs all eight C++ byte/bit pins under JIT assertions and compiled AOT.
+then runs all ten C++ byte/bit pins under JIT assertions and compiled AOT.
 Exact-bit reads accept and one-bit-short reads refuse. Constructors, in-place
 resets, zero forms, backing arrays, a defaultless twin, independent 33/64-bit
 masks and repeated union selection are covered. Long nested byte paths are
@@ -92,7 +92,7 @@ compiles an AOT consumer before it fails its marker. Both checks ride
 `test-dart`, and table-closure defaults remain refused.
 
 `make packet-defaults-elixir` format-checks the generated modules and checks
-the eight C++ byte/bit pins, defaultless values, explicit empty and short
+the ten C++ byte/bit pins, defaultless values, explicit empty and short
 literals, independent 33/64-bit masks, zero forms and repeated union reads.
 BEAM binaries and lists hold only used data, so no unused backing tail exists;
 the zero-count list is empty. Exact-bit reads accept and one-bit-short reads
