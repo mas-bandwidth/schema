@@ -64,7 +64,7 @@ func TestUncookRefusesWhatCheckRefuses(t *testing.T) {
 		t.Error("Check accepted a cyclic cook")
 	}
 
-	rng := rand.New(rand.NewSource(hostileSeed()))
+	rng := rand.New(rand.NewSource(hostileSeed(t)))
 	refusals := 0
 	for _, g := range graphs() {
 		for _, big := range []bool{false, true} {

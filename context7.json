@@ -37,7 +37,8 @@
     "SPEC-TABLES.md",
     "UNITY.md",
     "VERSIONING.md",
-    "fix-ledger-1122.md"
+    "fix-ledger-1122.md",
+    "test-input-accounting.md"
   ],
   "excludeFolders": [
     "docs/LAYERS",

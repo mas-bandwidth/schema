@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -48,7 +49,7 @@ func TestFixedDefinitionsDigestVector(t *testing.T) {
 
 	got := fmt.Sprintf("root Probe\nlayout %x\ndigest %x\nhash %#016x\n", layout, digest, hash)
 	path := dir + "vector.txt"
-	if os.Getenv("DIGEST_VECTOR_WRITE") == "1" {
+	if slowtest.Rewriting(t, "DIGEST_VECTOR_WRITE") {
 		head := "# THE DEFINITIONS DIGEST VECTOR for Digest.schema (docs/SPEC-TABLES.md §3.4).\n" +
 			"# layout: the layout bytes; digest: the definitions digest; hash: fnv1a64 over\n" +
 			"# the layout bytes and then the digest bytes, the u64 every record carries.\n"

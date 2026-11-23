@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -110,7 +111,7 @@ func TestFrontEndVector(t *testing.T) {
 	got := b.String()
 
 	path := dir + "vector.txt"
-	if os.Getenv("FRONTEND_VECTOR_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRONTEND_VECTOR_WRITE") {
 		head := "# THE FRONT-END VECTOR for Literals.schema (docs/SPEC-CONFORMANCE.md §7, rows 26-27).\n" +
 			"# id <what> <alias UTF-8 bytes, hex> <wire id>: fnv1a64 over those bytes.\n" +
 			"# f32/f64 <field>.<fact> <IEEE-754 bits>: the literal rounded to float64, then to the field's width.\n"
