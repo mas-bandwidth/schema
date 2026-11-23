@@ -279,11 +279,17 @@ const announceBudgetsMain = `    public static void main(String[] args) {
         checkBudget("byte zero", ann, -1, 0, -1);
         checkBudget("byte exact", ann, -1, bytes, entries);
         checkBudget("byte one below", ann, -1, bytes - 1, -1);
+        checkBudget("both zero", ann, 0, 0, -1);
 
         final byte[] empty = fromHex("%s");
         checkBudget("empty defaults", empty, -1, -1, 0);
         checkBudget("empty entry zero", empty, 0, -1, 0);
+        checkBudget("empty entry exact", empty, entries, -1, 0);
+        checkBudget("empty entry one below", empty, entries - 1, -1, 0);
         checkBudget("empty byte zero", empty, -1, 0, 0);
+        checkBudget("empty byte exact", empty, -1, bytes, 0);
+        checkBudget("empty byte one below", empty, -1, bytes - 1, 0);
+        checkBudget("empty both zero", empty, 0, 0, 0);
     }
 
     // Negative arguments leave the receiver's reset defaults in place.
