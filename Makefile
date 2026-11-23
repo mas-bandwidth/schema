@@ -5203,7 +5203,7 @@ generated-current: bin/schema build/treelock
 # `go test ./...` runs it too.
 .PHONY: docs-check
 docs-check:
-	go test ./internal/docgate -run '^(TestPagesResolve|TestOwedRowsAreLinked|TestOwedCheckGoesRed)$' -count=1
+	go test ./internal/docgate -run '^(TestPagesResolve|TestOwedRowsAreLinked|TestOwedCheckGoesRed|TestOwedLookupIsExact)$$' -count=1
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
